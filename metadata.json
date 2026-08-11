@@ -1,0 +1,6 @@
+{
+  "name": "IFPR Achados & Perdidos - Campus Ivaiporã",
+  "description": "Sistema institucional de cadastro, busca, inteligência artificial e devolução de objetos achados e perdidos do Instituto Federal do Paraná - Campus Ivaiporã.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

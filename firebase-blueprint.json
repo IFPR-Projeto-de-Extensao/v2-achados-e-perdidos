@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile in IFPR Campus Ivaiporã system",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 150 },
+        "role": { "type": "string", "enum": ["ALUNO", "SERVIDOR", "ADMIN"] },
+        "courseOrDept": { "type": "string", "maxLength": 150 },
+        "registrationNumber": { "type": "string", "maxLength": 50 },
+        "avatarUrl": { "type": "string", "maxLength": 500 },
+        "phone": { "type": "string", "maxLength": 30 }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "LostFoundItem": {
+      "title": "LostFoundItem",
+      "description": "Lost or found item recorded on Campus Ivaiporã",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string", "maxLength": 150 },
+        "category": { "type": "string", "maxLength": 50 },
+        "type": { "type": "string", "enum": ["PERDIDO", "ENCONTRADO"] },
+        "status": { "type": "string", "enum": ["PERDIDO", "ENCONTRADO", "EM_ANALISE", "DEVOLVIDO"] },
+        "description": { "type": "string", "maxLength": 2000 },
+        "color": { "type": "string", "maxLength": 50 },
+        "brand": { "type": "string", "maxLength": 50 },
+        "location": { "type": "string", "maxLength": 150 },
+        "date": { "type": "string", "maxLength": 30 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "additionalImages": { "type": "array" },
+        "contactInfo": { "type": "string", "maxLength": 200 },
+        "registeredByUserId": { "type": "string" },
+        "registeredByName": { "type": "string", "maxLength": 100 },
+        "registeredByRole": { "type": "string", "enum": ["ALUNO", "SERVIDOR", "ADMIN"] },
+        "qrCodeId": { "type": "string", "maxLength": 50 },
+        "createdAt": { "type": "string" },
+        "matchedWithItemId": { "type": "string" },
+        "resolutionDate": { "type": "string" },
+        "secretVerificationHint": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["id", "title", "category", "type", "status", "description", "location", "registeredByUserId"]
+    },
+    "ItemClaim": {
+      "title": "ItemClaim",
+      "description": "Claim made by a user for a found item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "itemId": { "type": "string" },
+        "itemTitle": { "type": "string", "maxLength": 150 },
+        "claimerId": { "type": "string" },
+        "claimerName": { "type": "string", "maxLength": 100 },
+        "claimerEmail": { "type": "string", "maxLength": 150 },
+        "claimerRole": { "type": "string", "enum": ["ALUNO", "SERVIDOR", "ADMIN"] },
+        "verificationAnswer": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["PENDENTE", "APROVADO", "REJEITADO", "CONCLUIDO"] },
+        "createdAt": { "type": "string" },
+        "notes": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["id", "itemId", "claimerId", "verificationAnswer", "status"]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "System or match notification for a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string", "maxLength": 150 },
+        "message": { "type": "string", "maxLength": 500 },
+        "timestamp": { "type": "string" },
+        "read": { "type": "boolean" },
+        "type": { "type": "string", "enum": ["MATCH", "CLAIM_UPDATE", "SYSTEM", "STATUS_CHANGE"] },
+        "relatedItemId": { "type": "string" }
+      },
+      "required": ["id", "userId", "title", "message", "read", "type"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User profile collection"
+    },
+    "/items/{itemId}": {
+      "schema": { "$ref": "#/entities/LostFoundItem" },
+      "description": "Lost and found items collection"
+    },
+    "/claims/{claimId}": {
+      "schema": { "$ref": "#/entities/ItemClaim" },
+      "description": "Claims made on items"
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/NotificationItem" },
+      "description": "User notifications"
+    }
+  }
+}
