@@ -983,8 +983,8 @@ export const DashboardView: React.FC = () => {
                                 u.email.toLowerCase().includes(userSearchText.toLowerCase());
                               return matchRole && matchQuery;
                             })
-                            .map((u) => (
-                              <tr key={u.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
+                            .map((u, index) => (
+                              <tr key={u.id || `user-${u.email}-${index}`} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
                                 <td className="p-3.5 font-bold text-neutral-900 dark:text-white">
                                   <div className="flex items-center space-x-2.5">
                                     <img
@@ -1387,14 +1387,14 @@ export const DashboardView: React.FC = () => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {allUsers
                           .filter((u) => u.approvalStatus === "PENDENTE" || u.email.includes("ifpr.edu.br"))
-                          .map((pendingUser) => {
+                          .map((pendingUser, index) => {
                             const isStudent = pendingUser.email.endsWith("@estudantes.ifpr.edu.br") || pendingUser.email.endsWith("@estudante.ifpr.edu.br");
                             const isStaff = pendingUser.email.endsWith("@ifpr.edu.br");
                             const isPending = pendingUser.approvalStatus === "PENDENTE";
 
                             return (
                               <div
-                                key={pendingUser.id}
+                                key={pendingUser.id || `pending-${pendingUser.email}-${index}`}
                                 className={`rounded-2xl p-5 border space-y-4 shadow-xs transition-all ${
                                   isPending
                                     ? "bg-amber-500/5 border-amber-500/30 dark:bg-amber-950/20"

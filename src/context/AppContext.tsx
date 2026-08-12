@@ -172,6 +172,26 @@ export const DEFAULT_GUEST_USER: User = {
   avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
 };
 
+export const sanitizeUserList = (users: User[]): User[] => {
+  const seenIds = new Set<string>();
+  const seenEmails = new Set<string>();
+  const result: User[] = [];
+
+  for (const u of users) {
+    if (!u) continue;
+    const emailKey = u.email ? u.email.toLowerCase().trim() : "";
+    const idKey = u.id ? u.id.trim() : "";
+
+    if (idKey && seenIds.has(idKey)) continue;
+    if (emailKey && seenEmails.has(emailKey)) continue;
+
+    if (idKey) seenIds.add(idKey);
+    if (emailKey) seenEmails.add(emailKey);
+    result.push(u);
+  }
+  return result;
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [items, setItems] = useState<LostFoundItem[]>([]);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
@@ -273,13 +293,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          return sanitizeUserList(parsed);
         }
       }
     } catch (e) {
       console.warn("Erro ao carregar usuários salvos do localStorage:", e);
     }
-    return MOCK_USERS;
+    return sanitizeUserList(MOCK_USERS);
   });
 
   // Persist Current User changes to LocalStorage
@@ -647,25 +667,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // One-time cleanup of legacy mock items and fictitious data from Firestore & LocalStorage
+  useEffect(() => {
+    const purgeMockDataFromFirestore = async () => {
+      const mockItemIds = ["ifpr-101", "ifpr-102", "ifpr-103", "ifpr-104", "ifpr-105", "ifpr-106", "ifpr-107", "ifpr-108"];
+      const mockClaimIds = ["claim-1"];
+      const mockNotifIds = ["n1", "n2"];
+      const mockCommentIds = ["comment-1", "comment-2", "comment-3"];
+      const mockUserIds = ["u1", "u2", "u3", "u4", "u5"];
+
+      for (const id of mockItemIds) {
+        try { await deleteDoc(doc(db, "items", id)); } catch (_) {}
+      }
+      for (const id of mockClaimIds) {
+        try { await deleteDoc(doc(db, "claims", id)); } catch (_) {}
+      }
+      for (const id of mockNotifIds) {
+        try { await deleteDoc(doc(db, "notifications", id)); } catch (_) {}
+      }
+      for (const id of mockCommentIds) {
+        try { await deleteDoc(doc(db, "comments", id)); } catch (_) {}
+      }
+      for (const id of mockUserIds) {
+        try { await deleteDoc(doc(db, "users", id)); } catch (_) {}
+      }
+    };
+    purgeMockDataFromFirestore();
+  }, []);
+
   const resetSystemData = async () => {
     try {
       for (const it of items) {
         await deleteDoc(doc(db, "items", it.id));
       }
-      for (const initIt of INITIAL_ITEMS) {
-        await setDoc(doc(db, "items", initIt.id), initIt);
-      }
       for (const c of claims) {
         await deleteDoc(doc(db, "claims", c.id));
       }
-      for (const mc of MOCK_CLAIMS) {
-        await setDoc(doc(db, "claims", mc.id), mc);
+      for (const com of comments) {
+        await deleteDoc(doc(db, "comments", com.id));
       }
-      addToast("Banco de dados do sistema redefinido para os dados iniciais do IFPR com sucesso!", "success");
+      for (const n of notifications) {
+        await deleteDoc(doc(db, "notifications", n.id));
+      }
+      setItems([]);
+      setClaims([]);
+      setComments([]);
+      setNotifications([]);
+      saveItemsToIndexedDB([]).catch(() => {});
+      addToast("Banco de dados do sistema limpo com sucesso! Pronto para inserção de dados reais do IFPR.", "success");
     } catch (e) {
-      setItems(INITIAL_ITEMS);
-      setClaims(MOCK_CLAIMS);
-      addToast("Dados de teste redefinidos com sucesso.", "success");
+      setItems([]);
+      setClaims([]);
+      setComments([]);
+      setNotifications([]);
+      saveItemsToIndexedDB([]).catch(() => {});
+      addToast("Dados locais limpos com sucesso.", "success");
     }
   };
 
@@ -867,9 +923,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const userData = userSnap.data() as User;
               setCurrentUser(userData);
               setAllUsers((prev) =>
-                prev.some((u) => u.id === userData.id || u.email.toLowerCase() === userData.email.toLowerCase())
-                  ? prev.map((u) => (u.email.toLowerCase() === userData.email.toLowerCase() ? userData : u))
-                  : [...prev, userData]
+                sanitizeUserList([
+                  userData,
+                  ...prev.map((u) =>
+                    u.id === userData.id || u.email.toLowerCase() === userData.email.toLowerCase() ? userData : u
+                  ),
+                ])
               );
             }
           },
@@ -891,31 +950,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubscribe = onSnapshot(
       collection(db, "users"),
       async (snapshot) => {
-        if (snapshot.empty) {
-          // Seed initial mock users into Firestore if collection is empty
-          try {
-            for (const u of MOCK_USERS) {
-              await setDoc(doc(db, "users", u.id), u, { merge: true });
-            }
-          } catch (e) {
-            console.warn("Aviso ao inicializar usuários no Firestore:", e);
-          }
-        } else {
+        if (!snapshot.empty) {
           const loadedUsers: User[] = snapshot.docs.map((d) => d.data() as User);
-          setAllUsers((prev) => {
-            const userMap = new Map<string, User>();
-            // Base fallback mock users
-            MOCK_USERS.forEach((u) => userMap.set(u.email.toLowerCase(), u));
-            // Previous state users
-            prev.forEach((u) => userMap.set(u.email.toLowerCase(), u));
-            // Firestore synced users
-            loadedUsers.forEach((u) => {
-              if (u.email) {
-                userMap.set(u.email.toLowerCase(), u);
-              }
-            });
-            return Array.from(userMap.values());
-          });
+          setAllUsers((prev) => sanitizeUserList([...loadedUsers, ...prev, ...MOCK_USERS]));
         }
       },
       (error) => {
@@ -931,14 +968,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       collection(db, "items"),
       async (snapshot) => {
         if (snapshot.empty) {
-          // Seed INITIAL_ITEMS
-          try {
-            for (const item of INITIAL_ITEMS) {
-              await setDoc(doc(db, "items", item.id), item);
-            }
-          } catch (e) {
-            handleFirestoreError(e, OperationType.WRITE, "items");
-          }
+          setItems([]);
         } else {
           const loadedItems: LostFoundItem[] = snapshot.docs.map((d) => d.data() as LostFoundItem);
           // Sort by creation date
@@ -948,7 +978,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, "items");
-        setItems(INITIAL_ITEMS);
+        setItems([]);
       }
     );
     return () => unsubscribe();
@@ -960,13 +990,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       collection(db, "claims"),
       async (snapshot) => {
         if (snapshot.empty) {
-          try {
-            for (const claim of MOCK_CLAIMS) {
-              await setDoc(doc(db, "claims", claim.id), claim);
-            }
-          } catch (e) {
-            handleFirestoreError(e, OperationType.WRITE, "claims");
-          }
+          setClaims([]);
         } else {
           const loadedClaims: ItemClaim[] = snapshot.docs.map((d) => d.data() as ItemClaim);
           setClaims(loadedClaims);
@@ -974,7 +998,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, "claims");
-        setClaims(MOCK_CLAIMS);
+        setClaims([]);
       }
     );
     return () => unsubscribe();
@@ -986,13 +1010,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       collection(db, "notifications"),
       async (snapshot) => {
         if (snapshot.empty) {
-          try {
-            for (const notif of MOCK_NOTIFICATIONS) {
-              await setDoc(doc(db, "notifications", notif.id), notif);
-            }
-          } catch (e) {
-            handleFirestoreError(e, OperationType.WRITE, "notifications");
-          }
+          setNotifications([]);
         } else {
           const loadedNotifs: NotificationItem[] = snapshot.docs.map((d) => d.data() as NotificationItem);
           loadedNotifs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -1001,7 +1019,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, "notifications");
-        setNotifications(MOCK_NOTIFICATIONS);
+        setNotifications([]);
       }
     );
     return () => unsubscribe();
@@ -1013,13 +1031,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       collection(db, "comments"),
       async (snapshot) => {
         if (snapshot.empty) {
-          try {
-            for (const com of MOCK_COMMENTS) {
-              await setDoc(doc(db, "comments", com.id), com);
-            }
-          } catch (e) {
-            handleFirestoreError(e, OperationType.WRITE, "comments");
-          }
+          setComments([]);
         } else {
           const loadedComments: ItemComment[] = snapshot.docs.map((d) => d.data() as ItemComment);
           loadedComments.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -1028,7 +1040,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, "comments");
-        setComments(MOCK_COMMENTS);
+        setComments([]);
       }
     );
     return () => unsubscribe();
@@ -1063,13 +1075,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       collection(db, "activity_logs"),
       async (snapshot) => {
         if (snapshot.empty) {
-          try {
-            for (const log of MOCK_ACTIVITY_LOGS) {
-              await setDoc(doc(db, "activity_logs", log.id), log);
-            }
-          } catch (e) {
-            handleFirestoreError(e, OperationType.WRITE, "activity_logs");
-          }
+          setActivityLogs([]);
         } else {
           const loadedLogs: ActivityLog[] = snapshot.docs.map((d) => d.data() as ActivityLog);
           loadedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -1078,7 +1084,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, "activity_logs");
-        setActivityLogs(MOCK_ACTIVITY_LOGS);
+        setActivityLogs([]);
       }
     );
     return () => unsubscribe();
@@ -1101,26 +1107,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActivityLogs((prev) => [newLog, ...prev]);
     }
   };
-
-  // Sync Users from Firestore
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, "users"),
-      (snapshot) => {
-        if (!snapshot.empty) {
-          const loadedUsers = snapshot.docs.map((d) => d.data() as User);
-          const userMap = new Map<string, User>();
-          MOCK_USERS.forEach((u) => userMap.set(u.id, u));
-          loadedUsers.forEach((u) => userMap.set(u.id, u));
-          setAllUsers(Array.from(userMap.values()));
-        }
-      },
-      (error) => {
-        console.warn("Aviso na sincronização de usuários:", error);
-      }
-    );
-    return () => unsubscribe();
-  }, []);
 
   // Sync Theme class
   useEffect(() => {
