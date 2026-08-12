@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { Analytics } from "@vercel/analytics/react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { Navbar } from "./components/Navbar";
 import { Footer } from "./components/Footer";
@@ -72,6 +73,7 @@ export default function App() {
   return (
     <AppProvider>
       <MainContent />
+      <Analytics />
     </AppProvider>
   );
 }
