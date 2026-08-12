@@ -51,6 +51,7 @@ import {
   getItemsFromIndexedDB,
   saveSingleItemIndexedDB,
 } from "../lib/indexedDB";
+import { clear30DayUptimeRecords } from "../lib/uptimeManager";
 
 interface Toast {
   id: string;
@@ -103,6 +104,9 @@ interface AppContextType {
   bulkDeleteItems: (itemIds: string[]) => Promise<void>;
   addUserByAdmin: (newUser: Omit<User, "id">) => Promise<void>;
   resetSystemData: () => Promise<void>;
+  clearAllLogsAndMetrics: () => Promise<void>;
+  exportFirestoreDataToJson: () => Promise<void>;
+  masterWipeFirestore: () => Promise<void>;
   activityLogs: ActivityLog[];
   logAdminAction: (action: ActivityLog["action"], details: string) => Promise<void>;
   activeTab: "home" | "lost" | "found" | "register" | "dashboard" | "profile" | "image_analyzer";
@@ -722,6 +726,174 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setNotifications([]);
       saveItemsToIndexedDB([]).catch(() => {});
       addToast("Dados locais limpos com sucesso.", "success");
+    }
+  };
+
+  // Limpa todo o histórico de logs do sistema e métricas de desempenho no Firestore
+  const clearAllLogsAndMetrics = async () => {
+    try {
+      for (const log of activityLogs) {
+        try { await deleteDoc(doc(db, "activity_logs", log.id)); } catch (_) {}
+      }
+      for (const blog of backupLogs) {
+        try { await deleteDoc(doc(db, "backup_logs", blog.id)); } catch (_) {}
+      }
+      for (const errLog of errorLogsList) {
+        if (errLog?.id) {
+          try { await deleteDoc(doc(db, "error_logs", errLog.id)); } catch (_) {}
+        }
+      }
+      try { await deleteDoc(doc(db, "system_metrics", "heartbeat")); } catch (_) {}
+
+      setActivityLogs([]);
+      setBackupLogs([]);
+      setErrorLogsList([]);
+      clear30DayUptimeRecords();
+
+      addToast("Histórico de logs e métricas de desempenho no Firestore limpos com sucesso!", "success");
+    } catch (e) {
+      setActivityLogs([]);
+      setBackupLogs([]);
+      setErrorLogsList([]);
+      clear30DayUptimeRecords();
+      addToast("Logs locais e métricas redefinidos com sucesso.", "success");
+    }
+  };
+
+  // Exporta todos os dados atuais do Firestore para um arquivo JSON local
+  const exportFirestoreDataToJson = async () => {
+    try {
+      const exportSnapshot = {
+        app: "IFPR Achados e Perdidos - Campus Ivaiporã",
+        exportDate: new Date().toISOString(),
+        exportedBy: {
+          id: currentUser.id,
+          name: currentUser.name,
+          email: currentUser.email,
+          role: currentUser.role,
+        },
+        databaseSummary: {
+          totalItems: items.length,
+          totalUsers: allUsers.length,
+          totalClaims: claims.length,
+          totalComments: comments.length,
+          totalNotifications: notifications.length,
+          totalActivityLogs: activityLogs.length,
+          totalBackupLogs: backupLogs.length,
+        },
+        collections: {
+          items,
+          users: allUsers,
+          claims,
+          comments,
+          notifications,
+          activityLogs,
+          backupLogs,
+          maintenanceConfig: {
+            maintenanceMode,
+            maintenanceCustomMessage,
+          },
+        },
+      };
+
+      const jsonString = JSON.stringify(exportSnapshot, null, 2);
+      const blob = new Blob([jsonString], { type: "application/json" });
+      const filename = `backup_firestore_ifpr_${new Date().toISOString().slice(0, 10)}_${Date.now()}.json`;
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      const newLog: BackupLog = {
+        id: `backup-${Date.now()}`,
+        adminId: currentUser.id,
+        adminName: currentUser.name,
+        filename,
+        fileSizeBytes: blob.size,
+        itemCount: items.length,
+        userCount: allUsers.length,
+        triggerType: "MANUAL",
+        status: "SUCESSO",
+        timestamp: new Date().toISOString(),
+      };
+      setBackupLogs((prev) => [newLog, ...prev]);
+      try {
+        await setDoc(doc(db, "backup_logs", newLog.id), newLog);
+      } catch (_) {}
+
+      addToast(`Backup completo do Firestore exportado para '${filename}' com sucesso!`, "success");
+    } catch (e) {
+      console.error("Erro ao exportar backup JSON:", e);
+      addToast("Erro ao gerar o arquivo JSON de backup do banco de dados.", "error");
+    }
+  };
+
+  // Master Wipe: Deleta todos os registros de objetos, usuários e logs do Firestore (preservando o admin ativo)
+  const masterWipeFirestore = async () => {
+    try {
+      for (const it of items) {
+        try { await deleteDoc(doc(db, "items", it.id)); } catch (_) {}
+      }
+      for (const c of claims) {
+        try { await deleteDoc(doc(db, "claims", c.id)); } catch (_) {}
+      }
+      for (const com of comments) {
+        try { await deleteDoc(doc(db, "comments", com.id)); } catch (_) {}
+      }
+      for (const n of notifications) {
+        try { await deleteDoc(doc(db, "notifications", n.id)); } catch (_) {}
+      }
+      for (const log of activityLogs) {
+        try { await deleteDoc(doc(db, "activity_logs", log.id)); } catch (_) {}
+      }
+      for (const blog of backupLogs) {
+        try { await deleteDoc(doc(db, "backup_logs", blog.id)); } catch (_) {}
+      }
+      for (const errLog of errorLogsList) {
+        if (errLog?.id) {
+          try { await deleteDoc(doc(db, "error_logs", errLog.id)); } catch (_) {}
+        }
+      }
+
+      // Deleta todos os usuários exceto a conta ativa do administrador atual
+      const usersToDelete = allUsers.filter(
+        (u) => u.id !== currentUser.id && u.email.toLowerCase() !== currentUser.email.toLowerCase()
+      );
+      for (const u of usersToDelete) {
+        try { await deleteDoc(doc(db, "users", u.id)); } catch (_) {}
+      }
+
+      setItems([]);
+      setClaims([]);
+      setComments([]);
+      setNotifications([]);
+      setActivityLogs([]);
+      setBackupLogs([]);
+      setErrorLogsList([]);
+      setAllUsers([currentUser]);
+
+      await saveItemsToIndexedDB([]);
+      clear30DayUptimeRecords();
+
+      addToast("Banco de dados do Firestore ZERADO com sucesso! Sistema pronto para inserção de dados reais do IFPR.", "success");
+    } catch (e) {
+      console.error("Erro no Master Wipe do Firestore:", e);
+      setItems([]);
+      setClaims([]);
+      setComments([]);
+      setNotifications([]);
+      setActivityLogs([]);
+      setBackupLogs([]);
+      setErrorLogsList([]);
+      setAllUsers([currentUser]);
+      await saveItemsToIndexedDB([]).catch(() => {});
+      clear30DayUptimeRecords();
+      addToast("Dados locais zerados com sucesso.", "success");
     }
   };
 
@@ -1645,6 +1817,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         bulkDeleteItems,
         addUserByAdmin,
         resetSystemData,
+        clearAllLogsAndMetrics,
+        exportFirestoreDataToJson,
+        masterWipeFirestore,
         activityLogs,
         logAdminAction,
         activeTab,

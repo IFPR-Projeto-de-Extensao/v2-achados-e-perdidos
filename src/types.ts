@@ -127,7 +127,9 @@ export interface ActivityLog {
     | "REJEICAO_USUARIO"
     | "BACKUP_SISTEMA"
     | "CONFIG_BACKUP"
-    | "MENSAGEM_MANUTENCAO";
+    | "MENSAGEM_MANUTENCAO"
+    | "LIMPEZA_LOGS"
+    | "MASTER_WIPE";
   details: string;
   timestamp: string;
 }

@@ -126,6 +126,14 @@ export function save30DayRecords(records: DayUptimeRecord[]) {
   }
 }
 
+export function clear30DayUptimeRecords() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (e) {
+    console.warn('Erro ao limpar cache de uptime local:', e);
+  }
+}
+
 // Registra Service Worker e configura comunicação de Heartbeat
 export function registerUptimeServiceWorker(
   onStatusChange?: (swStatus: 'ACTIVE' | 'REGISTERING' | 'FALLBACK', lastPing: number) => void

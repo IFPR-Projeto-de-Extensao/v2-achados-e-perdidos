@@ -70,6 +70,9 @@ export const DashboardView: React.FC = () => {
     setActiveTab,
     addUserByAdmin,
     resetSystemData,
+    clearAllLogsAndMetrics,
+    exportFirestoreDataToJson,
+    masterWipeFirestore,
     maintenanceMode,
     toggleMaintenanceMode,
     maintenanceCustomMessage,
@@ -105,6 +108,9 @@ export const DashboardView: React.FC = () => {
   const [userToDelete, setUserToDelete] = useState<{ id: string; name: string } | null>(null);
   const [isAddingUserOpen, setIsAddingUserOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+  const [isClearLogsConfirmOpen, setIsClearLogsConfirmOpen] = useState(false);
+  const [isMasterWipeConfirmOpen, setIsMasterWipeConfirmOpen] = useState(false);
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
 
   // Activity Log Filter
   const [logFilterAction, setLogFilterAction] = useState<string>("TODOS");
@@ -1710,6 +1716,99 @@ export const DashboardView: React.FC = () => {
                   </table>
                 </div>
               </div>
+
+              {/* FIRESTORE CLEANUP & MASTER WIPE TOOLS CARD */}
+              <div className="bg-gradient-to-br from-red-500/5 via-neutral-50 to-amber-500/5 dark:from-red-950/20 dark:via-neutral-900 dark:to-amber-950/20 rounded-3xl p-6 sm:p-8 border border-red-500/20 dark:border-red-500/30 shadow-xs space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-red-500/10 dark:border-red-500/20 pb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-3 rounded-2xl bg-red-500/10 text-red-600 border border-red-500/20">
+                      <Trash2 className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-black text-neutral-900 dark:text-white flex items-center space-x-2">
+                        <span>Gestão de Banco de Dados & Reset para Próxima Fase</span>
+                      </h2>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                        Ferramentas avançadas para backup local em JSON, limpeza de logs/métricas e script de Master Wipe do Firestore
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* 1. Export JSON Backup */}
+                  <div className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-3 flex flex-col justify-between shadow-xs">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center space-x-2 text-amber-600 dark:text-amber-400 font-extrabold text-xs">
+                        <Download className="w-4 h-4" />
+                        <span>Backup Completo em JSON</span>
+                      </div>
+                      <p className="text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                        Exporta um arquivo <code>.json</code> local contendo uma cópia snapshot de todas as coleções do Firestore (objetos, usuários, reivindicações, comentários e logs).
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setIsExportingBackup(true);
+                        await exportFirestoreDataToJson();
+                        await logAdminAction("BACKUP_SISTEMA", "Exportou backup completo do Firestore em arquivo JSON.");
+                        setIsExportingBackup(false);
+                      }}
+                      disabled={isExportingBackup}
+                      className="w-full py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-extrabold text-xs transition-all shadow-sm flex items-center justify-center space-x-2"
+                    >
+                      <Download className={`w-4 h-4 ${isExportingBackup ? "animate-bounce" : ""}`} />
+                      <span>{isExportingBackup ? "Gerando JSON..." : "Exportar JSON Local"}</span>
+                    </button>
+                  </div>
+
+                  {/* 2. Clear Logs & Metrics */}
+                  <div className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-3 flex flex-col justify-between shadow-xs">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center space-x-2 text-purple-600 dark:text-purple-400 font-extrabold text-xs">
+                        <BarChart3 className="w-4 h-4" />
+                        <span>Limpar Logs & Métricas</span>
+                      </div>
+                      <p className="text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                        Exclui todo o histórico de logs de atividades (audit trail), logs de backup e métricas de desempenho no Firestore para reiniciar as estatísticas do zero.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsClearLogsConfirmOpen(true)}
+                      className="w-full py-2.5 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs transition-all shadow-sm flex items-center justify-center space-x-2"
+                    >
+                      <BarChart3 className="w-4 h-4" />
+                      <span>Limpar Logs e Métricas</span>
+                    </button>
+                  </div>
+
+                  {/* 3. Master Wipe Script */}
+                  <div className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-red-500/30 dark:border-red-500/30 space-y-3 flex flex-col justify-between shadow-xs">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center space-x-2 text-red-600 dark:text-red-400 font-extrabold text-xs">
+                        <ShieldAlert className="w-4 h-4" />
+                        <span>Master Wipe (Zerar Banco)</span>
+                      </div>
+                      <p className="text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                        Script administrativo que deleta todos os objetos, usuários fictícios e logs do Firestore com um único comando, mantendo apenas sua conta ativa de administrador.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsMasterWipeConfirmOpen(true)}
+                      className="w-full py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs transition-all shadow-sm flex items-center justify-center space-x-2"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Zerar Banco de Dados</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </>
@@ -1877,6 +1976,101 @@ export const DashboardView: React.FC = () => {
                 className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-md"
               >
                 Sim, Resetar Sistema
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: LIMPAR LOGS E MÉTRICAS DE DESEMPENHO */}
+      {isClearLogsConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-5">
+            <div className="flex items-center space-x-3 text-purple-600 dark:text-purple-400">
+              <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20">
+                <BarChart3 className="w-7 h-7" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                  Limpar Logs e Métricas de Desempenho
+                </h3>
+                <p className="text-xs text-neutral-500">
+                  Reiniciar histórico de estatísticas do Firestore
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
+              Esta ação apagará permanentemente todo o histórico de logs de atividades (audit trail), registros de backup, logs de erro e métricas de desempenho no Firestore. As estatísticas e o monitor de uptime serão iniciados do zero para a próxima fase de testes.
+            </p>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsClearLogsConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-xs font-bold"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await clearAllLogsAndMetrics();
+                  await logAdminAction("LIMPEZA_LOGS", "Limpou todo o histórico de logs e métricas de desempenho no Firestore.");
+                  setIsClearLogsConfirmOpen(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-extrabold shadow-md"
+              >
+                Sim, Limpar Logs e Métricas
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: SCRIPT MASTER WIPE (ZERAR BANCO FIRESTORE) */}
+      {isMasterWipeConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 border border-red-500/30 dark:border-red-500/30 shadow-2xl space-y-5">
+            <div className="flex items-center space-x-3 text-red-600 dark:text-red-400">
+              <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20">
+                <Trash2 className="w-7 h-7" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                  🔥 Master Wipe - Limpeza Completa
+                </h3>
+                <p className="text-xs text-red-500 font-bold">
+                  Ação Irreversível no Firestore
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
+              <strong>ATENÇÃO:</strong> Esta ação executará o script de limpeza total no Firestore. Todos os objetos achados/perdidos, reivindicações, comentários, notificações e usuários (exceto sua conta atual de administrador) serão <strong>DELETADOS PERMANENTEMENTE</strong>.
+              <br /><br />
+              💡 <em>Recomenda-se exportar o backup em JSON antes de continuar.</em>
+            </p>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsMasterWipeConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-xs font-bold"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await masterWipeFirestore();
+                  await logAdminAction("MASTER_WIPE", "Executou a exclusão completa de objetos, usuários e logs do Firestore.");
+                  setIsMasterWipeConfirmOpen(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-md flex items-center space-x-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Confirmar e Deletar Tudo</span>
               </button>
             </div>
           </div>
