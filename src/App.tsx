@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { Navbar } from "./components/Navbar";
 import { Footer } from "./components/Footer";
@@ -64,6 +65,9 @@ const MainContent: React.FC = () => {
 
       {/* Footer */}
       <Footer />
+
+      {/* Vercel Speed Insights */}
+      <SpeedInsights />
     </div>
   );
 };
