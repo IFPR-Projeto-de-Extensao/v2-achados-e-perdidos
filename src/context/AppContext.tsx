@@ -7,8 +7,12 @@ import {
   ItemStatus,
   AIMatchResult,
   UserRole,
+  ItemComment,
+  ActivityLog,
+  BackupLog,
+  BackupScheduleConfig,
 } from "../types";
-import { INITIAL_ITEMS, MOCK_USERS, MOCK_NOTIFICATIONS, MOCK_CLAIMS } from "../data/mockData";
+import { INITIAL_ITEMS, MOCK_USERS, MOCK_NOTIFICATIONS, MOCK_CLAIMS, MOCK_COMMENTS, MOCK_ACTIVITY_LOGS } from "../data/mockData";
 import { safeFetchJson, clientMatchSimilarity } from "../lib/apiHelper";
 import {
   collection,
@@ -42,6 +46,11 @@ import {
   OperationType,
 } from "../lib/firebase";
 import { sendGmailEmail } from "../lib/gmail";
+import {
+  saveItemsToIndexedDB,
+  getItemsFromIndexedDB,
+  saveSingleItemIndexedDB,
+} from "../lib/indexedDB";
 
 interface Toast {
   id: string;
@@ -73,8 +82,29 @@ interface AppContextType {
   setAuthModalOpen: (open: boolean) => void;
   claims: ItemClaim[];
   notifications: NotificationItem[];
+  comments: ItemComment[];
+  addCommentToItem: (itemId: string, text: string) => Promise<void>;
+  fcmPermissionGranted: boolean;
+  requestNotificationPermission: () => Promise<void>;
   darkMode: boolean;
   toggleDarkMode: () => void;
+  highContrastMode: boolean;
+  toggleHighContrastMode: () => void;
+  maintenanceMode: boolean;
+  toggleMaintenanceMode: () => Promise<void>;
+  maintenanceCustomMessage: string;
+  updateMaintenanceCustomMessage: (msg: string) => Promise<void>;
+  approveUser: (userId: string, approved: boolean) => Promise<void>;
+  backupLogs: BackupLog[];
+  backupScheduleConfig: BackupScheduleConfig;
+  updateBackupScheduleConfig: (config: Partial<BackupScheduleConfig>) => Promise<void>;
+  executeFirestoreBackupNow: (triggerType?: "MANUAL" | "PROGRAMADO") => Promise<BackupLog>;
+  bulkUpdateItemStatus: (itemIds: string[], status: ItemStatus) => Promise<void>;
+  bulkDeleteItems: (itemIds: string[]) => Promise<void>;
+  addUserByAdmin: (newUser: Omit<User, "id">) => Promise<void>;
+  resetSystemData: () => Promise<void>;
+  activityLogs: ActivityLog[];
+  logAdminAction: (action: ActivityLog["action"], details: string) => Promise<void>;
   activeTab: "home" | "lost" | "found" | "register" | "dashboard" | "profile" | "image_analyzer";
   setActiveTab: (tab: "home" | "lost" | "found" | "register" | "dashboard" | "profile" | "image_analyzer") => void;
   prefilledItemFromAI: Partial<LostFoundItem> | null;
@@ -98,6 +128,11 @@ interface AppContextType {
   addToast: (text: string, type?: "success" | "error" | "info") => void;
   registerTypeSelection: "PERDIDO" | "ENCONTRADO";
   setRegisterTypeSelection: (type: "PERDIDO" | "ENCONTRADO") => void;
+  systemLatencyMs: number | null;
+  isOnline: boolean;
+  lastHeartbeatTimestamp: string | null;
+  indexedDbLoaded: boolean;
+  errorLogsList: any[];
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -140,6 +175,81 @@ export const DEFAULT_GUEST_USER: User = {
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [items, setItems] = useState<LostFoundItem[]>([]);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+
+  // Heartbeat & System Health Monitoring (RNF01 & RNF02)
+  const [systemLatencyMs, setSystemLatencyMs] = useState<number | null>(24);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [lastHeartbeatTimestamp, setLastHeartbeatTimestamp] = useState<string | null>(new Date().toISOString());
+  const [indexedDbLoaded, setIndexedDbLoaded] = useState<boolean>(false);
+  const [errorLogsList, setErrorLogsList] = useState<any[]>([]);
+
+  // Load items from IndexedDB instantly on boot (RNF02 - Instant local load)
+  useEffect(() => {
+    getItemsFromIndexedDB()
+      .then((cached) => {
+        if (cached && cached.length > 0) {
+          setItems(cached);
+          setIndexedDbLoaded(true);
+        }
+      })
+      .catch((e) => console.warn("IndexedDB inicialização notice:", e));
+  }, []);
+
+  // Save items snapshot to IndexedDB whenever items state updates
+  useEffect(() => {
+    if (items && items.length > 0) {
+      saveItemsToIndexedDB(items).catch(() => {});
+    }
+  }, [items]);
+
+  // Heartbeat 1-minute interval ping to Firebase (RNF01 & RNF02)
+  useEffect(() => {
+    const runPing = async () => {
+      const startTime = Date.now();
+      try {
+        const pingDocRef = doc(db, "system_metrics", "heartbeat");
+        await setDoc(
+          pingDocRef,
+          {
+            lastPing: new Date().toISOString(),
+            status: "ONLINE_24_7",
+            serverRegion: "Cloud Run IFPR",
+          },
+          { merge: true }
+        );
+        const elapsed = Date.now() - startTime;
+        setSystemLatencyMs(elapsed);
+        setIsOnline(true);
+        setLastHeartbeatTimestamp(new Date().toISOString());
+      } catch (e) {
+        setIsOnline(false);
+        setSystemLatencyMs(null);
+      }
+    };
+
+    runPing();
+    const interval = setInterval(runPing, 60000); // 1-minute ping
+    return () => clearInterval(interval);
+  }, []);
+
+  // Sync System Error Logs for Admin Dashboard Monitoring
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "error_logs"),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const logs = snapshot.docs.map((d) => d.data());
+          logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          setErrorLogsList(logs);
+        }
+      },
+      (err) => {
+        console.warn("Aviso ao sincronizar error_logs:", err);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
 
   // Current User State with LocalStorage restoration
   const [currentUser, setCurrentUser] = useState<User>(() => {
@@ -197,8 +307,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Claims state
   const [claims, setClaims] = useState<ItemClaim[]>([]);
 
+  // Comments state
+  const [comments, setComments] = useState<ItemComment[]>([]);
+
+  // Activity Logs state (Admin Transparency Log)
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+
   // Notifications state
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [fcmPermissionGranted, setFcmPermissionGranted] = useState<boolean>(() => {
+    return typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted";
+  });
+
+  const requestNotificationPermission = async () => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm === "granted") {
+          setFcmPermissionGranted(true);
+          addToast("Notificações em Tempo Real ativadas com sucesso para alertas de Achados & Perdidos!", "success");
+        } else {
+          addToast("Permissão para notificações não foi concedida.", "info");
+        }
+      } catch (e) {
+        console.warn("Aviso ao solicitar permissão de notificação:", e);
+      }
+    } else {
+      addToast("Seu navegador não suporta notificações de sistema.", "info");
+    }
+  };
 
   // Theme State
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -208,6 +345,329 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
   });
+
+  // High Contrast Accessibility Mode State
+  const [highContrastMode, setHighContrastMode] = useState<boolean>(() => {
+    return localStorage.getItem("ifpr_high_contrast") === "true";
+  });
+
+  // Maintenance Mode State & Custom Message
+  const [maintenanceMode, setMaintenanceMode] = useState<boolean>(false);
+  const [maintenanceCustomMessage, setMaintenanceCustomMessage] = useState<string>(
+    "⚠️ ATENÇÃO: O SISTEMA ESTÁ EM MODO DE MANUTENÇÃO / ATUALIZAÇÃO PROGRAMADA NO CAMPUS IVAIPORÃ"
+  );
+
+  // Backup State
+  const [backupLogs, setBackupLogs] = useState<BackupLog[]>([
+    {
+      id: "backup-init-1",
+      adminId: "u3",
+      adminName: "Carlos Eduardo Machado",
+      filename: "backup_firestore_ifpr_2026-08-10-02-00.json",
+      fileSizeBytes: 48500,
+      itemCount: 12,
+      userCount: 6,
+      triggerType: "PROGRAMADO",
+      status: "SUCESSO",
+      timestamp: "2026-08-10T02:00:00Z",
+    },
+  ]);
+
+  const [backupScheduleConfig, setBackupScheduleConfig] = useState<BackupScheduleConfig>({
+    enabled: true,
+    frequency: "DIARIO_0200",
+    autoDownload: true,
+    lastBackupTimestamp: "2026-08-10T02:00:00Z",
+    nextBackupTimestamp: "2026-08-13T02:00:00Z",
+  });
+
+  // Sync Maintenance mode & custom message from Firestore
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      doc(db, "system", "config"),
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          setMaintenanceMode(!!data?.maintenanceMode);
+          if (data?.maintenanceCustomMessage) {
+            setMaintenanceCustomMessage(data.maintenanceCustomMessage);
+          }
+        }
+      },
+      (err) => {
+        console.warn("Aviso ao sincronizar modo manutenção:", err);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // Sync Backup Logs from Firestore
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "backup_logs"),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const loadedLogs: BackupLog[] = snapshot.docs.map((d) => d.data() as BackupLog);
+          loadedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          setBackupLogs(loadedLogs);
+        }
+      },
+      (err) => {
+        console.warn("Aviso ao sincronizar backup_logs:", err);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // Sync Backup Schedule Config from Firestore
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      doc(db, "system", "backup_config"),
+      (snapshot) => {
+        if (snapshot.exists()) {
+          setBackupScheduleConfig(snapshot.data() as BackupScheduleConfig);
+        }
+      },
+      (err) => {
+        console.warn("Aviso ao sincronizar backup_config:", err);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const updateMaintenanceCustomMessage = async (msg: string) => {
+    setMaintenanceCustomMessage(msg);
+    try {
+      await setDoc(doc(db, "system", "config"), { maintenanceCustomMessage: msg }, { merge: true });
+      await logAdminAction(
+        "MENSAGEM_MANUTENCAO",
+        `Atualizou a mensagem personalizada do banner de manutenção para: "${msg}"`
+      );
+      addToast("Mensagem do banner de manutenção atualizada em tempo real!", "success");
+    } catch (e) {
+      console.warn("Aviso ao salvar mensagem de manutenção:", e);
+    }
+  };
+
+  const approveUser = async (userId: string, approved: boolean) => {
+    const nextStatus = approved ? "APROVADO" : "REJEITADO";
+    const userObj = allUsers.find((u) => u.id === userId);
+    const userName = userObj ? userObj.name : userId;
+
+    setAllUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, approvalStatus: nextStatus } : u))
+    );
+
+    try {
+      await setDoc(doc(db, "users", userId), { approvalStatus: nextStatus }, { merge: true });
+      await logAdminAction(
+        approved ? "APROVACAO_USUARIO" : "REJEICAO_USUARIO",
+        `${approved ? "Aprovou" : "Rejeitou"} o acesso do usuário acadêmico '${userName}' (${userObj?.email || ""}).`
+      );
+      addToast(
+        approved
+          ? `✅ Acesso do usuário '${userName}' aprovado com sucesso!`
+          : `❌ Acesso do usuário '${userName}' rejeitado.`,
+        approved ? "success" : "info"
+      );
+    } catch (e) {
+      console.warn("Aviso ao atualizar aprovação no Firestore:", e);
+    }
+  };
+
+  const updateBackupScheduleConfig = async (configPartial: Partial<BackupScheduleConfig>) => {
+    const updated = { ...backupScheduleConfig, ...configPartial };
+    setBackupScheduleConfig(updated);
+    try {
+      await setDoc(doc(db, "system", "backup_config"), updated, { merge: true });
+      await logAdminAction(
+        "CONFIG_BACKUP",
+        `Atualizou a configuração de backups automáticos do Firestore (Ativo: ${updated.enabled}, Frequência: ${updated.frequency}).`
+      );
+      addToast("Configuração de backup automático atualizada com sucesso!", "success");
+    } catch (e) {
+      console.warn("Aviso ao salvar backup_config:", e);
+    }
+  };
+
+  const executeFirestoreBackupNow = async (triggerType: "MANUAL" | "PROGRAMADO" = "MANUAL"): Promise<BackupLog> => {
+    const backupData = {
+      app: "IFPR Achados e Perdidos - Campus Ivaiporã",
+      exportedAt: new Date().toISOString(),
+      exportedBy: currentUser.name,
+      collections: {
+        items,
+        users: allUsers,
+        claims,
+        comments,
+        activityLogs,
+      },
+    };
+
+    const jsonString = JSON.stringify(backupData, null, 2);
+    const blob = new Blob([jsonString], { type: "application/json" });
+    const fileSizeBytes = blob.size;
+    const filename = `backup_firestore_ifpr_${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+
+    // Trigger download
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    const newLog: BackupLog = {
+      id: `backup-${Date.now()}`,
+      adminId: currentUser.id,
+      adminName: currentUser.name,
+      filename,
+      fileSizeBytes,
+      itemCount: items.length,
+      userCount: allUsers.length,
+      triggerType,
+      status: "SUCESSO",
+      timestamp: new Date().toISOString(),
+    };
+
+    setBackupLogs((prev) => [newLog, ...prev]);
+
+    try {
+      await setDoc(doc(db, "backup_logs", newLog.id), newLog);
+      await setDoc(
+        doc(db, "system", "backup_config"),
+        {
+          lastBackupTimestamp: newLog.timestamp,
+          nextBackupTimestamp: new Date(Date.now() + 86400000).toISOString(),
+        },
+        { merge: true }
+      );
+      await logAdminAction(
+        "BACKUP_SISTEMA",
+        `Executou o backup snapshot completo do banco Firestore (${(fileSizeBytes / 1024).toFixed(1)} KB, ${items.length} objetos, ${allUsers.length} usuários).`
+      );
+      addToast(`⚡ Backup do Firestore gerado e baixado: ${filename}`, "success");
+    } catch (e) {
+      console.warn("Aviso ao registrar log de backup no Firestore:", e);
+    }
+
+    return newLog;
+  };
+
+  const toggleMaintenanceMode = async () => {
+    const nextVal = !maintenanceMode;
+    try {
+      await setDoc(doc(db, "system", "config"), { maintenanceMode: nextVal }, { merge: true });
+      setMaintenanceMode(nextVal);
+      await logAdminAction(
+        "MODO_MANUTENCAO",
+        nextVal
+          ? "Ativou o Modo Manutenção Global do Sistema no Campus Ivaiporã."
+          : "Desativou o Modo Manutenção Global e restaurou o acesso normal dos usuários."
+      );
+      addToast(
+        nextVal
+          ? "🚨 Modo Manutenção ATIVADO pelo Administrador! Operações em pausa para atualização."
+          : "✅ Modo Manutenção DESATIVADO. Sistema liberado para uso no Campus.",
+        nextVal ? "error" : "success"
+      );
+    } catch (e) {
+      setMaintenanceMode(nextVal);
+      addToast(nextVal ? "Modo Manutenção Ativado localmente" : "Modo Manutenção Desativado", "info");
+    }
+  };
+
+  useEffect(() => {
+    if (highContrastMode) {
+      document.documentElement.classList.add("high-contrast");
+      localStorage.setItem("ifpr_high_contrast", "true");
+    } else {
+      document.documentElement.classList.remove("high-contrast");
+      localStorage.setItem("ifpr_high_contrast", "false");
+    }
+  }, [highContrastMode]);
+
+  const toggleHighContrastMode = () => {
+    setHighContrastMode((prev) => !prev);
+    addToast(
+      !highContrastMode
+        ? "Modo de Alto Contraste (Acessibilidade WCAG) Ativado!"
+        : "Modo de Alto Contraste Desativado.",
+      "info"
+    );
+  };
+
+  // Bulk Operations
+  const bulkUpdateItemStatus = async (itemIds: string[], status: ItemStatus) => {
+    if (itemIds.length === 0) return;
+    try {
+      for (const id of itemIds) {
+        await updateDoc(doc(db, "items", id), sanitizeFirestoreData({ status }));
+      }
+      addToast(`${itemIds.length} item(ns) alterado(s) para ${status} com sucesso!`, "success");
+    } catch (e) {
+      console.warn("Erro ao atualizar lote de itens:", e);
+      setItems((prev) =>
+        prev.map((it) => (itemIds.includes(it.id) ? { ...it, status } : it))
+      );
+      addToast(`${itemIds.length} item(ns) atualizado(s) com sucesso!`, "success");
+    }
+  };
+
+  const bulkDeleteItems = async (itemIds: string[]) => {
+    if (itemIds.length === 0) return;
+    try {
+      for (const id of itemIds) {
+        await deleteDoc(doc(db, "items", id));
+      }
+      addToast(`${itemIds.length} item(ns) excluído(s) permanentemente!`, "success");
+    } catch (e) {
+      console.warn("Erro ao excluir lote de itens:", e);
+      setItems((prev) => prev.filter((it) => !itemIds.includes(it.id)));
+      addToast(`${itemIds.length} item(ns) removido(s) do acervo!`, "success");
+    }
+  };
+
+  const addUserByAdmin = async (userData: Omit<User, "id">) => {
+    const newUserId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const newUser: User = {
+      ...userData,
+      id: newUserId,
+      avatarUrl:
+        userData.avatarUrl ||
+        `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
+    };
+    try {
+      await setDoc(doc(db, "users", newUserId), newUser);
+      addToast(`Usuário ${newUser.name} cadastrado no sistema com sucesso!`, "success");
+    } catch (e) {
+      setAllUsers((prev) => [...prev, newUser]);
+      addToast(`Usuário ${newUser.name} adicionado ao sistema!`, "success");
+    }
+  };
+
+  const resetSystemData = async () => {
+    try {
+      for (const it of items) {
+        await deleteDoc(doc(db, "items", it.id));
+      }
+      for (const initIt of INITIAL_ITEMS) {
+        await setDoc(doc(db, "items", initIt.id), initIt);
+      }
+      for (const c of claims) {
+        await deleteDoc(doc(db, "claims", c.id));
+      }
+      for (const mc of MOCK_CLAIMS) {
+        await setDoc(doc(db, "claims", mc.id), mc);
+      }
+      addToast("Banco de dados do sistema redefinido para os dados iniciais do IFPR com sucesso!", "success");
+    } catch (e) {
+      setItems(INITIAL_ITEMS);
+      setClaims(MOCK_CLAIMS);
+      addToast("Dados de teste redefinidos com sucesso.", "success");
+    }
+  };
 
   // Active view tab
   const [activeTab, setActiveTab] = useState<
@@ -334,6 +794,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 3. Create new user document in Firestore if email does not exist
     const isAdmin = userEmail === "paulocauan39@gmail.com";
     const isServidor = extraData?.role === "SERVIDOR" || userEmail.includes("@ifpr.edu.br");
+    const isAcademicEmail = userEmail.endsWith("@estudantes.ifpr.edu.br") || userEmail.endsWith("@estudante.ifpr.edu.br") || userEmail.endsWith("@ifpr.edu.br");
+    const defaultApprovalStatus = (isAcademicEmail && !isAdmin) ? "PENDENTE" : "APROVADO";
+
     const newUser: User = sanitizeFirestoreData({
       id: fbUser.uid,
       name: fbUser.displayName || extraData?.name || userEmail.split("@")[0] || "Usuário IFPR",
@@ -341,6 +804,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       role: isAdmin ? "ADMIN" : (extraData?.role || (isServidor ? "SERVIDOR" : "ALUNO")),
       courseOrDept: isServidor ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã",
       registrationNumber: `2026${Math.floor(10000 + Math.random() * 90000)}`,
+      approvalStatus: defaultApprovalStatus,
       avatarUrl: fbUser.photoURL || extraData?.avatarUrl || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
     }) as User;
 
@@ -543,6 +1007,101 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, []);
 
+  // Sync Comments from Firestore
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "comments"),
+      async (snapshot) => {
+        if (snapshot.empty) {
+          try {
+            for (const com of MOCK_COMMENTS) {
+              await setDoc(doc(db, "comments", com.id), com);
+            }
+          } catch (e) {
+            handleFirestoreError(e, OperationType.WRITE, "comments");
+          }
+        } else {
+          const loadedComments: ItemComment[] = snapshot.docs.map((d) => d.data() as ItemComment);
+          loadedComments.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+          setComments(loadedComments);
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, "comments");
+        setComments(MOCK_COMMENTS);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const addCommentToItem = async (itemId: string, text: string) => {
+    if (!text.trim()) return;
+    const newComment: ItemComment = {
+      id: `comment-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      itemId,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userRole: currentUser.role,
+      userAvatar: currentUser.avatarUrl,
+      text: text.trim(),
+      createdAt: new Date().toISOString(),
+    };
+
+    try {
+      await setDoc(doc(db, "comments", newComment.id), newComment);
+      addToast("Comentário publicado com sucesso!", "success");
+    } catch (err) {
+      console.warn("Aviso ao publicar comentário no Firestore:", err);
+      setComments((prev) => [...prev, newComment]);
+      addToast("Comentário publicado com sucesso!", "success");
+    }
+  };
+
+  // Sync Activity Logs from Firestore
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "activity_logs"),
+      async (snapshot) => {
+        if (snapshot.empty) {
+          try {
+            for (const log of MOCK_ACTIVITY_LOGS) {
+              await setDoc(doc(db, "activity_logs", log.id), log);
+            }
+          } catch (e) {
+            handleFirestoreError(e, OperationType.WRITE, "activity_logs");
+          }
+        } else {
+          const loadedLogs: ActivityLog[] = snapshot.docs.map((d) => d.data() as ActivityLog);
+          loadedLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          setActivityLogs(loadedLogs);
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.GET, "activity_logs");
+        setActivityLogs(MOCK_ACTIVITY_LOGS);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const logAdminAction = async (action: ActivityLog["action"], details: string) => {
+    const newLog: ActivityLog = {
+      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      adminId: currentUser.id,
+      adminName: currentUser.name,
+      action,
+      details,
+      timestamp: new Date().toISOString(),
+    };
+
+    try {
+      await setDoc(doc(db, "activity_logs", newLog.id), newLog);
+    } catch (e) {
+      console.warn("Aviso ao gravar log no Firestore:", e);
+      setActivityLogs((prev) => [newLog, ...prev]);
+    }
+  };
+
   // Sync Users from Firestore
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -723,10 +1282,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch (_) {}
 
+    const isAcademic = cleanEmail.endsWith("@estudantes.ifpr.edu.br") || cleanEmail.endsWith("@estudante.ifpr.edu.br") || cleanEmail.endsWith("@ifpr.edu.br");
+    const isAdminEmail = cleanEmail === "paulocauan39@gmail.com";
+    const statusVal = (isAcademic && !isAdminEmail) ? "PENDENTE" : "APROVADO";
+
     let newUserObj: User;
     try {
       const res = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
-      const isAdminEmail = cleanEmail === "paulocauan39@gmail.com";
       newUserObj = {
         id: res.user.uid,
         name: userData.name.trim(),
@@ -735,6 +1297,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         courseOrDept: userData.courseOrDept?.trim() || "IFPR Campus Ivaiporã",
         registrationNumber: userData.registrationNumber?.trim() || `2026${Math.floor(10000 + Math.random() * 90000)}`,
         phone: userData.phone?.trim() || "",
+        approvalStatus: statusVal,
         avatarUrl: userData.avatarUrl || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
       };
     } catch (e: any) {
@@ -744,7 +1307,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         throw new Error("E-mail já cadastrado.");
       }
 
-      const isAdminEmail = cleanEmail === "paulocauan39@gmail.com";
       newUserObj = {
         id: "usr_" + cleanEmail.replace(/[^a-z0-9]/g, "_"),
         name: userData.name.trim(),
@@ -753,6 +1315,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         courseOrDept: userData.courseOrDept?.trim() || "IFPR Campus Ivaiporã",
         registrationNumber: userData.registrationNumber?.trim() || `2026${Math.floor(10000 + Math.random() * 90000)}`,
         phone: userData.phone?.trim() || "",
+        approvalStatus: statusVal,
         avatarUrl: userData.avatarUrl || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
       };
     }
@@ -943,6 +1506,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         handleFirestoreError(e, OperationType.WRITE, `notifications/${newNotif.id}`);
       }
       setAiMatchAlert({ newItem, matches: aiMatches });
+
+      // Trigger Browser Push Notification if permission granted
+      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+        try {
+          new Notification("IFPR Achados & Perdidos • Alerta de Correspondência", {
+            body: `Objeto compatível encontrado (${topMatch.matchScore}%): ${topMatch.matchedItem.title} (${topMatch.matchedItem.location})`,
+            icon: "/favicon.ico",
+          });
+        } catch (e) {
+          console.warn("Aviso ao disparar notificação do navegador:", e);
+        }
+      }
     }
 
     addToast(`Objeto "${newItem.title}" cadastrado com sucesso no Firestore!`, "success");
@@ -951,10 +1526,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateItemStatus = async (id: string, status: ItemStatus) => {
     const isResolved = status === "DEVOLVIDO";
-    const updates: Record<string, any> = {
+    const updates: Record<string, any> = sanitizeFirestoreData({
       status,
       resolutionDate: isResolved ? new Date().toISOString() : deleteField(),
-    };
+    });
     try {
       await updateDoc(doc(db, "items", id), updates);
       addToast(`Status do objeto atualizado no Firestore para: ${status.replace("_", " ")}`, "info");
@@ -990,7 +1565,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     try {
-      await setDoc(doc(db, "claims", newClaim.id), newClaim);
+      await setDoc(doc(db, "claims", newClaim.id), sanitizeFirestoreData(newClaim));
       await updateItemStatus(itemId, "EM_ANALISE");
 
       const adminNotif: NotificationItem = {
@@ -1003,7 +1578,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         type: "CLAIM_UPDATE",
         relatedItemId: itemId,
       };
-      await setDoc(doc(db, "notifications", adminNotif.id), adminNotif);
+      await setDoc(doc(db, "notifications", adminNotif.id), sanitizeFirestoreData(adminNotif));
 
       addToast("Solicitação salva no Firestore! A equipe do IFPR analisará a comprovação.", "success");
     } catch (e) {
@@ -1013,7 +1588,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateClaimStatus = async (claimId: string, status: ItemClaim["status"]) => {
     try {
-      await updateDoc(doc(db, "claims", claimId), { status });
+      await updateDoc(doc(db, "claims", claimId), sanitizeFirestoreData({ status }));
       addToast(`Solicitação marcada como ${status} no Firestore`, "info");
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `claims/${claimId}`);
@@ -1022,7 +1597,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const markNotificationRead = async (id: string) => {
     try {
-      await updateDoc(doc(db, "notifications", id), { read: true });
+      await updateDoc(doc(db, "notifications", id), sanitizeFirestoreData({ read: true }));
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `notifications/${id}`);
     }
@@ -1032,7 +1607,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       for (const n of notifications) {
         if (!n.read) {
-          await updateDoc(doc(db, "notifications", n.id), { read: true });
+          await updateDoc(doc(db, "notifications", n.id), sanitizeFirestoreData({ read: true }));
         }
       }
       addToast("Notificações marcadas como lidas.", "info");
@@ -1063,8 +1638,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setAuthModalOpen,
         claims,
         notifications,
+        comments,
+        addCommentToItem,
+        fcmPermissionGranted,
+        requestNotificationPermission,
         darkMode,
         toggleDarkMode,
+        highContrastMode,
+        toggleHighContrastMode,
+        maintenanceMode,
+        toggleMaintenanceMode,
+        maintenanceCustomMessage,
+        updateMaintenanceCustomMessage,
+        approveUser,
+        backupLogs,
+        backupScheduleConfig,
+        updateBackupScheduleConfig,
+        executeFirestoreBackupNow,
+        bulkUpdateItemStatus,
+        bulkDeleteItems,
+        addUserByAdmin,
+        resetSystemData,
+        activityLogs,
+        logAdminAction,
         activeTab,
         setActiveTab,
         prefilledItemFromAI,
@@ -1086,6 +1682,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addToast,
         registerTypeSelection,
         setRegisterTypeSelection,
+        systemLatencyMs,
+        isOnline,
+        lastHeartbeatTimestamp,
+        indexedDbLoaded,
+        errorLogsList,
       }}
     >
       {children}

@@ -1,12 +1,78 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { LostFoundItem } from "../types";
-import { QrCode, X, Search, CheckCircle2, ShieldCheck, AlertCircle } from "lucide-react";
+import { QrCode, X, Search, CheckCircle2, ShieldCheck, AlertCircle, Camera, CameraOff, RefreshCw } from "lucide-react";
 
 export const QRCodeScannerModal: React.FC = () => {
   const { qrScannerOpen, setQrScannerOpen, items, updateItemStatus, addToast } = useApp();
   const [scannedCode, setScannedCode] = useState("");
   const [foundItem, setFoundItem] = useState<LostFoundItem | null>(null);
+
+  // Camera Permission & Streaming State
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraPermissionStatus, setCameraPermissionStatus] = useState<"idle" | "requesting" | "granted" | "denied">("idle");
+  const [cameraError, setCameraError] = useState<string | null>(null);
+
+  // Cleanup camera stream when modal closes
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!qrScannerOpen) {
+      stopCamera();
+    }
+  }, [qrScannerOpen]);
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setCameraActive(false);
+  };
+
+  const startCamera = async () => {
+    setCameraPermissionStatus("requesting");
+    setCameraError(null);
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Seu navegador ou ambiente não suporta acesso direto à câmera.");
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      setCameraActive(true);
+      setCameraPermissionStatus("granted");
+      addToast("Permissão de câmera concedida! Leitor ativado.", "success");
+    } catch (err: any) {
+      console.error("Erro ao solicitar acesso à câmera:", err);
+      setCameraActive(false);
+      setCameraPermissionStatus("denied");
+
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        setCameraError("Permissão de câmera negada pelo usuário ou pelo navegador. Permita o acesso nas configurações do site para usar o scanner.");
+        addToast("Permissão de câmera negada. Habilite a câmera para utilizar o leitor óptico.", "error");
+      } else {
+        setCameraError("Não foi possível acessar a câmera. Verifique se o dispositivo possui câmera disponível.");
+        addToast("Não foi possível iniciar a câmera.", "error");
+      }
+    }
+  };
 
   if (!qrScannerOpen) return null;
 
@@ -38,6 +104,7 @@ export const QRCodeScannerModal: React.FC = () => {
     updateItemStatus(foundItem.id, "DEVOLVIDO");
     addToast(`Objeto "${foundItem.title}" baixado como Devolvido!`, "success");
     setFoundItem(null);
+    stopCamera();
     setQrScannerOpen(false);
   };
 
@@ -55,31 +122,106 @@ export const QRCodeScannerModal: React.FC = () => {
                 Scanner de QR Code IFPR Campus Ivaiporã
               </h3>
               <p className="text-[11px] text-neutral-500">
-                Leitor de etiquetas digitais para devolução ágil
+                Leitor óptico de etiquetas digitais para devolução ágil
               </p>
             </div>
           </div>
 
           <button
-            onClick={() => setQrScannerOpen(false)}
+            onClick={() => {
+              stopCamera();
+              setQrScannerOpen(false);
+            }}
             className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Camera Scanner Simulation Frame */}
-        <div className="relative h-44 rounded-2xl bg-neutral-900 overflow-hidden border-2 border-dashed border-[#00843D] flex flex-col items-center justify-center p-4 text-center">
-          <div className="absolute inset-x-8 top-1/2 h-0.5 bg-[#00843D] animate-pulse shadow-[0_0_8px_#00843D]" />
-          <QrCode className="w-12 h-12 text-[#00843D] mb-2 animate-bounce opacity-80" />
-          <span className="text-xs font-bold text-white">Posicione o QR Code no centro</span>
-          <span className="text-[10px] text-neutral-400">Simulação de Leitor Óptico do Campus Ivaiporã</span>
+        {/* Camera Feed / Permission Request Section */}
+        <div className="space-y-3">
+          <div className="relative h-56 rounded-2xl bg-neutral-900 overflow-hidden border-2 border-dashed border-[#00843D] flex flex-col items-center justify-center p-2 text-center">
+            {/* Live Camera Video Feed */}
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              className={`absolute inset-0 w-full h-full object-cover ${cameraActive ? "block" : "hidden"}`}
+            />
+
+            {/* Scanning Line Overlay when active */}
+            {cameraActive && (
+              <div className="absolute inset-x-6 top-1/2 h-0.5 bg-green-400 animate-pulse shadow-[0_0_12px_#22c55e] z-10" />
+            )}
+
+            {/* Inactive or Permission Request View */}
+            {!cameraActive && (
+              <div className="relative z-10 flex flex-col items-center p-4 space-y-3 max-w-xs">
+                <div className="w-12 h-12 rounded-2xl bg-[#00843D]/20 text-[#00843D] dark:text-green-400 flex items-center justify-center">
+                  <Camera className="w-6 h-6" />
+                </div>
+
+                {cameraPermissionStatus === "denied" ? (
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-red-400 flex items-center justify-center gap-1">
+                      <AlertCircle className="w-4 h-4" /> Acesso à câmera bloqueado
+                    </p>
+                    <p className="text-[10px] text-neutral-400 leading-tight">
+                      {cameraError}
+                    </p>
+                  </div>
+                ) : cameraPermissionStatus === "requesting" ? (
+                  <p className="text-xs font-bold text-amber-300 animate-pulse">
+                    Solicitando permissão de acesso à câmera... Por favor, aceite o prompt do seu navegador.
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    <span className="text-xs font-bold text-white block">
+                      Acesso à Câmera Requerido
+                    </span>
+                    <span className="text-[10px] text-neutral-400 block">
+                      Clique no botão abaixo para autorizar o uso da câmera do dispositivo para escancear a etiqueta QR.
+                    </span>
+                  </div>
+                )}
+
+                <button
+                  onClick={startCamera}
+                  disabled={cameraPermissionStatus === "requesting"}
+                  className="px-4 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md transition-all flex items-center space-x-1.5"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>
+                    {cameraPermissionStatus === "requesting"
+                      ? "Aguardando Permissão..."
+                      : "Solicitar Permissão e Iniciar Câmera"}
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Camera Controls Bar */}
+          {cameraActive && (
+            <div className="flex items-center justify-between text-xs px-1">
+              <span className="text-emerald-500 font-bold flex items-center gap-1 text-[11px]">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" /> Câmera Ativa • Transmissão em Tempo Real
+              </span>
+
+              <button
+                onClick={stopCamera}
+                className="text-neutral-500 hover:text-red-500 text-[11px] font-bold underline flex items-center gap-1"
+              >
+                <CameraOff className="w-3.5 h-3.5" /> Desligar Câmera
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Input fallback / simulator */}
-        <div className="space-y-2">
+        {/* Manual Code Input fallback */}
+        <div className="space-y-2 pt-2 border-t border-neutral-200 dark:border-neutral-800">
           <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200">
-            Ou digite o Código / ID da Etiqueta:
+            Digite ou cole o Código da Etiqueta QR:
           </label>
           <div className="flex space-x-2">
             <input
@@ -93,7 +235,7 @@ export const QRCodeScannerModal: React.FC = () => {
               onClick={() => handleScanOrSearch(scannedCode)}
               className="px-4 py-2.5 rounded-xl bg-[#00843D] text-white font-bold text-xs"
             >
-              Validar
+              Validar Code
             </button>
           </div>
         </div>
@@ -101,7 +243,7 @@ export const QRCodeScannerModal: React.FC = () => {
         {/* Preset quick test buttons */}
         <div className="space-y-1">
           <span className="text-[11px] font-semibold text-neutral-500 block">
-            Testar etiquetas ativas no acervo:
+            Testar etiquetas ativas no acervo do campus:
           </span>
           <div className="flex flex-wrap gap-1.5">
             {items.slice(0, 4).map((it) => (

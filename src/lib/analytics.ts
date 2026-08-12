@@ -12,9 +12,11 @@ declare global {
   }
 }
 
+const defaultMeasurementId = typeof import.meta !== 'undefined' ? ((import.meta as any).env?.VITE_GA_MEASUREMENT_ID || '') : '';
+
 // Initialize Google Analytics Global Tracking
-export function initGoogleAnalytics(measurementId = 'G-Q2BWFJTJ8K') {
-  if (typeof window === 'undefined') return;
+export function initGoogleAnalytics(measurementId = defaultMeasurementId) {
+  if (typeof window === 'undefined' || !measurementId) return;
 
   // Check if gtag script is already present
   if (!document.getElementById('ga-gtag-script')) {

@@ -40,3 +40,30 @@
   background: rgba(0, 132, 61, 0.6);
 }
 
+/* High Contrast Mode (WCAG Accessibility) */
+html.high-contrast, html.high-contrast body {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+html.high-contrast * {
+  border-color: #ffffff !important;
+  text-shadow: none !important;
+}
+
+html.high-contrast button, 
+html.high-contrast input, 
+html.high-contrast select, 
+html.high-contrast textarea {
+  border: 2px solid #ffffff !important;
+  outline: 1px solid #ffff00 !important;
+  font-weight: 700 !important;
+}
+
+html.high-contrast a,
+html.high-contrast .text-\[\#00843D\] {
+  color: #00ff66 !important;
+  text-decoration: underline !important;
+}
+
+

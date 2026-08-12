@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { ItemCategory, LostFoundItem } from "../types";
 import { safeFetchJson, clientAnalyzeImage, clientMatchSimilarity } from "../lib/apiHelper";
@@ -18,6 +18,9 @@ import {
   Zap,
   ArrowRight,
   FileCheck2,
+  Camera,
+  CameraOff,
+  X,
 } from "lucide-react";
 
 interface AIAnalysisResult {
@@ -50,6 +53,75 @@ export const ImageAnalyzerView: React.FC = () => {
     { item: LostFoundItem; score: number; reason: string }[]
   >([]);
   const [isSearchingDb, setIsSearchingDb] = useState(false);
+
+  // Camera Capture & Permission States
+  const [cameraModalOpen, setCameraModalOpen] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState<"idle" | "requesting" | "granted" | "denied">("idle");
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setCameraStatus("idle");
+  };
+
+  const handleOpenCamera = async () => {
+    setCameraModalOpen(true);
+    setCameraStatus("requesting");
+    setCameraError(null);
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Seu navegador não possui suporte a acesso de mídia.");
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      setCameraStatus("granted");
+      addToast("Acesso à câmera liberado! Fotografe o pertence.", "success");
+    } catch (err: any) {
+      console.error("Erro ao solicitar acesso à câmera:", err);
+      setCameraStatus("denied");
+      if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+        setCameraError("Permissão de acesso à câmera negada. Habilite a permissão no navegador para fotografar o objeto.");
+      } else {
+        setCameraError("Erro ao iniciar dispositivo de câmera.");
+      }
+      addToast("Erro ao solicitar acesso à câmera.", "error");
+    }
+  };
+
+  const handleCaptureSnapshot = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      setSelectedImage(dataUrl);
+      setAnalysis(null);
+      setDatabaseMatches([]);
+      addToast("Foto capturada da câmera com sucesso!", "success");
+      stopCamera();
+      setCameraModalOpen(false);
+    }
+  };
 
   // File drag & drop or upload handler
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -285,21 +357,32 @@ export const ImageAnalyzerView: React.FC = () => {
               )}
             </div>
 
-            {/* Upload File Input */}
-            <div>
-              <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-2">
-                Enviar Arquivo do Computador ou Celular:
+            {/* Upload File or Capture Camera Input */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                Enviar Arquivo ou Tirar Foto com a Câmera:
               </label>
-              <label className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-bold cursor-pointer transition-colors border border-neutral-200 dark:border-neutral-700">
-                <Upload className="w-4 h-4 text-[#00843D]" />
-                <span>Escolher Imagem (JPG, PNG)</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenCamera}
+                  className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold cursor-pointer transition-colors shadow-xs"
+                >
+                  <Camera className="w-4 h-4 text-amber-300" />
+                  <span>Tirar Foto (Câmera)</span>
+                </button>
+
+                <label className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-bold cursor-pointer transition-colors border border-neutral-200 dark:border-neutral-700">
+                  <Upload className="w-4 h-4 text-[#00843D]" />
+                  <span>Escolher Arquivo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                </label>
+              </div>
             </div>
 
             {/* Sample Images Shortcuts */}
@@ -567,6 +650,89 @@ export const ImageAnalyzerView: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Camera Capture Modal */}
+      {cameraModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
+          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-md w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+              <div className="flex items-center space-x-2">
+                <div className="p-2 rounded-xl bg-[#00843D]/10 text-[#00843D] dark:text-green-400">
+                  <Camera className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-neutral-900 dark:text-white">
+                    Fotografar Objeto via Câmera
+                  </h3>
+                  <p className="text-[10px] text-neutral-500">
+                    Posicione o pertence e capture para análise Gemini IA
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  stopCamera();
+                  setCameraModalOpen(false);
+                }}
+                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Camera Frame */}
+            <div className="relative h-64 rounded-2xl bg-neutral-900 overflow-hidden border-2 border-dashed border-[#00843D] flex flex-col items-center justify-center p-2 text-center">
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                className={`absolute inset-0 w-full h-full object-cover ${cameraStatus === "granted" ? "block" : "hidden"}`}
+              />
+
+              {cameraStatus !== "granted" && (
+                <div className="p-4 space-y-2">
+                  {cameraStatus === "denied" ? (
+                    <p className="text-xs font-bold text-red-400">
+                      {cameraError || "Permissão de acesso à câmera negada."}
+                    </p>
+                  ) : (
+                    <p className="text-xs font-bold text-amber-300 animate-pulse">
+                      Solicitando permissão para usar a câmera... Aceite a solicitação no topo da tela.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  stopCamera();
+                  setCameraModalOpen(false);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              >
+                Cancelar
+              </button>
+
+              {cameraStatus === "granted" && (
+                <button
+                  type="button"
+                  onClick={handleCaptureSnapshot}
+                  className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md flex items-center gap-2"
+                >
+                  <Camera className="w-4 h-4 text-amber-300" />
+                  <span>Capturar e Analisar Foto</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

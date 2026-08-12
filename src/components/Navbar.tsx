@@ -31,6 +31,8 @@ export const Navbar: React.FC = () => {
     currentUser,
     switchUserRole,
     notifications,
+    fcmPermissionGranted,
+    requestNotificationPermission,
     setQrScannerOpen,
     clearAllNotifications,
     setRegisterTypeSelection,
@@ -199,6 +201,21 @@ export const Navbar: React.FC = () => {
                       </button>
                     )}
                   </div>
+
+                  {/* FCM Push Notification Request Button */}
+                  {!fcmPermissionGranted && (
+                    <div className="mt-3 p-2.5 rounded-xl bg-[#00843D]/10 border border-[#00843D]/20 flex items-center justify-between gap-2">
+                      <div className="text-[11px] text-[#00843D] dark:text-green-400 font-medium">
+                        Ative alertas em tempo real no seu navegador para devoluções.
+                      </div>
+                      <button
+                        onClick={requestNotificationPermission}
+                        className="px-2.5 py-1 rounded-lg bg-[#00843D] text-white font-bold text-[10px] shrink-0 hover:bg-[#006830]"
+                      >
+                        Ativar Push FCM
+                      </button>
+                    </div>
+                  )}
 
                   <div className="mt-3 space-y-2.5 max-h-72 overflow-y-auto pr-1">
                     {notifications.length === 0 ? (

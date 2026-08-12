@@ -18,6 +18,12 @@ import {
   Lock,
   Shield,
   LogOut,
+  Award,
+  Crown,
+  Medal,
+  Sparkles,
+  Trophy,
+  HeartHandshake,
 } from "lucide-react";
 
 export const ProfileView: React.FC = () => {
@@ -61,6 +67,58 @@ export const ProfileView: React.FC = () => {
 
   // User claims
   const userClaims = claims.filter((c) => c.claimerId === currentUser.id);
+
+  // Number of items registered by user that were successfully returned to their owners
+  const returnedItemsCount = items.filter(
+    (it) => it.registeredByUserId === currentUser.id && it.status === "DEVOLVIDO"
+  ).length;
+
+  // Reputation tier calculation
+  let reputationBadge = {
+    title: "Colaborador Cidadão",
+    level: "Nível 0",
+    icon: <HeartHandshake className="w-6 h-6 text-emerald-500" />,
+    badgeColor: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
+    gradientBg: "from-emerald-500/10 to-teal-500/10",
+    progressPercent: Math.min((returnedItemsCount / 1) * 100, 100),
+    nextText: `${returnedItemsCount}/1 devolução para o Selo Guardião Bronze 🥉`,
+    description: "Cadastre pertences encontrados no campus para ajudar a comunidade e desbloquear medalhas de reputação!",
+  };
+
+  if (returnedItemsCount >= 5) {
+    reputationBadge = {
+      title: "Guardião Ouro • Herói do IFPR",
+      level: "Nível Máximo 🌟",
+      icon: <Crown className="w-6 h-6 text-amber-500" />,
+      badgeColor: "bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/40 shadow-xs",
+      gradientBg: "from-amber-500/15 via-yellow-500/10 to-amber-600/15",
+      progressPercent: 100,
+      nextText: "100% • Nível Mestre do Campus Ivaiporã Alcançado!",
+      description: "Selo de Honra Máxima! Reconhecido oficialmente pela comunidade do IFPR por sua presteza e honestidade exemplares.",
+    };
+  } else if (returnedItemsCount >= 3) {
+    reputationBadge = {
+      title: "Guardião Prata IFPR",
+      level: "Nível 2",
+      icon: <Award className="w-6 h-6 text-slate-400" />,
+      badgeColor: "bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-400/40",
+      gradientBg: "from-slate-500/10 to-slate-700/10",
+      progressPercent: Math.min((returnedItemsCount / 5) * 100, 100),
+      nextText: `${returnedItemsCount}/5 devoluções para o Selo Guardião Ouro 🥇`,
+      description: "Excelente espírito comunitário! Suas devoluções tornam o IFPR Campus Ivaiporã um ambiente seguro e solidário.",
+    };
+  } else if (returnedItemsCount >= 1) {
+    reputationBadge = {
+      title: "Guardião Bronze IFPR",
+      level: "Nível 1",
+      icon: <Medal className="w-6 h-6 text-amber-700 dark:text-amber-500" />,
+      badgeColor: "bg-amber-700/10 text-amber-800 dark:text-amber-400 border-amber-700/30",
+      gradientBg: "from-amber-700/10 to-amber-900/10",
+      progressPercent: Math.min((returnedItemsCount / 3) * 100, 100),
+      nextText: `${returnedItemsCount}/3 devoluções para o Selo Guardião Prata 🥈`,
+      description: "Parabéns! Você já contribuiu diretamente para devolver objetos aos seus verdadeiros donos.",
+    };
+  }
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-16">
@@ -223,6 +281,57 @@ export const ProfileView: React.FC = () => {
               </div>
             </form>
           )}
+        </div>
+      </div>
+
+      {/* Reputation & Citizenship Badge Card */}
+      <div className={`p-6 rounded-3xl bg-gradient-to-r ${reputationBadge.gradientBg} bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-4`}>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3.5">
+            <div className={`p-3 rounded-2xl border ${reputationBadge.badgeColor} shrink-0`}>
+              {reputationBadge.icon}
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                  Selo de Reputação: {reputationBadge.title}
+                </h3>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${reputationBadge.badgeColor}`}>
+                  {reputationBadge.level}
+                </span>
+              </div>
+              <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-0.5">
+                {reputationBadge.description}
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white/80 dark:bg-neutral-800/80 p-3 rounded-2xl border border-neutral-200 dark:border-neutral-700/60 text-center shrink-0 w-full sm:w-auto">
+            <div className="text-xl font-black text-[#00843D] dark:text-green-400">
+              {returnedItemsCount}
+            </div>
+            <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
+              Devoluções Concluídas
+            </div>
+          </div>
+        </div>
+
+        {/* Progress Bar towards next tier */}
+        <div className="space-y-1.5 pt-2 border-t border-neutral-200/60 dark:border-neutral-800/60">
+          <div className="flex items-center justify-between text-[11px] font-bold">
+            <span className="text-neutral-600 dark:text-neutral-400 flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Progresso da Medalha de Reputação
+            </span>
+            <span className="text-[#00843D] dark:text-green-400">
+              {reputationBadge.nextText}
+            </span>
+          </div>
+          <div className="w-full h-2.5 rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden p-0.5">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-[#00843D] to-emerald-400 transition-all duration-500"
+              style={{ width: `${reputationBadge.progressPercent}%` }}
+            />
+          </div>
         </div>
       </div>
 

@@ -64,6 +64,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         courseOrDept: regCourseOrDept,
         registrationNumber: regMatricula || `2026${Math.floor(10000 + Math.random() * 90000)}`,
         phone: regPhone || "(43) 99999-0000",
+        avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(regName)}`,
       });
       onClose();
     } catch (err: any) {
@@ -178,8 +179,28 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           )}
 
           {errorMsg && (
-            <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-semibold">
-              {errorMsg}
+            <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-semibold space-y-2">
+              <div>{errorMsg}</div>
+              {errorMsg.includes("não está autorizado") && (
+                <div className="p-3 bg-white dark:bg-neutral-800 rounded-xl border border-red-500/30 text-[11px] text-neutral-800 dark:text-neutral-200 space-y-1.5 font-normal">
+                  <div className="font-bold text-red-600 dark:text-red-400">Como autorizar este domínio no Firebase Console:</div>
+                  <ol className="list-decimal pl-4 space-y-1 text-neutral-600 dark:text-neutral-300">
+                    <li>Acesse o <strong>Firebase Console</strong> do seu projeto.</li>
+                    <li>Vá em <strong>Authentication</strong> &gt; aba <strong>Configurações (Settings)</strong> &gt; <strong>Domínios autorizados</strong>.</li>
+                    <li>Clique em <strong>Adicionar domínio</strong> e cole: <code className="bg-neutral-100 dark:bg-neutral-900 px-1.5 py-0.5 rounded font-mono font-bold text-red-600 dark:text-red-400">{window.location.hostname}</code></li>
+                  </ol>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(window.location.hostname);
+                      useApp().addToast(`Domínio ${window.location.hostname} copiado para a área de transferência!`, "success");
+                    }}
+                    className="w-full py-1.5 px-3 rounded-lg bg-[#00843D] text-white text-[11px] font-bold text-center hover:bg-[#006e33] transition-colors mt-1"
+                  >
+                    📋 Copiar Domínio ({window.location.hostname})
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

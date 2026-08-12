@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getAnalytics, isSupported as isAnalyticsSupported, logEvent as logFbEvent, Analytics } from 'firebase/analytics';
+import { getPerformance, FirebasePerformance, trace } from 'firebase/performance';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -29,6 +30,29 @@ if (typeof window !== 'undefined') {
     .catch(() => {
       // Ignored non-critical analytics error
     });
+}
+
+export let firebasePerformance: FirebasePerformance | null = null;
+if (typeof window !== 'undefined') {
+  try {
+    firebasePerformance = getPerformance(app);
+    console.log("Firebase Performance Monitoring inicializado com sucesso.");
+  } catch (err) {
+    console.warn("Aviso ao inicializar Firebase Performance Monitoring:", err);
+  }
+}
+
+export function traceFirebasePerformance(metricName: string) {
+  if (firebasePerformance) {
+    try {
+      const t = trace(firebasePerformance, metricName);
+      t.start();
+      return t;
+    } catch (e) {
+      console.warn("Aviso na métrica de performance:", e);
+    }
+  }
+  return null;
 }
 
 export function logFirebaseEvent(eventName: string, eventParams?: Record<string, any>) {

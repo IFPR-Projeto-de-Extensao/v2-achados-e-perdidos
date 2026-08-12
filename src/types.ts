@@ -22,6 +22,8 @@ export interface User {
   registrationNumber: string; // Matrícula
   avatarUrl: string;
   phone?: string;
+  approvalStatus?: "APROVADO" | "PENDENTE" | "REJEITADO";
+  reputationScore?: number;
 }
 
 export interface LostFoundItem {
@@ -45,7 +47,8 @@ export interface LostFoundItem {
   createdAt: string;
   matchedWithItemId?: string;
   resolutionDate?: string;
-  secretVerificationHint?: string; // Para comprovação pelo dono verdadeiro
+  secretVerificationHint?: string; // Dica/pergunta sobre recurso oculta
+  secretVerificationKey?: string; // Senha, PIN, código de barras/série ou padrão cadastrado (RNF04)
 }
 
 export interface ItemClaim {
@@ -95,4 +98,57 @@ export interface DashboardStats {
   totalReturned: number;
   successRate: number;
   pendingClaims: number;
+}
+
+export interface ItemComment {
+  id: string;
+  itemId: string;
+  userId: string;
+  userName: string;
+  userRole: UserRole;
+  userAvatar?: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface ActivityLog {
+  id: string;
+  adminId: string;
+  adminName: string;
+  action:
+    | "EXCLUSAO_USUARIO"
+    | "MODO_MANUTENCAO"
+    | "ALTERACAO_PERMISSAO"
+    | "STATUS_OVERRIDE"
+    | "RESET_SISTEMA"
+    | "NOVO_USUARIO"
+    | "EXCLUSAO_EM_MASSA"
+    | "APROVACAO_USUARIO"
+    | "REJEICAO_USUARIO"
+    | "BACKUP_SISTEMA"
+    | "CONFIG_BACKUP"
+    | "MENSAGEM_MANUTENCAO";
+  details: string;
+  timestamp: string;
+}
+
+export interface BackupLog {
+  id: string;
+  adminId: string;
+  adminName: string;
+  filename: string;
+  fileSizeBytes: number;
+  itemCount: number;
+  userCount: number;
+  triggerType: "MANUAL" | "PROGRAMADO";
+  status: "SUCESSO" | "ERRO";
+  timestamp: string;
+}
+
+export interface BackupScheduleConfig {
+  enabled: boolean;
+  frequency: "A_CADA_12H" | "DIARIO_0200" | "SEMANAL_DOMINGO";
+  autoDownload: boolean;
+  lastBackupTimestamp?: string;
+  nextBackupTimestamp?: string;
 }

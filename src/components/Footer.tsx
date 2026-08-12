@@ -103,6 +103,8 @@ export const Footer: React.FC = () => {
           </div>
         </div>
 
+
+
         {/* Bottom copyright */}
         <div className="pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-neutral-500 dark:text-neutral-500 gap-4">
           <p>

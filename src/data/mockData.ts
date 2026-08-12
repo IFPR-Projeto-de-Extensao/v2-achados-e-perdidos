@@ -1,4 +1,4 @@
-import { LostFoundItem, User, NotificationItem, ItemClaim } from "../types";
+import { LostFoundItem, User, NotificationItem, ItemClaim, ItemComment, ActivityLog } from "../types";
 
 export const MOCK_USERS: User[] = [
   {
@@ -9,7 +9,8 @@ export const MOCK_USERS: User[] = [
     courseOrDept: "Técnico em Informática (3º Ano - Campus Ivaiporã)",
     registrationNumber: "2024109823",
     avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-    phone: "(43) 99876-5432"
+    phone: "(43) 99876-5432",
+    approvalStatus: "APROVADO",
   },
   {
     id: "u2",
@@ -19,7 +20,8 @@ export const MOCK_USERS: User[] = [
     courseOrDept: "Sistemas de Informação / Docente - Campus Ivaiporã",
     registrationNumber: "1892304",
     avatarUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80",
-    phone: "(43) 98765-4321"
+    phone: "(43) 98765-4321",
+    approvalStatus: "APROVADO",
   },
   {
     id: "u-paulocauan",
@@ -29,7 +31,8 @@ export const MOCK_USERS: User[] = [
     courseOrDept: "Administração Geral & TI - Campus Ivaiporã",
     registrationNumber: "2026998811",
     avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
-    phone: "(43) 99999-8888"
+    phone: "(43) 99999-8888",
+    approvalStatus: "APROVADO",
   },
   {
     id: "u3",
@@ -39,8 +42,31 @@ export const MOCK_USERS: User[] = [
     courseOrDept: "Secretaria Acadêmica (SEBAC) - Campus Ivaiporã",
     registrationNumber: "1029384",
     avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
-    phone: "(43) 3126-9400"
-  }
+    phone: "(43) 3126-9400",
+    approvalStatus: "APROVADO",
+  },
+  {
+    id: "u4",
+    name: "Beatriz Lima Rocha",
+    email: "beatriz.lima@estudante.ifpr.edu.br",
+    role: "ALUNO",
+    courseOrDept: "Licenciatura em Física (1º Semestre)",
+    registrationNumber: "2026101902",
+    avatarUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
+    phone: "(43) 99123-4567",
+    approvalStatus: "PENDENTE",
+  },
+  {
+    id: "u5",
+    name: "Prof. Roberto Guimarães",
+    email: "roberto.guimaraes@ifpr.edu.br",
+    role: "SERVIDOR",
+    courseOrDept: "Eletrotécnica / Docente",
+    registrationNumber: "1982001",
+    avatarUrl: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80",
+    phone: "(43) 98811-2233",
+    approvalStatus: "PENDENTE",
+  },
 ];
 
 export const IFPR_LOCATIONS = [
@@ -256,3 +282,65 @@ export const MOCK_CLAIMS: ItemClaim[] = [
     notes: "Aguardando confirmação presencial na portaria."
   }
 ];
+
+export const MOCK_COMMENTS: ItemComment[] = [
+  {
+    id: "comment-1",
+    itemId: "ifpr-101",
+    userId: "u1",
+    userName: "Lucas Silva Santos",
+    userRole: "ALUNO",
+    userAvatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+    text: "A garrafa ainda se encontra na guarita do campus? Gostaria de buscar hoje no intervalo do almoço.",
+    createdAt: "2026-08-04T12:30:00Z"
+  },
+  {
+    id: "comment-2",
+    itemId: "ifpr-101",
+    userId: "u2",
+    userName: "Profª Maria Oliveira",
+    userRole: "SERVIDOR",
+    userAvatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80",
+    text: "Sim, Lucas! Deixei com o agente da guarita principal de entrada do campus.",
+    createdAt: "2026-08-04T12:45:00Z"
+  },
+  {
+    id: "comment-3",
+    itemId: "ifpr-102",
+    userId: "u3",
+    userName: "Carlos Eduardo Machado",
+    userRole: "ADMIN",
+    userAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+    text: "Verificamos com a equipe de limpeza do Lab 01. Se encontrada, avisaremos aqui e no seu e-mail.",
+    createdAt: "2026-08-03T17:10:00Z"
+  }
+];
+
+export const MOCK_ACTIVITY_LOGS: ActivityLog[] = [
+  {
+    id: "log-1",
+    adminId: "u3",
+    adminName: "Carlos Eduardo Machado",
+    action: "ALTERACAO_PERMISSAO",
+    details: "Promoveu o usuário Profª Maria Oliveira para a permissão SERVIDOR.",
+    timestamp: "2026-08-04T10:15:00Z"
+  },
+  {
+    id: "log-2",
+    adminId: "u3",
+    adminName: "Carlos Eduardo Machado",
+    action: "STATUS_OVERRIDE",
+    details: "Alterou o status do objeto 'Garrafa Térmica Kouda' (ifpr-101) para EM_ANALISE.",
+    timestamp: "2026-08-04T11:00:00Z"
+  },
+  {
+    id: "log-3",
+    adminId: "u3",
+    adminName: "Carlos Eduardo Machado",
+    action: "NOVO_USUARIO",
+    details: "Cadastrou manualmente o aluno 'Ana Clara Ribeiro' no Campus Ivaiporã.",
+    timestamp: "2026-08-04T11:30:00Z"
+  }
+];
+
+

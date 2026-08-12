@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
 import { ItemCard } from "./ItemCard";
+import { RecentActivityWidget } from "./RecentActivityWidget";
 import { LostFoundItem } from "../types";
 import {
   Search,
@@ -24,6 +25,7 @@ import { motion } from "motion/react";
 export const HomeView: React.FC = () => {
   const {
     items,
+    notifications,
     setActiveTab,
     setSelectedItemForDetail,
     setRegisterTypeSelection,
@@ -245,6 +247,15 @@ export const HomeView: React.FC = () => {
         </div>
       </section>
 
+      {/* RECENT ACTIVITY FEED WIDGET */}
+      <section>
+        <RecentActivityWidget
+          items={items}
+          notifications={notifications}
+          onSelectItem={setSelectedItemForDetail}
+        />
+      </section>
+
       {/* RECENT ITEMS GRID */}
       <section className="space-y-6">
         <div className="flex items-center justify-between">
@@ -284,6 +295,8 @@ export const HomeView: React.FC = () => {
           </div>
         )}
       </section>
+
+
 
       {/* HOW IT WORKS / AI BENEFIT SECTION */}
       <section className="p-8 sm:p-10 rounded-3xl bg-neutral-900 text-white space-y-6">
