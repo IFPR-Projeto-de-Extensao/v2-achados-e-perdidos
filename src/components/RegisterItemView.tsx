@@ -3,6 +3,7 @@ import { useApp } from "../context/AppContext";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
 import { safeFetchJson, clientAnalyzeObject, clientAnalyzeImage } from "../lib/apiHelper";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical } from "../lib/utils";
 import {
   Sparkles,
   PlusCircle,
@@ -352,6 +353,7 @@ export const RegisterItemView: React.FC = () => {
   // Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    vibrateCritical();
     if (!title || !description || !location) {
       addToast("Preencha todos os campos obrigatórios.", "error");
       return;
@@ -370,6 +372,8 @@ export const RegisterItemView: React.FC = () => {
       imageUrl,
       contactInfo,
     });
+
+    vibrateSuccess();
 
     if (res.matches.length === 0) {
       setActiveTab(type === "PERDIDO" ? "lost" : "found");

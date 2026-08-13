@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
+import { triggerVibration, vibrateClick, vibrateSuccess } from "../lib/utils";
 import {
   Search,
   PlusCircle,
@@ -47,25 +48,39 @@ export const Navbar: React.FC = () => {
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleNavClick = (tab: "home" | "lost" | "found" | "register" | "dashboard" | "profile" | "image_analyzer") => {
+    vibrateClick();
     setActiveTab(tab);
     setMobileMenuOpen(false);
   };
 
   const handleRegisterClick = (type: "PERDIDO" | "ENCONTRADO") => {
+    vibrateClick();
     setRegisterTypeSelection(type);
     setActiveTab("register");
     setMobileMenuOpen(false);
   };
 
+  const handleQrScannerClick = () => {
+    vibrateClick();
+    setQrScannerOpen(true);
+  };
+
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-gray-200 dark:border-neutral-800 bg-white/95 dark:bg-[#181818]/95 backdrop-blur-md transition-colors duration-200">
+    <header role="banner" className="sticky top-0 z-40 w-full border-b border-gray-200 dark:border-neutral-800 bg-white/95 dark:bg-[#181818]/95 backdrop-blur-md transition-colors duration-200">
       {/* Top green accent border bar IFPR */}
       <div className="h-1 w-full bg-gradient-to-r from-[#00843D] via-[#00843D] to-[#C8102E]" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo & Brand Name */}
-          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => handleNavClick("home")}>
+          <div
+            role="button"
+            tabIndex={0}
+            aria-label="Ir para a página inicial do Achados e Perdidos IFPR"
+            onKeyDown={(e) => e.key === "Enter" && handleNavClick("home")}
+            className="flex items-center space-x-3 cursor-pointer select-none"
+            onClick={() => handleNavClick("home")}
+          >
             <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-[#00843D] text-white font-bold shadow-md shadow-[#00843D]/20 hover:scale-105 transition-transform">
               <span className="text-xl tracking-tighter font-extrabold">IF</span>
               <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#C8102E] rounded-full border-2 border-white dark:border-[#181818]" />
@@ -86,9 +101,11 @@ export const Navbar: React.FC = () => {
           </div>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden lg:flex items-center space-x-1">
+          <nav role="navigation" aria-label="Navegação Principal do Sistema" className="hidden lg:flex items-center space-x-1">
             <button
               onClick={() => handleNavClick("home")}
+              aria-label="Início"
+              aria-current={activeTab === "home" ? "page" : undefined}
               className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === "home"
                   ? "bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 font-semibold"
@@ -101,6 +118,8 @@ export const Navbar: React.FC = () => {
 
             <button
               onClick={() => handleNavClick("lost")}
+              aria-label="Consultar objetos perdidos"
+              aria-current={activeTab === "lost" ? "page" : undefined}
               className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === "lost"
                   ? "bg-[#EF4444]/10 text-[#EF4444] dark:text-red-400 font-semibold"
@@ -113,6 +132,8 @@ export const Navbar: React.FC = () => {
 
             <button
               onClick={() => handleNavClick("found")}
+              aria-label="Consultar objetos encontrados"
+              aria-current={activeTab === "found" ? "page" : undefined}
               className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === "found"
                   ? "bg-[#22C55E]/10 text-[#22C55E] dark:text-green-400 font-semibold"
@@ -125,6 +146,8 @@ export const Navbar: React.FC = () => {
 
             <button
               onClick={() => handleNavClick("image_analyzer")}
+              aria-label="Analisar fotos de itens com Inteligência Artificial"
+              aria-current={activeTab === "image_analyzer" ? "page" : undefined}
               className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-all ${
                 activeTab === "image_analyzer"
                   ? "bg-emerald-500/15 text-[#00843D] dark:text-green-400 border border-[#00843D]/30"
@@ -137,6 +160,8 @@ export const Navbar: React.FC = () => {
 
             <button
               onClick={() => handleNavClick("register")}
+              aria-label="Registrar novo item perdido ou encontrado"
+              aria-current={activeTab === "register" ? "page" : undefined}
               className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === "register"
                   ? "bg-[#00843D] text-white shadow-sm font-semibold"
@@ -149,6 +174,8 @@ export const Navbar: React.FC = () => {
 
             <button
               onClick={() => handleNavClick("dashboard")}
+              aria-label="Acessar painel e dashboard de gestão"
+              aria-current={activeTab === "dashboard" ? "page" : undefined}
               className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === "dashboard"
                   ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold"
@@ -164,7 +191,9 @@ export const Navbar: React.FC = () => {
           <div className="flex items-center space-x-2 sm:space-x-3">
             {/* Quick QR Code Scanner Shortcut */}
             <button
-              onClick={() => setQrScannerOpen(true)}
+              onClick={handleQrScannerClick}
+              role="button"
+              aria-label="Abrir Scanner de QR Code de Devolução"
               title="Escanear QR Code de Devolução"
               className="p-2 rounded-lg text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors relative"
             >
@@ -174,7 +203,14 @@ export const Navbar: React.FC = () => {
             {/* Notifications Button */}
             <div className="relative">
               <button
-                onClick={() => setNotificationsOpen(!notificationsOpen)}
+                onClick={() => {
+                  vibrateClick();
+                  setNotificationsOpen(!notificationsOpen);
+                }}
+                role="button"
+                aria-label={`Notificações: ${unreadCount} não lidas`}
+                aria-expanded={notificationsOpen}
+                aria-haspopup="dialog"
                 className="p-2 rounded-lg text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors relative"
               >
                 <Bell className="w-5 h-5" />
@@ -187,14 +223,17 @@ export const Navbar: React.FC = () => {
 
               {/* Notifications Dropdown Drawer */}
               {notificationsOpen && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-[#1E1E1E] rounded-2xl shadow-xl border border-neutral-200 dark:border-neutral-800 z-50 p-4">
+                <div role="dialog" aria-label="Painel de Notificações do IFPR" className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-[#1E1E1E] rounded-2xl shadow-xl border border-neutral-200 dark:border-neutral-800 z-50 p-4">
                   <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-neutral-800">
                     <h3 className="font-bold text-sm text-neutral-900 dark:text-white flex items-center gap-2">
                       <Bell className="w-4 h-4 text-[#00843D]" /> Notificações do IFPR
                     </h3>
                     {unreadCount > 0 && (
                       <button
-                        onClick={clearAllNotifications}
+                        onClick={() => {
+                          vibrateClick();
+                          clearAllNotifications();
+                        }}
                         className="text-xs text-[#00843D] dark:text-green-400 hover:underline font-medium"
                       >
                         Marcar todas lidas
@@ -209,7 +248,10 @@ export const Navbar: React.FC = () => {
                         Ative alertas em tempo real no seu navegador para devoluções.
                       </div>
                       <button
-                        onClick={requestNotificationPermission}
+                        onClick={() => {
+                          vibrateClick();
+                          requestNotificationPermission();
+                        }}
                         className="px-2.5 py-1 rounded-lg bg-[#00843D] text-white font-bold text-[10px] shrink-0 hover:bg-[#006830]"
                       >
                         Ativar Push FCM
@@ -274,7 +316,12 @@ export const Navbar: React.FC = () => {
             {/* Login / Cadastro or User Profile & Logout */}
             {currentUser.id === "guest_visitor" && !firebaseUser ? (
               <button
-                onClick={() => setAuthModalOpen(true)}
+                onClick={() => {
+                  vibrateClick();
+                  setAuthModalOpen(true);
+                }}
+                role="button"
+                aria-label="Entrar ou cadastrar conta"
                 className="px-3 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white text-xs font-bold transition-all shadow-xs flex items-center space-x-1.5"
               >
                 <LogIn className="w-3.5 h-3.5" />
@@ -284,12 +331,18 @@ export const Navbar: React.FC = () => {
               <div className="flex items-center space-x-1.5">
                 <button
                   onClick={() => handleNavClick("profile")}
+                  aria-label={`Ver perfil de ${currentUser.name}`}
                   className="hidden sm:flex items-center space-x-1 px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs font-bold border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-colors"
                 >
                   <span>{currentUser.name} ({currentUser.role})</span>
                 </button>
                 <button
-                  onClick={logout}
+                  onClick={() => {
+                    vibrateClick();
+                    logout();
+                  }}
+                  role="button"
+                  aria-label="Sair da Conta"
                   title="Sair da Conta (Logout)"
                   className="px-2.5 py-1 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white text-xs font-bold transition-all border border-red-500/20 flex items-center space-x-1"
                 >
@@ -302,6 +355,8 @@ export const Navbar: React.FC = () => {
             {/* Profile Avatar Trigger */}
             <button
               onClick={() => handleNavClick("profile")}
+              role="button"
+              aria-label={`Acessar perfil de ${currentUser.name}`}
               className="flex items-center space-x-2 pl-1 cursor-pointer focus:outline-none"
               title="Ver Perfil"
             >
@@ -314,7 +369,13 @@ export const Navbar: React.FC = () => {
 
             {/* Mobile menu hamburger button */}
             <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              onClick={() => {
+                vibrateClick();
+                setMobileMenuOpen(!mobileMenuOpen);
+              }}
+              role="button"
+              aria-label={mobileMenuOpen ? "Fechar menu móvel" : "Abrir menu móvel"}
+              aria-expanded={mobileMenuOpen}
               className="lg:hidden p-2 rounded-lg text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -325,9 +386,10 @@ export const Navbar: React.FC = () => {
 
       {/* Mobile Drawer Menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#181818] px-4 pt-3 pb-6 space-y-2">
+        <div role="navigation" aria-label="Menu Móvel" className="lg:hidden border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#181818] px-4 pt-3 pb-6 space-y-2 animate-in slide-in-from-top-2 duration-200">
           <button
             onClick={() => handleNavClick("home")}
+            aria-label="Início"
             className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
               activeTab === "home"
                 ? "bg-[#00843D]/10 text-[#00843D] font-bold"
@@ -340,6 +402,7 @@ export const Navbar: React.FC = () => {
 
           <button
             onClick={() => handleNavClick("lost")}
+            aria-label="Objetos Perdidos"
             className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
               activeTab === "lost"
                 ? "bg-[#EF4444]/10 text-[#EF4444] font-bold"
@@ -352,6 +415,7 @@ export const Navbar: React.FC = () => {
 
           <button
             onClick={() => handleNavClick("found")}
+            aria-label="Objetos Encontrados"
             className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
               activeTab === "found"
                 ? "bg-[#22C55E]/10 text-[#22C55E] font-bold"
@@ -364,6 +428,7 @@ export const Navbar: React.FC = () => {
 
           <button
             onClick={() => handleNavClick("image_analyzer")}
+            aria-label="Analisar Fotos com Inteligência Artificial Gemini"
             className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold ${
               activeTab === "image_analyzer"
                 ? "bg-emerald-500/15 text-[#00843D] dark:text-green-400 font-extrabold"
@@ -377,6 +442,8 @@ export const Navbar: React.FC = () => {
           <div className="grid grid-cols-2 gap-2 pt-2">
             <button
               onClick={() => handleRegisterClick("PERDIDO")}
+              role="button"
+              aria-label="Cadastrar novo item perdido"
               className="flex items-center justify-center space-x-1.5 px-3 py-2.5 rounded-xl bg-[#EF4444]/10 text-[#EF4444] font-bold text-xs border border-[#EF4444]/20"
             >
               <PlusCircle className="w-4 h-4" />
@@ -384,6 +451,8 @@ export const Navbar: React.FC = () => {
             </button>
             <button
               onClick={() => handleRegisterClick("ENCONTRADO")}
+              role="button"
+              aria-label="Cadastrar novo item encontrado"
               className="flex items-center justify-center space-x-1.5 px-3 py-2.5 rounded-xl bg-[#00843D] text-white font-bold text-xs shadow-xs"
             >
               <PlusCircle className="w-4 h-4" />
@@ -393,6 +462,7 @@ export const Navbar: React.FC = () => {
 
           <button
             onClick={() => handleNavClick("dashboard")}
+            aria-label="Painel Administrativo do Campus"
             className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
               activeTab === "dashboard"
                 ? "bg-amber-500/10 text-amber-600 font-bold"
@@ -415,7 +485,13 @@ export const Navbar: React.FC = () => {
             </span>
             <button
               type="button"
-              onClick={toggleDarkMode}
+              role="switch"
+              aria-checked={darkMode}
+              aria-label="Alternar entre modo claro e escuro"
+              onClick={() => {
+                vibrateClick();
+                toggleDarkMode();
+              }}
               className="relative inline-flex items-center h-7 w-12 rounded-full p-0.5 bg-neutral-200 dark:bg-neutral-700 border border-neutral-300 dark:border-neutral-600 transition-colors duration-300 cursor-pointer"
             >
               <span
@@ -434,6 +510,7 @@ export const Navbar: React.FC = () => {
 
           <button
             onClick={() => handleNavClick("profile")}
+            aria-label={`Meu Perfil (${currentUser.role})`}
             className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
               activeTab === "profile"
                 ? "bg-[#00843D]/10 text-[#00843D] font-bold"
@@ -447,9 +524,12 @@ export const Navbar: React.FC = () => {
           {(currentUser.id !== "guest_visitor" || firebaseUser) ? (
             <button
               onClick={() => {
+                vibrateClick();
                 logout();
                 setMobileMenuOpen(false);
               }}
+              role="button"
+              aria-label="Sair da Conta"
               className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-colors"
             >
               <LogOut className="w-5 h-5" />
@@ -458,9 +538,12 @@ export const Navbar: React.FC = () => {
           ) : (
             <button
               onClick={() => {
+                vibrateClick();
                 setAuthModalOpen(true);
                 setMobileMenuOpen(false);
               }}
+              role="button"
+              aria-label="Entrar ou criar conta"
               className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold bg-[#00843D] text-white transition-colors shadow-xs"
             >
               <LogIn className="w-5 h-5" />
@@ -472,3 +555,4 @@ export const Navbar: React.FC = () => {
     </header>
   );
 };
+

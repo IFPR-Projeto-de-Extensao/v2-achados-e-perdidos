@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { LostFoundItem } from "../types";
 import { useApp } from "../context/AppContext";
 import { usePossessionVerification } from "../hooks/usePossessionVerification";
-import { formatDate, formatDateTime } from "../lib/utils";
+import { formatDate, formatDateTime, triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical } from "../lib/utils";
 import { QRCodeSVG } from "qrcode.react";
 import { RestrictedQRViewModal } from "./RestrictedQRViewModal";
 import {
@@ -497,9 +497,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const step3Done = item.status === "DEVOLVIDO";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-xs overflow-y-auto">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="item-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-xs overflow-y-auto"
+    >
       <div
-        className="relative w-full max-w-4xl bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden my-8"
+        className="relative w-full max-w-4xl bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Bar */}
@@ -518,7 +523,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           <div className="flex items-center space-x-2">
             {/* Share Button (Web Share API) */}
             <button
-              onClick={handleShareItem}
+              onClick={() => {
+                vibrateClick();
+                handleShareItem();
+              }}
+              role="button"
+              aria-label="Compartilhar link deste item"
               className="px-3 py-1.5 rounded-xl bg-neutral-200 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white text-neutral-700 dark:text-neutral-200 font-bold text-xs transition-all flex items-center gap-1.5"
               title="Compartilhar Link do Item"
             >
@@ -527,7 +537,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             </button>
 
             <button
-              onClick={onClose}
+              onClick={() => {
+                vibrateClick();
+                onClose();
+              }}
+              role="button"
+              aria-label="Fechar detalhes do item"
               className="p-2 rounded-full text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors"
             >
               <X className="w-5 h-5" />

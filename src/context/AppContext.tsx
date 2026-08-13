@@ -53,6 +53,7 @@ import {
   saveSingleItemIndexedDB,
 } from "../lib/indexedDB";
 import { clear30DayUptimeRecords } from "../lib/uptimeManager";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical } from "../lib/utils";
 
 interface Toast {
   id: string;
@@ -425,8 +426,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     nextBackupTimestamp: "2026-08-13T02:00:00Z",
   });
 
-  // Sync Maintenance mode & custom message from Firestore
+  // Sync Maintenance mode & custom message from Firestore & Server API
   useEffect(() => {
+    // Initial fetch from backend API endpoint for multi-device sync
+    fetch("/api/system/config")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.success && data?.config) {
+          if (typeof data.config.maintenanceMode === "boolean") {
+            setMaintenanceMode(data.config.maintenanceMode);
+          }
+          if (data.config.maintenanceCustomMessage) {
+            setMaintenanceCustomMessage(data.config.maintenanceCustomMessage);
+          }
+        }
+      })
+      .catch(() => {});
+
+    // Real-time Firestore snapshot listener
     const unsubscribe = onSnapshot(
       doc(db, "system", "config"),
       (snapshot) => {
@@ -481,15 +498,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateMaintenanceCustomMessage = async (msg: string) => {
     setMaintenanceCustomMessage(msg);
+    vibrateClick();
     try {
       await setDoc(doc(db, "system", "config"), { maintenanceCustomMessage: msg }, { merge: true });
+      fetch("/api/system/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maintenanceCustomMessage: msg, updatedBy: currentUser.name }),
+      }).catch(() => {});
       await logAdminAction(
         "MENSAGEM_MANUTENCAO",
         `Atualizou a mensagem personalizada do banner de manutenção para: "${msg}"`
       );
       addToast("Mensagem do banner de manutenção atualizada em tempo real!", "success");
     } catch (e) {
-      console.warn("Aviso ao salvar mensagem de manutenção:", e);
+      console.warn("Aviso ao salvar mensagem de manutenção no Firestore:", e);
+      fetch("/api/system/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maintenanceCustomMessage: msg, updatedBy: currentUser.name }),
+      }).catch(() => {});
     }
   };
 
@@ -601,9 +629,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const toggleMaintenanceMode = async () => {
     const nextVal = !maintenanceMode;
+    if (nextVal) {
+      vibrateCritical();
+    } else {
+      vibrateSuccess();
+    }
+    setMaintenanceMode(nextVal);
     try {
       await setDoc(doc(db, "system", "config"), { maintenanceMode: nextVal }, { merge: true });
-      setMaintenanceMode(nextVal);
+      fetch("/api/system/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maintenanceMode: nextVal, updatedBy: currentUser.name }),
+      }).catch(() => {});
       await logAdminAction(
         "MODO_MANUTENCAO",
         nextVal
@@ -617,8 +655,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         nextVal ? "error" : "success"
       );
     } catch (e) {
-      setMaintenanceMode(nextVal);
-      addToast(nextVal ? "Modo Manutenção Ativado localmente" : "Modo Manutenção Desativado", "info");
+      console.warn("Aviso ao salvar modo de manutenção no Firestore:", e);
+      fetch("/api/system/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maintenanceMode: nextVal, updatedBy: currentUser.name }),
+      }).catch(() => {});
+      addToast(
+        nextVal
+          ? "🚨 Modo Manutenção ATIVADO pelo Administrador!"
+          : "✅ Modo Manutenção DESATIVADO.",
+        nextVal ? "error" : "success"
+      );
     }
   };
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useApp } from "../context/AppContext";
-import { formatDate } from "../lib/utils";
+import { formatDate, formatDateTime, triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical } from "../lib/utils";
 import { UserRole, ActivityLog, BackupScheduleConfig } from "../types";
 import { AppUptimeMonitor } from "./AppUptimeMonitor";
 import { db, traceFirebasePerformance } from "../lib/firebase";
@@ -21,6 +21,8 @@ import {
   Legend,
   AreaChart,
   Area,
+  LineChart,
+  Line,
 } from "recharts";
 import {
   ShieldAlert,
@@ -417,6 +419,93 @@ export const DashboardView: React.FC = () => {
     addToast("Relatório CSV gerado e baixado com sucesso!", "success");
   };
 
+  // Export PDF with Pending Items (jsPDF & autoTable)
+  const handleExportPendingItemsPDF = () => {
+    vibrateClick();
+    const pendingItems = items.filter(
+      (it) => it.status === "PERDIDO" || it.status === "ENCONTRADO" || it.status === "EM_ANALISE"
+    );
+
+    const doc = new jsPDF();
+
+    // Institutional Green Header
+    doc.setFillColor(0, 132, 61); // IFPR Green #00843D
+    doc.rect(0, 0, 210, 26, "F");
+
+    // Red accent stripe
+    doc.setFillColor(200, 16, 46); // IFPR Red #C8102E
+    doc.rect(0, 26, 210, 2, "F");
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text("INSTITUTO FEDERAL DO PARANÁ - CAMPUS IVAIPORÃ", 14, 12);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text("Sistema Achados e Perdidos • Relatório Oficial de Objetos Pendentes", 14, 19);
+
+    // Document Metadata
+    doc.setTextColor(30, 30, 30);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("LISTAGEM OFICIAL DE OBJETOS PENDENTES NO ACERVO", 14, 38);
+
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Data de Emissão: ${new Date().toLocaleString("pt-BR")}`, 14, 44);
+    doc.text(`Emitido por: ${currentUser.name} (${currentUser.role} • ${currentUser.email})`, 14, 49);
+    doc.text(
+      `Total de Itens Pendentes: ${pendingItems.length} | Perdidos: ${pendingItems.filter((i) => i.type === "PERDIDO").length} | Encontrados: ${pendingItems.filter((i) => i.type === "ENCONTRADO").length} | Em Análise: ${pendingItems.filter((i) => i.status === "EM_ANALISE").length}`,
+      14,
+      54
+    );
+
+    const tableRows = pendingItems.map((item) => [
+      item.id,
+      item.title,
+      item.category,
+      item.type,
+      item.location,
+      formatDate(item.date),
+      item.status,
+      item.registeredByName || "Não informado",
+    ]);
+
+    autoTable(doc, {
+      startY: 59,
+      head: [["ID / QR", "Título do Objeto", "Categoria", "Tipo", "Local Encontrado/Perdido", "Data Registro", "Status", "Registrado Por"]],
+      body: tableRows,
+      headStyles: { fillColor: [0, 132, 61], textColor: [255, 255, 255], fontStyle: "bold" },
+      styles: { fontSize: 7.5, cellPadding: 2 },
+      columnStyles: {
+        0: { cellWidth: 22 },
+        1: { cellWidth: 38 },
+        2: { cellWidth: 25 },
+        3: { cellWidth: 18 },
+        4: { cellWidth: 32 },
+        5: { cellWidth: 20 },
+        6: { cellWidth: 22 },
+        7: { cellWidth: "auto" },
+      },
+    });
+
+    const totalPages = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(130, 130, 130);
+      doc.text(
+        `IFPR Campus Ivaiporã • Achados & Perdidos Oficial • Página ${i} de ${totalPages} • Documento gerado em ${new Date().toLocaleDateString("pt-BR")}`,
+        14,
+        287
+      );
+    }
+
+    doc.save(`Relatorio_Objetos_Pendentes_IFPR_${new Date().toISOString().slice(0, 10)}.pdf`);
+    vibrateSuccess();
+    addToast("Relatório de Objetos Pendentes exportado em PDF com sucesso!", "success");
+  };
+
   // Export PDF Audit Helper (jsPDF & autoTable)
   const handleExportAuditPDF = () => {
     const filteredLogs = activityLogs.filter((log) => {
@@ -741,13 +830,103 @@ export const DashboardView: React.FC = () => {
                 </p>
               </div>
 
-              <button
-                onClick={handleExportCSV}
-                className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white font-bold text-xs text-neutral-700 dark:text-neutral-300 transition-colors flex items-center space-x-2 self-start sm:self-auto"
-              >
-                <FileSpreadsheet className="w-4 h-4 text-[#00843D]" />
-                <span>Exportar CSV</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                <button
+                  onClick={handleExportPendingItemsPDF}
+                  role="button"
+                  aria-label="Exportar Relatório em PDF contendo a listagem de objetos pendentes"
+                  className="px-4 py-2 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white font-bold text-xs shadow-xs transition-colors flex items-center space-x-2"
+                >
+                  <FileText className="w-4 h-4 text-white" />
+                  <span>Exportar Relatório (PDF)</span>
+                </button>
+
+                <button
+                  onClick={handleExportCSV}
+                  role="button"
+                  aria-label="Exportar todos os dados em formato CSV"
+                  className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 font-bold text-xs text-neutral-700 dark:text-neutral-300 transition-colors flex items-center space-x-2"
+                >
+                  <FileSpreadsheet className="w-4 h-4 text-[#00843D]" />
+                  <span>Exportar CSV</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Gráfico de Linhas Recharts: Tendência Mensal de Itens Perdidos vs. Recuperados no Campus Ivaiporã */}
+            <div className="bg-neutral-50 dark:bg-neutral-900/50 p-5 sm:p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800/80 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 tracking-wider flex items-center space-x-1.5">
+                    <TrendingUp className="w-4 h-4 text-[#00843D]" />
+                    <span>Tendência Mensal: Itens Perdidos vs. Recuperados (Campus Ivaiporã)</span>
+                  </h3>
+                  <p className="text-[11px] text-neutral-500">
+                    Comparativo em linha da evolução temporal entre perdas registradas e devoluções bem-sucedidas no campus
+                  </p>
+                </div>
+                <div className="flex items-center space-x-3 text-[11px] font-bold">
+                  <span className="flex items-center space-x-1 text-[#C8102E]">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#C8102E] inline-block"></span>
+                    <span>Perdidos</span>
+                  </span>
+                  <span className="flex items-center space-x-1 text-[#00843D]">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#00843D] inline-block"></span>
+                    <span>Recuperados</span>
+                  </span>
+                  <span className="flex items-center space-x-1 text-[#3B82F6]">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#3B82F6] inline-block"></span>
+                    <span>Encontrados</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={monthlyData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                    <XAxis dataKey="month" stroke="#888" fontSize={11} />
+                    <YAxis stroke="#888" fontSize={11} allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "#1E1E1E",
+                        borderColor: "#333",
+                        borderRadius: "12px",
+                        color: "#fff",
+                        fontSize: "12px",
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+                    <Line
+                      type="monotone"
+                      dataKey="perdidos"
+                      name="Itens Perdidos"
+                      stroke="#C8102E"
+                      strokeWidth={3}
+                      dot={{ r: 4, stroke: "#C8102E", fill: "#fff", strokeWidth: 2 }}
+                      activeDot={{ r: 7 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="devolvidos"
+                      name="Itens Recuperados / Devolvidos"
+                      stroke="#00843D"
+                      strokeWidth={3}
+                      dot={{ r: 4, stroke: "#00843D", fill: "#fff", strokeWidth: 2 }}
+                      activeDot={{ r: 7 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="encontrados"
+                      name="Itens Encontrados"
+                      stroke="#3B82F6"
+                      strokeWidth={2}
+                      strokeDasharray="4 4"
+                      dot={{ r: 3, stroke: "#3B82F6", fill: "#fff" }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
             {/* Charts Grid */}

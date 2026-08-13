@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { LostFoundItem } from "../types";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning } from "../lib/utils";
 import { QrCode, X, Search, CheckCircle2, ShieldCheck, AlertCircle, Camera, CameraOff, RefreshCw, Eye, Lock } from "lucide-react";
 import { RestrictedQRViewModal } from "./RestrictedQRViewModal";
 
@@ -39,6 +40,7 @@ export const QRCodeScannerModal: React.FC = () => {
   };
 
   const startCamera = async () => {
+    vibrateClick();
     setCameraPermissionStatus("requesting");
     setCameraError(null);
 
@@ -60,11 +62,13 @@ export const QRCodeScannerModal: React.FC = () => {
 
       setCameraActive(true);
       setCameraPermissionStatus("granted");
+      vibrateSuccess();
       addToast("Permissão de câmera concedida! Leitor ativado.", "success");
     } catch (err: any) {
       console.error("Erro ao solicitar acesso à câmera:", err);
       setCameraActive(false);
       setCameraPermissionStatus("denied");
+      vibrateWarning();
 
       if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
         setCameraError("Permissão de câmera negada pelo usuário ou pelo navegador. Permita o acesso nas configurações do site para usar o scanner.");
@@ -79,6 +83,7 @@ export const QRCodeScannerModal: React.FC = () => {
   if (!qrScannerOpen) return null;
 
   const handleScanOrSearch = (codeToSearch: string) => {
+    vibrateClick();
     const query = codeToSearch.trim().toLowerCase();
     const item = items.find(
       (it) =>
@@ -88,21 +93,25 @@ export const QRCodeScannerModal: React.FC = () => {
     );
 
     if (item) {
+      vibrateSuccess();
       setFoundItem(item);
       addToast(`QR Code identificado: Objeto "${item.title}"`, "success");
     } else {
+      vibrateWarning();
       setFoundItem(null);
       addToast("Nenhum objeto encontrado com este código QR.", "error");
     }
   };
 
   const handleQuickSelectPreset = (item: LostFoundItem) => {
+    vibrateClick();
     setScannedCode(item.qrCodeId);
     setFoundItem(item);
   };
 
   const handleConfirmReturn = () => {
     if (!foundItem) return;
+    vibrateSuccess();
     updateItemStatus(foundItem.id, "DEVOLVIDO");
     addToast(`Objeto "${foundItem.title}" baixado como Devolvido!`, "success");
     setFoundItem(null);
@@ -111,7 +120,12 @@ export const QRCodeScannerModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="qr-scanner-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
+    >
       <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-lg w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
@@ -120,7 +134,7 @@ export const QRCodeScannerModal: React.FC = () => {
               <QrCode className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-neutral-900 dark:text-white">
+              <h3 id="qr-scanner-title" className="font-bold text-base text-neutral-900 dark:text-white">
                 Scanner de QR Code IFPR Campus Ivaiporã
               </h3>
               <p className="text-[11px] text-neutral-500">
@@ -131,9 +145,12 @@ export const QRCodeScannerModal: React.FC = () => {
 
           <button
             onClick={() => {
+              vibrateClick();
               stopCamera();
               setQrScannerOpen(false);
             }}
+            role="button"
+            aria-label="Fechar scanner de QR Code"
             className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800"
           >
             <X className="w-5 h-5" />

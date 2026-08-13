@@ -31,5 +31,35 @@ service cloud.firestore {
     match /notifications/{notificationId} {
       allow read, write: if true;
     }
+
+    // System Configuration & Maintenance Mode
+    match /system/{docId} {
+      allow read, write: if true;
+    }
+
+    // Activity Logs Collection
+    match /activity_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    // Backup Logs Collection
+    match /backup_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    // Error Logs Collection
+    match /error_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    // System Metrics Collection
+    match /system_metrics/{metricId} {
+      allow read, write: if true;
+    }
+
+    // Comments Collection
+    match /comments/{commentId} {
+      allow read, write: if true;
+    }
   }
 }

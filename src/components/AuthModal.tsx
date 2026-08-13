@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { X, Mail, Lock, User as UserIcon, Shield, GraduationCap, Building2, Phone, FileText, Sparkles, LogIn, UserPlus, LogOut } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { UserRole } from "../types";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning } from "../lib/utils";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -31,6 +32,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    vibrateClick();
     setErrorMsg("");
     if (!loginEmail || !loginPassword) {
       setErrorMsg("Preencha e-mail e senha para entrar.");
@@ -39,9 +41,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     setLoading(true);
     try {
       await loginWithEmailPassword(loginEmail, loginPassword);
+      vibrateSuccess();
       onClose();
     } catch (err: any) {
       console.error(err);
+      vibrateWarning();
       setErrorMsg("Erro ao entrar: " + (err.message || "Verifique suas credenciais."));
     } finally {
       setLoading(false);
@@ -50,6 +54,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    vibrateClick();
     setErrorMsg("");
     if (!regName || !regEmail || !regPassword) {
       setErrorMsg("Nome, e-mail e senha são obrigatórios.");
@@ -66,9 +71,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         phone: regPhone || "(43) 99999-0000",
         avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(regName)}`,
       });
+      vibrateSuccess();
       onClose();
     } catch (err: any) {
       console.error(err);
+      vibrateWarning();
       setErrorMsg("Erro no cadastro: " + (err.message || "Tente novamente."));
     } finally {
       setLoading(false);
@@ -76,13 +83,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   };
 
   const handleGoogleClick = async () => {
+    vibrateClick();
     setErrorMsg("");
     setLoading(true);
     try {
       await loginWithGoogle();
+      vibrateSuccess();
       onClose();
     } catch (err: any) {
       console.error(err);
+      vibrateWarning();
       if (err?.code === "auth/unauthorized-domain") {
         setErrorMsg(`Domínio '${window.location.hostname}' não está autorizado no Firebase Console. Você pode utilizar o Acesso de Demonstração ou entrar com seu e-mail do Google abaixo.`);
       } else {
@@ -94,8 +104,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-      <div className="relative w-full max-w-lg bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden my-auto max-h-[90vh] flex flex-col">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="auth-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
+    >
+      <div className="relative w-full max-w-lg bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden my-auto max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
         {/* Top Header */}
         <div className="p-6 bg-gradient-to-r from-[#00843D] to-[#006830] text-white flex items-center justify-between shrink-0">
           <div>
@@ -103,12 +118,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
               <span>Autenticação Unificada • IFPR Campus Ivaiporã</span>
             </div>
-            <h2 className="text-xl font-black mt-1">
+            <h2 id="auth-modal-title" className="text-xl font-black mt-1">
               {mode === "login" ? "Acessar sua Conta" : "Cadastrar Novo Usuário"}
             </h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => {
+              vibrateClick();
+              onClose();
+            }}
+            role="button"
+            aria-label="Fechar janela de autenticação"
             className="p-2 rounded-full hover:bg-white/20 transition-colors text-white/90 hover:text-white"
           >
             <X className="w-5 h-5" />

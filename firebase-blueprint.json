@@ -79,6 +79,31 @@
         "relatedItemId": { "type": "string" }
       },
       "required": ["id", "userId", "title", "message", "read", "type"]
+    },
+    "SystemConfig": {
+      "title": "SystemConfig",
+      "description": "Global system configuration such as maintenance mode and institutional settings",
+      "type": "object",
+      "properties": {
+        "maintenanceMode": { "type": "boolean" },
+        "maintenanceCustomMessage": { "type": "string" },
+        "lastBackupTimestamp": { "type": "string" },
+        "nextBackupTimestamp": { "type": "string" }
+      }
+    },
+    "ActivityLog": {
+      "title": "ActivityLog",
+      "description": "Audit trail log of admin operations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "action": { "type": "string" },
+        "adminId": { "type": "string" },
+        "adminName": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "action", "adminId", "adminName", "details", "timestamp"]
     }
   },
   "firestore": {
@@ -97,6 +122,26 @@
     "/notifications/{notificationId}": {
       "schema": { "$ref": "#/entities/NotificationItem" },
       "description": "User notifications"
+    },
+    "/system/{docId}": {
+      "schema": { "$ref": "#/entities/SystemConfig" },
+      "description": "System configuration doc"
+    },
+    "/activity_logs/{logId}": {
+      "schema": { "$ref": "#/entities/ActivityLog" },
+      "description": "Activity audit logs"
+    },
+    "/backup_logs/{logId}": {
+      "description": "Backup logs"
+    },
+    "/error_logs/{logId}": {
+      "description": "System error logs"
+    },
+    "/system_metrics/{metricId}": {
+      "description": "System performance metrics"
+    },
+    "/comments/{commentId}": {
+      "description": "Item public and staff comments"
     }
   }
 }

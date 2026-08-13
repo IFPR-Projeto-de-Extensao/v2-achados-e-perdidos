@@ -38,9 +38,44 @@ let totalServerRequests = 0;
 const analyticsEvents: Array<{ eventName: string; params?: any; timestamp: string; ip?: string }> = [];
 const eventCounters: Record<string, number> = {};
 
+// Global System Configuration State (Maintenance Mode & Campus Announcements)
+let globalSystemConfig = {
+  maintenanceMode: false,
+  maintenanceCustomMessage: "⚠️ ATENÇÃO: O SISTEMA ESTÁ EM MODO DE MANUTENÇÃO / ATUALIZAÇÃO PROGRAMADA NO CAMPUS IVAIPORÃ",
+  lastUpdated: new Date().toISOString(),
+  updatedBy: "SYSTEM",
+};
+
 app.use((_req, _res, next) => {
   totalServerRequests++;
   next();
+});
+
+// API System Configuration Endpoints (Works seamlessly online & server-side)
+app.get("/api/system/config", (_req, res) => {
+  res.json({
+    success: true,
+    config: globalSystemConfig,
+  });
+});
+
+app.post("/api/system/config", (req, res) => {
+  try {
+    const { maintenanceMode, maintenanceCustomMessage, updatedBy } = req.body;
+    if (typeof maintenanceMode === "boolean") {
+      globalSystemConfig.maintenanceMode = maintenanceMode;
+    }
+    if (typeof maintenanceCustomMessage === "string" && maintenanceCustomMessage.trim()) {
+      globalSystemConfig.maintenanceCustomMessage = maintenanceCustomMessage.trim();
+    }
+    globalSystemConfig.lastUpdated = new Date().toISOString();
+    globalSystemConfig.updatedBy = updatedBy || "ADMIN_SESSION";
+
+    console.log(`[System Config Updated] Modo Manutenção: ${globalSystemConfig.maintenanceMode}`);
+    return res.json({ success: true, config: globalSystemConfig });
+  } catch (err: any) {
+    return res.status(500).json({ error: "Erro ao atualizar configuração do sistema." });
+  }
 });
 
 // API Health Check & System Monitoring
@@ -464,9 +499,13 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`IFPR Achados & Perdidos backend rodando em http://localhost:${PORT}`);
-  });
+  if (!process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`IFPR Achados & Perdidos backend rodando em http://localhost:${PORT}`);
+    });
+  }
 }
 
 startServer();
+
+export default app;
