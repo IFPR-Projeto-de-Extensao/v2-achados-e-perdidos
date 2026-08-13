@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
 import { ItemCard } from "./ItemCard";
-import { formatDate, formatDateTime } from "../lib/utils";
+import { formatDate, formatDateTime, vibrateClick } from "../lib/utils";
 import { UserRole } from "../types";
 import {
   User as UserIcon,
@@ -24,6 +24,10 @@ import {
   Sparkles,
   Trophy,
   HeartHandshake,
+  Bell,
+  BellRing,
+  Send,
+  Radio,
 } from "lucide-react";
 
 export const ProfileView: React.FC = () => {
@@ -39,16 +43,34 @@ export const ProfileView: React.FC = () => {
     addToast,
     updateUserProfileData,
     setAuthModalOpen,
+    fcmSubscribed,
+    subscribeToFCM,
+    testFCMAlert,
+    t,
+    language,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<"my_items" | "claims">("my_items");
   const [isEditing, setIsEditing] = useState(false);
+  const [isSubscribingFCM, setIsSubscribingFCM] = useState(false);
 
   // Edit form state
   const [editName, setEditName] = useState(currentUser.name);
   const [editCourse, setEditCourse] = useState(currentUser.courseOrDept);
   const [editMatricula, setEditMatricula] = useState(currentUser.registrationNumber);
   const [editPhone, setEditPhone] = useState(currentUser.phone || "");
+
+  const handleSubscribeFCM = async () => {
+    vibrateClick();
+    setIsSubscribingFCM(true);
+    await subscribeToFCM();
+    setIsSubscribingFCM(false);
+  };
+
+  const handleTestFCM = async () => {
+    vibrateClick();
+    await testFCMAlert();
+  };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -331,6 +353,88 @@ export const ProfileView: React.FC = () => {
               className="h-full rounded-full bg-gradient-to-r from-[#00843D] to-emerald-400 transition-all duration-500"
               style={{ width: `${reputationBadge.progressPercent}%` }}
             />
+          </div>
+        </div>
+      </div>
+
+      {/* FCM Cloud Messaging Push Notifications Card */}
+      <div id="fcm-notification-subscription-card" className="p-6 rounded-3xl bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3.5">
+            <div className={`p-3 rounded-2xl border shrink-0 ${
+              fcmSubscribed
+                ? "bg-emerald-500/10 text-[#00843D] dark:text-green-400 border-emerald-500/20"
+                : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+            }`}>
+              {fcmSubscribed ? (
+                <BellRing className="w-6 h-6 animate-pulse" />
+              ) : (
+                <Bell className="w-6 h-6" />
+              )}
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                  {t("fcmTitle", "Notificações Push do Sistema (FCM)")}
+                </h3>
+                <span
+                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                    fcmSubscribed
+                      ? "bg-emerald-500/10 text-[#00843D] dark:text-green-400 border-emerald-500/30"
+                      : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
+                  }`}
+                >
+                  {fcmSubscribed
+                    ? t("fcmSubscribed", "Ativo no Dispositivo")
+                    : t("fcmUnsubscribed", "Não Inscrito")}
+                </span>
+              </div>
+              <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-1 max-w-xl">
+                {t(
+                  "fcmDescription",
+                  "Receba alertas automáticos via Firebase Cloud Messaging no navegador ou celular quando um objeto que você registrou como perdido for encontrado ou devolvido no campus."
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+            {!fcmSubscribed ? (
+              <button
+                id="btn-subscribe-fcm"
+                onClick={handleSubscribeFCM}
+                disabled={isSubscribingFCM}
+                className="px-4 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white font-bold text-xs flex items-center justify-center space-x-2 transition-all shadow-xs disabled:opacity-50"
+              >
+                <Radio className="w-4 h-4" />
+                <span>
+                  {isSubscribingFCM
+                    ? t("fcmProcessing", "Solicitando Permissão...")
+                    : t("subscribeNotifications", "Assinar Notificações")}
+                </span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  id="btn-test-fcm"
+                  onClick={handleTestFCM}
+                  className="px-3.5 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 font-bold text-xs flex items-center space-x-1.5 transition-colors border border-neutral-200 dark:border-neutral-700"
+                >
+                  <Send className="w-3.5 h-3.5 text-[#00843D]" />
+                  <span>{t("fcmTestBtn", "Testar Alerta Push")}</span>
+                </button>
+
+                <button
+                  onClick={handleSubscribeFCM}
+                  disabled={isSubscribingFCM}
+                  className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-[#00843D] dark:text-green-400 font-bold text-xs flex items-center space-x-1 border border-emerald-500/20 hover:bg-emerald-100"
+                  title="Atualizar Token FCM"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{t("fcmConfigured", "Configurado")}</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

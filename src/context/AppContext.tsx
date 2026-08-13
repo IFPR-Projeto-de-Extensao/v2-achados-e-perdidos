@@ -54,6 +54,8 @@ import {
 } from "../lib/indexedDB";
 import { clear30DayUptimeRecords } from "../lib/uptimeManager";
 import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical } from "../lib/utils";
+import { SupportedLanguage, TranslationDictionary, translations } from "../lib/i18n";
+import { requestFCMPermissionAndToken, displayWebPushNotification, checkFCMSubscriptionStatus } from "../lib/fcm";
 
 interface Toast {
   id: string;
@@ -62,6 +64,12 @@ interface Toast {
 }
 
 interface AppContextType {
+  language: SupportedLanguage;
+  setLanguage: (lang: SupportedLanguage) => void;
+  t: (key: keyof TranslationDictionary, defaultText?: string) => string;
+  fcmSubscribed: boolean;
+  subscribeToFCM: () => Promise<boolean>;
+  testFCMAlert: () => void;
   items: LostFoundItem[];
   currentUser: User;
   setCurrentUser: (user: User) => void;
@@ -358,28 +366,97 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Activity Logs state (Admin Transparency Log)
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
 
+  // Internationalization (i18n) State
+  const [language, setLanguageState] = useState<SupportedLanguage>(() => {
+    const saved = localStorage.getItem("ifpr_lang_preference");
+    return (saved === "en" || saved === "pt") ? (saved as SupportedLanguage) : "pt";
+  });
+
+  const setLanguage = (lang: SupportedLanguage) => {
+    setLanguageState(lang);
+    try {
+      localStorage.setItem("ifpr_lang_preference", lang);
+      document.documentElement.lang = lang === "pt" ? "pt-BR" : "en";
+    } catch (_) {}
+    addToast(
+      lang === "pt"
+        ? "Idioma alterado para Português (Brasil)."
+        : "Language switched to English (US).",
+      "info"
+    );
+  };
+
+  const t = (key: keyof TranslationDictionary, defaultText?: string): string => {
+    const currentDict = translations[language] || translations.pt;
+    const val = currentDict[key];
+    if (val !== undefined) return val;
+    return defaultText || key;
+  };
+
   // Notifications state
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [fcmPermissionGranted, setFcmPermissionGranted] = useState<boolean>(() => {
     return typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted";
   });
 
-  const requestNotificationPermission = async () => {
-    if (typeof window !== "undefined" && "Notification" in window) {
-      try {
-        const perm = await Notification.requestPermission();
-        if (perm === "granted") {
-          setFcmPermissionGranted(true);
-          addToast("Notificações em Tempo Real ativadas com sucesso para alertas de Achados & Perdidos!", "success");
-        } else {
-          addToast("Permissão para notificações não foi concedida.", "info");
-        }
-      } catch (e) {
-        console.warn("Aviso ao solicitar permissão de notificação:", e);
-      }
+  // FCM Push Subscription state
+  const [fcmSubscribed, setFcmSubscribed] = useState<boolean>(() => {
+    return checkFCMSubscriptionStatus(currentUser?.id || "guest");
+  });
+
+  useEffect(() => {
+    setFcmSubscribed(checkFCMSubscriptionStatus(currentUser?.id || "guest"));
+  }, [currentUser?.id]);
+
+  const subscribeToFCM = async (): Promise<boolean> => {
+    const result = await requestFCMPermissionAndToken(currentUser);
+    if (result.success) {
+      setFcmSubscribed(true);
+      setFcmPermissionGranted(true);
+      addToast(
+        language === "pt"
+          ? "Inscrição no Firebase Cloud Messaging ativada com sucesso! Você receberá alertas quando seus pertences perdidos forem encontrados."
+          : "Firebase Cloud Messaging subscription activated! You will receive alerts when your lost items are found.",
+        "success"
+      );
+      displayWebPushNotification(
+        "IFPR Achados & Perdidos",
+        language === "pt"
+          ? "Alertas FCM ativados! Notificaremos você automaticamente ao encontrar seus pertences."
+          : "FCM alerts activated! We'll notify you automatically when lost items are found."
+      );
+      return true;
     } else {
-      addToast("Seu navegador não suporta notificações de sistema.", "info");
+      addToast(
+        language === "pt"
+          ? "Permissão de notificações não concedida no navegador."
+          : "Notification permissions were not granted in the browser.",
+        "error"
+      );
+      return false;
     }
+  };
+
+  const testFCMAlert = () => {
+    vibrateClick();
+    displayWebPushNotification(
+      language === "pt"
+        ? "IFPR Alerta FCM • Objeto Encontrado!"
+        : "IFPR FCM Alert • Item Found!",
+      language === "pt"
+        ? "Simulação FCM: Seu pertence perdido 'Chave / Garrafa' acabou de ser registrado no SEBAC / Bloco A!"
+        : "FCM Simulation: Your lost item 'Key / Bottle' was just turned in at SEBAC / Block A!"
+    );
+    addToast(
+      language === "pt"
+        ? "Alerta de teste FCM disparado com sucesso no dispositivo!"
+        : "FCM test notification sent to your device!",
+      "success"
+    );
+  };
+
+  const requestNotificationPermission = async () => {
+    await subscribeToFCM();
   };
 
   // Theme State
@@ -2126,6 +2203,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider
       value={{
+        language,
+        setLanguage,
+        t,
+        fcmSubscribed,
+        subscribeToFCM,
+        testFCMAlert,
         items,
         currentUser,
         setCurrentUser,

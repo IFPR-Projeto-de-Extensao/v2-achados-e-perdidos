@@ -483,6 +483,175 @@ Calcule uma pontuação de similaridade de 0 a 100 para cada um. Retorne apenas 
   }
 });
 
+// Gemini Semantic Search Endpoint (Home Search Bar NL Search)
+app.post("/api/gemini/semantic-search", async (req, res) => {
+  try {
+    const { query: searchQuery, items: candidateItems } = req.body;
+    const ai = getGenAIClient();
+
+    if (!searchQuery || !candidateItems || candidateItems.length === 0) {
+      return res.json({ success: true, results: [], totalCandidates: 0 });
+    }
+
+    if (!ai) {
+      // Local fallback semantic search when Gemini key is not configured
+      const qLower = searchQuery.toLowerCase();
+      const qWords = qLower.split(/\s+/).filter((w: string) => w.length > 2);
+
+      const localResults = candidateItems
+        .map((item: any) => {
+          let score = 0;
+          const textCorpus = `${item.title} ${item.description} ${item.location} ${item.category} ${item.color} ${item.brand}`.toLowerCase();
+          const matchedWords: string[] = [];
+
+          qWords.forEach((word: string) => {
+            if (textCorpus.includes(word)) {
+              score += 25;
+              matchedWords.push(word);
+            }
+          });
+
+          // Spatial proximity heuristics
+          if (qLower.includes("biblioteca") && item.location?.toLowerCase().includes("biblioteca")) score += 30;
+          if (qLower.includes("refeitório") && item.location?.toLowerCase().includes("refeitório")) score += 30;
+          if (qLower.includes("bloco") && item.location?.toLowerCase().includes("bloco")) score += 25;
+          if (qLower.includes("ginásio") && item.location?.toLowerCase().includes("ginásio")) score += 30;
+          if (qLower.includes("portaria") && item.location?.toLowerCase().includes("portaria")) score += 30;
+
+          return {
+            itemId: item.id,
+            relevanceScore: Math.min(100, score),
+            explanation: matchedWords.length > 0
+              ? `Correspondência textual e de localização encontrada para: ${matchedWords.join(", ")}.`
+              : "Correspondência aproximada.",
+            highlightKeywords: matchedWords,
+          };
+        })
+        .filter((r: any) => r.relevanceScore >= 25)
+        .sort((a: any, b: any) => b.relevanceScore - a.relevanceScore);
+
+      return res.json({
+        success: true,
+        results: localResults,
+        modelUsed: "local-semantic-fallback",
+        totalCandidates: candidateItems.length,
+      });
+    }
+
+    const itemsSummary = candidateItems.map((c: any) => ({
+      id: c.id,
+      title: c.title,
+      description: c.description,
+      location: c.location,
+      category: c.category,
+      color: c.color,
+      brand: c.brand,
+      status: c.status,
+      type: c.type,
+    }));
+
+    const systemInstruction = `Você é um motor de busca semântica inteligente para o Achados e Perdidos do IFPR Campus Ivaiporã.
+Sua missão é receber a consulta em linguagem natural do usuário (por exemplo: "chave azul esquecida perto da biblioteca" ou "garrafa térmica preta deixada no refeitório") e identificar os objetos mais relevantes na lista fornecida.
+Leve em consideração:
+- Sinônimos e variações de palavras (ex: chaves, chaveiro, chaveiro com fita).
+- Cores e características descritivas.
+- Proximidade espacial e locais citados no Campus Ivaiporã (ex: Biblioteca, SEBAC, Refeitório, Ginásio, Bloco A/B, Quadra, Portaria).
+- Descrição detalhada do objeto.
+
+Calcule a pontuação de relevância de 0 a 100 para cada objeto correspondente.
+Retorne apenas itens com relevanceScore >= 40, ordenados do mais relevante para o menos relevante.`;
+
+    const prompt = `Consulta do usuário: "${searchQuery}"
+
+Lista de objetos cadastrados no IFPR Campus Ivaiporã:
+${JSON.stringify(itemsSummary, null, 2)}
+
+Retorne a lista com os IDs dos itens correspondentes, nota de relevância de 0 a 100, breve explicação em português e palavras-chave destacadas.`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.7-flash",
+      contents: prompt,
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            results: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  itemId: { type: Type.STRING, description: "ID único do item correspondente" },
+                  relevanceScore: { type: Type.INTEGER, description: "Pontuação de 0 a 100" },
+                  explanation: { type: Type.STRING, description: "Justificativa clara da correspondência semântica" },
+                  highlightKeywords: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                    description: "Termos ou pistas coincidentes",
+                  },
+                },
+                required: ["itemId", "relevanceScore", "explanation", "highlightKeywords"],
+              },
+            },
+          },
+          required: ["results"],
+        },
+      },
+    });
+
+    const parsed = JSON.parse(response.text || '{"results":[]}');
+    return res.json({
+      success: true,
+      results: parsed.results || [],
+      modelUsed: "gemini-3.7-flash",
+      totalCandidates: candidateItems.length,
+    });
+  } catch (err: any) {
+    console.error("Erro no endpoint /api/gemini/semantic-search:", err);
+    res.status(500).json({ error: err.message || "Erro na busca semântica Gemini." });
+  }
+});
+
+// Endpoint to export comprehensive monitoring & performance diagnostic logs
+app.get("/api/monitoring/export-logs", (_req, res) => {
+  try {
+    const memory = process.memoryUsage();
+    const payload = {
+      institution: "Instituto Federal do Paraná (IFPR) - Campus Ivaiporã",
+      system: "IFPR Achados & Perdidos - Monitoramento & Telemetria",
+      exportedAt: new Date().toISOString(),
+      server: {
+        uptimeSeconds: Math.floor((Date.now() - serverStartTime) / 1000),
+        startTime: new Date(serverStartTime).toISOString(),
+        totalRequestsHandled: totalServerRequests,
+        memoryUsage: {
+          rssMB: Math.round(memory.rss / 1024 / 1024),
+          heapTotalMB: Math.round(memory.heapTotal / 1024 / 1024),
+          heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+          externalMB: Math.round(memory.external / 1024 / 1024),
+        },
+        nodeVersion: process.version,
+        platform: process.platform,
+      },
+      systemConfig: globalSystemConfig,
+      eventCounters,
+      recentAnalyticsEvents: analyticsEvents,
+      diagnosticsSummary: {
+        status: "OPERATIONAL",
+        healthCheck: "HEALTHY",
+        totalAnalyticsEventsCaptured: analyticsEvents.length,
+      },
+    };
+
+    res.setHeader("Content-Disposition", `attachment; filename=Relatorio_Logs_Monitoramento_IFPR_${new Date().toISOString().slice(0, 10)}.json`);
+    res.setHeader("Content-Type", "application/json");
+    return res.json(payload);
+  } catch (err: any) {
+    return res.status(500).json({ error: "Erro ao gerar exportação de logs de monitoramento." });
+  }
+});
+
 // Serve frontend assets
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

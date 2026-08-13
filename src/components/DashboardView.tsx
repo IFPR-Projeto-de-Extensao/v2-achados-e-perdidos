@@ -586,6 +586,38 @@ export const DashboardView: React.FC = () => {
     addToast("Relatório de Auditoria exportado em PDF!", "success");
   };
 
+  // Export JSON Monitoring and Error Logs Helper (API: /api/monitoring/export-logs)
+  const [isExportingMonitoringJSON, setIsExportingMonitoringJSON] = useState(false);
+
+  const handleExportMonitoringLogsJSON = async () => {
+    vibrateClick();
+    setIsExportingMonitoringJSON(true);
+    try {
+      const res = await fetch("/api/monitoring/export-logs");
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      const jsonStr = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `relatorio_monitoramento_ifpr_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      vibrateSuccess();
+      addToast("Relatório JSON com logs de desempenho e erros baixado com sucesso!", "success");
+    } catch (err: any) {
+      vibrateCritical();
+      addToast("Erro ao baixar relatório de logs de monitoramento.", "error");
+    } finally {
+      setIsExportingMonitoringJSON(false);
+    }
+  };
+
   return (
     <div className="space-y-8 pb-12 animate-in fade-in duration-300">
       {/* Top Header */}
@@ -1609,13 +1641,24 @@ export const DashboardView: React.FC = () => {
                         </div>
                       </div>
 
-                      <button
-                        onClick={handleExportAuditPDF}
-                        className="px-5 py-3 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-black text-xs transition-all shadow-md flex items-center space-x-2 self-start md:self-auto cursor-pointer"
-                      >
-                        <Download className="w-4 h-4" />
-                        <span>Exportar Relatório em PDF</span>
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+                        <button
+                          onClick={handleExportMonitoringLogsJSON}
+                          disabled={isExportingMonitoringJSON}
+                          className="px-4 py-3 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-black text-xs transition-all shadow-xs flex items-center space-x-2 cursor-pointer border border-neutral-300 dark:border-neutral-700"
+                        >
+                          <Download className={`w-4 h-4 text-[#00843D] ${isExportingMonitoringJSON ? "animate-bounce" : ""}`} />
+                          <span>{isExportingMonitoringJSON ? "Baixando JSON..." : "Exportar Logs (JSON)"}</span>
+                        </button>
+
+                        <button
+                          onClick={handleExportAuditPDF}
+                          className="px-5 py-3 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-black text-xs transition-all shadow-md flex items-center space-x-2 cursor-pointer"
+                        >
+                          <Download className="w-4 h-4" />
+                          <span>Exportar Relatório em PDF</span>
+                        </button>
+                      </div>
                     </div>
 
                     {/* Filter Controls Bar */}
@@ -1823,14 +1866,25 @@ export const DashboardView: React.FC = () => {
                         </div>
                       </div>
 
-                      <button
-                        onClick={measurePing}
-                        disabled={isPinging}
-                        className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all flex items-center space-x-2 shadow-sm self-start sm:self-auto"
-                      >
-                        <RefreshCw className={`w-4 h-4 ${isPinging ? "animate-spin" : ""}`} />
-                        <span>Medir Desempenho Agora</span>
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                        <button
+                          onClick={handleExportMonitoringLogsJSON}
+                          disabled={isExportingMonitoringJSON}
+                          className="px-4 py-2.5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-black transition-all flex items-center space-x-2 shadow-xs border border-neutral-300 dark:border-neutral-700 cursor-pointer"
+                        >
+                          <Download className={`w-4 h-4 text-[#00843D] ${isExportingMonitoringJSON ? "animate-bounce" : ""}`} />
+                          <span>{isExportingMonitoringJSON ? "Baixando..." : "Baixar Relatório JSON"}</span>
+                        </button>
+
+                        <button
+                          onClick={measurePing}
+                          disabled={isPinging}
+                          className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all flex items-center space-x-2 shadow-sm cursor-pointer"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${isPinging ? "animate-spin" : ""}`} />
+                          <span>Medir Desempenho Agora</span>
+                        </button>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

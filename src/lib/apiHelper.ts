@@ -200,3 +200,70 @@ export function clientMatchSimilarity(newItem: Partial<LostFoundItem>, candidate
 
   return { success: true, matches };
 }
+
+export interface SemanticSearchResult {
+  itemId: string;
+  relevanceScore: number;
+  explanation: string;
+  highlightKeywords: string[];
+}
+
+// Perform Gemini Semantic Search via Server API with smart local fallback
+export async function clientSemanticSearch(
+  query: string,
+  candidateItems: LostFoundItem[]
+): Promise<{ success: boolean; results: SemanticSearchResult[]; modelUsed?: string }> {
+  return await safeFetchJson(
+    "/api/gemini/semantic-search",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, items: candidateItems }),
+    },
+    () => {
+      const qLower = query.toLowerCase();
+      const qWords = qLower.split(/\s+/).filter((w) => w.length > 2);
+
+      const localResults: SemanticSearchResult[] = candidateItems
+        .map((item) => {
+          let score = 0;
+          const textCorpus = `${item.title} ${item.description} ${item.location} ${item.category} ${item.color} ${item.brand}`.toLowerCase();
+          const matchedWords: string[] = [];
+
+          qWords.forEach((word) => {
+            if (textCorpus.includes(word)) {
+              score += 25;
+              matchedWords.push(word);
+            }
+          });
+
+          // Proximity & context matches
+          if (qLower.includes("biblioteca") && item.location.toLowerCase().includes("biblioteca")) score += 30;
+          if (qLower.includes("refeitório") && item.location.toLowerCase().includes("refeitório")) score += 30;
+          if (qLower.includes("bloco") && item.location.toLowerCase().includes("bloco")) score += 25;
+          if (qLower.includes("ginásio") && item.location.toLowerCase().includes("ginásio")) score += 30;
+          if (qLower.includes("portaria") && item.location.toLowerCase().includes("portaria")) score += 30;
+          if (qLower.includes("chave") && item.category === "Chaves") score += 35;
+          if (qLower.includes("azul") && item.color.toLowerCase().includes("azul")) score += 30;
+
+          return {
+            itemId: item.id,
+            relevanceScore: Math.min(100, score),
+            explanation: matchedWords.length > 0
+              ? `Correspondência textual e de localização encontrada para: ${matchedWords.join(", ")}.`
+              : "Correspondência contextual aproximada no campus.",
+            highlightKeywords: matchedWords,
+          };
+        })
+        .filter((r) => r.relevanceScore >= 30)
+        .sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+      return {
+        success: true,
+        results: localResults,
+        modelUsed: "local-semantic-engine",
+      };
+    }
+  );
+}
+

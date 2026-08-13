@@ -40,6 +40,8 @@ export const Navbar: React.FC = () => {
     setAuthModalOpen,
     firebaseUser,
     logout,
+    t,
+    language,
   } = useApp();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -104,7 +106,7 @@ export const Navbar: React.FC = () => {
           <nav role="navigation" aria-label="Navegação Principal do Sistema" className="hidden lg:flex items-center space-x-1">
             <button
               onClick={() => handleNavClick("home")}
-              aria-label="Início"
+              aria-label={t("home", "Início")}
               aria-current={activeTab === "home" ? "page" : undefined}
               className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === "home"
@@ -113,12 +115,12 @@ export const Navbar: React.FC = () => {
               }`}
             >
               <Home className="w-4 h-4" />
-              <span>Início</span>
+              <span>{t("home", "Início")}</span>
             </button>
 
             <button
               onClick={() => handleNavClick("lost")}
-              aria-label="Consultar objetos perdidos"
+              aria-label={t("lostItems", "Perdidos")}
               aria-current={activeTab === "lost" ? "page" : undefined}
               className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === "lost"
@@ -127,12 +129,12 @@ export const Navbar: React.FC = () => {
               }`}
             >
               <PackageSearch className="w-4 h-4 text-[#EF4444]" />
-              <span>Perdidos</span>
+              <span>{t("lostItems", "Perdidos")}</span>
             </button>
 
             <button
               onClick={() => handleNavClick("found")}
-              aria-label="Consultar objetos encontrados"
+              aria-label={t("foundItems", "Encontrados")}
               aria-current={activeTab === "found" ? "page" : undefined}
               className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === "found"
@@ -141,12 +143,12 @@ export const Navbar: React.FC = () => {
               }`}
             >
               <CheckCircle2 className="w-4 h-4 text-[#22C55E]" />
-              <span>Encontrados</span>
+              <span>{t("foundItems", "Encontrados")}</span>
             </button>
 
             <button
               onClick={() => handleNavClick("image_analyzer")}
-              aria-label="Analisar fotos de itens com Inteligência Artificial"
+              aria-label={t("imageAnalyzer", "Analisador IA")}
               aria-current={activeTab === "image_analyzer" ? "page" : undefined}
               className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-all ${
                 activeTab === "image_analyzer"
@@ -155,12 +157,12 @@ export const Navbar: React.FC = () => {
               }`}
             >
               <Sparkles className="w-4 h-4 text-amber-500 fill-amber-500" />
-              <span>Analisar Fotos (IA)</span>
+              <span>{language === "pt" ? "Analisar Fotos (IA)" : "Photo AI Analyzer"}</span>
             </button>
 
             <button
               onClick={() => handleNavClick("register")}
-              aria-label="Registrar novo item perdido ou encontrado"
+              aria-label={t("registerItem", "Registrar Item")}
               aria-current={activeTab === "register" ? "page" : undefined}
               className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === "register"
@@ -169,12 +171,12 @@ export const Navbar: React.FC = () => {
               }`}
             >
               <PlusCircle className="w-4 h-4" />
-              <span>Cadastrar</span>
+              <span>{t("registerItem", "Cadastrar")}</span>
             </button>
 
             <button
               onClick={() => handleNavClick("dashboard")}
-              aria-label="Acessar painel e dashboard de gestão"
+              aria-label={t("dashboard", "Painel Admin")}
               aria-current={activeTab === "dashboard" ? "page" : undefined}
               className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === "dashboard"
@@ -183,7 +185,7 @@ export const Navbar: React.FC = () => {
               }`}
             >
               <LayoutDashboard className="w-4 h-4" />
-              <span>Dashboard</span>
+              <span>{t("dashboard", "Dashboard")}</span>
             </button>
           </nav>
 

@@ -1,8 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { ItemCard } from "./ItemCard";
 import { RecentActivityWidget } from "./RecentActivityWidget";
 import { LostFoundItem } from "../types";
+import { clientSemanticSearch, SemanticSearchResult } from "../lib/apiHelper";
+import { vibrateClick } from "../lib/utils";
 import {
   Search,
   PlusCircle,
@@ -19,6 +21,8 @@ import {
   BarChart2,
   QrCode,
   Layers,
+  Bot,
+  RefreshCw,
 } from "lucide-react";
 import { motion } from "motion/react";
 
@@ -30,10 +34,24 @@ export const HomeView: React.FC = () => {
     setSelectedItemForDetail,
     setRegisterTypeSelection,
     setQrScannerOpen,
+    t,
+    language,
   } = useApp();
 
   const [homeSearch, setHomeSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("TODAS");
+  const [semanticMode, setSemanticMode] = useState<boolean>(true);
+  const [isSearchingSemantic, setIsSearchingSemantic] = useState<boolean>(false);
+  const [semanticResults, setSemanticResults] = useState<SemanticSearchResult[] | null>(null);
+  const [semanticModelUsed, setSemanticModelUsed] = useState<string | null>(null);
+
+  // Quick Semantic Search Prompts for discovery
+  const semanticExampleQueries = [
+    "chave azul esquecida perto da biblioteca",
+    "garrafa térmica preta deixada na quadra",
+    "calculadora científica no laboratório",
+    "crachá e carteira no bloco administrativo",
+  ];
 
   // Calculate statistics
   const totalRegistered = items.length;
@@ -41,21 +59,78 @@ export const HomeView: React.FC = () => {
   const totalReturned = items.filter((i) => i.status === "DEVOLVIDO").length;
   const successRate = totalRegistered > 0 ? Math.round((totalReturned / totalRegistered) * 100) : 0;
 
-  // Filter recent items for home display
-  const recentItems = items
-    .filter((item) => {
-      const matchesSearch =
-        homeSearch === "" ||
-        item.title.toLowerCase().includes(homeSearch.toLowerCase()) ||
-        item.description.toLowerCase().includes(homeSearch.toLowerCase()) ||
-        item.location.toLowerCase().includes(homeSearch.toLowerCase()) ||
-        item.brand.toLowerCase().includes(homeSearch.toLowerCase());
+  // Semantic Search Effect with Debounce
+  useEffect(() => {
+    const query = homeSearch.trim();
+    if (!query || query.length < 3 || !semanticMode) {
+      setSemanticResults(null);
+      setIsSearchingSemantic(false);
+      return;
+    }
 
-      const matchesCat = selectedCategory === "TODAS" || item.category === selectedCategory;
+    let isMounted = true;
+    setIsSearchingSemantic(true);
 
-      return matchesSearch && matchesCat;
-    })
-    .slice(0, 6);
+    const timer = setTimeout(async () => {
+      try {
+        const response = await clientSemanticSearch(query, items);
+        if (isMounted) {
+          if (response.success && response.results && response.results.length > 0) {
+            setSemanticResults(response.results);
+            setSemanticModelUsed(response.modelUsed || "gemini-3.7-flash");
+          } else {
+            setSemanticResults([]);
+            setSemanticModelUsed(response.modelUsed || "gemini-3.7-flash");
+          }
+          setIsSearchingSemantic(false);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setSemanticResults(null);
+          setIsSearchingSemantic(false);
+        }
+      }
+    }, 380);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [homeSearch, semanticMode, items]);
+
+  // Combine semantic relevance with category filter
+  let displayedItems: LostFoundItem[] = [];
+
+  if (semanticMode && semanticResults && semanticResults.length > 0 && homeSearch.trim().length >= 3) {
+    const semanticItemMap = new Map(semanticResults.map((r) => [r.itemId, r]));
+    const matchedItems = items
+      .filter((i) => semanticItemMap.has(i.id))
+      .filter((i) => selectedCategory === "TODAS" || i.category === selectedCategory);
+
+    // Sort by relevance score
+    matchedItems.sort((a, b) => {
+      const scoreA = semanticItemMap.get(a.id)?.relevanceScore || 0;
+      const scoreB = semanticItemMap.get(b.id)?.relevanceScore || 0;
+      return scoreB - scoreA;
+    });
+
+    displayedItems = matchedItems;
+  } else {
+    displayedItems = items
+      .filter((item) => {
+        const matchesSearch =
+          homeSearch === "" ||
+          item.title.toLowerCase().includes(homeSearch.toLowerCase()) ||
+          item.description.toLowerCase().includes(homeSearch.toLowerCase()) ||
+          item.location.toLowerCase().includes(homeSearch.toLowerCase()) ||
+          item.brand.toLowerCase().includes(homeSearch.toLowerCase());
+
+        const matchesCat = selectedCategory === "TODAS" || item.category === selectedCategory;
+
+        return matchesSearch && matchesCat;
+      })
+      .slice(0, 6);
+  }
 
   const categoriesList = [
     "TODAS",
@@ -68,8 +143,15 @@ export const HomeView: React.FC = () => {
   ];
 
   const handleRegister = (type: "PERDIDO" | "ENCONTRADO") => {
+    vibrateClick();
     setRegisterTypeSelection(type);
     setActiveTab("register");
+  };
+
+  const handleSelectExampleQuery = (queryText: string) => {
+    vibrateClick();
+    setHomeSearch(queryText);
+    setSemanticMode(true);
   };
 
   return (
@@ -204,29 +286,80 @@ export const HomeView: React.FC = () => {
         </motion.div>
       </section>
 
-      {/* QUICK SEARCH & CATEGORY FILTER BAR */}
-      <section className="space-y-4">
+      {/* QUICK SEARCH & GEMINI SEMANTIC SEARCH BAR */}
+      <section id="home-semantic-search-section" className="space-y-4">
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
           <div className="relative flex-1">
-            <Search className="absolute left-4 top-3.5 w-5 h-5 text-neutral-400" />
+            <div className="absolute left-4 top-3.5 flex items-center space-x-1 text-neutral-400">
+              {isSearchingSemantic ? (
+                <RefreshCw className="w-5 h-5 text-[#00843D] animate-spin" />
+              ) : semanticMode ? (
+                <Sparkles className="w-5 h-5 text-amber-500" />
+              ) : (
+                <Search className="w-5 h-5" />
+              )}
+            </div>
             <input
+              id="home-semantic-search-input"
               type="text"
               value={homeSearch}
               onChange={(e) => setHomeSearch(e.target.value)}
-              placeholder="Pesquise por nome do objeto, marca, cor ou local no Campus Ivaiporã (ex: Garrafa, Casio, Biblioteca)..."
-              className="w-full pl-12 pr-4 py-3.5 rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white text-sm shadow-xs focus:ring-2 focus:ring-[#00843D] outline-none transition-all"
+              placeholder={
+                language === "pt"
+                  ? "Busca Semântica com IA Gemini: digite ex: 'chave azul esquecida perto da biblioteca' ou 'garrafa térmica'..."
+                  : "Gemini AI Semantic Search: e.g. 'blue key lost near the library' or 'black water bottle'..."
+              }
+              className="w-full pl-12 pr-28 py-3.5 rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white text-sm shadow-xs focus:ring-2 focus:ring-[#00843D] outline-none transition-all"
             />
+            {/* Semantic Mode Toggle Badge inside input */}
+            <div className="absolute right-3 top-2.5 flex items-center space-x-1">
+              <button
+                type="button"
+                onClick={() => {
+                  vibrateClick();
+                  setSemanticMode(!semanticMode);
+                }}
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center space-x-1.5 transition-all border ${
+                  semanticMode
+                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                    : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border-neutral-200 dark:border-neutral-700"
+                }`}
+                title="Alternar Busca Semântica por IA"
+              >
+                <Sparkles className={`w-3.5 h-3.5 ${semanticMode ? "text-amber-500 fill-amber-500" : "text-neutral-400"}`} />
+                <span className="hidden sm:inline">IA Gemini</span>
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center space-x-2">
             <button
-              onClick={() => setQrScannerOpen(true)}
+              onClick={() => {
+                vibrateClick();
+                setQrScannerOpen(true);
+              }}
               className="px-4 py-3.5 rounded-2xl bg-neutral-900 text-white dark:bg-neutral-800 hover:bg-neutral-800 font-bold text-xs flex items-center space-x-2 shrink-0 shadow-xs"
             >
               <QrCode className="w-4 h-4 text-green-400" />
-              <span>Escanear Etiqueta QR</span>
+              <span>{language === "pt" ? "Escanear Etiqueta QR" : "Scan QR Label"}</span>
             </button>
           </div>
+        </div>
+
+        {/* Quick Semantic Examples Suggestions */}
+        <div className="flex items-center space-x-2 overflow-x-auto pb-1 text-xs text-neutral-500">
+          <span className="font-semibold text-neutral-600 dark:text-neutral-400 whitespace-nowrap flex items-center gap-1">
+            <Bot className="w-3.5 h-3.5 text-[#00843D]" /> {t("semanticSearchPrompt", "Exemplos de busca semântica:")}
+          </span>
+          {semanticExampleQueries.map((exQuery) => (
+            <button
+              key={exQuery}
+              onClick={() => handleSelectExampleQuery(exQuery)}
+              className="px-3 py-1 rounded-lg bg-[#00843D]/5 dark:bg-[#00843D]/10 hover:bg-[#00843D]/15 text-[#00843D] dark:text-green-400 border border-[#00843D]/20 font-medium whitespace-nowrap transition-all flex items-center space-x-1"
+            >
+              <span>{exQuery}</span>
+            </button>
+          ))}
         </div>
 
         {/* Category Pills Slider */}
@@ -234,7 +367,10 @@ export const HomeView: React.FC = () => {
           {categoriesList.map((cat) => (
             <button
               key={cat}
-              onClick={() => setSelectedCategory(cat)}
+              onClick={() => {
+                vibrateClick();
+                setSelectedCategory(cat);
+              }}
               className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
                 selectedCategory === cat
                   ? "bg-[#00843D] text-white shadow-xs"
@@ -256,42 +392,83 @@ export const HomeView: React.FC = () => {
         />
       </section>
 
-      {/* RECENT ITEMS GRID */}
+      {/* RECENT / SEMANTIC ITEMS GRID */}
       <section className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
-              <Zap className="w-5 h-5 text-[#00843D]" /> Objetos Recentes no Campus
+              {semanticResults && semanticResults.length > 0 && homeSearch.trim().length >= 3 ? (
+                <>
+                  <Sparkles className="w-5 h-5 text-amber-500 fill-amber-500" />
+                  <span>
+                    {language === "pt" ? "Correspondências Semânticas IA" : "AI Semantic Matches"} ({displayedItems.length})
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Zap className="w-5 h-5 text-[#00843D]" />
+                  <span>{t("recentItems", "Objetos Recentes no Campus")}</span>
+                </>
+              )}
             </h2>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              Últimos itens registrados no sistema de achados e perdidos
+              {semanticResults && semanticResults.length > 0 && homeSearch.trim().length >= 3
+                ? language === "pt"
+                  ? `Resultados classificados por relevância semântica no campus com o modelo ${semanticModelUsed || "Gemini"}`
+                  : `Results ranked by semantic relevance at campus with ${semanticModelUsed || "Gemini"}`
+                : language === "pt"
+                ? "Últimos itens registrados no sistema de achados e perdidos"
+                : "Latest items registered in the campus lost and found system"}
             </p>
           </div>
 
           <button
-            onClick={() => setActiveTab("lost")}
+            onClick={() => {
+              vibrateClick();
+              setActiveTab("lost");
+            }}
             className="text-xs font-bold text-[#00843D] dark:text-green-400 hover:underline flex items-center space-x-1"
           >
-            <span>Ver todos ({items.length})</span>
+            <span>{language === "pt" ? `Ver todos (${items.length})` : `View all (${items.length})`}</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        {recentItems.length === 0 ? (
+        {displayedItems.length === 0 ? (
           <div className="text-center py-12 bg-white dark:bg-[#1E1E1E] rounded-3xl border border-neutral-200 dark:border-neutral-800 p-8 space-y-3">
             <PackageSearch className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto" />
             <h4 className="font-bold text-base text-neutral-700 dark:text-neutral-300">
-              Nenhum objeto encontrado com estes termos.
+              {language === "pt" ? "Nenhum objeto encontrado com estes termos." : "No items found matching these terms."}
             </h4>
             <p className="text-xs text-neutral-500">
-              Tente alterar os termos da busca ou limpe os filtros selecionados.
+              {language === "pt"
+                ? "Tente pesquisar em linguagem natural (ex: 'chave azul perto da biblioteca') ou selecione outra categoria."
+                : "Try a natural language description (e.g. 'blue key near the library') or choose another category."}
             </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {recentItems.map((item) => (
-              <ItemCard key={item.id} item={item} onSelect={setSelectedItemForDetail} />
-            ))}
+            {displayedItems.map((item) => {
+              const semMatch = semanticResults?.find((r) => r.itemId === item.id);
+              return (
+                <div key={item.id} className="flex flex-col space-y-2">
+                  <ItemCard item={item} onSelect={setSelectedItemForDetail} />
+                  {semMatch && (
+                    <div className="px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-neutral-800 dark:text-neutral-200 text-xs flex items-start space-x-2">
+                      <Sparkles className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <div className="flex items-center space-x-2 font-bold text-[11px] text-amber-700 dark:text-amber-400">
+                          <span>Relevância IA: {semMatch.relevanceScore}%</span>
+                        </div>
+                        <p className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-tight">
+                          {semMatch.explanation}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
