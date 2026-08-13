@@ -61,10 +61,10 @@ export const ProfileView: React.FC = () => {
   const [isSubscribingFCM, setIsSubscribingFCM] = useState(false);
 
   // Edit form state
-  const [editName, setEditName] = useState(currentUser.name);
-  const [editCourse, setEditCourse] = useState(currentUser.courseOrDept);
-  const [editMatricula, setEditMatricula] = useState(currentUser.registrationNumber);
-  const [editPhone, setEditPhone] = useState(currentUser.phone || "");
+  const [editName, setEditName] = useState(currentUser?.name || "");
+  const [editCourse, setEditCourse] = useState(currentUser?.courseOrDept || "");
+  const [editMatricula, setEditMatricula] = useState(currentUser?.registrationNumber || "");
+  const [editPhone, setEditPhone] = useState(currentUser?.phone || "");
 
   const handleSubscribeFCM = async () => {
     vibrateClick();

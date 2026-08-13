@@ -89,9 +89,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
   // Gmail send state
   const [emailModalOpen, setEmailModalOpen] = useState(false);
-  const [recipientEmail, setRecipientEmail] = useState(item.contactInfo || "achados.ivaipora@ifpr.edu.br");
-  const [emailSubject, setEmailSubject] = useState(`[IFPR Achados & Perdidos] Consulta: ${item.title}`);
-  const [emailBody, setEmailBody] = useState(`Olá,\n\nEstou entrando em contato a respeito do item "${item.title}" (ID: ${item.id}) cadastrado no Achados e Perdidos do IFPR Campus Ivaiporã.\n\nAtenciosamente,\n${currentUser.name}`);
+  const [recipientEmail, setRecipientEmail] = useState(item?.contactInfo || "achados.ivaipora@ifpr.edu.br");
+  const [emailSubject, setEmailSubject] = useState(`[IFPR Achados & Perdidos] Consulta: ${item?.title || "Item"}`);
+  const [emailBody, setEmailBody] = useState(`Olá,\n\nEstou entrando em contato a respeito do item "${item?.title || "Item"}" (ID: ${item?.id || ""}) cadastrado no Achados e Perdidos do IFPR Campus Ivaiporã.\n\nAtenciosamente,\n${currentUser?.name || "Usuário IFPR"}`);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   // Restricted Public View QR Modal State
@@ -99,15 +99,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
   // Consolidate Timeline History Logs
   const combinedHistoryLogs = [
-    ...(item.historyLogs || []),
-    ...(item.history || []).map((h) => ({
-      id: h.id || `h-${Math.random()}`,
-      action: h.action,
-      actorId: h.actorId || h.userId || "system",
-      actorName: h.actorName || h.userName || "Usuário IFPR",
-      actorRole: h.actorRole || h.userRole || "SISTEMA",
-      timestamp: h.timestamp || new Date().toISOString(),
-      details: h.details,
+    ...(item?.historyLogs || []),
+    ...(item?.history || []).map((h: any) => ({
+      id: h?.id || `h-${Math.random()}`,
+      action: h?.action,
+      actorId: h?.actorId || h?.userId || "system",
+      actorName: h?.actorName || h?.userName || "Usuário IFPR",
+      actorRole: h?.actorRole || h?.userRole || "SISTEMA",
+      timestamp: h?.timestamp || new Date().toISOString(),
+      details: h?.details,
     })),
   ];
 
@@ -513,10 +513,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           <div className="flex items-center space-x-3">
             <span
               className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${getStatusBadgeClass(
-                item.status
+                item?.status || "PERDIDO"
               )}`}
             >
-              {item.status.replace("_", " ")}
+              {String(item?.status || "REGISTRADO").replace("_", " ")}
             </span>
             <span className="text-xs text-neutral-500 font-mono">ID: {item.id}</span>
           </div>

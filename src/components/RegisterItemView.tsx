@@ -53,7 +53,7 @@ export const RegisterItemView: React.FC = () => {
   const [brand, setBrand] = useState("");
   const [location, setLocation] = useState(IFPR_LOCATIONS[0]);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const [contactInfo, setContactInfo] = useState(currentUser.email);
+  const [contactInfo, setContactInfo] = useState(currentUser?.email || "achados.ivaipora@ifpr.edu.br");
   const [imageUrl, setImageUrl] = useState(
     "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=600&auto=format&fit=crop&q=80"
   );

@@ -1344,9 +1344,9 @@ export const DashboardView: React.FC = () => {
                   >
                     <GraduationCap className="w-4 h-4" />
                     <span>Aprovação (@ifpr)</span>
-                    {allUsers.filter((u) => u.approvalStatus === "PENDENTE").length > 0 && (
+                    {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length > 0 && (
                       <span className="px-2 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black animate-pulse">
-                        {allUsers.filter((u) => u.approvalStatus === "PENDENTE").length}
+                        {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length}
                       </span>
                     )}
                   </button>
@@ -1489,7 +1489,7 @@ export const DashboardView: React.FC = () => {
                             userRoleFilter === "ALUNO" ? "bg-emerald-600 text-white" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
                           }`}
                         >
-                          Alunos ({allUsers.filter((u) => u.role === "ALUNO").length})
+                          Alunos ({(allUsers || []).filter((u) => u && u.role === "ALUNO").length})
                         </button>
                         <button
                           onClick={() => setUserRoleFilter("SERVIDOR")}
@@ -1497,7 +1497,7 @@ export const DashboardView: React.FC = () => {
                             userRoleFilter === "SERVIDOR" ? "bg-blue-600 text-white" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
                           }`}
                         >
-                          Servidores ({allUsers.filter((u) => u.role === "SERVIDOR").length})
+                          Servidores ({(allUsers || []).filter((u) => u && u.role === "SERVIDOR").length})
                         </button>
                         <button
                           onClick={() => setUserRoleFilter("ADMIN")}
@@ -1505,7 +1505,7 @@ export const DashboardView: React.FC = () => {
                             userRoleFilter === "ADMIN" ? "bg-purple-600 text-white" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
                           }`}
                         >
-                          Admins ({allUsers.filter((u) => u.role === "ADMIN").length})
+                          Admins ({(allUsers || []).filter((u) => u && u.role === "ADMIN").length})
                         </button>
                       </div>
 
@@ -2166,9 +2166,9 @@ export const DashboardView: React.FC = () => {
                       <div>
                         <h2 className="text-lg font-black text-neutral-900 dark:text-white flex items-center space-x-2">
                           <span>Workflow de Aprovação de Contas (@ifpr.edu.br)</span>
-                          {allUsers.filter((u) => u.approvalStatus === "PENDENTE").length > 0 && (
+                          {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length > 0 && (
                             <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase">
-                              {allUsers.filter((u) => u.approvalStatus === "PENDENTE").length} Em Espera
+                              {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length} Em Espera
                             </span>
                           )}
                         </h2>
@@ -2179,7 +2179,7 @@ export const DashboardView: React.FC = () => {
                     </div>
                   </div>
 
-                  {allUsers.filter((u) => u.approvalStatus === "PENDENTE" || u.email.includes("ifpr.edu.br")).length === 0 ? (
+                  {(allUsers || []).filter((u) => u && (u.approvalStatus === "PENDENTE" || String(u.email ?? "").includes("ifpr.edu.br"))).length === 0 ? (
                     <div className="bg-neutral-50 dark:bg-neutral-900/50 rounded-2xl p-6 text-center space-y-2 border border-dashed border-neutral-200 dark:border-neutral-800">
                       <UserCheck className="w-8 h-8 text-emerald-500 mx-auto" />
                       <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
@@ -2196,12 +2196,13 @@ export const DashboardView: React.FC = () => {
                       </h3>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {allUsers
-                          .filter((u) => u.approvalStatus === "PENDENTE" || u.email.includes("ifpr.edu.br"))
+                        {(allUsers || [])
+                          .filter((u) => u && (u.approvalStatus === "PENDENTE" || String(u.email ?? "").includes("ifpr.edu.br")))
                           .map((pendingUser, index) => {
-                            const isStudent = pendingUser.email.endsWith("@estudantes.ifpr.edu.br") || pendingUser.email.endsWith("@estudante.ifpr.edu.br");
-                            const isStaff = pendingUser.email.endsWith("@ifpr.edu.br");
-                            const isPending = pendingUser.approvalStatus === "PENDENTE";
+                            const userEmail = String(pendingUser?.email ?? "");
+                            const isStudent = userEmail.endsWith("@estudantes.ifpr.edu.br") || userEmail.endsWith("@estudante.ifpr.edu.br");
+                            const isStaff = userEmail.endsWith("@ifpr.edu.br");
+                            const isPending = pendingUser?.approvalStatus === "PENDENTE";
 
                             return (
                               <div
