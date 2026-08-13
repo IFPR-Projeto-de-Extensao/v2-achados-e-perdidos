@@ -53,7 +53,7 @@ import {
   saveSingleItemIndexedDB,
 } from "../lib/indexedDB";
 import { clear30DayUptimeRecords } from "../lib/uptimeManager";
-import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical } from "../lib/utils";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower } from "../lib/utils";
 import { SupportedLanguage, TranslationDictionary, translations } from "../lib/i18n";
 import { requestFCMPermissionAndToken, displayWebPushNotification, checkFCMSubscriptionStatus } from "../lib/fcm";
 
@@ -210,10 +210,10 @@ export const sanitizeUserList = (users: User[]): User[] => {
   const seenEmails = new Set<string>();
   const result: User[] = [];
 
-  for (const u of users) {
+  for (const u of (users || [])) {
     if (!u) continue;
-    const emailKey = u.email ? u.email.toLowerCase().trim() : "";
-    const idKey = u.id ? u.id.trim() : "";
+    const emailKey = safeToLower(u.email);
+    const idKey = String(u.id ?? "").trim();
 
     if (idKey && seenIds.has(idKey)) continue;
     if (emailKey && seenEmails.has(emailKey)) continue;
@@ -1006,9 +1006,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       // Deleta todos os usuários exceto a conta ativa do administrador atual
-      const currentEmailLower = (currentUser.email || "").toLowerCase().trim();
+      const currentEmailLower = safeToLower(currentUser.email);
       const usersToDelete = allUsers.filter(
-        (u) => u.id !== currentUser.id && (u.email || "").toLowerCase().trim() !== currentEmailLower
+        (u) => u && u.id !== currentUser.id && safeToLower(u.email) !== currentEmailLower
       );
       for (const u of usersToDelete) {
         try { await deleteDoc(doc(db, "users", u.id)); } catch (_) {}
@@ -1108,7 +1108,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fbUser: FirebaseUser,
     extraData?: { name?: string; role?: UserRole; avatarUrl?: string }
   ): Promise<User> => {
-    const userEmail = (fbUser.email || "").toLowerCase();
+    const userEmail = safeToLower(fbUser.email);
 
     // 1. Direct check in 'users' collection by fbUser.uid
     const uidRef = doc(db, "users", fbUser.uid);
@@ -1240,12 +1240,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (userSnap.exists()) {
               const userData = userSnap.data() as User;
               setCurrentUser(userData);
-              const userEmailLower = (userData.email || "").toLowerCase().trim();
+              const userEmailLower = safeToLower(userData.email);
               setAllUsers((prev) =>
                 sanitizeUserList([
                   userData,
                   ...prev.map((u) =>
-                    u.id === userData.id || ((u.email || "").toLowerCase().trim() === userEmailLower && Boolean(userEmailLower)) ? userData : u
+                    u.id === userData.id || (safeToLower(u.email) === userEmailLower && Boolean(userEmailLower)) ? userData : u
                   ),
                 ])
               );
@@ -1445,8 +1445,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const loginWithGoogle = async (customGoogleUser?: { email?: string; name?: string; role?: UserRole; avatarUrl?: string }) => {
     try {
       if (customGoogleUser?.email) {
-        const userEmail = (customGoogleUser.email || "").trim().toLowerCase();
-        const userName = customGoogleUser.name?.trim() || userEmail.split("@")[0];
+        const userEmail = safeToLower(customGoogleUser.email);
+        const userName = String(customGoogleUser.name ?? "").trim() || userEmail.split("@")[0];
         const isAdmin = userEmail === "paulocauan39@gmail.com";
         const isServidor = customGoogleUser.role === "SERVIDOR" || userEmail.includes("@ifpr.edu.br");
         const userRole: UserRole = isAdmin ? "ADMIN" : (customGoogleUser.role || (isServidor ? "SERVIDOR" : "ALUNO"));
@@ -1505,7 +1505,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loginWithEmailPassword = async (email: string, pass: string) => {
-    const cleanEmail = (email || "").trim().toLowerCase();
+    const cleanEmail = safeToLower(email);
     if (!cleanEmail || !pass) {
       addToast("Preencha e-mail e senha para entrar.", "error");
       throw new Error("Preencha e-mail e senha.");
@@ -1569,7 +1569,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     pass: string,
     userData: Omit<User, "id">
   ) => {
-    const cleanEmail = (email || "").trim().toLowerCase();
+    const cleanEmail = safeToLower(email);
     if (!cleanEmail || !pass || !userData.name) {
       addToast("Preencha todos os campos obrigatórios (Nome, E-mail e Senha).", "error");
       throw new Error("Campos obrigatórios ausentes.");
@@ -1635,7 +1635,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Set state
     setCurrentUser(newUserObj);
-    setAllUsers((prev) => [...prev.filter((u) => (u.email || "").toLowerCase().trim() !== cleanEmail), newUserObj]);
+    setAllUsers((prev) => [...prev.filter((u) => u && safeToLower(u.email) !== cleanEmail), newUserObj]);
     addToast(`Cadastro concluído com sucesso! Bem-vindo(a), ${newUserObj.name}.`, "success");
   };
 
@@ -1734,7 +1734,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<{ newItem: LostFoundItem; matches: AIMatchResult[] }> => {
     const uniqueNum = Math.floor(100 + Math.random() * 900);
     const newItemId = `ifpr-${uniqueNum}`;
-    const qrCodeId = `QR-IFPR-${uniqueNum}-${itemData.title.substring(0, 10).toUpperCase().replace(/\s+/g, "")}`;
+    const safeTitle = String(itemData.title ?? "ITEM").substring(0, 10).toUpperCase().replace(/\s+/g, "");
+    const qrCodeId = `QR-IFPR-${uniqueNum}-${safeTitle}`;
 
     const initialHistory: ItemHistoryLog[] = [
       {

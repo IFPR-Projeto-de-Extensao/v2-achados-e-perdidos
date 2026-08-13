@@ -1,4 +1,5 @@
 import { LostFoundItem, User, UserBadge, UserReputationInfo, BadgeTier } from "../types";
+import { safeToLower } from "./utils";
 
 /**
  * Calculates user reputation points and unlocks badges based on their campus activity
@@ -21,13 +22,13 @@ export function calculateUserReputation(user?: User | null, allItems?: LostFound
   }
 
   const safeItems = Array.isArray(allItems) ? allItems : [];
-  const userNameLower = (user.name || "").toLowerCase().trim();
+  const userNameLower = safeToLower(user.name);
 
   // Find items registered by this user
   const userItems = safeItems.filter((item) => {
     if (!item) return false;
     if (item.registeredByUserId && item.registeredByUserId === user.id) return true;
-    if (userNameLower && item.registeredByName && item.registeredByName.toLowerCase().trim() === userNameLower) return true;
+    if (userNameLower && item.registeredByName && safeToLower(item.registeredByName) === userNameLower) return true;
     return false;
   });
 
@@ -40,10 +41,10 @@ export function calculateUserReputation(user?: User | null, allItems?: LostFound
     if (!item || item.status !== "DEVOLVIDO") return false;
     const isRegistrar =
       (item.registeredByUserId && item.registeredByUserId === user.id) ||
-      (Boolean(userNameLower) && Boolean(item.registeredByName) && item.registeredByName.toLowerCase().trim() === userNameLower);
+      (Boolean(userNameLower) && Boolean(item.registeredByName) && safeToLower(item.registeredByName) === userNameLower);
     const isReturner =
       (item.returnedByUserId && item.returnedByUserId === user.id) ||
-      (Boolean(userNameLower) && Boolean(item.returnedByName) && item.returnedByName.toLowerCase().trim() === userNameLower);
+      (Boolean(userNameLower) && Boolean(item.returnedByName) && safeToLower(item.returnedByName) === userNameLower);
     return isRegistrar || isReturner;
   });
 

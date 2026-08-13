@@ -400,15 +400,25 @@ app.post("/api/ai/match-similarity", async (req, res) => {
 
     if (!ai) {
       // Local fallback text matching logic if AI key is pending
-      const simpleMatches = candidateItems
+      const simpleMatches = (candidateItems || [])
+        .filter(Boolean)
         .map((cand: any) => {
           let score = 0;
-          if (cand.category === newItem.category) score += 40;
-          if (cand.color?.toLowerCase().includes(newItem.color?.toLowerCase() || "___")) score += 25;
-          if (cand.brand?.toLowerCase().includes(newItem.brand?.toLowerCase() || "___")) score += 25;
-          if (cand.title?.toLowerCase().includes(newItem.title?.toLowerCase() || "___")) score += 10;
+          const candCat = String(cand?.category ?? "").toLowerCase();
+          const newCat = String(newItem?.category ?? "").toLowerCase();
+          const candColor = String(cand?.color ?? "").toLowerCase();
+          const newColor = String(newItem?.color ?? "").toLowerCase();
+          const candBrand = String(cand?.brand ?? "").toLowerCase();
+          const newBrand = String(newItem?.brand ?? "").toLowerCase();
+          const candTitle = String(cand?.title ?? "").toLowerCase();
+          const newTitle = String(newItem?.title ?? "").toLowerCase();
+
+          if (candCat && newCat && candCat === newCat) score += 40;
+          if (candColor && newColor && newColor !== "não informada" && candColor.includes(newColor)) score += 25;
+          if (candBrand && newBrand && newBrand !== "não identificada" && candBrand.includes(newBrand)) score += 25;
+          if (candTitle && newTitle && candTitle.includes(newTitle)) score += 10;
           return {
-            itemId: cand.id,
+            itemId: cand?.id || "",
             matchScore: score,
             reason: score > 50 ? "Categorias e marcas semelhantes encontradas." : "Correspondência parcial.",
             matchedFeatures: ["Categoria", "Cor"],
@@ -495,13 +505,20 @@ app.post("/api/gemini/semantic-search", async (req, res) => {
 
     if (!ai) {
       // Local fallback semantic search when Gemini key is not configured
-      const qLower = searchQuery.toLowerCase();
+      const qLower = String(searchQuery ?? "").toLowerCase();
       const qWords = qLower.split(/\s+/).filter((w: string) => w.length > 2);
 
-      const localResults = candidateItems
+      const localResults = (candidateItems || [])
+        .filter(Boolean)
         .map((item: any) => {
           let score = 0;
-          const textCorpus = `${item.title} ${item.description} ${item.location} ${item.category} ${item.color} ${item.brand}`.toLowerCase();
+          const title = String(item?.title ?? "").toLowerCase();
+          const desc = String(item?.description ?? "").toLowerCase();
+          const loc = String(item?.location ?? "").toLowerCase();
+          const cat = String(item?.category ?? "").toLowerCase();
+          const color = String(item?.color ?? "").toLowerCase();
+          const brand = String(item?.brand ?? "").toLowerCase();
+          const textCorpus = `${title} ${desc} ${loc} ${cat} ${color} ${brand}`;
           const matchedWords: string[] = [];
 
           qWords.forEach((word: string) => {
@@ -512,14 +529,14 @@ app.post("/api/gemini/semantic-search", async (req, res) => {
           });
 
           // Spatial proximity heuristics
-          if (qLower.includes("biblioteca") && item.location?.toLowerCase().includes("biblioteca")) score += 30;
-          if (qLower.includes("refeitório") && item.location?.toLowerCase().includes("refeitório")) score += 30;
-          if (qLower.includes("bloco") && item.location?.toLowerCase().includes("bloco")) score += 25;
-          if (qLower.includes("ginásio") && item.location?.toLowerCase().includes("ginásio")) score += 30;
-          if (qLower.includes("portaria") && item.location?.toLowerCase().includes("portaria")) score += 30;
+          if (qLower.includes("biblioteca") && loc.includes("biblioteca")) score += 30;
+          if (qLower.includes("refeitório") && loc.includes("refeitório")) score += 30;
+          if (qLower.includes("bloco") && loc.includes("bloco")) score += 25;
+          if (qLower.includes("ginásio") && loc.includes("ginásio")) score += 30;
+          if (qLower.includes("portaria") && loc.includes("portaria")) score += 30;
 
           return {
-            itemId: item.id,
+            itemId: item?.id || "",
             relevanceScore: Math.min(100, score),
             explanation: matchedWords.length > 0
               ? `Correspondência textual e de localização encontrada para: ${matchedWords.join(", ")}.`

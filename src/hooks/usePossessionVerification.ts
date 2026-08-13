@@ -31,8 +31,8 @@ export function usePossessionVerification(item: LostFoundItem): PossessionVerifi
   const [isLocked, setIsLocked] = useState(false);
 
   // Dynamic RNF04 challenge prompt based on item details & category
-  const catLower = (item.category || "").toLowerCase();
-  const hiddenChallengePrompt = item.secretVerificationHint
+  const catLower = String(item?.category ?? "").toLowerCase();
+  const hiddenChallengePrompt = item?.secretVerificationHint
     ? `Pergunta Secreta do Cadastrador: "${item.secretVerificationHint}"`
     : catLower.includes("eletrôn")
     ? "Forneça a senha do dispositivo, PIN, número de série (S/N) ou padrão de desbloqueio."
@@ -54,9 +54,9 @@ export function usePossessionVerification(item: LostFoundItem): PossessionVerifi
         return false;
       }
 
-      const cleanSecret = passwordOrSecret.trim().toLowerCase();
-      const cleanBrand = brandDetails.trim().toLowerCase();
-      const cleanFeatures = hiddenFeatures.trim().toLowerCase();
+      const cleanSecret = String(passwordOrSecret ?? "").trim().toLowerCase();
+      const cleanBrand = String(brandDetails ?? "").trim().toLowerCase();
+      const cleanFeatures = String(hiddenFeatures ?? "").trim().toLowerCase();
 
       if (!cleanSecret && !cleanBrand && !cleanFeatures) {
         setErrorMessage("Por favor, forneça a senha, número de série ou detalhe único do objeto.");
@@ -64,10 +64,10 @@ export function usePossessionVerification(item: LostFoundItem): PossessionVerifi
       }
 
       // Check against registered secret key if defined
-      const registeredKey = (item.secretVerificationKey || "").trim().toLowerCase();
-      const registeredHint = (item.secretVerificationHint || "").trim().toLowerCase();
-      const registeredBrand = (item.brand || "").trim().toLowerCase();
-      const itemDesc = (item.description || "").trim().toLowerCase();
+      const registeredKey = String(item?.secretVerificationKey ?? "").trim().toLowerCase();
+      const registeredHint = String(item?.secretVerificationHint ?? "").trim().toLowerCase();
+      const registeredBrand = String(item?.brand ?? "").trim().toLowerCase();
+      const itemDesc = String(item?.description ?? "").trim().toLowerCase();
 
       let isMatch = false;
       let calculatedScore = 50;
@@ -95,7 +95,7 @@ export function usePossessionVerification(item: LostFoundItem): PossessionVerifi
         const inputWords = fullInput.split(/\s+/).filter((w) => w.length >= 3);
 
         let matches = 0;
-        const titleLower = (item?.title || "").toLowerCase();
+        const titleLower = String(item?.title ?? "").toLowerCase();
         for (const word of inputWords) {
           if (registeredBrand.includes(word) || itemDesc.includes(word) || titleLower.includes(word)) {
             matches++;
@@ -124,7 +124,8 @@ export function usePossessionVerification(item: LostFoundItem): PossessionVerifi
       }
 
       // Successful verification
-      const generatedToken = `RNF04-TOKEN-${item.id.replace(/[^a-zA-Z0-9]/g, "").toUpperCase()}-${Date.now().toString(36)}-POSSE_VALIDADA`;
+      const safeId = String(item?.id ?? "ITEM").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+      const generatedToken = `RNF04-TOKEN-${safeId}-${Date.now().toString(36)}-POSSE_VALIDADA`;
 
       setScore(calculatedScore);
       setIsVerified(true);

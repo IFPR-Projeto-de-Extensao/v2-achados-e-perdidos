@@ -5,7 +5,8 @@ import { RecentActivityWidget } from "./RecentActivityWidget";
 import { TourGuide } from "./TourGuide";
 import { LostFoundItem } from "../types";
 import { clientSemanticSearch, SemanticSearchResult } from "../lib/apiHelper";
-import { vibrateClick, safeToLower, safeIncludes, sanitizeQuery } from "../lib/utils";
+import { vibrateClick, vibrateWarning, sanitizeQuery } from "../lib/utils";
+import { filterHomeItems } from "../lib/searchUtils";
 import {
   Search,
   PlusCircle,
@@ -26,8 +27,12 @@ import {
   RefreshCw,
   HelpCircle,
   Compass,
+  AlertTriangle,
+  RotateCcw,
+  X,
+  Loader2,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 
 export const HomeView: React.FC = () => {
   const {
@@ -47,6 +52,11 @@ export const HomeView: React.FC = () => {
   const [isSearchingSemantic, setIsSearchingSemantic] = useState<boolean>(false);
   const [semanticResults, setSemanticResults] = useState<SemanticSearchResult[] | null>(null);
   const [semanticModelUsed, setSemanticModelUsed] = useState<string | null>(null);
+  const [semanticError, setSemanticError] = useState<{
+    hasError: boolean;
+    message: string;
+  } | null>(null);
+  const [retryCount, setRetryCount] = useState<number>(0);
   const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
 
   // Check if tour should auto-open on first visit
@@ -92,16 +102,19 @@ export const HomeView: React.FC = () => {
       queryLength: sanitizedQuery.length,
       semanticMode,
       itemsCount: Array.isArray(items) ? items.length : 0,
+      retryCount,
     });
 
     if (!sanitizedQuery || sanitizedQuery.length < 3 || !semanticMode) {
       setSemanticResults(null);
       setIsSearchingSemantic(false);
+      setSemanticError(null);
       return;
     }
 
     let isMounted = true;
     setIsSearchingSemantic(true);
+    setSemanticError(null);
 
     const timer = setTimeout(async () => {
       try {
@@ -119,19 +132,36 @@ export const HomeView: React.FC = () => {
         });
 
         if (isMounted) {
-          if (response?.success && Array.isArray(response?.results) && response.results.length > 0) {
-            setSemanticResults(response.results);
+          if (response?.success) {
+            setSemanticResults(Array.isArray(response.results) ? response.results : []);
             setSemanticModelUsed(response.modelUsed || "gemini-3.7-flash");
+            setSemanticError(null);
           } else {
-            setSemanticResults([]);
-            setSemanticModelUsed(response?.modelUsed || "gemini-3.7-flash");
+            console.warn("[HomeView Search Debug] Resposta não-sucedida da API semântica:", response?.message);
+            setSemanticResults(null);
+            setSemanticError({
+              hasError: true,
+              message:
+                response?.message ||
+                (language === "pt"
+                  ? "Não foi possível conectar ao assistente Gemini no momento. Exibindo correspondências diretas por texto."
+                  : "Could not connect to Gemini AI assistant. Displaying standard text matches."),
+            });
           }
           setIsSearchingSemantic(false);
         }
-      } catch (err) {
-        console.error("[HomeView Search Debug] Erro durante chamada da busca semântica:", err);
+      } catch (err: any) {
+        console.error("[HomeView Search Debug] Erro de rede/execução na busca semântica:", err);
         if (isMounted) {
           setSemanticResults(null);
+          setSemanticError({
+            hasError: true,
+            message:
+              err?.message ||
+              (language === "pt"
+                ? "Falha de conexão com a API do Gemini. Usando busca local de segurança."
+                : "Connection failure with Gemini API. Switched to safe local search."),
+          });
           setIsSearchingSemantic(false);
         }
       }
@@ -141,52 +171,17 @@ export const HomeView: React.FC = () => {
       isMounted = false;
       clearTimeout(timer);
     };
-  }, [homeSearch, semanticMode, items]);
+  }, [homeSearch, semanticMode, items, retryCount, language]);
 
-  // Combine semantic relevance with category filter
-  let displayedItems: LostFoundItem[] = [];
-
-  const safeSearchTerm = sanitizeQuery(homeSearch);
-
-  if (semanticMode && semanticResults && semanticResults.length > 0 && safeSearchTerm.length >= 3) {
-    const semanticItemMap = new Map(semanticResults.map((r) => [r.itemId, r]));
-    const matchedItems = (items || [])
-      .filter((i) => i && semanticItemMap.has(i.id))
-      .filter((i) => {
-        const cat = sanitizeQuery(selectedCategory);
-        return !cat || cat === "TODAS" || i.category === cat;
-      });
-
-    // Sort by relevance score
-    matchedItems.sort((a, b) => {
-      const scoreA = semanticItemMap.get(a.id)?.relevanceScore || 0;
-      const scoreB = semanticItemMap.get(b.id)?.relevanceScore || 0;
-      return scoreB - scoreA;
-    });
-
-    displayedItems = matchedItems;
-  } else {
-    displayedItems = (items || [])
-      .filter((item) => {
-        if (!item) return false;
-
-        const matchesSearch =
-          !safeSearchTerm ||
-          safeIncludes(item.title, safeSearchTerm) ||
-          safeIncludes(item.description, safeSearchTerm) ||
-          safeIncludes(item.location, safeSearchTerm) ||
-          safeIncludes(item.brand, safeSearchTerm) ||
-          safeIncludes(item.color, safeSearchTerm) ||
-          safeIncludes(item.qrCodeId, safeSearchTerm) ||
-          safeIncludes(item.id, safeSearchTerm);
-
-        const safeCat = sanitizeQuery(selectedCategory);
-        const matchesCat = !safeCat || safeCat === "TODAS" || item.category === safeCat;
-
-        return matchesSearch && matchesCat;
-      })
-      .slice(0, 6);
-  }
+  // Combine semantic relevance with category filter using unit-tested filterHomeItems logic
+  const displayedItems = filterHomeItems({
+    items,
+    searchTerm: homeSearch,
+    selectedCategory,
+    semanticMode,
+    semanticResults,
+    limit: semanticMode && semanticResults && semanticResults.length > 0 ? undefined : 6,
+  });
 
   const categoriesList = [
     "TODAS",
@@ -361,7 +356,7 @@ export const HomeView: React.FC = () => {
           <div className="relative flex-1">
             <div className="absolute left-4 top-3.5 flex items-center space-x-1 text-neutral-400">
               {isSearchingSemantic ? (
-                <RefreshCw className="w-5 h-5 text-[#00843D] animate-spin" />
+                <Loader2 className="w-5 h-5 text-[#00843D] animate-spin" />
               ) : semanticMode ? (
                 <Sparkles className="w-5 h-5 text-amber-500" />
               ) : (
@@ -378,10 +373,20 @@ export const HomeView: React.FC = () => {
                   ? "Busca Semântica com IA Gemini: digite ex: 'chave azul esquecida perto da biblioteca' ou 'garrafa térmica'..."
                   : "Gemini AI Semantic Search: e.g. 'blue key lost near the library' or 'black water bottle'..."
               }
-              className="w-full pl-12 pr-28 py-3.5 rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white text-sm shadow-xs focus:ring-2 focus:ring-[#00843D] outline-none transition-all"
+              className={`w-full pl-12 pr-32 py-3.5 rounded-2xl bg-white dark:bg-[#1E1E1E] border text-neutral-900 dark:text-white text-sm shadow-xs outline-none transition-all ${
+                isSearchingSemantic
+                  ? "border-[#00843D] ring-2 ring-[#00843D]/20"
+                  : "border-neutral-200 dark:border-neutral-800 focus:ring-2 focus:ring-[#00843D]"
+              }`}
             />
-            {/* Semantic Mode Toggle Badge inside input */}
-            <div className="absolute right-3 top-2.5 flex items-center space-x-1">
+            {/* Semantic Mode & Status Badge inside input */}
+            <div className="absolute right-3 top-2.5 flex items-center space-x-1.5">
+              {isSearchingSemantic && (
+                <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold text-[#00843D] dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-lg animate-pulse border border-emerald-200 dark:border-emerald-800">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>{language === "pt" ? "Processando..." : "Processing..."}</span>
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -414,6 +419,62 @@ export const HomeView: React.FC = () => {
             </button>
           </div>
         </div>
+
+        {/* Global Error Banner for API/Network Connection Issues */}
+        <AnimatePresence>
+          {semanticError?.hasError && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
+            >
+              <div className="flex items-start sm:items-center space-x-2.5">
+                <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5 sm:mt-0">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="font-bold text-amber-800 dark:text-amber-300">
+                    {language === "pt" ? "Aviso de Conexão Gemini AI" : "Gemini AI Connection Notice"}
+                  </p>
+                  <p className="text-neutral-600 dark:text-neutral-300">
+                    {semanticError.message}{" "}
+                    <span className="font-semibold text-neutral-700 dark:text-neutral-200">
+                      {language === "pt"
+                        ? "(Modo de busca local por palavras-chave ativo)"
+                        : "(Fallback local keyword search active)"}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2 shrink-0 self-end sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    vibrateClick();
+                    setRetryCount((c) => c + 1);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold flex items-center space-x-1.5 transition-all shadow-xs text-xs"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{language === "pt" ? "Tentar Novamente" : "Retry"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    vibrateClick();
+                    setSemanticError(null);
+                  }}
+                  className="p-1.5 rounded-lg hover:bg-amber-500/20 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-white transition-all"
+                  title="Fechar aviso"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Quick Semantic Examples Suggestions */}
         <div className="flex items-center space-x-2 overflow-x-auto pb-1 text-xs text-neutral-500">
@@ -466,7 +527,12 @@ export const HomeView: React.FC = () => {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
-              {semanticResults && semanticResults.length > 0 && homeSearch.trim().length >= 3 ? (
+              {isSearchingSemantic ? (
+                <>
+                  <Loader2 className="w-5 h-5 text-[#00843D] animate-spin" />
+                  <span>{language === "pt" ? "Consultando IA Gemini..." : "Searching with Gemini AI..."}</span>
+                </>
+              ) : semanticResults && semanticResults.length > 0 && homeSearch.trim().length >= 3 ? (
                 <>
                   <Sparkles className="w-5 h-5 text-amber-500 fill-amber-500" />
                   <span>
@@ -481,7 +547,11 @@ export const HomeView: React.FC = () => {
               )}
             </h2>
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              {semanticResults && semanticResults.length > 0 && homeSearch.trim().length >= 3
+              {isSearchingSemantic
+                ? language === "pt"
+                  ? "Analisando descrições, cores, marcas e locais em linguagem natural..."
+                  : "Analyzing descriptions, colors, brands, and campus locations in natural language..."
+                : semanticResults && semanticResults.length > 0 && homeSearch.trim().length >= 3
                 ? language === "pt"
                   ? `Resultados classificados por relevância semântica no campus com o modelo ${semanticModelUsed || "Gemini"}`
                   : `Results ranked by semantic relevance at campus with ${semanticModelUsed || "Gemini"}`
@@ -503,7 +573,35 @@ export const HomeView: React.FC = () => {
           </button>
         </div>
 
-        {displayedItems.length === 0 ? (
+        {/* Visual Loading State Skeletons while Gemini is processing */}
+        {isSearchingSemantic ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3].map((skeletonId) => (
+              <div
+                key={skeletonId}
+                className="p-5 rounded-3xl bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-4 animate-pulse"
+              >
+                <div className="h-44 rounded-2xl bg-neutral-200 dark:bg-neutral-800 w-full relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-neutral-700/30 to-transparent animate-shimmer" />
+                </div>
+                <div className="space-y-2">
+                  <div className="h-4 bg-neutral-200 dark:bg-neutral-800 rounded-md w-3/4" />
+                  <div className="h-3 bg-neutral-200 dark:bg-neutral-800 rounded-md w-1/2" />
+                </div>
+                <div className="pt-2 flex items-center justify-between">
+                  <div className="h-3 bg-neutral-200 dark:bg-neutral-800 rounded-md w-1/3" />
+                  <div className="h-6 bg-neutral-200 dark:bg-neutral-800 rounded-full w-20" />
+                </div>
+                <div className="px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center space-x-2">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-spin" />
+                  <span className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+                    {language === "pt" ? "Calculando relevância IA..." : "Calculating AI relevance..."}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : displayedItems.length === 0 ? (
           <div className="text-center py-12 bg-white dark:bg-[#1E1E1E] rounded-3xl border border-neutral-200 dark:border-neutral-800 p-8 space-y-3">
             <PackageSearch className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto" />
             <h4 className="font-bold text-base text-neutral-700 dark:text-neutral-300">
@@ -541,8 +639,6 @@ export const HomeView: React.FC = () => {
           </div>
         )}
       </section>
-
-
 
       {/* HOW IT WORKS / AI BENEFIT SECTION */}
       <section className="p-8 sm:p-10 rounded-3xl bg-neutral-900 text-white space-y-6">

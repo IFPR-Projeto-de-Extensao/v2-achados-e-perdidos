@@ -164,7 +164,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
     const claimerName = approvedClaim ? approvedClaim.claimerName : (item.registeredByName || currentUser.name);
     const claimerEmail = approvedClaim ? approvedClaim.claimerEmail : (currentUser.email);
-    const receiptCode = `REC-IFPR-${item.id.replace(/[^a-zA-Z0-9]/g, "").toUpperCase()}-${Date.now().toString().slice(-4)}`;
+    const safeId = String(item?.id ?? "ITEM").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+    const receiptCode = `REC-IFPR-${safeId}-${Date.now().toString().slice(-4)}`;
 
     const htmlContent = `
       <!DOCTYPE html>

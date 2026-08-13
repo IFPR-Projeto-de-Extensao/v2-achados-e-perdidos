@@ -1,6 +1,7 @@
 import { LostFoundItem, ItemCategory } from "../types";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { GoogleGenAI } from "@google/genai";
+import { safeToLower, safeIncludes, safeTextCorpus, sanitizeQuery } from "./utils";
 
 export interface AIAnalysisResult {
   title: string;
@@ -57,7 +58,7 @@ function getClientGemini(): GoogleGenAI | null {
 
 // Client-Side Smart Analysis for Text Prompts
 export function clientAnalyzeObject(promptText: string): AIExtractedObject {
-  const lower = (promptText || "").toLowerCase();
+  const lower = safeToLower(promptText);
 
   // Category detection
   let category: ItemCategory = "Outros";
@@ -102,14 +103,14 @@ export function clientAnalyzeObject(promptText: string): AIExtractedObject {
   // Location detection
   let location = "Campus IFPR Ivaiporã";
   for (const loc of IFPR_LOCATIONS) {
-    if (lower.includes(loc.toLowerCase())) {
+    if (safeIncludes(lower, loc)) {
       location = loc;
       break;
     }
   }
 
   // Title cleanup
-  let title = promptText.trim();
+  let title = String(promptText ?? "").trim();
   if (title.length > 40) {
     const words = title.split(" ");
     title = words.slice(0, 5).join(" ") + "...";
@@ -122,7 +123,7 @@ export function clientAnalyzeObject(promptText: string): AIExtractedObject {
     color,
     brand,
     location,
-    description: promptText.trim() || "Objeto registrado no Achados e Perdidos do IFPR Campus Ivaiporã.",
+    description: String(promptText ?? "").trim() || "Objeto registrado no Achados e Perdidos do IFPR Campus Ivaiporã.",
   };
 }
 
@@ -145,7 +146,8 @@ export function clientAnalyzeImage(customContext?: string): AIAnalysisResult {
 
 // Client-Side Smart Fallback for AI Item Matching
 export function clientMatchSimilarity(newItem: Partial<LostFoundItem>, candidateItems: LostFoundItem[]) {
-  const matches = candidateItems
+  const matches = (candidateItems || [])
+    .filter(Boolean)
     .map((candidate) => {
       let score = 0;
       const reasons: string[] = [];
@@ -158,8 +160,8 @@ export function clientMatchSimilarity(newItem: Partial<LostFoundItem>, candidate
       if (
         newItem.color &&
         candidate.color &&
-        (newItem.color || "").toLowerCase() !== "não informada" &&
-        (candidate.color || "").toLowerCase().includes((newItem.color || "").toLowerCase())
+        safeToLower(newItem.color) !== "não informada" &&
+        safeIncludes(candidate.color, newItem.color)
       ) {
         score += 25;
         reasons.push(`Mesma cor (${newItem.color})`);
@@ -168,16 +170,16 @@ export function clientMatchSimilarity(newItem: Partial<LostFoundItem>, candidate
       if (
         newItem.brand &&
         candidate.brand &&
-        (newItem.brand || "").toLowerCase() !== "não identificada" &&
-        (candidate.brand || "").toLowerCase().includes((newItem.brand || "").toLowerCase())
+        safeToLower(newItem.brand) !== "não identificada" &&
+        safeIncludes(candidate.brand, newItem.brand)
       ) {
         score += 25;
         reasons.push(`Mesma marca (${newItem.brand})`);
       }
 
       if (newItem.title && candidate.title) {
-        const titleWords = (newItem.title || "").toLowerCase().split(/\s+/);
-        const matchWord = titleWords.find((w) => w.length > 3 && (candidate.title || "").toLowerCase().includes(w));
+        const titleWords = sanitizeQuery(newItem.title).split(/\s+/).filter((w) => w.length > 3);
+        const matchWord = titleWords.find((w) => safeIncludes(candidate.title, w));
         if (matchWord) {
           score += 20;
           reasons.push(`Palavras-chave em comum no título`);
@@ -212,7 +214,7 @@ export interface SemanticSearchResult {
 export async function clientSemanticSearch(
   query: string,
   candidateItems: LostFoundItem[]
-): Promise<{ success: boolean; results: SemanticSearchResult[]; modelUsed?: string }> {
+): Promise<{ success: boolean; results: SemanticSearchResult[]; modelUsed?: string; message?: string }> {
   return await safeFetchJson(
     "/api/gemini/semantic-search",
     {
@@ -221,19 +223,20 @@ export async function clientSemanticSearch(
       body: JSON.stringify({ query, items: candidateItems }),
     },
     () => {
-      const qLower = (query || "").toLowerCase();
+      const qLower = safeToLower(query);
       const qWords = qLower.split(/\s+/).filter((w) => w.length > 2);
 
       const localResults: SemanticSearchResult[] = (candidateItems || [])
+        .filter(Boolean)
         .map((item) => {
           let score = 0;
-          const locLower = (item.location || "").toLowerCase();
-          const colorLower = (item.color || "").toLowerCase();
-          const titleLower = (item.title || "").toLowerCase();
-          const descLower = (item.description || "").toLowerCase();
-          const catLower = (item.category || "").toLowerCase();
-          const brandLower = (item.brand || "").toLowerCase();
-          const textCorpus = `${titleLower} ${descLower} ${locLower} ${catLower} ${colorLower} ${brandLower}`;
+          const locLower = safeToLower(item.location);
+          const colorLower = safeToLower(item.color);
+          const titleLower = safeToLower(item.title);
+          const descLower = safeToLower(item.description);
+          const catLower = safeToLower(item.category);
+          const brandLower = safeToLower(item.brand);
+          const textCorpus = safeTextCorpus(titleLower, descLower, locLower, catLower, colorLower, brandLower);
           const matchedWords: string[] = [];
 
           qWords.forEach((word) => {
