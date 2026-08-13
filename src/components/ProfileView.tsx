@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useApp } from "../context/AppContext";
 import { ItemCard } from "./ItemCard";
 import { formatDate, formatDateTime, vibrateClick } from "../lib/utils";
-import { UserRole } from "../types";
+import { UserRole, BadgeTier } from "../types";
+import { calculateUserReputation } from "../lib/reputationSystem";
 import {
   User as UserIcon,
   GraduationCap,
@@ -28,6 +29,11 @@ import {
   BellRing,
   Send,
   Radio,
+  CheckCircle,
+  Search,
+  Flame,
+  Star,
+  Info,
 } from "lucide-react";
 
 export const ProfileView: React.FC = () => {
@@ -90,57 +96,47 @@ export const ProfileView: React.FC = () => {
   // User claims
   const userClaims = claims.filter((c) => c.claimerId === currentUser.id);
 
-  // Number of items registered by user that were successfully returned to their owners
-  const returnedItemsCount = items.filter(
-    (it) => it.registeredByUserId === currentUser.id && it.status === "DEVOLVIDO"
-  ).length;
+  // Calculate user reputation and badge system
+  const reputation = useMemo(() => {
+    return calculateUserReputation(currentUser, items);
+  }, [currentUser, items]);
 
-  // Reputation tier calculation
-  let reputationBadge = {
-    title: "Colaborador Cidadão",
-    level: "Nível 0",
-    icon: <HeartHandshake className="w-6 h-6 text-emerald-500" />,
-    badgeColor: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
-    gradientBg: "from-emerald-500/10 to-teal-500/10",
-    progressPercent: Math.min((returnedItemsCount / 1) * 100, 100),
-    nextText: `${returnedItemsCount}/1 devolução para o Selo Guardião Bronze 🥉`,
-    description: "Cadastre pertences encontrados no campus para ajudar a comunidade e desbloquear medalhas de reputação!",
+  // Helper for Tier Badge colors & icons
+  const getTierDetails = (tier: BadgeTier) => {
+    switch (tier) {
+      case "DIAMANTE":
+        return {
+          bg: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/30",
+          cardBg: "from-cyan-500/15 via-sky-500/10 to-blue-500/15",
+          iconColor: "text-cyan-400",
+          accentColor: "#06B6D4",
+        };
+      case "OURO":
+        return {
+          bg: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40",
+          cardBg: "from-amber-500/15 via-yellow-500/10 to-amber-600/15",
+          iconColor: "text-amber-500",
+          accentColor: "#F59E0B",
+        };
+      case "PRATA":
+        return {
+          bg: "bg-slate-400/20 text-slate-700 dark:text-slate-300 border-slate-400/40",
+          cardBg: "from-slate-400/15 to-slate-600/15",
+          iconColor: "text-slate-400",
+          accentColor: "#94A3B8",
+        };
+      case "BRONZE":
+      default:
+        return {
+          bg: "bg-amber-700/15 text-amber-800 dark:text-amber-400 border-amber-700/30",
+          cardBg: "from-amber-700/10 to-amber-900/10",
+          iconColor: "text-amber-700",
+          accentColor: "#B45309",
+        };
+    }
   };
 
-  if (returnedItemsCount >= 5) {
-    reputationBadge = {
-      title: "Guardião Ouro • Herói do IFPR",
-      level: "Nível Máximo 🌟",
-      icon: <Crown className="w-6 h-6 text-amber-500" />,
-      badgeColor: "bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/40 shadow-xs",
-      gradientBg: "from-amber-500/15 via-yellow-500/10 to-amber-600/15",
-      progressPercent: 100,
-      nextText: "100% • Nível Mestre do Campus Ivaiporã Alcançado!",
-      description: "Selo de Honra Máxima! Reconhecido oficialmente pela comunidade do IFPR por sua presteza e honestidade exemplares.",
-    };
-  } else if (returnedItemsCount >= 3) {
-    reputationBadge = {
-      title: "Guardião Prata IFPR",
-      level: "Nível 2",
-      icon: <Award className="w-6 h-6 text-slate-400" />,
-      badgeColor: "bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-400/40",
-      gradientBg: "from-slate-500/10 to-slate-700/10",
-      progressPercent: Math.min((returnedItemsCount / 5) * 100, 100),
-      nextText: `${returnedItemsCount}/5 devoluções para o Selo Guardião Ouro 🥇`,
-      description: "Excelente espírito comunitário! Suas devoluções tornam o IFPR Campus Ivaiporã um ambiente seguro e solidário.",
-    };
-  } else if (returnedItemsCount >= 1) {
-    reputationBadge = {
-      title: "Guardião Bronze IFPR",
-      level: "Nível 1",
-      icon: <Medal className="w-6 h-6 text-amber-700 dark:text-amber-500" />,
-      badgeColor: "bg-amber-700/10 text-amber-800 dark:text-amber-400 border-amber-700/30",
-      gradientBg: "from-amber-700/10 to-amber-900/10",
-      progressPercent: Math.min((returnedItemsCount / 3) * 100, 100),
-      nextText: `${returnedItemsCount}/3 devoluções para o Selo Guardião Prata 🥈`,
-      description: "Parabéns! Você já contribuiu diretamente para devolver objetos aos seus verdadeiros donos.",
-    };
-  }
+  const currentTierDetails = getTierDetails(reputation.levelTier);
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-16">
@@ -306,53 +302,192 @@ export const ProfileView: React.FC = () => {
         </div>
       </div>
 
-      {/* Reputation & Citizenship Badge Card */}
-      <div className={`p-6 rounded-3xl bg-gradient-to-r ${reputationBadge.gradientBg} bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-4`}>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center space-x-3.5">
-            <div className={`p-3 rounded-2xl border ${reputationBadge.badgeColor} shrink-0`}>
-              {reputationBadge.icon}
+      {/* REPUTATION & BADGES SYSTEM (GAMIFICAÇÃO DE CIDADANIA) */}
+      <div className={`p-6 sm:p-8 rounded-3xl bg-gradient-to-br ${currentTierDetails.cardBg} bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6`}>
+        {/* Main Status & Level Header */}
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+          <div className="flex items-center space-x-4">
+            <div className={`p-4 rounded-2xl border ${currentTierDetails.bg} shrink-0 shadow-xs`}>
+              {reputation.levelTier === "DIAMANTE" ? (
+                <Crown className="w-8 h-8 text-cyan-500 animate-pulse" />
+              ) : reputation.levelTier === "OURO" ? (
+                <Trophy className="w-8 h-8 text-amber-500" />
+              ) : reputation.levelTier === "PRATA" ? (
+                <Award className="w-8 h-8 text-slate-400" />
+              ) : (
+                <Medal className="w-8 h-8 text-amber-700" />
+              )}
             </div>
+
             <div>
-              <div className="flex items-center space-x-2">
-                <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
-                  Selo de Reputação: {reputationBadge.title}
-                </h3>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${reputationBadge.badgeColor}`}>
-                  {reputationBadge.level}
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
+                  {reputation.levelTitle}
+                </h2>
+                <span className={`px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider border ${currentTierDetails.bg}`}>
+                  Nível {reputation.level} • {reputation.levelTier}
                 </span>
               </div>
-              <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-0.5">
-                {reputationBadge.description}
+              <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-300 mt-1 max-w-xl">
+                Reconhecimento comunitário por devolver pertences encontrados e fortalecer a honestidade no IFPR Campus Ivaiporã.
               </p>
             </div>
           </div>
 
-          <div className="bg-white/80 dark:bg-neutral-800/80 p-3 rounded-2xl border border-neutral-200 dark:border-neutral-700/60 text-center shrink-0 w-full sm:w-auto">
-            <div className="text-xl font-black text-[#00843D] dark:text-green-400">
-              {returnedItemsCount}
+          {/* Quick Metrics Pillar */}
+          <div className="grid grid-cols-3 gap-2 w-full lg:w-auto shrink-0">
+            <div className="p-3 rounded-2xl bg-white/80 dark:bg-neutral-900/80 border border-neutral-200/80 dark:border-neutral-800 text-center">
+              <span className="text-xl sm:text-2xl font-black text-[#00843D] dark:text-green-400 block">
+                {reputation.totalPoints}
+              </span>
+              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">
+                Pontos
+              </span>
             </div>
-            <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">
-              Devoluções Concluídas
+
+            <div className="p-3 rounded-2xl bg-white/80 dark:bg-neutral-900/80 border border-neutral-200/80 dark:border-neutral-800 text-center">
+              <span className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 block">
+                {reputation.itemsReturnedCount}
+              </span>
+              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">
+                Devoluções
+              </span>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-white/80 dark:bg-neutral-900/80 border border-neutral-200/80 dark:border-neutral-800 text-center">
+              <span className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400 block">
+                {reputation.badges.filter((b) => b.unlocked).length}/{reputation.badges.length}
+              </span>
+              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">
+                Medalhas
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Progress Bar towards next tier */}
-        <div className="space-y-1.5 pt-2 border-t border-neutral-200/60 dark:border-neutral-800/60">
-          <div className="flex items-center justify-between text-[11px] font-bold">
-            <span className="text-neutral-600 dark:text-neutral-400 flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Progresso da Medalha de Reputação
+        {/* Level Progression Bar */}
+        <div className="space-y-2 pt-2 border-t border-neutral-200/60 dark:border-neutral-800/60">
+          <div className="flex items-center justify-between text-xs font-bold">
+            <span className="text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Progresso para a Próxima Categoria ({reputation.progressToNextLevel}%)</span>
             </span>
-            <span className="text-[#00843D] dark:text-green-400">
-              {reputationBadge.nextText}
+            <span className="text-[#00843D] dark:text-green-400 font-extrabold">
+              {reputation.totalPoints} / {reputation.nextLevelPoints} pts
             </span>
           </div>
-          <div className="w-full h-2.5 rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden p-0.5">
+
+          <div className="w-full h-3 rounded-full bg-neutral-200 dark:bg-neutral-800/90 overflow-hidden p-0.5">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-[#00843D] to-emerald-400 transition-all duration-500"
-              style={{ width: `${reputationBadge.progressPercent}%` }}
+              className="h-full rounded-full bg-gradient-to-r from-[#00843D] via-emerald-400 to-amber-400 transition-all duration-700"
+              style={{ width: `${reputation.progressToNextLevel}%` }}
             />
+          </div>
+        </div>
+
+        {/* BADGES GALLERY GRID */}
+        <div className="space-y-3 pt-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+              <Award className="w-4 h-4 text-[#00843D]" />
+              <span>Galeria de Medalhas e Conquistas de Cidadania</span>
+            </h3>
+            <span className="text-[11px] text-neutral-500 font-bold">
+              Desbloqueie realizando ações no sistema
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {reputation.badges.map((badge) => {
+              const tierInfo = getTierDetails(badge.tier);
+              const isUnlocked = badge.unlocked;
+
+              // Render dynamic icon
+              const renderBadgeIcon = () => {
+                switch (badge.iconName) {
+                  case "HeartHandshake":
+                    return <HeartHandshake className="w-5 h-5" />;
+                  case "ShieldCheck":
+                    return <ShieldCheck className="w-5 h-5" />;
+                  case "Award":
+                    return <Award className="w-5 h-5" />;
+                  case "Crown":
+                    return <Crown className="w-5 h-5" />;
+                  case "Search":
+                    return <Search className="w-5 h-5" />;
+                  case "Sparkles":
+                  default:
+                    return <Sparkles className="w-5 h-5" />;
+                }
+              };
+
+              return (
+                <div
+                  key={badge.id}
+                  className={`p-4 rounded-2xl border transition-all relative overflow-hidden flex flex-col justify-between ${
+                    isUnlocked
+                      ? "bg-white dark:bg-neutral-800/90 border-neutral-300 dark:border-neutral-700 shadow-xs hover:border-[#00843D]/50"
+                      : "bg-neutral-50/70 dark:bg-neutral-900/50 border-dashed border-neutral-300 dark:border-neutral-800 opacity-75"
+                  }`}
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div
+                        className={`p-2.5 rounded-xl border ${
+                          isUnlocked
+                            ? tierInfo.bg
+                            : "bg-neutral-200 dark:bg-neutral-800 text-neutral-400 border-neutral-300 dark:border-neutral-700"
+                        }`}
+                      >
+                        {renderBadgeIcon()}
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border ${tierInfo.bg}`}>
+                          {badge.tier}
+                        </span>
+                        {isUnlocked && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-500/10 text-[#00843D] dark:text-green-400 border border-emerald-500/20">
+                            +{badge.pointsReward} pts
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-extrabold text-sm text-neutral-900 dark:text-white flex items-center gap-1.5">
+                        <span>{badge.name}</span>
+                        {isUnlocked && <CheckCircle2 className="w-3.5 h-3.5 text-[#00843D] shrink-0" />}
+                      </h4>
+                      <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-1 leading-snug">
+                        {badge.description}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Badge Progress Tracker */}
+                  <div className="pt-3 mt-3 border-t border-neutral-100 dark:border-neutral-800/80 space-y-1">
+                    <div className="flex items-center justify-between text-[10px] font-bold">
+                      <span className="text-neutral-500">{badge.requirementText}</span>
+                      <span className={isUnlocked ? "text-[#00843D] dark:text-green-400" : "text-neutral-400"}>
+                        {badge.currentCount}/{badge.targetCount}
+                      </span>
+                    </div>
+
+                    <div className="w-full h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          isUnlocked
+                            ? "bg-[#00843D]"
+                            : "bg-neutral-400 dark:bg-neutral-600"
+                        }`}
+                        style={{ width: `${badge.progress}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

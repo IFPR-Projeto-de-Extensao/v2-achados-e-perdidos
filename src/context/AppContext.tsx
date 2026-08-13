@@ -1006,8 +1006,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       // Deleta todos os usuários exceto a conta ativa do administrador atual
+      const currentEmailLower = (currentUser.email || "").toLowerCase().trim();
       const usersToDelete = allUsers.filter(
-        (u) => u.id !== currentUser.id && u.email.toLowerCase() !== currentUser.email.toLowerCase()
+        (u) => u.id !== currentUser.id && (u.email || "").toLowerCase().trim() !== currentEmailLower
       );
       for (const u of usersToDelete) {
         try { await deleteDoc(doc(db, "users", u.id)); } catch (_) {}
@@ -1239,11 +1240,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (userSnap.exists()) {
               const userData = userSnap.data() as User;
               setCurrentUser(userData);
+              const userEmailLower = (userData.email || "").toLowerCase().trim();
               setAllUsers((prev) =>
                 sanitizeUserList([
                   userData,
                   ...prev.map((u) =>
-                    u.id === userData.id || u.email.toLowerCase() === userData.email.toLowerCase() ? userData : u
+                    u.id === userData.id || ((u.email || "").toLowerCase().trim() === userEmailLower && Boolean(userEmailLower)) ? userData : u
                   ),
                 ])
               );
@@ -1443,7 +1445,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const loginWithGoogle = async (customGoogleUser?: { email?: string; name?: string; role?: UserRole; avatarUrl?: string }) => {
     try {
       if (customGoogleUser?.email) {
-        const userEmail = customGoogleUser.email.trim().toLowerCase();
+        const userEmail = (customGoogleUser.email || "").trim().toLowerCase();
         const userName = customGoogleUser.name?.trim() || userEmail.split("@")[0];
         const isAdmin = userEmail === "paulocauan39@gmail.com";
         const isServidor = customGoogleUser.role === "SERVIDOR" || userEmail.includes("@ifpr.edu.br");
@@ -1503,7 +1505,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loginWithEmailPassword = async (email: string, pass: string) => {
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanEmail = (email || "").trim().toLowerCase();
     if (!cleanEmail || !pass) {
       addToast("Preencha e-mail e senha para entrar.", "error");
       throw new Error("Preencha e-mail e senha.");
@@ -1567,7 +1569,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     pass: string,
     userData: Omit<User, "id">
   ) => {
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanEmail = (email || "").trim().toLowerCase();
     if (!cleanEmail || !pass || !userData.name) {
       addToast("Preencha todos os campos obrigatórios (Nome, E-mail e Senha).", "error");
       throw new Error("Campos obrigatórios ausentes.");
@@ -1633,7 +1635,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Set state
     setCurrentUser(newUserObj);
-    setAllUsers((prev) => [...prev.filter((u) => u.email.toLowerCase() !== cleanEmail), newUserObj]);
+    setAllUsers((prev) => [...prev.filter((u) => (u.email || "").toLowerCase().trim() !== cleanEmail), newUserObj]);
     addToast(`Cadastro concluído com sucesso! Bem-vindo(a), ${newUserObj.name}.`, "success");
   };
 

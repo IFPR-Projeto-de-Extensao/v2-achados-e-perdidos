@@ -95,8 +95,9 @@ export function usePossessionVerification(item: LostFoundItem): PossessionVerifi
         const inputWords = fullInput.split(/\s+/).filter((w) => w.length >= 3);
 
         let matches = 0;
+        const titleLower = (item?.title || "").toLowerCase();
         for (const word of inputWords) {
-          if (registeredBrand.includes(word) || itemDesc.includes(word) || item.title.toLowerCase().includes(word)) {
+          if (registeredBrand.includes(word) || itemDesc.includes(word) || titleLower.includes(word)) {
             matches++;
           }
         }

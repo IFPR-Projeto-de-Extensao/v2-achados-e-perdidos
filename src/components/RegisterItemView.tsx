@@ -3,7 +3,7 @@ import { useApp } from "../context/AppContext";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
 import { safeFetchJson, clientAnalyzeObject, clientAnalyzeImage } from "../lib/apiHelper";
-import { triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical } from "../lib/utils";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, safeToLower, safeIncludes, safeTextCorpus, sanitizeQuery } from "../lib/utils";
 import {
   Sparkles,
   PlusCircle,
@@ -258,7 +258,7 @@ export const RegisterItemView: React.FC = () => {
         // Match location if present
         if (aiLoc) {
           const foundLoc = IFPR_LOCATIONS.find((loc) =>
-            loc.toLowerCase().includes(aiLoc.toLowerCase())
+            safeIncludes(loc, aiLoc) || safeIncludes(aiLoc, loc)
           );
           if (foundLoc) setLocation(foundLoc);
         }
@@ -685,18 +685,19 @@ export const RegisterItemView: React.FC = () => {
 
           const matches = candidates
             .map((item) => {
+              if (!item) return { item, matchPercentage: 0 };
               let score = 0;
-              const itemText = `${item.title} ${item.category} ${item.color} ${item.brand} ${item.location} ${item.description}`.toLowerCase();
+              const itemText = safeTextCorpus(item.title, item.category, item.color, item.brand, item.location, item.description);
 
               if (item.category === category) score += 35;
               if (item.location === location) score += 25;
               
-              const titleWords = title.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+              const titleWords = sanitizeQuery(title).split(/\s+/).filter((w) => w.length > 2);
               for (const word of titleWords) {
                 if (itemText.includes(word)) score += 15;
               }
-              if (color && item.color?.toLowerCase().includes(color.toLowerCase())) score += 15;
-              if (brand && item.brand?.toLowerCase().includes(brand.toLowerCase())) score += 15;
+              if (color && safeIncludes(item.color, color)) score += 15;
+              if (brand && safeIncludes(item.brand, brand)) score += 15;
 
               return { item, matchPercentage: Math.min(Math.round(score), 98) };
             })

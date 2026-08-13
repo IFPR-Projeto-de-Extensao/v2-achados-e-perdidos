@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useApp } from "../context/AppContext";
-import { formatDate, formatDateTime, triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical } from "../lib/utils";
+import { formatDate, formatDateTime, triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeIncludes, sanitizeQuery } from "../lib/utils";
 import { UserRole, ActivityLog, BackupScheduleConfig } from "../types";
 import { AppUptimeMonitor } from "./AppUptimeMonitor";
 import { db, traceFirebasePerformance } from "../lib/firebase";
@@ -388,13 +388,18 @@ export const DashboardView: React.FC = () => {
   }));
 
   // Filtered Items for Management Table
-  const filteredTableItems = items.filter((it) => {
+  const filteredTableItems = (items || []).filter((it) => {
+    if (!it) return false;
     const matchCat = tableCategory === "TODAS" || it.category === tableCategory;
+    const q = sanitizeQuery(tableSearch);
     const matchText =
-      tableSearch === "" ||
-      it.title.toLowerCase().includes(tableSearch.toLowerCase()) ||
-      it.registeredByName.toLowerCase().includes(tableSearch.toLowerCase()) ||
-      it.id.toLowerCase().includes(tableSearch.toLowerCase());
+      !q ||
+      safeIncludes(it.title, q) ||
+      safeIncludes(it.registeredByName, q) ||
+      safeIncludes(it.id, q) ||
+      safeIncludes(it.qrCodeId, q) ||
+      safeIncludes(it.location, q) ||
+      safeIncludes(it.category, q);
     return matchCat && matchText;
   });
 
@@ -508,12 +513,15 @@ export const DashboardView: React.FC = () => {
 
   // Export PDF Audit Helper (jsPDF & autoTable)
   const handleExportAuditPDF = () => {
-    const filteredLogs = activityLogs.filter((log) => {
+    const filteredLogs = (activityLogs || []).filter((log) => {
+      if (!log) return false;
       const matchAction = logFilterAction === "TODOS" || log.action === logFilterAction;
+      const lq = sanitizeQuery(logSearchQuery);
       const matchSearch =
-        !logSearchQuery ||
-        log.adminName.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
-        log.details.toLowerCase().includes(logSearchQuery.toLowerCase());
+        !lq ||
+        safeIncludes(log.adminName, lq) ||
+        safeIncludes(log.details, lq) ||
+        safeIncludes(log.action, lq);
 
       let matchDate = true;
       if (logStartDate) {
@@ -615,6 +623,86 @@ export const DashboardView: React.FC = () => {
       addToast("Erro ao baixar relatório de logs de monitoramento.", "error");
     } finally {
       setIsExportingMonitoringJSON(false);
+    }
+  };
+
+  // Export Complete Items List in CSV for Campus Secretariat / Archive
+  const handleExportItemsCSV = () => {
+    vibrateClick();
+    try {
+      if (items.length === 0) {
+        addToast("Nenhum item disponível para exportação em CSV.", "info");
+        return;
+      }
+
+      const headers = [
+        "ID_Sistema",
+        "Codigo_QR",
+        "Titulo",
+        "Categoria",
+        "Tipo",
+        "Status",
+        "Local_Campus",
+        "Cor",
+        "Marca",
+        "Data_Ocorrencia",
+        "Data_Cadastro",
+        "Cadastrado_Por",
+        "Papel_Cadastrador",
+        "Devolvido_Para",
+        "Email_Destinatario",
+        "Vinculo_Destinatario",
+        "Data_Devolucao",
+        "Responsavel_Devolucao",
+        "Descricao",
+        "Observacoes_Devolucao"
+      ];
+
+      const escapeCSV = (str: string | undefined | null) => {
+        if (!str) return '""';
+        const cleaned = String(str).replace(/"/g, '""').replace(/\r?\n|\r/g, " ");
+        return `"${cleaned}"`;
+      };
+
+      const rows = items.map((item) => [
+        escapeCSV(item.id),
+        escapeCSV(item.qrCodeId),
+        escapeCSV(item.title),
+        escapeCSV(item.category),
+        escapeCSV(item.type),
+        escapeCSV(item.status),
+        escapeCSV(item.location),
+        escapeCSV(item.color),
+        escapeCSV(item.brand),
+        escapeCSV(item.date),
+        escapeCSV(item.createdAt),
+        escapeCSV(item.registeredByName),
+        escapeCSV(item.registeredByRole),
+        escapeCSV(item.recipientName || ""),
+        escapeCSV(item.recipientEmail || ""),
+        escapeCSV(item.recipientBond || ""),
+        escapeCSV(item.returnDate || ""),
+        escapeCSV(item.returnedByName || ""),
+        escapeCSV(item.description || ""),
+        escapeCSV(item.returnObservations || "")
+      ]);
+
+      // UTF-8 BOM (\uFEFF) for Excel / Calc compatibility
+      const csvContent = "\uFEFF" + [headers.join(";"), ...rows.map((r) => r.join(";"))].join("\r\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `relatorio_secretaria_itens_ifpr_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      vibrateSuccess();
+      addToast("Listagem completa exportada em formato CSV com sucesso!", "success");
+    } catch (err: any) {
+      vibrateCritical();
+      addToast("Erro ao exportar arquivo CSV.", "error");
     }
   };
 
@@ -867,20 +955,20 @@ export const DashboardView: React.FC = () => {
                   onClick={handleExportPendingItemsPDF}
                   role="button"
                   aria-label="Exportar Relatório em PDF contendo a listagem de objetos pendentes"
-                  className="px-4 py-2 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white font-bold text-xs shadow-xs transition-colors flex items-center space-x-2"
+                  className="px-4 py-2 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white font-bold text-xs shadow-xs transition-colors flex items-center space-x-2 cursor-pointer"
                 >
                   <FileText className="w-4 h-4 text-white" />
                   <span>Exportar Relatório (PDF)</span>
                 </button>
 
                 <button
-                  onClick={handleExportCSV}
+                  onClick={handleExportItemsCSV}
                   role="button"
-                  aria-label="Exportar todos os dados em formato CSV"
-                  className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 font-bold text-xs text-neutral-700 dark:text-neutral-300 transition-colors flex items-center space-x-2"
+                  aria-label="Exportar todos os dados em formato CSV para a Secretaria"
+                  className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 font-bold text-xs text-neutral-700 dark:text-neutral-300 transition-colors flex items-center space-x-2 cursor-pointer border border-neutral-300 dark:border-neutral-700 shadow-xs"
                 >
                   <FileSpreadsheet className="w-4 h-4 text-[#00843D]" />
-                  <span>Exportar CSV</span>
+                  <span>Exportar Base Completa (CSV)</span>
                 </button>
               </div>
             </div>
@@ -1426,7 +1514,7 @@ export const DashboardView: React.FC = () => {
                         <input
                           type="text"
                           value={userSearchText}
-                          onChange={(e) => setUserSearchText(e.target.value)}
+                          onChange={(e) => setUserSearchText(e?.target?.value ?? "")}
                           placeholder="Buscar por nome ou e-mail..."
                           className="pl-8 pr-3 py-1.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs outline-none w-full md:w-64"
                         />
@@ -1448,11 +1536,15 @@ export const DashboardView: React.FC = () => {
                         <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
                           {allUsers
                             .filter((u) => {
+                              if (!u) return false;
                               const matchRole = userRoleFilter === "ALL" || u.role === userRoleFilter;
+                              const uq = sanitizeQuery(userSearchText);
                               const matchQuery =
-                                !userSearchText ||
-                                u.name.toLowerCase().includes(userSearchText.toLowerCase()) ||
-                                u.email.toLowerCase().includes(userSearchText.toLowerCase());
+                                !uq ||
+                                safeIncludes(u.name, uq) ||
+                                safeIncludes(u.email, uq) ||
+                                safeIncludes(u.registrationNumber, uq) ||
+                                safeIncludes(u.courseOrDept, uq);
                               return matchRole && matchQuery;
                             })
                             .map((u, index) => (
@@ -1643,6 +1735,14 @@ export const DashboardView: React.FC = () => {
 
                       <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
                         <button
+                          onClick={handleExportItemsCSV}
+                          className="px-4 py-3 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-black text-xs transition-all shadow-xs flex items-center space-x-2 cursor-pointer border border-neutral-300 dark:border-neutral-700"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 text-[#00843D]" />
+                          <span>Exportar Itens (CSV)</span>
+                        </button>
+
+                        <button
                           onClick={handleExportMonitoringLogsJSON}
                           disabled={isExportingMonitoringJSON}
                           className="px-4 py-3 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-black text-xs transition-all shadow-xs flex items-center space-x-2 cursor-pointer border border-neutral-300 dark:border-neutral-700"
@@ -1756,13 +1856,16 @@ export const DashboardView: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-sans">
-                          {activityLogs
+                          {(activityLogs || [])
                             .filter((log) => {
+                              if (!log) return false;
                               const matchAction = logFilterAction === "TODOS" || log.action === logFilterAction;
+                              const lq = sanitizeQuery(logSearchQuery);
                               const matchSearch =
-                                !logSearchQuery ||
-                                log.adminName.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
-                                log.details.toLowerCase().includes(logSearchQuery.toLowerCase());
+                                !lq ||
+                                safeIncludes(log.adminName, lq) ||
+                                safeIncludes(log.details, lq) ||
+                                safeIncludes(log.action, lq);
 
                               let matchDate = true;
                               if (logStartDate) {
@@ -1783,13 +1886,16 @@ export const DashboardView: React.FC = () => {
                               </td>
                             </tr>
                           ) : (
-                            activityLogs
+                            (activityLogs || [])
                               .filter((log) => {
+                                if (!log) return false;
                                 const matchAction = logFilterAction === "TODOS" || log.action === logFilterAction;
+                                const lq = sanitizeQuery(logSearchQuery);
                                 const matchSearch =
-                                  !logSearchQuery ||
-                                  log.adminName.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
-                                  log.details.toLowerCase().includes(logSearchQuery.toLowerCase());
+                                  !lq ||
+                                  safeIncludes(log.adminName, lq) ||
+                                  safeIncludes(log.details, lq) ||
+                                  safeIncludes(log.action, lq);
 
                                 let matchDate = true;
                                 if (logStartDate) {
@@ -2341,7 +2447,7 @@ export const DashboardView: React.FC = () => {
                       <input
                         type="text"
                         value={logSearchQuery}
-                        onChange={(e) => setLogSearchQuery(e.target.value)}
+                        onChange={(e) => setLogSearchQuery(e?.target?.value ?? "")}
                         placeholder="Buscar nos logs..."
                         className="pl-8 pr-3 py-1.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs outline-none w-44"
                       />
@@ -2349,7 +2455,7 @@ export const DashboardView: React.FC = () => {
 
                     <select
                       value={logFilterAction}
-                      onChange={(e) => setLogFilterAction(e.target.value)}
+                      onChange={(e) => setLogFilterAction(e?.target?.value ?? "TODOS")}
                       className="py-1.5 px-3 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs font-bold outline-none"
                     >
                       <option value="TODOS">Todas as Ações</option>
@@ -2376,11 +2482,14 @@ export const DashboardView: React.FC = () => {
                     <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-sans">
                       {activityLogs
                         .filter((log) => {
+                          if (!log) return false;
                           const matchAction = logFilterAction === "TODOS" || log.action === logFilterAction;
+                          const lq = sanitizeQuery(logSearchQuery);
                           const matchSearch =
-                            !logSearchQuery ||
-                            log.adminName.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
-                            log.details.toLowerCase().includes(logSearchQuery.toLowerCase());
+                            !lq ||
+                            safeIncludes(log.adminName, lq) ||
+                            safeIncludes(log.details, lq) ||
+                            safeIncludes(log.action, lq);
                           return matchAction && matchSearch;
                         })
                         .map((log) => (

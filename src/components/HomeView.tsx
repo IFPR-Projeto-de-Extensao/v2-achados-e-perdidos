@@ -2,9 +2,10 @@ import React, { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { ItemCard } from "./ItemCard";
 import { RecentActivityWidget } from "./RecentActivityWidget";
+import { TourGuide } from "./TourGuide";
 import { LostFoundItem } from "../types";
 import { clientSemanticSearch, SemanticSearchResult } from "../lib/apiHelper";
-import { vibrateClick } from "../lib/utils";
+import { vibrateClick, safeToLower, safeIncludes, sanitizeQuery } from "../lib/utils";
 import {
   Search,
   PlusCircle,
@@ -23,6 +24,8 @@ import {
   Layers,
   Bot,
   RefreshCw,
+  HelpCircle,
+  Compass,
 } from "lucide-react";
 import { motion } from "motion/react";
 
@@ -38,12 +41,27 @@ export const HomeView: React.FC = () => {
     language,
   } = useApp();
 
-  const [homeSearch, setHomeSearch] = useState("");
+  const [homeSearch, setHomeSearch] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("TODAS");
   const [semanticMode, setSemanticMode] = useState<boolean>(true);
   const [isSearchingSemantic, setIsSearchingSemantic] = useState<boolean>(false);
   const [semanticResults, setSemanticResults] = useState<SemanticSearchResult[] | null>(null);
   const [semanticModelUsed, setSemanticModelUsed] = useState<string | null>(null);
+  const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
+
+  // Check if tour should auto-open on first visit
+  useEffect(() => {
+    try {
+      const hasCompleted = localStorage.getItem("ifpr_achados_tour_completed");
+      if (!hasCompleted) {
+        // Automatically open for first-time users after a brief delay
+        const timer = setTimeout(() => {
+          setIsTourOpen(true);
+        }, 1200);
+        return () => clearTimeout(timer);
+      }
+    } catch (_) {}
+  }, []);
 
   // Quick Semantic Search Prompts for discovery
   const semanticExampleQueries = [
@@ -59,10 +77,24 @@ export const HomeView: React.FC = () => {
   const totalReturned = items.filter((i) => i.status === "DEVOLVIDO").length;
   const successRate = totalRegistered > 0 ? Math.round((totalReturned / totalRegistered) * 100) : 0;
 
-  // Semantic Search Effect with Debounce
+  // Semantic Search Effect with Debounce and Comprehensive Debug Logging
   useEffect(() => {
-    const query = homeSearch.trim();
-    if (!query || query.length < 3 || !semanticMode) {
+    // Sanitize search query input safely against null/undefined
+    const sanitizedQuery = sanitizeQuery(homeSearch);
+    
+    // Debug log to trace search variable state before invoking Gemini AI
+    console.log("[HomeView Search Debug] Estado da variável de busca:", {
+      rawHomeSearch: homeSearch,
+      type: typeof homeSearch,
+      isNull: homeSearch === null,
+      isUndefined: homeSearch === undefined,
+      sanitizedQuery,
+      queryLength: sanitizedQuery.length,
+      semanticMode,
+      itemsCount: Array.isArray(items) ? items.length : 0,
+    });
+
+    if (!sanitizedQuery || sanitizedQuery.length < 3 || !semanticMode) {
       setSemanticResults(null);
       setIsSearchingSemantic(false);
       return;
@@ -73,18 +105,31 @@ export const HomeView: React.FC = () => {
 
     const timer = setTimeout(async () => {
       try {
-        const response = await clientSemanticSearch(query, items);
+        console.log("[HomeView Search Debug] Disparando busca semântica Gemini API para:", {
+          query: sanitizedQuery,
+          totalCandidateItems: items.length,
+        });
+
+        const response = await clientSemanticSearch(sanitizedQuery, items || []);
+        
+        console.log("[HomeView Search Debug] Resposta recebida da IA Gemini:", {
+          success: response?.success,
+          totalMatches: response?.results?.length || 0,
+          modelUsed: response?.modelUsed,
+        });
+
         if (isMounted) {
-          if (response.success && response.results && response.results.length > 0) {
+          if (response?.success && Array.isArray(response?.results) && response.results.length > 0) {
             setSemanticResults(response.results);
             setSemanticModelUsed(response.modelUsed || "gemini-3.7-flash");
           } else {
             setSemanticResults([]);
-            setSemanticModelUsed(response.modelUsed || "gemini-3.7-flash");
+            setSemanticModelUsed(response?.modelUsed || "gemini-3.7-flash");
           }
           setIsSearchingSemantic(false);
         }
       } catch (err) {
+        console.error("[HomeView Search Debug] Erro durante chamada da busca semântica:", err);
         if (isMounted) {
           setSemanticResults(null);
           setIsSearchingSemantic(false);
@@ -101,11 +146,16 @@ export const HomeView: React.FC = () => {
   // Combine semantic relevance with category filter
   let displayedItems: LostFoundItem[] = [];
 
-  if (semanticMode && semanticResults && semanticResults.length > 0 && homeSearch.trim().length >= 3) {
+  const safeSearchTerm = sanitizeQuery(homeSearch);
+
+  if (semanticMode && semanticResults && semanticResults.length > 0 && safeSearchTerm.length >= 3) {
     const semanticItemMap = new Map(semanticResults.map((r) => [r.itemId, r]));
-    const matchedItems = items
-      .filter((i) => semanticItemMap.has(i.id))
-      .filter((i) => selectedCategory === "TODAS" || i.category === selectedCategory);
+    const matchedItems = (items || [])
+      .filter((i) => i && semanticItemMap.has(i.id))
+      .filter((i) => {
+        const cat = sanitizeQuery(selectedCategory);
+        return !cat || cat === "TODAS" || i.category === cat;
+      });
 
     // Sort by relevance score
     matchedItems.sort((a, b) => {
@@ -116,16 +166,22 @@ export const HomeView: React.FC = () => {
 
     displayedItems = matchedItems;
   } else {
-    displayedItems = items
+    displayedItems = (items || [])
       .filter((item) => {
-        const matchesSearch =
-          homeSearch === "" ||
-          item.title.toLowerCase().includes(homeSearch.toLowerCase()) ||
-          item.description.toLowerCase().includes(homeSearch.toLowerCase()) ||
-          item.location.toLowerCase().includes(homeSearch.toLowerCase()) ||
-          item.brand.toLowerCase().includes(homeSearch.toLowerCase());
+        if (!item) return false;
 
-        const matchesCat = selectedCategory === "TODAS" || item.category === selectedCategory;
+        const matchesSearch =
+          !safeSearchTerm ||
+          safeIncludes(item.title, safeSearchTerm) ||
+          safeIncludes(item.description, safeSearchTerm) ||
+          safeIncludes(item.location, safeSearchTerm) ||
+          safeIncludes(item.brand, safeSearchTerm) ||
+          safeIncludes(item.color, safeSearchTerm) ||
+          safeIncludes(item.qrCodeId, safeSearchTerm) ||
+          safeIncludes(item.id, safeSearchTerm);
+
+        const safeCat = sanitizeQuery(selectedCategory);
+        const matchesCat = !safeCat || safeCat === "TODAS" || item.category === safeCat;
 
         return matchesSearch && matchesCat;
       })
@@ -150,7 +206,8 @@ export const HomeView: React.FC = () => {
 
   const handleSelectExampleQuery = (queryText: string) => {
     vibrateClick();
-    setHomeSearch(queryText);
+    const safeQ = sanitizeQuery(queryText);
+    setHomeSearch(safeQ);
     setSemanticMode(true);
   };
 
@@ -210,6 +267,18 @@ export const HomeView: React.FC = () => {
             >
               <Search className="w-4 h-4" />
               <span>Pesquisar Todos</span>
+            </button>
+
+            <button
+              onClick={() => {
+                vibrateClick();
+                setIsTourOpen(true);
+              }}
+              className="px-5 py-3.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-neutral-900 font-black text-sm shadow-lg shadow-amber-900/20 transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2 border border-amber-300"
+              title="Iniciar Tutorial Passo a Passo do Sistema"
+            >
+              <Compass className="w-4 h-4 text-neutral-950" />
+              <span>Tutorial do Sistema</span>
             </button>
           </div>
         </div>
@@ -303,7 +372,7 @@ export const HomeView: React.FC = () => {
               id="home-semantic-search-input"
               type="text"
               value={homeSearch}
-              onChange={(e) => setHomeSearch(e.target.value)}
+              onChange={(e) => setHomeSearch(e?.target?.value ?? "")}
               placeholder={
                 language === "pt"
                   ? "Busca Semântica com IA Gemini: digite ex: 'chave azul esquecida perto da biblioteca' ou 'garrafa térmica'..."
@@ -524,6 +593,9 @@ export const HomeView: React.FC = () => {
           </div>
         </div>
       </section>
+
+      {/* Interactive Tour Guide Modal */}
+      <TourGuide isOpen={isTourOpen} onClose={() => setIsTourOpen(false)} />
     </div>
   );
 };

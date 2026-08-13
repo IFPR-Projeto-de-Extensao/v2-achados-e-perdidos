@@ -158,8 +158,8 @@ export function clientMatchSimilarity(newItem: Partial<LostFoundItem>, candidate
       if (
         newItem.color &&
         candidate.color &&
-        newItem.color.toLowerCase() !== "não informada" &&
-        candidate.color.toLowerCase().includes(newItem.color.toLowerCase())
+        (newItem.color || "").toLowerCase() !== "não informada" &&
+        (candidate.color || "").toLowerCase().includes((newItem.color || "").toLowerCase())
       ) {
         score += 25;
         reasons.push(`Mesma cor (${newItem.color})`);
@@ -168,16 +168,16 @@ export function clientMatchSimilarity(newItem: Partial<LostFoundItem>, candidate
       if (
         newItem.brand &&
         candidate.brand &&
-        newItem.brand.toLowerCase() !== "não identificada" &&
-        candidate.brand.toLowerCase().includes(newItem.brand.toLowerCase())
+        (newItem.brand || "").toLowerCase() !== "não identificada" &&
+        (candidate.brand || "").toLowerCase().includes((newItem.brand || "").toLowerCase())
       ) {
         score += 25;
         reasons.push(`Mesma marca (${newItem.brand})`);
       }
 
       if (newItem.title && candidate.title) {
-        const titleWords = newItem.title.toLowerCase().split(/\s+/);
-        const matchWord = titleWords.find((w) => w.length > 3 && candidate.title.toLowerCase().includes(w));
+        const titleWords = (newItem.title || "").toLowerCase().split(/\s+/);
+        const matchWord = titleWords.find((w) => w.length > 3 && (candidate.title || "").toLowerCase().includes(w));
         if (matchWord) {
           score += 20;
           reasons.push(`Palavras-chave em comum no título`);
@@ -221,13 +221,19 @@ export async function clientSemanticSearch(
       body: JSON.stringify({ query, items: candidateItems }),
     },
     () => {
-      const qLower = query.toLowerCase();
+      const qLower = (query || "").toLowerCase();
       const qWords = qLower.split(/\s+/).filter((w) => w.length > 2);
 
-      const localResults: SemanticSearchResult[] = candidateItems
+      const localResults: SemanticSearchResult[] = (candidateItems || [])
         .map((item) => {
           let score = 0;
-          const textCorpus = `${item.title} ${item.description} ${item.location} ${item.category} ${item.color} ${item.brand}`.toLowerCase();
+          const locLower = (item.location || "").toLowerCase();
+          const colorLower = (item.color || "").toLowerCase();
+          const titleLower = (item.title || "").toLowerCase();
+          const descLower = (item.description || "").toLowerCase();
+          const catLower = (item.category || "").toLowerCase();
+          const brandLower = (item.brand || "").toLowerCase();
+          const textCorpus = `${titleLower} ${descLower} ${locLower} ${catLower} ${colorLower} ${brandLower}`;
           const matchedWords: string[] = [];
 
           qWords.forEach((word) => {
@@ -238,13 +244,13 @@ export async function clientSemanticSearch(
           });
 
           // Proximity & context matches
-          if (qLower.includes("biblioteca") && item.location.toLowerCase().includes("biblioteca")) score += 30;
-          if (qLower.includes("refeitório") && item.location.toLowerCase().includes("refeitório")) score += 30;
-          if (qLower.includes("bloco") && item.location.toLowerCase().includes("bloco")) score += 25;
-          if (qLower.includes("ginásio") && item.location.toLowerCase().includes("ginásio")) score += 30;
-          if (qLower.includes("portaria") && item.location.toLowerCase().includes("portaria")) score += 30;
+          if (qLower.includes("biblioteca") && locLower.includes("biblioteca")) score += 30;
+          if (qLower.includes("refeitório") && locLower.includes("refeitório")) score += 30;
+          if (qLower.includes("bloco") && locLower.includes("bloco")) score += 25;
+          if (qLower.includes("ginásio") && locLower.includes("ginásio")) score += 30;
+          if (qLower.includes("portaria") && locLower.includes("portaria")) score += 30;
           if (qLower.includes("chave") && item.category === "Chaves") score += 35;
-          if (qLower.includes("azul") && item.color.toLowerCase().includes("azul")) score += 30;
+          if (qLower.includes("azul") && colorLower.includes("azul")) score += 30;
 
           return {
             itemId: item.id,

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { LostFoundItem } from "../types";
-import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning } from "../lib/utils";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, safeToLower, safeIncludes, sanitizeQuery } from "../lib/utils";
 import { QrCode, X, Search, CheckCircle2, ShieldCheck, AlertCircle, Camera, CameraOff, RefreshCw, Eye, Lock } from "lucide-react";
 import { RestrictedQRViewModal } from "./RestrictedQRViewModal";
 
@@ -84,12 +84,19 @@ export const QRCodeScannerModal: React.FC = () => {
 
   const handleScanOrSearch = (codeToSearch: string) => {
     vibrateClick();
-    const query = codeToSearch.trim().toLowerCase();
-    const item = items.find(
+    const query = sanitizeQuery(codeToSearch);
+    if (!query) {
+      vibrateWarning();
+      addToast("Digite ou escaneie um código válido.", "info");
+      return;
+    }
+
+    const item = (items || []).find(
       (it) =>
-        it.qrCodeId.toLowerCase().includes(query) ||
-        it.id.toLowerCase() === query ||
-        it.title.toLowerCase().includes(query)
+        it &&
+        (safeIncludes(it.qrCodeId, query) ||
+          safeToLower(it.id) === safeToLower(query) ||
+          safeIncludes(it.title, query))
     );
 
     if (item) {
@@ -246,7 +253,7 @@ export const QRCodeScannerModal: React.FC = () => {
             <input
               type="text"
               value={scannedCode}
-              onChange={(e) => setScannedCode(e.target.value)}
+              onChange={(e) => setScannedCode(e?.target?.value ?? "")}
               placeholder="Ex: QR-IFPR-101-GARRAFA ou ifpr-101"
               className="flex-1 px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none"
             />

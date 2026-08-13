@@ -128,6 +128,36 @@ export interface NotificationItem {
   relatedItemId?: string;
 }
 
+export type BadgeTier = "BRONZE" | "PRATA" | "OURO" | "DIAMANTE";
+
+export interface UserBadge {
+  id: string;
+  name: string;
+  description: string;
+  iconName: string;
+  tier: BadgeTier;
+  unlocked: boolean;
+  unlockedAt?: string;
+  progress: number;
+  currentCount: number;
+  targetCount: number;
+  requirementText: string;
+  pointsReward: number;
+}
+
+export interface UserReputationInfo {
+  totalPoints: number;
+  level: number;
+  levelTitle: string;
+  levelTier: BadgeTier;
+  nextLevelPoints: number;
+  progressToNextLevel: number;
+  itemsReturnedCount: number;
+  itemsRegisteredFoundCount: number;
+  itemsRegisteredLostCount: number;
+  badges: UserBadge[];
+}
+
 export interface ItemFilterState {
   searchQuery: string;
   category: string;
@@ -135,6 +165,8 @@ export interface ItemFilterState {
   status: string;
   location: string;
   dateRange: string;
+  campusBlock?: string;
+  timePeriodPreset?: "TODOS" | "HOJE" | "7_DIAS" | "30_DIAS" | "SEMESTRE_ATUAL" | "CUSTOM";
 }
 
 export interface AIMatchResult {
