@@ -1,4 +1,10 @@
-export type ItemStatus = "PERDIDO" | "ENCONTRADO" | "EM_ANALISE" | "DEVOLVIDO";
+export type ItemStatus =
+  | "PERDIDO"
+  | "ENCONTRADO"
+  | "EM_ANALISE"
+  | "PROPRIETARIO_IDENTIFICADO"
+  | "DEVOLVIDO"
+  | "ENCERRADO";
 
 export type ItemCategory =
   | "Eletrônicos"
@@ -26,6 +32,22 @@ export interface User {
   reputationScore?: number;
 }
 
+export interface ItemHistoryLog {
+  id: string;
+  action: string;
+  actorName: string;
+  actorRole: UserRole;
+  actorId: string;
+  userId?: string;
+  userName?: string;
+  userRole?: UserRole;
+  timestamp: string;
+  details?: string;
+  fieldChanged?: string;
+  oldValue?: string;
+  newValue?: string;
+}
+
 export interface LostFoundItem {
   id: string;
   title: string;
@@ -49,6 +71,36 @@ export interface LostFoundItem {
   resolutionDate?: string;
   secretVerificationHint?: string; // Dica/pergunta sobre recurso oculta
   secretVerificationKey?: string; // Senha, PIN, código de barras/série ou padrão cadastrado (RNF04)
+  
+  // Independent operation tracking fields
+  lastEditedByUserId?: string;
+  lastEditedByName?: string;
+  lastEditedByRole?: UserRole;
+  lastEditedAt?: string;
+
+  returnedByUserId?: string;
+  returnedByName?: string;
+  returnedByRole?: UserRole;
+  returnDate?: string;
+  returnTime?: string;
+  recipientName?: string;
+  recipientEmail?: string;
+  recipientBond?: string;
+  returnObservations?: string;
+  receiptValidationCode?: string;
+
+  // Deadline & Unclaimed destination tracking
+  storageDeadlineDays?: number;
+  storageDeadlineDate?: string;
+  data_limite?: string;
+  destinationReason?: string;
+  destinationType?: string;
+  destinationDate?: string;
+  destinationResponsible?: string;
+
+  // Timeline history log
+  history?: ItemHistoryLog[];
+  historyLogs?: ItemHistoryLog[];
 }
 
 export interface ItemClaim {
@@ -129,7 +181,16 @@ export interface ActivityLog {
     | "CONFIG_BACKUP"
     | "MENSAGEM_MANUTENCAO"
     | "LIMPEZA_LOGS"
-    | "MASTER_WIPE";
+    | "MASTER_WIPE"
+    | "CADASTRO_OCORRENCIA"
+    | "EDIT_OCORRENCIA"
+    | "GERACAO_ETIQUETA"
+    | "IDENTIFICACAO_PROPRIETARIO"
+    | "REGISTRO_DEVOLUCAO"
+    | "REABERTURA_DEVOLUCAO"
+    | "DESTINACAO_ITEM"
+    | "COMPROVANTE_GERADO"
+    | string;
   details: string;
   timestamp: string;
 }

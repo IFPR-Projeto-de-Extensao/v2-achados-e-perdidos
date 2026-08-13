@@ -39,6 +39,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
   const [selectedCategory, setSelectedCategory] = useState<string>("TODAS");
   const [selectedLocation, setSelectedLocation] = useState<string>("TODOS");
   const [selectedColor, setSelectedColor] = useState<string>("TODAS");
+  const [filterStartDate, setFilterStartDate] = useState<string>("");
+  const [filterEndDate, setFilterEndDate] = useState<string>("");
   const [sortBy, setSortBy] = useState<"recentes" | "antigos">("recentes");
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [layoutViewMode, setLayoutViewMode] = useState<"ADAPTATIVO" | "CARDS" | "LISTA">("ADAPTATIVO");
@@ -115,7 +117,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
 
   const colorsList = ["TODAS", "Verde", "Preto", "Cinza / Prata", "Azul", "Vermelho", "Branco"];
 
-  // Filter & Sort Logic
+  // Filter & Sort Logic (Simultaneous Multi-field Filtering)
   const filteredItems = items
     .filter((item) => {
       // Type / Status filter tab
@@ -133,7 +135,21 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
       if (selectedColor !== "TODAS" && !item.color.toLowerCase().includes(selectedColor.toLowerCase()))
         return false;
 
-      // Search term query
+      // Date Range Filter
+      if (filterStartDate) {
+        const itemDate = new Date(item.date || item.createdAt);
+        const start = new Date(filterStartDate);
+        start.setHours(0, 0, 0, 0);
+        if (itemDate < start) return false;
+      }
+      if (filterEndDate) {
+        const itemDate = new Date(item.date || item.createdAt);
+        const end = new Date(filterEndDate);
+        end.setHours(23, 59, 59, 999);
+        if (itemDate > end) return false;
+      }
+
+      // Text Search Query
       if (search.trim()) {
         const query = search.toLowerCase();
         const matchesTitle = item.title.toLowerCase().includes(query);
@@ -155,12 +171,23 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
       return sortBy === "recentes" ? dateB - dateA : dateA - dateB;
     });
 
+  const activeFiltersCount =
+    (search.trim() ? 1 : 0) +
+    (filterType !== "TODOS" ? 1 : 0) +
+    (selectedCategory !== "TODAS" ? 1 : 0) +
+    (selectedLocation !== "TODOS" ? 1 : 0) +
+    (selectedColor !== "TODAS" ? 1 : 0) +
+    (filterStartDate ? 1 : 0) +
+    (filterEndDate ? 1 : 0);
+
   const clearFilters = () => {
     setSearch("");
     setFilterType("TODOS");
     setSelectedCategory("TODAS");
     setSelectedLocation("TODOS");
     setSelectedColor("TODAS");
+    setFilterStartDate("");
+    setFilterEndDate("");
   };
 
   return (
@@ -312,6 +339,52 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                 </option>
               ))}
             </select>
+          </div>
+        </div>
+
+        {/* Date Range Inputs & Active Filters Bar */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+          <div className="flex items-center space-x-2">
+            <span className="text-[11px] font-bold text-neutral-500 shrink-0 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-[#00843D]" /> De:
+            </span>
+            <input
+              type="date"
+              value={filterStartDate}
+              onChange={(e) => setFilterStartDate(e.target.value)}
+              className="w-full py-1.5 px-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+            />
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <span className="text-[11px] font-bold text-neutral-500 shrink-0 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-[#00843D]" /> Até:
+            </span>
+            <input
+              type="date"
+              value={filterEndDate}
+              onChange={(e) => setFilterEndDate(e.target.value)}
+              className="w-full py-1.5 px-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+            />
+          </div>
+
+          <div className="sm:col-span-2 flex items-center justify-between sm:justify-end gap-2">
+            {activeFiltersCount > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-full bg-[#00843D]/10 text-[#00843D] dark:text-green-400 font-extrabold text-[11px] border border-[#00843D]/20">
+                  {activeFiltersCount} {activeFiltersCount === 1 ? "Filtro Ativo" : "Filtros Ativos"}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-bold text-xs transition-colors flex items-center gap-1"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Limpar Filtros</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

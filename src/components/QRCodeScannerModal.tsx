@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { LostFoundItem } from "../types";
-import { QrCode, X, Search, CheckCircle2, ShieldCheck, AlertCircle, Camera, CameraOff, RefreshCw } from "lucide-react";
+import { QrCode, X, Search, CheckCircle2, ShieldCheck, AlertCircle, Camera, CameraOff, RefreshCw, Eye, Lock } from "lucide-react";
+import { RestrictedQRViewModal } from "./RestrictedQRViewModal";
 
 export const QRCodeScannerModal: React.FC = () => {
   const { qrScannerOpen, setQrScannerOpen, items, updateItemStatus, addToast } = useApp();
   const [scannedCode, setScannedCode] = useState("");
   const [foundItem, setFoundItem] = useState<LostFoundItem | null>(null);
+  const [showRestrictedModal, setShowRestrictedModal] = useState<LostFoundItem | null>(null);
 
   // Camera Permission & Streaming State
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -265,12 +267,17 @@ export const QRCodeScannerModal: React.FC = () => {
               <img
                 src={foundItem.imageUrl}
                 alt=""
-                className="w-12 h-12 rounded-xl object-cover"
+                className="w-12 h-12 rounded-xl object-cover border border-neutral-200"
               />
-              <div>
-                <span className="text-[10px] font-bold text-[#00843D] dark:text-green-400 uppercase">
-                  {foundItem.status}
-                </span>
+              <div className="flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-[#00843D] dark:text-green-400 uppercase">
+                    {foundItem.status}
+                  </span>
+                  <span className="text-[10px] text-amber-600 font-bold flex items-center gap-0.5">
+                    <Lock className="w-3 h-3" /> Visualização Protegida
+                  </span>
+                </div>
                 <h4 className="font-bold text-xs text-neutral-900 dark:text-white">
                   {foundItem.title}
                 </h4>
@@ -280,16 +287,33 @@ export const QRCodeScannerModal: React.FC = () => {
               </div>
             </div>
 
-            <button
-              onClick={handleConfirmReturn}
-              className="w-full py-2.5 rounded-xl bg-[#00843D] text-white font-extrabold text-xs shadow-md flex items-center justify-center space-x-2"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Confirmar Entrega e Baixar como Devolvido</span>
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                onClick={() => setShowRestrictedModal(foundItem)}
+                className="w-full py-2.5 rounded-xl bg-neutral-900 text-white font-bold text-xs shadow-xs flex items-center justify-center space-x-1.5 cursor-pointer"
+              >
+                <Eye className="w-4 h-4 text-emerald-400" />
+                <span>Ver Dados Públicos (QR)</span>
+              </button>
+
+              <button
+                onClick={handleConfirmReturn}
+                className="w-full py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md flex items-center justify-center space-x-1.5 cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Confirmar Entrega</span>
+              </button>
+            </div>
           </div>
         )}
       </div>
+
+      {showRestrictedModal && (
+        <RestrictedQRViewModal
+          item={showRestrictedModal}
+          onClose={() => setShowRestrictedModal(null)}
+        />
+      )}
     </div>
   );
 };

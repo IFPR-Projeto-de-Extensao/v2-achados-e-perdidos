@@ -11,6 +11,7 @@ import {
   ActivityLog,
   BackupLog,
   BackupScheduleConfig,
+  ItemHistoryLog,
 } from "../types";
 import { INITIAL_ITEMS, MOCK_USERS, MOCK_NOTIFICATIONS, MOCK_CLAIMS, MOCK_COMMENTS, MOCK_ACTIVITY_LOGS } from "../data/mockData";
 import { safeFetchJson, clientMatchSimilarity } from "../lib/apiHelper";
@@ -119,6 +120,25 @@ interface AppContextType {
     itemData: Omit<LostFoundItem, "id" | "createdAt" | "qrCodeId" | "registeredByUserId" | "registeredByName" | "registeredByRole">
   ) => Promise<{ newItem: LostFoundItem; matches: AIMatchResult[] }>;
   updateItemStatus: (id: string, status: ItemStatus) => void;
+  updateItemData: (id: string, updatedFields: Partial<LostFoundItem>) => Promise<void>;
+  registerItemReturn: (
+    itemId: string,
+    returnData: {
+      recipientName: string;
+      recipientEmail: string;
+      recipientBond: string;
+      identityVerified?: boolean;
+      returnObservations?: string;
+      observations?: string;
+    }
+  ) => Promise<void>;
+  reopenItemReturn: (itemId: string, reason: string) => Promise<void>;
+  registerItemDestination: (
+    itemId: string,
+    destinationTypeOrObj: string | { destinationType: string; destinationReason?: string; destinationNotes?: string },
+    destinationNotesParam?: string
+  ) => Promise<void>;
+  logItemLabelGenerated: (itemId: string) => Promise<void>;
   deleteItem: (id: string) => void;
   submitClaim: (itemId: string, verificationAnswer: string) => void;
   updateClaimStatus: (claimId: string, status: ItemClaim["status"]) => void;
@@ -1589,6 +1609,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newItemId = `ifpr-${uniqueNum}`;
     const qrCodeId = `QR-IFPR-${uniqueNum}-${itemData.title.substring(0, 10).toUpperCase().replace(/\s+/g, "")}`;
 
+    const initialHistory: ItemHistoryLog[] = [
+      {
+        id: `hist-${Date.now()}-1`,
+        action: "Ocorrência cadastrada",
+        actorId: currentUser.id,
+        actorName: currentUser.name,
+        actorRole: currentUser.role,
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userRole: currentUser.role,
+        timestamp: new Date().toISOString(),
+        details: `Ocorrência registrada no sistema do IFPR Campus Ivaiporã como ${itemData.type}.`,
+      },
+    ];
+
     const newItem: LostFoundItem = {
       ...itemData,
       id: newItemId,
@@ -1598,11 +1633,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       registeredByName: currentUser.name,
       registeredByRole: currentUser.role,
       status: itemData.type === "PERDIDO" ? "PERDIDO" : "ENCONTRADO",
+      history: initialHistory,
+      storageDeadlineDays: 90,
+      storageDeadlineDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
     };
 
     // Save item to Firestore
     try {
-      await setDoc(doc(db, "items", newItem.id), newItem);
+      await setDoc(doc(db, "items", newItem.id), sanitizeFirestoreData(newItem));
+      await logAdminAction(
+        "CADASTRO_OCORRENCIA",
+        `Cadastrou a ocorrência #${newItem.id} "${newItem.title}" (${newItem.type}) - Local: ${newItem.location}`
+      );
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `items/${newItem.id}`);
     }
@@ -1610,7 +1652,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // AI Match check
     const counterpartType = newItem.type === "PERDIDO" ? "ENCONTRADO" : "PERDIDO";
     const candidates = items.filter(
-      (it) => it.type === counterpartType && it.status !== "DEVOLVIDO"
+      (it) => it.type === counterpartType && it.status !== "DEVOLVIDO" && it.status !== "ENCERRADO"
     );
 
     let aiMatches: AIMatchResult[] = [];
@@ -1659,13 +1701,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         relatedItemId: topMatch.matchedItem.id,
       };
       try {
-        await setDoc(doc(db, "notifications", newNotif.id), newNotif);
+        await setDoc(doc(db, "notifications", newNotif.id), sanitizeFirestoreData(newNotif));
       } catch (e) {
         handleFirestoreError(e, OperationType.WRITE, `notifications/${newNotif.id}`);
       }
       setAiMatchAlert({ newItem, matches: aiMatches });
 
-      // Trigger Browser Push Notification if permission granted
       if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
         try {
           new Notification("IFPR Achados & Perdidos • Alerta de Correspondência", {
@@ -1683,16 +1724,276 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateItemStatus = async (id: string, status: ItemStatus) => {
-    const isResolved = status === "DEVOLVIDO";
+    const existing = items.find((i) => i.id === id);
+    const existingHistory = existing?.history || existing?.historyLogs || [];
+    const isResolved = status === "DEVOLVIDO" || status === "ENCERRADO";
+
+    const newHistLog: ItemHistoryLog = {
+      id: `hist-${Date.now()}`,
+      action: `Status alterado para ${status}`,
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userRole: currentUser.role,
+      timestamp: new Date().toISOString(),
+      details: `Status do objeto alterado de ${existing?.status || "N/A"} para ${status}.`,
+    };
+
     const updates: Record<string, any> = sanitizeFirestoreData({
       status,
       resolutionDate: isResolved ? new Date().toISOString() : deleteField(),
+      history: [...existingHistory, newHistLog],
+      historyLogs: [...existingHistory, newHistLog],
     });
+
     try {
       await updateDoc(doc(db, "items", id), updates);
-      addToast(`Status do objeto atualizado no Firestore para: ${status.replace("_", " ")}`, "info");
+      await logAdminAction(
+        "STATUS_OVERRIDE",
+        `Alterou o status do objeto #${id} para '${status}'`
+      );
+      addToast(`Status do objeto atualizado para: ${status.replace("_", " ")}`, "info");
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `items/${id}`);
+    }
+  };
+
+  const updateItemData = async (id: string, updatedFields: Partial<LostFoundItem>) => {
+    const existing = items.find((i) => i.id === id);
+    const existingHistory = existing?.history || [];
+    const newHistLog: ItemHistoryLog = {
+      id: `hist-${Date.now()}`,
+      action: "Alteração da ocorrência",
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userRole: currentUser.role,
+      timestamp: new Date().toISOString(),
+      details: "Dados da ocorrência foram atualizados no sistema.",
+    };
+
+    const mergedData = sanitizeFirestoreData({
+      ...updatedFields,
+      lastEditedByUserId: currentUser.id,
+      lastEditedByName: currentUser.name,
+      lastEditedByRole: currentUser.role,
+      lastEditedAt: new Date().toISOString(),
+      history: [...existingHistory, newHistLog],
+    });
+
+    try {
+      await updateDoc(doc(db, "items", id), mergedData);
+      await logAdminAction(
+        "EDIT_OCORRENCIA",
+        `Atualizou os dados da ocorrência #${id} por ${currentUser.name} (${currentUser.role})`
+      );
+      addToast("Ocorrência atualizada com sucesso!", "success");
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `items/${id}`);
+    }
+  };
+
+  const registerItemReturn = async (
+    itemId: string,
+    returnData: {
+      recipientName: string;
+      recipientEmail: string;
+      recipientBond: string;
+      identityVerified?: boolean;
+      returnObservations?: string;
+      observations?: string;
+    }
+  ) => {
+    const existing = items.find((i) => i.id === itemId);
+    const existingHistory = existing?.history || [];
+    const validationCode = "COMP-IFPR-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+    const now = new Date();
+    const returnDate = now.toLocaleDateString("pt-BR");
+    const returnTime = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+    const newHistLog: ItemHistoryLog = {
+      id: `hist-${Date.now()}`,
+      action: "Devolução registrada",
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userRole: currentUser.role,
+      timestamp: now.toISOString(),
+      details: `Devolução concluída para ${returnData.recipientName} (${returnData.recipientBond}). Servidor responsável: ${currentUser.name}`,
+    };
+
+    const updatePayload = sanitizeFirestoreData({
+      status: "DEVOLVIDO" as ItemStatus,
+      resolutionDate: now.toISOString(),
+      returnDate,
+      returnTime,
+      returnedByUserId: currentUser.id,
+      returnedByName: currentUser.name,
+      returnedByRole: currentUser.role,
+      recipientName: returnData.recipientName,
+      recipientEmail: returnData.recipientEmail,
+      recipientBond: returnData.recipientBond,
+      returnObservations: returnData.returnObservations || returnData.observations || "",
+      receiptValidationCode: validationCode,
+      history: [...existingHistory, newHistLog],
+      historyLogs: [...existingHistory, newHistLog],
+    });
+
+    try {
+      await updateDoc(doc(db, "items", itemId), updatePayload);
+      await logAdminAction(
+        "REGISTRO_DEVOLUCAO",
+        `Registrou a devolução do item #${itemId} (${existing?.title || ""}) para ${returnData.recipientName} (${returnData.recipientBond}). Responsável: ${currentUser.name}`
+      );
+      addToast(`Devolução do item #${itemId} registrada com sucesso!`, "success");
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `items/${itemId}`);
+    }
+  };
+
+  const reopenItemReturn = async (itemId: string, reason: string) => {
+    if (currentUser.role !== "ADMIN") {
+      addToast("Apenas o Administrador pode reabrir devoluções.", "error");
+      return;
+    }
+    const existing = items.find((i) => i.id === itemId);
+    if (!existing) return;
+
+    const existingHistory = existing.history || [];
+    const now = new Date();
+    const previousStatus: ItemStatus = existing.type === "PERDIDO" ? "PERDIDO" : "ENCONTRADO";
+
+    const newHistLog: ItemHistoryLog = {
+      id: `hist-${Date.now()}`,
+      action: "Devolução reaberta",
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userRole: currentUser.role,
+      timestamp: now.toISOString(),
+      details: `Devolução reaberta pelo Admin. Motivo obrigatório: ${reason}`,
+    };
+
+    const updatePayload = sanitizeFirestoreData({
+      status: previousStatus,
+      resolutionDate: deleteField(),
+      returnedByUserId: deleteField(),
+      returnedByName: deleteField(),
+      returnedByRole: deleteField(),
+      returnDate: deleteField(),
+      returnTime: deleteField(),
+      recipientName: deleteField(),
+      recipientEmail: deleteField(),
+      recipientBond: deleteField(),
+      history: [...existingHistory, newHistLog],
+      historyLogs: [...existingHistory, newHistLog],
+    });
+
+    try {
+      await updateDoc(doc(db, "items", itemId), updatePayload);
+      await logAdminAction(
+        "REABERTURA_DEVOLUCAO",
+        `Reabriu a devolução do objeto #${itemId} (${existing.title}). Motivo: ${reason}`
+      );
+      addToast(`Devolução do objeto #${itemId} reaberta! O item retornou para a lista de pendentes.`, "success");
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `items/${itemId}`);
+    }
+  };
+
+  const registerItemDestination = async (
+    itemId: string,
+    destinationTypeOrObj: string | { destinationType: string; destinationReason?: string; destinationNotes?: string },
+    destinationNotesParam?: string
+  ) => {
+    const existing = items.find((i) => i.id === itemId);
+    if (!existing) return;
+
+    let destType = "DOACAO";
+    let destReason = "";
+
+    if (typeof destinationTypeOrObj === "string") {
+      destType = destinationTypeOrObj;
+      destReason = destinationNotesParam || "";
+    } else {
+      destType = destinationTypeOrObj.destinationType || "DOACAO";
+      destReason = destinationTypeOrObj.destinationReason || destinationTypeOrObj.destinationNotes || "";
+    }
+
+    const existingHistory = existing.history || existing.historyLogs || [];
+    const now = new Date();
+
+    const newHistLog: ItemHistoryLog = {
+      id: `hist-${Date.now()}`,
+      action: "Destinação de objeto não reclamado",
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userRole: currentUser.role,
+      timestamp: now.toISOString(),
+      details: `Objeto destinado (${destType}). Motivo/Detalhes: ${destReason}`,
+    };
+
+    const updatePayload = sanitizeFirestoreData({
+      status: "ENCERRADO" as ItemStatus,
+      destinationType: destType,
+      destinationReason: destReason,
+      destinationDate: now.toISOString(),
+      destinationResponsible: currentUser.name,
+      history: [...existingHistory, newHistLog],
+      historyLogs: [...existingHistory, newHistLog],
+    });
+
+    try {
+      await updateDoc(doc(db, "items", itemId), updatePayload);
+      await logAdminAction(
+        "DESTINACAO_ITEM",
+        `Registrou destinação do item não reclamado #${itemId} (${existing.title}). Tipo: ${destType}. Motivo: ${destReason}`
+      );
+      addToast(`Destinação do objeto #${itemId} registrada com sucesso.`, "success");
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `items/${itemId}`);
+    }
+  };
+
+  const logItemLabelGenerated = async (itemId: string) => {
+    const existing = items.find((i) => i.id === itemId);
+    if (!existing) return;
+
+    const existingHistory = existing.history || existing.historyLogs || [];
+    const now = new Date();
+
+    const newHistLog: ItemHistoryLog = {
+      id: `hist-${Date.now()}`,
+      action: "Etiqueta gerada",
+      actorId: currentUser.id,
+      actorName: currentUser.name,
+      actorRole: currentUser.role,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userRole: currentUser.role,
+      timestamp: now.toISOString(),
+      details: `Gerada etiqueta de identificação QR Code por ${currentUser.name} (${currentUser.role}).`,
+    };
+
+    try {
+      await updateDoc(doc(db, "items", itemId), sanitizeFirestoreData({ history: [...existingHistory, newHistLog], historyLogs: [...existingHistory, newHistLog] }));
+      await logAdminAction(
+        "GERACAO_ETIQUETA",
+        `Gerou a etiqueta física com QR Code para o objeto #${itemId} (${existing.title})`
+      );
+    } catch (e) {
+      console.warn("Aviso ao registrar histórico de etiqueta:", e);
     }
   };
 
@@ -1830,6 +2131,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedItemForDetail,
         addItem,
         updateItemStatus,
+        updateItemData,
+        registerItemReturn,
+        reopenItemReturn,
+        registerItemDestination,
+        logItemLabelGenerated,
         deleteItem,
         submitClaim,
         updateClaimStatus,

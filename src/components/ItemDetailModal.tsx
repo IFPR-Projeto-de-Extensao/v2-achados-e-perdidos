@@ -4,6 +4,7 @@ import { useApp } from "../context/AppContext";
 import { usePossessionVerification } from "../hooks/usePossessionVerification";
 import { formatDate, formatDateTime } from "../lib/utils";
 import { QRCodeSVG } from "qrcode.react";
+import { RestrictedQRViewModal } from "./RestrictedQRViewModal";
 import {
   X,
   MapPin,
@@ -26,6 +27,11 @@ import {
   Clock,
   ExternalLink,
   Copy,
+  History,
+  RotateCcw,
+  PackageCheck,
+  FileSpreadsheet,
+  Eye,
 } from "lucide-react";
 
 interface ItemDetailModalProps {
@@ -34,7 +40,20 @@ interface ItemDetailModalProps {
 }
 
 export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose }) => {
-  const { currentUser, submitClaim, updateItemStatus, sendEmailViaGmail, addToast, comments, addCommentToItem, claims } = useApp();
+  const {
+    currentUser,
+    submitClaim,
+    updateItemStatus,
+    sendEmailViaGmail,
+    addToast,
+    comments,
+    addCommentToItem,
+    claims,
+    registerItemReturn,
+    reopenItemReturn,
+    registerItemDestination,
+    logItemLabelGenerated,
+  } = useApp();
   const ownership = usePossessionVerification(item);
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
@@ -43,6 +62,26 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const [claimBrandInput, setClaimBrandInput] = useState("");
   const [claimHiddenFeaturesInput, setClaimHiddenFeaturesInput] = useState("");
   const [isSubmittingClaim, setIsSubmittingClaim] = useState(false);
+
+  // Devolution Registration Flow State
+  const [returnModalOpen, setReturnModalOpen] = useState(false);
+  const [returnRecipientName, setReturnRecipientName] = useState("");
+  const [returnRecipientEmail, setReturnRecipientEmail] = useState("");
+  const [returnRecipientBond, setReturnRecipientBond] = useState<"Aluno" | "Servidor" | "Visitante" | "Terceirizado">("Aluno");
+  const [returnIdentityConfirmed, setReturnIdentityConfirmed] = useState(false);
+  const [returnObservations, setReturnObservations] = useState("");
+  const [isRegisteringReturn, setIsRegisteringReturn] = useState(false);
+
+  // Reopen Return Flow State
+  const [reopenModalOpen, setReopenModalOpen] = useState(false);
+  const [reopenReason, setReopenReason] = useState("");
+  const [isReopeningReturn, setIsReopeningReturn] = useState(false);
+
+  // Destination Flow State
+  const [destinationModalOpen, setDestinationModalOpen] = useState(false);
+  const [destinationType, setDestinationType] = useState<"DOACAO" | "DESCARTE" | "LEILAO_PROJETO" | "OUTRO">("DOACAO");
+  const [destinationNotes, setDestinationNotes] = useState("");
+  const [isRegisteringDestination, setIsRegisteringDestination] = useState(false);
 
   // Comments state
   const [newCommentText, setNewCommentText] = useState("");
@@ -54,6 +93,34 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const [emailSubject, setEmailSubject] = useState(`[IFPR Achados & Perdidos] Consulta: ${item.title}`);
   const [emailBody, setEmailBody] = useState(`Olá,\n\nEstou entrando em contato a respeito do item "${item.title}" (ID: ${item.id}) cadastrado no Achados e Perdidos do IFPR Campus Ivaiporã.\n\nAtenciosamente,\n${currentUser.name}`);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+
+  // Restricted Public View QR Modal State
+  const [showRestrictedQRView, setShowRestrictedQRView] = useState(false);
+
+  // Consolidate Timeline History Logs
+  const combinedHistoryLogs = [
+    ...(item.historyLogs || []),
+    ...(item.history || []).map((h) => ({
+      id: h.id || `h-${Math.random()}`,
+      action: h.action,
+      actorId: h.actorId || h.userId || "system",
+      actorName: h.actorName || h.userName || "Usuário IFPR",
+      actorRole: h.actorRole || h.userRole || "SISTEMA",
+      timestamp: h.timestamp || new Date().toISOString(),
+      details: h.details,
+    })),
+  ];
+
+  const timelineLogsMap = new Map();
+  combinedHistoryLogs.forEach((log) => {
+    if (log && log.id && !timelineLogsMap.has(log.id)) {
+      timelineLogsMap.set(log.id, log);
+    }
+  });
+
+  const sortedTimeline = Array.from(timelineLogsMap.values()).sort(
+    (a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
 
   // Find associated approved claim for PDF receipt details
   const approvedClaim = claims.find((c) => c.itemId === item.id && (c.status === "APROVADO" || c.status === "CONCLUIDO"));
@@ -200,6 +267,80 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     await addCommentToItem(item.id, newCommentText.trim());
     setNewCommentText("");
     setIsPostingComment(false);
+  };
+
+  // Handle Submit Devolution Registration
+  const handleRegisterReturnSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!returnRecipientName || !returnRecipientEmail || !returnIdentityConfirmed) {
+      addToast("Preencha os dados do receptor e confirme a verificação do documento com foto.", "error");
+      return;
+    }
+
+    setIsRegisteringReturn(true);
+    try {
+      await registerItemReturn(item.id, {
+        recipientName: returnRecipientName,
+        recipientEmail: returnRecipientEmail,
+        recipientBond: returnRecipientBond,
+        identityVerified: returnIdentityConfirmed,
+        observations: returnObservations,
+      });
+
+      addToast(`Devolução do objeto "${item.title}" foi registrada com sucesso!`, "success");
+      setReturnModalOpen(false);
+      handlePrintReceiptPDF();
+      onClose();
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao registrar devolução do objeto.", "error");
+    } finally {
+      setIsRegisteringReturn(false);
+    }
+  };
+
+  // Handle Submit Reopen Return (Admin Only)
+  const handleReopenReturnSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reopenReason.trim()) {
+      addToast("Por favor, preencha a justificativa para a reabertura.", "error");
+      return;
+    }
+
+    setIsReopeningReturn(true);
+    try {
+      await reopenItemReturn(item.id, reopenReason.trim());
+      addToast(`A devolução do item "${item.title}" foi reaberta. Ocorrência ativa novamente.`, "success");
+      setReopenModalOpen(false);
+      onClose();
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao reabrir a devolução.", "error");
+    } finally {
+      setIsReopeningReturn(false);
+    }
+  };
+
+  // Handle Submit Destination (Unclaimed Items)
+  const handleDestinationSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!destinationNotes.trim()) {
+      addToast("Informe a justificativa/destinatário da destinação.", "error");
+      return;
+    }
+
+    setIsRegisteringDestination(true);
+    try {
+      await registerItemDestination(item.id, destinationType, destinationNotes.trim());
+      addToast(`Destinação do objeto (${destinationType}) registrada com sucesso. Item encerrado.`, "success");
+      setDestinationModalOpen(false);
+      onClose();
+    } catch (err) {
+      console.error(err);
+      addToast("Erro ao registrar a destinação do item.", "error");
+    } finally {
+      setIsRegisteringDestination(false);
+    }
   };
 
   const itemComments = comments.filter((c) => c.itemId === item.id);
@@ -510,24 +651,33 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRestrictedQRView(true)}
+                  className="w-full py-2 px-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                >
+                  <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Modo Restrito QR</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={handlePrintQRTag}
-                  className="w-full py-2 px-3 rounded-xl bg-white dark:bg-neutral-800 border border-[#00843D]/30 text-[#00843D] dark:text-green-400 font-bold text-xs hover:bg-[#00843D] hover:text-white transition-all flex items-center justify-center space-x-1.5 shadow-xs"
+                  className="w-full py-2 px-2.5 rounded-xl bg-white dark:bg-neutral-800 border border-[#00843D]/30 text-[#00843D] dark:text-green-400 font-bold text-xs hover:bg-[#00843D] hover:text-white transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>Etiqueta QR PDF</span>
+                  <span>Etiqueta PDF</span>
                 </button>
 
                 {/* Generate PDF Receipt Button */}
                 <button
                   type="button"
                   onClick={handlePrintReceiptPDF}
-                  className="w-full py-2 px-3 rounded-xl bg-[#00843D] text-white font-bold text-xs hover:bg-[#006e33] transition-all flex items-center justify-center space-x-1.5 shadow-xs"
+                  className="w-full py-2 px-2.5 rounded-xl bg-[#00843D] text-white font-bold text-xs hover:bg-[#006e33] transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
                 >
                   <FileCheck className="w-3.5 h-3.5" />
-                  <span>Gerar Recibo PDF</span>
+                  <span>Recibo PDF</span>
                 </button>
               </div>
             </div>
@@ -648,12 +798,66 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               </form>
             </div>
 
+            {/* Vertical Timeline History Section */}
+            <div className="space-y-3 pt-3 border-t border-neutral-200 dark:border-neutral-800">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-neutral-900 dark:text-white flex items-center gap-1.5">
+                  <History className="w-4 h-4 text-indigo-500" /> Histórico da Ocorrência ({sortedTimeline.length})
+                </h4>
+                <span className="text-[10px] text-neutral-400 font-mono">Trilha Auditável</span>
+              </div>
+
+              <div className="max-h-56 overflow-y-auto pr-2">
+                {sortedTimeline.length === 0 ? (
+                  <div className="p-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl text-xs text-neutral-400 italic">
+                    Nenhum evento registrado ainda nesta ocorrência.
+                  </div>
+                ) : (
+                  <div className="relative border-l-2 border-indigo-500/30 dark:border-indigo-500/40 ml-3 pl-4 space-y-4 py-1">
+                    {sortedTimeline.map((log: any, index: number) => (
+                      <div key={log.id || index} className="relative group">
+                        {/* Timeline Circle Bullet Node */}
+                        <div className="absolute -left-[23px] top-1 w-3.5 h-3.5 rounded-full bg-indigo-500 ring-4 ring-white dark:ring-[#1E1E1E] shadow-xs flex items-center justify-center">
+                          <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                        </div>
+
+                        <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/90 border border-neutral-200/80 dark:border-neutral-700/60 text-xs space-y-1 shadow-2xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-black text-neutral-900 dark:text-white text-xs">
+                              {log.action}
+                            </span>
+                            <span className="text-[10px] font-mono font-bold text-neutral-500 dark:text-neutral-400 shrink-0">
+                              {formatDateTime(log.timestamp)}
+                            </span>
+                          </div>
+
+                          {log.details && (
+                            <p className="text-neutral-700 dark:text-neutral-300 text-[11px] leading-relaxed">
+                              {log.details}
+                            </p>
+                          )}
+
+                          <div className="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium flex items-center gap-1 pt-0.5">
+                            <User className="w-3 h-3 text-indigo-500 shrink-0" />
+                            <span>
+                              Responsável: <strong className="text-neutral-800 dark:text-neutral-200">{log.actorName || log.userName || "Usuário"}</strong>
+                              {log.actorRole || log.userRole ? ` (${log.actorRole || log.userRole})` : ""}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Action Buttons */}
             <div className="pt-2 space-y-2">
-              {item.status !== "DEVOLVIDO" && (
+              {item.status !== "DEVOLVIDO" && item.status !== "ENCERRADO" && (
                 <button
                   onClick={() => setClaimModalOpen(true)}
-                  className="w-full py-3 px-4 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-sm shadow-md shadow-[#00843D]/20 transition-all flex items-center justify-center space-x-2"
+                  className="w-full py-3 px-4 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-sm shadow-md shadow-[#00843D]/20 transition-all flex items-center justify-center space-x-2 cursor-pointer"
                 >
                   <ShieldCheck className="w-5 h-5" />
                   <span>Solicitar Este Objeto (Reclamar Posse)</span>
@@ -663,20 +867,41 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               {/* Gmail Notification / Contact Button */}
               <button
                 onClick={() => setEmailModalOpen(true)}
-                className="w-full py-2.5 px-4 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-bold text-xs transition-colors flex items-center justify-center space-x-2"
+                className="w-full py-2.5 px-4 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer"
               >
                 <Send className="w-4 h-4 text-red-500" />
                 <span>Enviar Notificação / Dúvida via Gmail</span>
               </button>
 
-              {/* Admin or Server privileges: Quick resolve button */}
-              {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && item.status !== "DEVOLVIDO" && (
+              {/* Servidor / Admin Privileges: Formal Devolution Flow */}
+              {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && item.status !== "DEVOLVIDO" && item.status !== "ENCERRADO" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  <button
+                    onClick={() => setReturnModalOpen(true)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Registrar Devolução Formal</span>
+                  </button>
+
+                  <button
+                    onClick={() => setDestinationModalOpen(true)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-900 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs"
+                  >
+                    <PackageCheck className="w-4 h-4" />
+                    <span>Registrar Destinação</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Admin Only: Reopen Return Button if item was already returned */}
+              {currentUser.role === "ADMIN" && item.status === "DEVOLVIDO" && (
                 <button
-                  onClick={handleMarkAsReturned}
-                  className="w-full py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-2"
+                  onClick={() => setReopenModalOpen(true)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer shadow-xs"
                 >
-                  <CheckCircle className="w-4 h-4" />
-                  <span>[Painel Admin] Marcar Automaticamente como Devolvido</span>
+                  <RotateCcw className="w-4 h-4" />
+                  <span>[Admin] Reabrir Devolução (Corrigir Erro)</span>
                 </button>
               )}
             </div>
@@ -873,6 +1098,276 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             </form>
           </div>
         </div>
+      )}
+
+      {/* Devolution Registration Modal */}
+      {returnModalOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-lg w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-blue-600" />
+                <div>
+                  <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                    Registrar Devolução de Objeto
+                  </h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
+                    Protocolo Oficial SEBAC • IFPR Campus Ivaiporã
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setReturnModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRegisterReturnSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                  Nome Completo do Receptor / Proprietário *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={returnRecipientName}
+                  onChange={(e) => setReturnRecipientName(e.target.value)}
+                  placeholder="Nome de quem está recebendo o pertence..."
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                    E-mail do Receptor *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={returnRecipientEmail}
+                    onChange={(e) => setReturnRecipientEmail(e.target.value)}
+                    placeholder="email@estudantes.ifpr.edu.br"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                    Vínculo no Campus *
+                  </label>
+                  <select
+                    value={returnRecipientBond}
+                    onChange={(e) => setReturnRecipientBond(e.target.value as any)}
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Aluno">Aluno(a)</option>
+                    <option value="Servidor">Servidor / TAE / Professor</option>
+                    <option value="Terceirizado">Funcionário Terceirizado</option>
+                    <option value="Visitante">Visitante Externo</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                  Observações / Dados do Documento Aresentado
+                </label>
+                <textarea
+                  rows={2}
+                  value={returnObservations}
+                  onChange={(e) => setReturnObservations(e.target.value)}
+                  placeholder="Ex: Apresentou RG 12.345.678-9 e informou que o chaveiro continha o nome gravado na parte posterior..."
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  id="confirmIdentityCheck"
+                  required
+                  checked={returnIdentityConfirmed}
+                  onChange={(e) => setReturnIdentityConfirmed(e.target.checked)}
+                  className="mt-0.5 rounded border-neutral-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <label htmlFor="confirmIdentityCheck" className="text-xs text-blue-800 dark:text-blue-300 cursor-pointer font-bold">
+                  Confirmo que conferi presencialmente o documento oficial com foto do receptor antes da entrega.
+                </label>
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReturnModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isRegisteringReturn}
+                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  <span>{isRegisteringReturn ? "Registrando..." : "Registrar Devolução & PDF"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reopen Return Modal (Admin Only) */}
+      {reopenModalOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-md w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-5 h-5 text-amber-500" />
+                <div>
+                  <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                    Reabrir Devolução de Objeto
+                  </h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
+                    Ação Administrativa de Ajuste
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setReopenModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-800 dark:text-amber-300">
+              A reabertura do item alterará o status de volta para ativo, removerá o carimbo de devolução e gravará um log de auditoria associado ao seu usuário.
+            </div>
+
+            <form onSubmit={handleReopenReturnSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                  Justificativa da Reabertura *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={reopenReason}
+                  onChange={(e) => setReopenReason(e.target.value)}
+                  placeholder="Ex: Devolução cadastrada por engano no item incorreto durante conferência de estoque..."
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReopenModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isReopeningReturn}
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{isReopeningReturn ? "Reabrindo..." : "Confirmar Reabertura"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Destination Modal (Unclaimed Items) */}
+      {destinationModalOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-md w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+              <div className="flex items-center gap-2">
+                <PackageCheck className="w-5 h-5 text-neutral-800 dark:text-neutral-200" />
+                <div>
+                  <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                    Destinação de Pertence Não Reclamado
+                  </h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
+                    Destinação Institucional (Até 60 dias)
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDestinationModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleDestinationSubmit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                  Tipo de Destinação *
+                </label>
+                <select
+                  value={destinationType}
+                  onChange={(e) => setDestinationType(e.target.value as any)}
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-neutral-600"
+                >
+                  <option value="DOACAO">Doação para Entidade / Projeto Social</option>
+                  <option value="DESCARTE">Descarte Ecológico / Lixo Eletrônico</option>
+                  <option value="LEILAO_PROJETO">Uso em Projetos de Ensino / Pesquisa</option>
+                  <option value="OUTRO">Outra Destinação Autorizada</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                  Entidade Beneficiária / Justificativa *
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={destinationNotes}
+                  onChange={(e) => setDestinationNotes(e.target.value)}
+                  placeholder="Ex: Entregue à Instituição Social de Ivaiporã conforme autorização da Direção Geral..."
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-neutral-600"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDestinationModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isRegisteringDestination}
+                  className="px-5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <PackageCheck className="w-3.5 h-3.5" />
+                  <span>{isRegisteringDestination ? "Registrando..." : "Confirmar & Encerrar"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Restricted QR View Modal */}
+      {showRestrictedQRView && (
+        <RestrictedQRViewModal
+          item={item}
+          onClose={() => setShowRestrictedQRView(false)}
+        />
       )}
     </div>
   );

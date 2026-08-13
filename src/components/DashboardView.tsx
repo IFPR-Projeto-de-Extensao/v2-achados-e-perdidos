@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { useApp } from "../context/AppContext";
 import { formatDate } from "../lib/utils";
 import { UserRole, ActivityLog, BackupScheduleConfig } from "../types";
@@ -31,6 +33,7 @@ import {
   QrCode,
   Search,
   AlertCircle,
+  AlertTriangle,
   Filter,
   Activity,
   Server,
@@ -115,6 +118,8 @@ export const DashboardView: React.FC = () => {
   // Activity Log Filter
   const [logFilterAction, setLogFilterAction] = useState<string>("TODOS");
   const [logSearchQuery, setLogSearchQuery] = useState("");
+  const [logStartDate, setLogStartDate] = useState("");
+  const [logEndDate, setLogEndDate] = useState("");
 
   // New User Form State
   const [newUserName, setNewUserName] = useState("");
@@ -128,7 +133,7 @@ export const DashboardView: React.FC = () => {
   const [tableCategory, setTableCategory] = useState("TODAS");
 
   // Admin Sub-Tab State
-  const [adminSubTab, setAdminSubTab] = useState<"users" | "health" | "approvals" | "backups">("users");
+  const [adminSubTab, setAdminSubTab] = useState<"users" | "audit" | "health" | "approvals" | "backups">("users");
 
   const [serverMetrics, setServerMetrics] = useState<{
     totalServerRequests?: number;
@@ -280,15 +285,44 @@ export const DashboardView: React.FC = () => {
   const successRate = totalItems > 0 ? Math.round((returnedCount / totalItems) * 100) : 0;
   const pendingClaimsCount = claims.filter((c) => c.status === "PENDENTE").length;
 
-  // Chart 1 Data: Monthly Lost vs Found Trend
-  const monthlyData = [
-    { month: "Mar", perdidos: 8, encontrados: 10, devolvidos: 7 },
-    { month: "Abr", perdidos: 12, encontrados: 15, devolvidos: 11 },
-    { month: "Mai", perdidos: 10, encontrados: 14, devolvidos: 12 },
-    { month: "Jun", perdidos: 14, encontrados: 18, devolvidos: 15 },
-    { month: "Jul", perdidos: 16, encontrados: 20, devolvidos: 17 },
-    { month: "Ago", perdidos: lostCount, encontrados: foundCount, devolvidos: returnedCount },
-  ];
+  // Dynamic Chart 1 Data: Monthly Lost vs Found vs Returned Trend (Fetched from Firestore)
+  const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  const now = new Date();
+  const last6Months = [];
+
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const mName = monthNames[d.getMonth()];
+    const mYear = d.getFullYear();
+    const mKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    last6Months.push({
+      monthKey: mKey,
+      label: `${mName}/${String(mYear).slice(-2)}`,
+      perdidos: 0,
+      encontrados: 0,
+      devolvidos: 0,
+    });
+  }
+
+  items.forEach((it) => {
+    const itemDate = new Date(it.createdAt || it.date);
+    if (!isNaN(itemDate.getTime())) {
+      const itemMKey = `${itemDate.getFullYear()}-${String(itemDate.getMonth() + 1).padStart(2, "0")}`;
+      const targetMonth = last6Months.find((m) => m.monthKey === itemMKey);
+      if (targetMonth) {
+        if (it.type === "PERDIDO") targetMonth.perdidos++;
+        if (it.type === "ENCONTRADO") targetMonth.encontrados++;
+        if (it.status === "DEVOLVIDO") targetMonth.devolvidos++;
+      }
+    }
+  });
+
+  const monthlyData = last6Months.map((m) => ({
+    month: m.label,
+    perdidos: m.perdidos,
+    encontrados: m.encontrados,
+    devolvidos: m.devolvidos,
+  }));
 
   // Chart 2 Data: Categories Distribution (Pie / Donut)
   const categoryCounts: Record<string, number> = {};
@@ -298,10 +332,45 @@ export const DashboardView: React.FC = () => {
 
   const COLORS = ["#00843D", "#C8102E", "#3B82F6", "#F59E0B", "#8B5CF6", "#EC4899", "#14B8A6"];
 
-  const pieCategoryData = Object.keys(categoryCounts).map((catKey) => ({
-    name: catKey,
-    value: categoryCounts[catKey],
-  }));
+  const pieCategoryData =
+    Object.keys(categoryCounts).length > 0
+      ? Object.keys(categoryCounts).map((catKey) => ({
+          name: catKey,
+          value: categoryCounts[catKey],
+        }))
+      : [
+          { name: "Eletrônicos", value: 1 },
+          { name: "Documentos", value: 1 },
+        ];
+
+  // Storage Deadline Calculation & Alerts (Controle de Prazo de Armazenamento)
+  const todayMs = new Date().getTime();
+
+  const itemsWithDeadline = items.map((it) => {
+    let deadlineMs = 0;
+    if (it.storageDeadlineDate) {
+      deadlineMs = new Date(it.storageDeadlineDate).getTime();
+    } else {
+      const createdMs = new Date(it.createdAt || it.date).getTime();
+      deadlineMs = createdMs + 90 * 24 * 60 * 60 * 1000;
+    }
+    const daysRemaining = Math.ceil((deadlineMs - todayMs) / (1000 * 60 * 60 * 24));
+    return {
+      ...it,
+      deadlineMs,
+      daysRemaining,
+      isExpired: daysRemaining <= 0 && it.status !== "DEVOLVIDO" && it.status !== "ENCERRADO",
+      isNearExpiration:
+        daysRemaining > 0 &&
+        daysRemaining <= 15 &&
+        it.status !== "DEVOLVIDO" &&
+        it.status !== "ENCERRADO",
+    };
+  });
+
+  const expiredItems = itemsWithDeadline.filter((i) => i.isExpired);
+  const nearExpirationItems = itemsWithDeadline.filter((i) => i.isNearExpiration);
+  const deadlineAlertItems = itemsWithDeadline.filter((i) => i.isExpired || i.isNearExpiration);
 
   // Chart 3 Data: Pending Review & Item Status Distribution
   const pendingByCat: Record<string, number> = {};
@@ -346,6 +415,86 @@ export const DashboardView: React.FC = () => {
     link.click();
     document.body.removeChild(link);
     addToast("Relatório CSV gerado e baixado com sucesso!", "success");
+  };
+
+  // Export PDF Audit Helper (jsPDF & autoTable)
+  const handleExportAuditPDF = () => {
+    const filteredLogs = activityLogs.filter((log) => {
+      const matchAction = logFilterAction === "TODOS" || log.action === logFilterAction;
+      const matchSearch =
+        !logSearchQuery ||
+        log.adminName.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
+        log.details.toLowerCase().includes(logSearchQuery.toLowerCase());
+
+      let matchDate = true;
+      if (logStartDate) {
+        matchDate = matchDate && new Date(log.timestamp) >= new Date(logStartDate);
+      }
+      if (logEndDate) {
+        const end = new Date(logEndDate);
+        end.setHours(23, 59, 59, 999);
+        matchDate = matchDate && new Date(log.timestamp) <= end;
+      }
+
+      return matchAction && matchSearch && matchDate;
+    });
+
+    const doc = new jsPDF();
+
+    // Institutional Header
+    doc.setFillColor(0, 132, 61); // IFPR Green #00843D
+    doc.rect(0, 0, 210, 25, "F");
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text("INSTITUTO FEDERAL DO PARANÁ - CAMPUS IVAIPORÃ", 14, 12);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text("Sistema Achados e Perdidos • Relatório Oficial de Auditoria do Sistema", 14, 18);
+
+    doc.setTextColor(30, 30, 30);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("RELATÓRIO DE AUDITORIA E LOGS DE ATIVIDADE", 14, 34);
+
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Data de Emissão: ${new Date().toLocaleString("pt-BR")}`, 14, 40);
+    doc.text(`Administrador Responsável: ${currentUser.name} (${currentUser.email})`, 14, 45);
+    doc.text(`Filtro Ação: ${logFilterAction} | Data Início: ${logStartDate || "Livre"} | Data Fim: ${logEndDate || "Livre"} | Total Registros: ${filteredLogs.length}`, 14, 50);
+
+    const tableRows = filteredLogs.map((log) => [
+      formatDate(log.timestamp),
+      log.adminName,
+      log.action,
+      log.details,
+    ]);
+
+    autoTable(doc, {
+      startY: 55,
+      head: [["Data e Hora", "Responsável", "Operação", "Detalhes da Operação"]],
+      body: tableRows,
+      headStyles: { fillColor: [0, 132, 61], textColor: [255, 255, 255], fontStyle: "bold" },
+      styles: { fontSize: 8, cellPadding: 2.5 },
+      columnStyles: {
+        0: { cellWidth: 35 },
+        1: { cellWidth: 35 },
+        2: { cellWidth: 40 },
+        3: { cellWidth: "auto" },
+      },
+    });
+
+    const totalPages = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(130, 130, 130);
+      doc.text(`IFPR Achados e Perdidos • Documento para fins de auditoria e transparência pública • Página ${i} de ${totalPages}`, 14, 287);
+    }
+
+    doc.save(`Auditoria_IFPR_${new Date().toISOString().slice(0, 10)}.pdf`);
+    addToast("Relatório de Auditoria exportado em PDF!", "success");
   };
 
   return (
@@ -728,6 +877,100 @@ export const DashboardView: React.FC = () => {
                 </ResponsiveContainer>
               </div>
             </div>
+
+            {/* Storage Deadline Alert Card (Controle de Prazo de Armazenamento - 90 Dias) */}
+            <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-3xl border border-amber-500/30 dark:border-amber-500/30 shadow-md space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-100 dark:border-neutral-800">
+                <div className="flex items-center space-x-3">
+                  <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                    <Clock className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                      <span>Controle de Prazo de Armazenamento</span>
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold uppercase tracking-wide">
+                        Portaria IFPR 90 Dias
+                      </span>
+                    </h3>
+                    <p className="text-xs text-neutral-500">
+                      Monitoramento preventivo de objetos guardados no acervo prestes a vencer o prazo regulamentar.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <span className="px-3 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 font-extrabold text-xs border border-red-500/20 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" /> {expiredItems.length} Expirados
+                  </span>
+                  <span className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 font-extrabold text-xs border border-amber-500/20 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" /> {nearExpirationItems.length} Próximos do Vencimento
+                  </span>
+                </div>
+              </div>
+
+              {deadlineAlertItems.length === 0 ? (
+                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Todos os objetos guardados no acervo do IFPR estão dentro do prazo de guarda de 90 dias. Nenhuma destinação necessária no momento.</span>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-neutral-200 dark:border-neutral-800 text-neutral-400 uppercase text-[10px] font-bold">
+                          <th className="py-2 px-3">Objeto</th>
+                          <th className="py-2 px-3">Categoria</th>
+                          <th className="py-2 px-3">Data Cadastro</th>
+                          <th className="py-2 px-3">Data Limite</th>
+                          <th className="py-2 px-3 text-center">Status do Prazo</th>
+                          <th className="py-2 px-3 text-right">Ação</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
+                        {deadlineAlertItems.slice(0, 6).map((item) => (
+                          <tr key={item.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
+                            <td className="py-2.5 px-3 font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+                              {item.imageUrl ? (
+                                <img src={item.imageUrl} alt={item.title} className="w-7 h-7 rounded-lg object-cover" />
+                              ) : (
+                                <div className="w-7 h-7 rounded-lg bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center text-[10px] font-bold">IF</div>
+                              )}
+                              <span className="truncate max-w-[160px]">{item.title}</span>
+                            </td>
+                            <td className="py-2.5 px-3 text-neutral-600 dark:text-neutral-400">{item.category}</td>
+                            <td className="py-2.5 px-3 text-neutral-500 font-mono text-[11px]">{formatDate(item.createdAt)}</td>
+                            <td className="py-2.5 px-3 font-mono font-bold text-neutral-800 dark:text-neutral-200 text-[11px]">
+                              {item.data_limite ? formatDate(item.data_limite) : (item.storageDeadlineDate ? formatDate(item.storageDeadlineDate) : "—")}
+                            </td>
+                            <td className="py-2.5 px-3 text-center">
+                              {item.isExpired ? (
+                                <span className="px-2.5 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-400 font-extrabold text-[10px] border border-red-500/20 inline-block">
+                                  🚨 Prazo Vencido ({Math.abs(item.daysRemaining)}d atrás)
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-extrabold text-[10px] border border-amber-500/20 inline-block">
+                                  ⚠️ Vence em {item.daysRemaining} dias
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedItemForDetail(item)}
+                                className="px-3 py-1 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-[11px] shadow-xs cursor-pointer"
+                              >
+                                Destinar / Gerenciar
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -766,6 +1009,18 @@ export const DashboardView: React.FC = () => {
                   >
                     <Users className="w-4 h-4" />
                     <span>Usuários & Controle</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAdminSubTab("audit")}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
+                      adminSubTab === "audit"
+                        ? "bg-indigo-600 text-white shadow-md"
+                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                    }`}
+                  >
+                    <History className="w-4 h-4" />
+                    <span>Auditoria & Logs</span>
                   </button>
 
                   <button
@@ -1146,6 +1401,217 @@ export const DashboardView: React.FC = () => {
                               </td>
                             </tr>
                           ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: AUDITORIA E LOGS DO SISTEMA */}
+              {adminSubTab === "audit" && (
+                <div className="space-y-6 animate-in fade-in duration-200">
+                  <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-100 dark:border-neutral-800 pb-5">
+                      <div className="flex items-center space-x-3">
+                        <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                          <History className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <h2 className="text-lg font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                            <span>Painel de Auditoria e Logs do Sistema</span>
+                            <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase">
+                              OFICIAL IFPR
+                            </span>
+                          </h2>
+                          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                            Registro auditável de todas as devoluções, reaberturas, alterações de status e permissões no Campus Ivaiporã.
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleExportAuditPDF}
+                        className="px-5 py-3 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-black text-xs transition-all shadow-md flex items-center space-x-2 self-start md:self-auto cursor-pointer"
+                      >
+                        <Download className="w-4 h-4" />
+                        <span>Exportar Relatório em PDF</span>
+                      </button>
+                    </div>
+
+                    {/* Filter Controls Bar */}
+                    <div className="bg-neutral-50 dark:bg-neutral-900/60 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black uppercase tracking-wider text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                          <Filter className="w-4 h-4 text-indigo-500" />
+                          <span>Filtros de Auditoria</span>
+                        </span>
+                        {(logFilterAction !== "TODOS" || logSearchQuery || logStartDate || logEndDate) && (
+                          <button
+                            onClick={() => {
+                              setLogFilterAction("TODOS");
+                              setLogSearchQuery("");
+                              setLogStartDate("");
+                              setLogEndDate("");
+                            }}
+                            className="text-[11px] font-bold text-red-600 hover:underline flex items-center gap-1"
+                          >
+                            <X className="w-3.5 h-3.5" /> Limpar Filtros
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        {/* Search Query */}
+                        <div>
+                          <label className="block text-[11px] font-bold text-neutral-500 mb-1">Buscar por Palavra-chave:</label>
+                          <div className="relative">
+                            <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-400" />
+                            <input
+                              type="text"
+                              value={logSearchQuery}
+                              onChange={(e) => setLogSearchQuery(e.target.value)}
+                              placeholder="Nome do responsável ou detalhe..."
+                              className="w-full pl-8 pr-3 py-2 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Action Selector */}
+                        <div>
+                          <label className="block text-[11px] font-bold text-neutral-500 mb-1">Tipo de Operação:</label>
+                          <select
+                            value={logFilterAction}
+                            onChange={(e) => setLogFilterAction(e.target.value)}
+                            className="w-full py-2 px-3 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-indigo-500"
+                          >
+                            <option value="TODOS">Todas as Operações</option>
+                            <option value="DEVOLUCAO_OBJETO">Devolução de Objeto</option>
+                            <option value="REABERTURA_DEVOLUCAO">Reabertura de Devolução</option>
+                            <option value="EXCLUSAO_USUARIO">Exclusão de Usuário</option>
+                            <option value="MODO_MANUTENCAO">Modo Manutenção</option>
+                            <option value="ALTERACAO_PERMISSAO">Alteração de Permissão</option>
+                            <option value="STATUS_OVERRIDE">Override de Status</option>
+                            <option value="DESTINACAO_ITEM">Destinação de Objeto</option>
+                            <option value="NOVO_USUARIO">Novo Usuário</option>
+                            <option value="RESET_SISTEMA">Reset de Sistema</option>
+                          </select>
+                        </div>
+
+                        {/* Start Date */}
+                        <div>
+                          <label className="block text-[11px] font-bold text-neutral-500 mb-1">Data Inicial:</label>
+                          <input
+                            type="date"
+                            value={logStartDate}
+                            onChange={(e) => setLogStartDate(e.target.value)}
+                            className="w-full py-1.5 px-3 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+
+                        {/* End Date */}
+                        <div>
+                          <label className="block text-[11px] font-bold text-neutral-500 mb-1">Data Final:</label>
+                          <input
+                            type="date"
+                            value={logEndDate}
+                            onChange={(e) => setLogEndDate(e.target.value)}
+                            className="w-full py-1.5 px-3 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Audit Table */}
+                    <div className="overflow-x-auto rounded-2xl border border-neutral-200 dark:border-neutral-800">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-neutral-100 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-400 uppercase font-extrabold text-[10px] tracking-wider">
+                          <tr>
+                            <th className="p-3.5 rounded-l-xl">Data / Hora</th>
+                            <th className="p-3.5">Responsável</th>
+                            <th className="p-3.5">Operação</th>
+                            <th className="p-3.5 rounded-r-xl">Detalhes da Ação</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-sans">
+                          {activityLogs
+                            .filter((log) => {
+                              const matchAction = logFilterAction === "TODOS" || log.action === logFilterAction;
+                              const matchSearch =
+                                !logSearchQuery ||
+                                log.adminName.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
+                                log.details.toLowerCase().includes(logSearchQuery.toLowerCase());
+
+                              let matchDate = true;
+                              if (logStartDate) {
+                                matchDate = matchDate && new Date(log.timestamp) >= new Date(logStartDate);
+                              }
+                              if (logEndDate) {
+                                const end = new Date(logEndDate);
+                                end.setHours(23, 59, 59, 999);
+                                matchDate = matchDate && new Date(log.timestamp) <= end;
+                              }
+
+                              return matchAction && matchSearch && matchDate;
+                            })
+                            .length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="text-center py-10 text-neutral-400 font-medium">
+                                Nenhum log de auditoria encontrado para os filtros selecionados.
+                              </td>
+                            </tr>
+                          ) : (
+                            activityLogs
+                              .filter((log) => {
+                                const matchAction = logFilterAction === "TODOS" || log.action === logFilterAction;
+                                const matchSearch =
+                                  !logSearchQuery ||
+                                  log.adminName.toLowerCase().includes(logSearchQuery.toLowerCase()) ||
+                                  log.details.toLowerCase().includes(logSearchQuery.toLowerCase());
+
+                                let matchDate = true;
+                                if (logStartDate) {
+                                  matchDate = matchDate && new Date(log.timestamp) >= new Date(logStartDate);
+                                }
+                                if (logEndDate) {
+                                  const end = new Date(logEndDate);
+                                  end.setHours(23, 59, 59, 999);
+                                  matchDate = matchDate && new Date(log.timestamp) <= end;
+                                }
+
+                                return matchAction && matchSearch && matchDate;
+                              })
+                              .map((log) => (
+                                <tr key={log.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
+                                  <td className="p-3.5 font-mono text-neutral-500 whitespace-nowrap">
+                                    {formatDate(log.timestamp)}
+                                  </td>
+                                  <td className="p-3.5 font-bold text-neutral-900 dark:text-white">
+                                    {log.adminName}
+                                  </td>
+                                  <td className="p-3.5 whitespace-nowrap">
+                                    <span
+                                      className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase border ${
+                                        log.action === "DEVOLUCAO_OBJETO"
+                                          ? "bg-blue-500/10 text-blue-600 border-blue-500/30"
+                                          : log.action === "REABERTURA_DEVOLUCAO"
+                                          ? "bg-amber-500/10 text-amber-600 border-amber-500/30"
+                                          : log.action === "MODO_MANUTENCAO"
+                                          ? "bg-purple-500/10 text-purple-600 border-purple-500/30"
+                                          : log.action === "EXCLUSAO_USUARIO"
+                                          ? "bg-red-500/10 text-red-600 border-red-500/30"
+                                          : "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
+                                      }`}
+                                    >
+                                      {log.action.replace(/_/g, " ")}
+                                    </span>
+                                  </td>
+                                  <td className="p-3.5 text-neutral-700 dark:text-neutral-300 font-medium max-w-md">
+                                    {log.details}
+                                  </td>
+                                </tr>
+                              ))
+                          )}
                         </tbody>
                       </table>
                     </div>
