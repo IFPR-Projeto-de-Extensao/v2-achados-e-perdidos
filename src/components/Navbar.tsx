@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
 import { triggerVibration, vibrateClick, vibrateSuccess } from "../lib/utils";
+import { usePWA } from "../hooks/usePWA";
 import {
   Search,
   PlusCircle,
@@ -21,6 +22,8 @@ import {
   LogIn,
   LogOut,
   Sparkles,
+  Smartphone,
+  Download,
 } from "lucide-react";
 
 export const Navbar: React.FC = () => {
@@ -43,6 +46,8 @@ export const Navbar: React.FC = () => {
     t,
     language,
   } = useApp();
+
+  const { isInstalled, promptInstall } = usePWA();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -78,7 +83,7 @@ export const Navbar: React.FC = () => {
           <div
             role="button"
             tabIndex={0}
-            aria-label="Ir para a página inicial do Achados e Perdidos IFPR"
+            aria-label="Ir para a página inicial do Localiza+ IFPR"
             onKeyDown={(e) => e.key === "Enter" && handleNavClick("home")}
             className="flex items-center space-x-3 cursor-pointer select-none"
             onClick={() => handleNavClick("home")}
@@ -89,15 +94,15 @@ export const Navbar: React.FC = () => {
             </div>
             <div>
               <div className="flex items-center space-x-1.5">
-                <span className="font-bold text-lg tracking-tight text-neutral-900 dark:text-white">
-                  Achados & Perdidos
+                <span className="font-extrabold text-lg tracking-tight text-neutral-900 dark:text-white">
+                  Localiza+
                 </span>
                 <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 border border-[#00843D]/20">
                   IFPR
                 </span>
               </div>
               <p className="text-[11px] text-neutral-500 dark:text-neutral-400 hidden sm:block">
-                Campus Ivaiporã • Instituto Federal do Paraná
+                Achados &amp; Perdidos • Campus Ivaiporã
               </p>
             </div>
           </div>
@@ -509,6 +514,25 @@ export const Navbar: React.FC = () => {
               </span>
             </button>
           </div>
+
+          {/* PWA Install Button in Mobile Menu */}
+          {!isInstalled && (
+            <button
+              onClick={() => {
+                promptInstall();
+                setMobileMenuOpen(false);
+              }}
+              role="button"
+              aria-label="Instalar aplicativo Localiza+"
+              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-bold bg-[#00843D]/10 text-[#00843D] dark:text-green-400 border border-[#00843D]/20 hover:bg-[#00843D]/20 transition-colors"
+            >
+              <div className="flex items-center space-x-3">
+                <Smartphone className="w-5 h-5" />
+                <span>Instalar App Localiza+</span>
+              </div>
+              <Download className="w-4 h-4" />
+            </button>
+          )}
 
           <button
             onClick={() => handleNavClick("profile")}

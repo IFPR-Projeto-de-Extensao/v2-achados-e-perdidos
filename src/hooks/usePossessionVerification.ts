@@ -31,6 +31,7 @@ export function usePossessionVerification(item: LostFoundItem): PossessionVerifi
   const [isLocked, setIsLocked] = useState(false);
 
   // Dynamic RNF04 challenge prompt based on item details & category
+  console.log(`[src/hooks/usePossessionVerification.ts] item?.category:`, item?.category);
   const catLower = String(item?.category ?? "").toLowerCase();
   const hiddenChallengePrompt = item?.secretVerificationHint
     ? `Pergunta Secreta do Cadastrador: "${item.secretVerificationHint}"`
@@ -54,8 +55,11 @@ export function usePossessionVerification(item: LostFoundItem): PossessionVerifi
         return false;
       }
 
+      console.log(`[src/hooks/usePossessionVerification.ts] passwordOrSecret:`, passwordOrSecret);
       const cleanSecret = String(passwordOrSecret ?? "").trim().toLowerCase();
+      console.log(`[src/hooks/usePossessionVerification.ts] brandDetails:`, brandDetails);
       const cleanBrand = String(brandDetails ?? "").trim().toLowerCase();
+      console.log(`[src/hooks/usePossessionVerification.ts] hiddenFeatures:`, hiddenFeatures);
       const cleanFeatures = String(hiddenFeatures ?? "").trim().toLowerCase();
 
       if (!cleanSecret && !cleanBrand && !cleanFeatures) {
@@ -64,9 +68,13 @@ export function usePossessionVerification(item: LostFoundItem): PossessionVerifi
       }
 
       // Check against registered secret key if defined
+      console.log(`[src/hooks/usePossessionVerification.ts] item?.secretVerificationKey:`, item?.secretVerificationKey);
       const registeredKey = String(item?.secretVerificationKey ?? "").trim().toLowerCase();
+      console.log(`[src/hooks/usePossessionVerification.ts] item?.secretVerificationHint:`, item?.secretVerificationHint);
       const registeredHint = String(item?.secretVerificationHint ?? "").trim().toLowerCase();
+      console.log(`[src/hooks/usePossessionVerification.ts] item?.brand:`, item?.brand);
       const registeredBrand = String(item?.brand ?? "").trim().toLowerCase();
+      console.log(`[src/hooks/usePossessionVerification.ts] item?.description:`, item?.description);
       const itemDesc = String(item?.description ?? "").trim().toLowerCase();
 
       let isMatch = false;
@@ -95,6 +103,7 @@ export function usePossessionVerification(item: LostFoundItem): PossessionVerifi
         const inputWords = fullInput.split(/\s+/).filter((w) => w.length >= 3);
 
         let matches = 0;
+        console.log(`[src/hooks/usePossessionVerification.ts] item?.title:`, item?.title);
         const titleLower = String(item?.title ?? "").toLowerCase();
         for (const word of inputWords) {
           if (registeredBrand.includes(word) || itemDesc.includes(word) || titleLower.includes(word)) {

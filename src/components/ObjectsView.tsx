@@ -123,7 +123,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
     const trimmed = sanitizeQuery(term);
     if (!trimmed || trimmed.length < 2) return;
     setSearchHistory((prev) => {
-      const filtered = (prev || []).filter((t) => safeToLower(t) !== safeToLower(trimmed));
+      console.log(`[ObjectsView.tsx -> saveSearchTerm] term:`, term, `prev:`, prev);
+      const filtered = (prev || []).filter((t) => safeToLower(t, "ObjectsView.tsx -> saveSearchTerm -> t") !== safeToLower(trimmed, "ObjectsView.tsx -> saveSearchTerm -> trimmed"));
       const updated = [trimmed, ...filtered].slice(0, 6);
       try {
         localStorage.setItem("ifpr_achados_search_history", JSON.stringify(updated));
@@ -135,7 +136,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
   const removeSearchHistoryItem = (termToRemove: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setSearchHistory((prev) => {
-      const updated = (prev || []).filter((t) => safeToLower(t) !== safeToLower(termToRemove));
+      console.log(`[ObjectsView.tsx -> removeSearchHistoryItem] termToRemove:`, termToRemove);
+      const updated = (prev || []).filter((t) => safeToLower(t, "ObjectsView.tsx -> removeSearchHistoryItem -> t") !== safeToLower(termToRemove, "ObjectsView.tsx -> removeSearchHistoryItem -> termToRemove"));
       try {
         localStorage.setItem("ifpr_achados_search_history", JSON.stringify(updated));
       } catch (_) {}

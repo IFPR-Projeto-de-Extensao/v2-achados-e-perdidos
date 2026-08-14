@@ -1,11 +1,13 @@
 import React from "react";
-import { ShieldCheck, MapPin, Phone, Mail, Globe, Heart, Languages, Check } from "lucide-react";
+import { ShieldCheck, MapPin, Phone, Mail, Globe, Heart, Languages, Check, Download, Smartphone } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { SupportedLanguage } from "../lib/i18n";
 import { vibrateClick } from "../lib/utils";
+import { usePWA } from "../hooks/usePWA";
 
 export const Footer: React.FC = () => {
   const { language, setLanguage, t } = useApp();
+  const { isInstalled, promptInstall } = usePWA();
 
   const handleLanguageChange = (lang: SupportedLanguage) => {
     vibrateClick();
@@ -120,6 +122,15 @@ export const Footer: React.FC = () => {
               {t("footerQuickLinks", "Links Rápidos")}
             </h4>
             <ul className="space-y-2 text-xs text-neutral-600 dark:text-neutral-400">
+              <li>
+                <button
+                  onClick={() => promptInstall()}
+                  className="hover:text-[#00843D] dark:hover:text-green-400 transition-colors flex items-center space-x-1.5 text-left font-medium"
+                >
+                  <Smartphone className="w-3.5 h-3.5 text-[#00843D] shrink-0" />
+                  <span>{isInstalled ? "App Localiza+ Instalado (PWA)" : "Instalar App Localiza+ (PWA)"}</span>
+                </button>
+              </li>
               <li>
                 <a href="https://ivaipora.ifpr.edu.br" target="_blank" rel="noopener noreferrer" className="hover:text-[#00843D] transition-colors flex items-center space-x-1">
                   <Globe className="w-3.5 h-3.5" />

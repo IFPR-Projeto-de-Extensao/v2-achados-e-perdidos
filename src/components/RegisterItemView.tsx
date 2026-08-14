@@ -686,6 +686,7 @@ export const RegisterItemView: React.FC = () => {
           const matches = candidates
             .map((item) => {
               if (!item) return { item, matchPercentage: 0 };
+              console.log(`[RegisterItemView.tsx -> SmartSearch] item.id:`, item?.id, `item.title:`, item?.title, `item.category:`, item?.category, `item.color:`, item?.color);
               let score = 0;
               const itemText = safeTextCorpus(item.title, item.category, item.color, item.brand, item.location, item.description);
 

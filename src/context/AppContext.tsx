@@ -212,7 +212,8 @@ export const sanitizeUserList = (users: User[]): User[] => {
 
   for (const u of (users || [])) {
     if (!u) continue;
-    const emailKey = safeToLower(u.email);
+    console.log(`[AppContext.tsx -> sanitizeUserList] Processando u.email:`, u?.email, `u.id:`, u?.id);
+    const emailKey = safeToLower(u.email, "AppContext.tsx -> sanitizeUserList -> u.email");
     const idKey = String(u.id ?? "").trim();
 
     if (idKey && seenIds.has(idKey)) continue;

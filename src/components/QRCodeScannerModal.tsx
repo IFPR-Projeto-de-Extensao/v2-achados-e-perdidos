@@ -91,11 +91,12 @@ export const QRCodeScannerModal: React.FC = () => {
       return;
     }
 
+    console.log(`[QRCodeScannerModal.tsx -> handleScanOrSearch] Buscando por query:`, query);
     const item = (items || []).find(
       (it) =>
         it &&
         (safeIncludes(it.qrCodeId, query) ||
-          safeToLower(it.id) === safeToLower(query) ||
+          safeToLower(it.id, "QRCodeScannerModal.tsx -> it.id") === safeToLower(query, "QRCodeScannerModal.tsx -> query") ||
           safeIncludes(it.title, query))
     );
 

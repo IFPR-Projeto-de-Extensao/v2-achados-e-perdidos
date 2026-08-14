@@ -2199,6 +2199,7 @@ export const DashboardView: React.FC = () => {
                         {(allUsers || [])
                           .filter((u) => u && (u.approvalStatus === "PENDENTE" || String(u.email ?? "").includes("ifpr.edu.br")))
                           .map((pendingUser, index) => {
+                            console.log(`[DashboardView.tsx -> pendingUsers] pendingUser.email:`, pendingUser?.email, `approvalStatus:`, pendingUser?.approvalStatus);
                             const userEmail = String(pendingUser?.email ?? "");
                             const isStudent = userEmail.endsWith("@estudantes.ifpr.edu.br") || userEmail.endsWith("@estudante.ifpr.edu.br");
                             const isStaff = userEmail.endsWith("@ifpr.edu.br");

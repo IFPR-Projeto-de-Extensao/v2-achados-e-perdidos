@@ -13,6 +13,8 @@ import { QRCodeScannerModal } from "./components/QRCodeScannerModal";
 import { AIMatchModal } from "./components/AIMatchModal";
 import { AuthModal } from "./components/AuthModal";
 import { ToastContainer } from "./components/ToastContainer";
+import { PWAInstallBanner } from "./components/PWAInstallBanner";
+import { MobileBottomNav } from "./components/MobileBottomNav";
 import { initGoogleAnalytics, trackPageView } from "./lib/analytics";
 import { registerUptimeServiceWorker } from "./lib/uptimeManager";
 import { traceFirebasePerformance } from "./lib/firebase";
@@ -21,6 +23,8 @@ import { savePerformanceMetricLog } from "./lib/offlineDb";
 const MainContent: React.FC = () => {
   const {
     activeTab,
+    setActiveTab,
+    setQrScannerOpen,
     selectedItemForDetail,
     setSelectedItemForDetail,
     authModalOpen,
@@ -33,7 +37,21 @@ const MainContent: React.FC = () => {
   useEffect(() => {
     initGoogleAnalytics();
     registerUptimeServiceWorker();
-  }, []);
+
+    // Check PWA launch shortcuts from URL query params (?tab=... or ?action=scan)
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      const actionParam = params.get("action");
+
+      if (tabParam && ["home", "lost", "found", "register", "dashboard", "profile", "image_analyzer"].includes(tabParam)) {
+        setActiveTab(tabParam as any);
+      }
+      if (actionParam === "scan") {
+        setQrScannerOpen(true);
+      }
+    }
+  }, [setActiveTab, setQrScannerOpen]);
 
   // RNF01 & RNF02: Firebase Performance Monitoring tracking component render time & tab latency
   useEffect(() => {
@@ -58,6 +76,9 @@ const MainContent: React.FC = () => {
     <div className="min-h-screen bg-[#F5F5F5] dark:bg-[#121212] text-neutral-900 dark:text-neutral-100 flex flex-col font-sans transition-colors duration-200 selection:bg-[#00843D] selection:text-white">
       {/* Toast Notifications */}
       <ToastContainer />
+
+      {/* PWA Install Banner and Update Manager */}
+      <PWAInstallBanner />
 
       {/* Maintenance Mode Banner for Admin */}
       {maintenanceMode && currentUser.role === "ADMIN" && (
@@ -107,8 +128,8 @@ const MainContent: React.FC = () => {
       {/* Top Navbar */}
       <Navbar />
 
-      {/* Main View Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-8">
+      {/* Main View Container (responsive spacing for mobile bottom navigation) */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-20 lg:pb-12">
         {activeTab === "home" && <HomeView />}
         {activeTab === "lost" && <ObjectsView initialFilterType="PERDIDO" />}
         {activeTab === "found" && <ObjectsView initialFilterType="ENCONTRADO" />}
@@ -134,6 +155,9 @@ const MainContent: React.FC = () => {
 
       {/* Auth Modal */}
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+
+      {/* Mobile Bottom Navigation for PWA & Smartphones */}
+      <MobileBottomNav />
 
       {/* Footer */}
       <Footer />
