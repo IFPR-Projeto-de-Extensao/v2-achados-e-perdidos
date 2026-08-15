@@ -12,9 +12,12 @@ import {
   BackupLog,
   BackupScheduleConfig,
   ItemHistoryLog,
+  UploadTaskStatus,
+  UploadStatusType,
 } from "../types";
 import { INITIAL_ITEMS, MOCK_USERS, MOCK_NOTIFICATIONS, MOCK_CLAIMS, MOCK_COMMENTS, MOCK_ACTIVITY_LOGS } from "../data/mockData";
 import { safeFetchJson, clientMatchSimilarity } from "../lib/apiHelper";
+import { compressImage } from "../lib/imageCompression";
 import {
   collection,
   doc,
@@ -172,9 +175,15 @@ interface AppContextType {
   isOnline: boolean;
   pendingSyncCount: number;
   syncOfflineQueue: () => Promise<void>;
+  triggerManualSync: () => Promise<void>;
   lastHeartbeatTimestamp: string | null;
   indexedDbLoaded: boolean;
   errorLogsList: any[];
+  activeUploadTasks: UploadTaskStatus[];
+  addUploadTask: (task: UploadTaskStatus) => void;
+  updateUploadTask: (taskId: string, updates: Partial<UploadTaskStatus>) => void;
+  removeUploadTask: (taskId: string) => void;
+  retryUploadTask: (taskId: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -221,7 +230,6 @@ export const sanitizeUserList = (users: User[]): User[] => {
 
   for (const u of (users || [])) {
     if (!u) continue;
-    console.log(`[AppContext.tsx -> sanitizeUserList] Processando u.email:`, u?.email, `u.id:`, u?.id);
     const emailKey = safeToLower(u.email, "AppContext.tsx -> sanitizeUserList -> u.email");
     const idKey = String(u.id ?? "").trim();
 
@@ -246,6 +254,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [lastHeartbeatTimestamp, setLastHeartbeatTimestamp] = useState<string | null>(new Date().toISOString());
   const [indexedDbLoaded, setIndexedDbLoaded] = useState<boolean>(false);
   const [errorLogsList, setErrorLogsList] = useState<any[]>([]);
+
+  // Active Upload Tasks (Service Worker Background Sync & Compression Progress)
+  const [activeUploadTasks, setActiveUploadTasks] = useState<UploadTaskStatus[]>([]);
+
+  const addUploadTask = (task: UploadTaskStatus) => {
+    setActiveUploadTasks((prev) => [task, ...prev.filter((t) => t.id !== task.id)]);
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator && navigator.serviceWorker.controller) {
+      try {
+        navigator.serviceWorker.controller.postMessage({
+          type: "UPLOAD_PROGRESS_UPDATE",
+          task,
+        });
+      } catch (_) {}
+    }
+  };
+
+  const updateUploadTask = (taskId: string, updates: Partial<UploadTaskStatus>) => {
+    setActiveUploadTasks((prev) =>
+      prev.map((t) => {
+        if (t.id === taskId) {
+          const updated = { ...t, ...updates };
+          if (typeof navigator !== "undefined" && "serviceWorker" in navigator && navigator.serviceWorker.controller) {
+            try {
+              navigator.serviceWorker.controller.postMessage({
+                type: "UPLOAD_PROGRESS_UPDATE",
+                task: updated,
+              });
+            } catch (_) {}
+          }
+          return updated;
+        }
+        return t;
+      })
+    );
+  };
+
+  const removeUploadTask = (taskId: string) => {
+    setActiveUploadTasks((prev) => prev.filter((t) => t.id !== taskId));
+  };
+
+  const triggerManualSync = async () => {
+    await syncOfflineQueue();
+  };
+
+  const retryUploadTask = async (taskId: string) => {
+    const task = activeUploadTasks.find((t) => t.id === taskId);
+    if (!task) return;
+    updateUploadTask(taskId, {
+      status: "UPLOADING",
+      progress: 30,
+      statusMessage: "Tentando sincronizar novamente...",
+      error: undefined,
+    });
+    await syncOfflineQueue();
+  };
+
+  // Listen to Service Worker Background Sync events and messages
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+
+    const handleSwMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data) return;
+
+      if (data.type === "BACKGROUND_SYNC_TRIGGERED" || data.type === "PERIODIC_SYNC_TRIGGERED") {
+        console.log("[Background Sync] Evento disparado pelo Service Worker:", data);
+        syncOfflineQueue();
+      } else if (data.type === "UPLOAD_STATUS_BROADCAST" && data.task) {
+        setActiveUploadTasks((prev) => {
+          const exists = prev.some((t) => t.id === data.task.id);
+          if (exists) {
+            return prev.map((t) => (t.id === data.task.id ? { ...t, ...data.task } : t));
+          }
+          return [data.task, ...prev];
+        });
+      }
+    };
+
+    navigator.serviceWorker.addEventListener("message", handleSwMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener("message", handleSwMessage);
+    };
+  }, []);
 
   // Load items and sync queue count from IndexedDB instantly on boot
   useEffect(() => {
@@ -1850,6 +1941,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const safeTitle = String(itemData.title ?? "ITEM").substring(0, 10).toUpperCase().replace(/\s+/g, "");
     const qrCodeId = `QR-IFPR-${uniqueNum}-${safeTitle}`;
 
+    const taskId = `upload-task-${Date.now()}-${uniqueNum}`;
+    const initialUploadTask: UploadTaskStatus = {
+      id: taskId,
+      itemId: newItemId,
+      itemTitle: itemData.title || "Objeto sem título",
+      itemType: itemData.type,
+      thumbnailUrl: itemData.imageUrl,
+      progress: 15,
+      status: "COMPRESSING",
+      statusMessage: "Otimizando fotos e comprimindo imagem...",
+      startedAt: new Date().toISOString(),
+    };
+    addUploadTask(initialUploadTask);
+
+    // Real-time client-side image compression if base64/data URL is present
+    let processedImageUrl = itemData.imageUrl;
+    let compressionSavings = 0;
+    if (itemData.imageUrl && itemData.imageUrl.startsWith("data:image")) {
+      try {
+        const compressed = await compressImage(itemData.imageUrl, {
+          maxWidth: 1280,
+          maxHeight: 1280,
+          quality: 0.82,
+          outputFormat: "image/webp",
+        });
+        processedImageUrl = compressed.base64;
+        compressionSavings = compressed.savingsPercentage;
+        updateUploadTask(taskId, {
+          progress: 35,
+          thumbnailUrl: processedImageUrl,
+          originalSizeBytes: compressed.originalSizeBytes,
+          compressedSizeBytes: compressed.compressedSizeBytes,
+          savingsPercentage: compressed.savingsPercentage,
+          status: "SAVING_LOCAL",
+          statusMessage: `Fotos otimizadas (${compressed.formattedOriginalSize} ➔ ${compressed.formattedCompressedSize}). Gravando localmente...`,
+        });
+      } catch (compErr) {
+        console.warn("Aviso ao comprimir imagem no upload:", compErr);
+      }
+    }
+
     const initialHistory: ItemHistoryLog[] = [
       {
         id: `hist-${Date.now()}-1`,
@@ -1867,6 +1999,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const newItem: LostFoundItem = {
       ...itemData,
+      imageUrl: processedImageUrl,
       id: newItemId,
       createdAt: new Date().toISOString(),
       qrCodeId,
@@ -1879,6 +2012,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       storageDeadlineDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
     };
 
+    // Request Service Worker Background Sync registration
+    if (typeof window !== "undefined" && "serviceWorker" in navigator && "SyncManager" in window) {
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        await (reg as any).sync.register("sync-item-uploads");
+      } catch (_) {}
+    }
+
     // Check offline status before attempting Firestore write
     const isCurrentlyOffline = typeof navigator !== "undefined" && !navigator.onLine;
 
@@ -1888,37 +2029,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
         const queueCount = await getSyncQueueCount();
         setPendingSyncCount(queueCount);
+        updateUploadTask(taskId, {
+          progress: 100,
+          status: "QUEUED_SYNC",
+          statusMessage: "Salvo no armazenamento seguro. Background Sync enviará assim que houver conexão.",
+          isBackgroundSyncRegistered: true,
+          completedAt: new Date().toISOString(),
+        });
         addToast(
-          `Modo Offline: O objeto "${newItem.title}" foi salvo no seu dispositivo (IndexedDB) e será sincronizado com o Firestore assim que a conexão retornar!`,
+          `Modo Offline: O objeto "${newItem.title}" foi salvo no seu dispositivo (IndexedDB) e o Service Worker sincronizará em segundo plano assim que a conexão retornar!`,
           "info"
         );
       } catch (offErr) {
         console.warn("Aviso ao enfileirar offline:", offErr);
         setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
+        updateUploadTask(taskId, {
+          status: "ERROR",
+          error: "Falha ao gravar na fila local",
+          statusMessage: "Erro ao gravar offline",
+        });
       }
       return { newItem, matches: [] };
     }
 
     // Online: Save item to Firestore
+    updateUploadTask(taskId, {
+      progress: 70,
+      status: "UPLOADING",
+      statusMessage: "Enviando ao servidor em nuvem...",
+    });
+
     try {
       await setDoc(doc(db, "items", newItem.id), sanitizeFirestoreData(newItem));
       await logAdminAction(
         "CADASTRO_OCORRENCIA",
         `Cadastrou a ocorrência #${newItem.id} "${newItem.title}" (${newItem.type}) - Local: ${newItem.location}`
       );
-    } catch (e) {
+      updateUploadTask(taskId, {
+        progress: 100,
+        status: "COMPLETED",
+        statusMessage: "Upload e cadastro concluídos com sucesso!",
+        completedAt: new Date().toISOString(),
+      });
+      vibrateSuccess();
+    } catch (e: any) {
       console.warn("Aviso ao gravar no Firestore, salvando na fila offline do IndexedDB:", e);
       try {
         await queueOfflineItemRegistration(newItem);
         setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
         const queueCount = await getSyncQueueCount();
         setPendingSyncCount(queueCount);
+        updateUploadTask(taskId, {
+          progress: 100,
+          status: "QUEUED_SYNC",
+          statusMessage: "Conexão instável. Salvo no IndexedDB para Background Sync.",
+          isBackgroundSyncRegistered: true,
+          completedAt: new Date().toISOString(),
+        });
         addToast(
-          `Conexão instável. O cadastro de "${newItem.title}" foi salvo localmente e sincronizará automaticamente.`,
+          `Conexão instável. O cadastro de "${newItem.title}" foi salvo localmente e sincronizará automaticamente em segundo plano.`,
           "info"
         );
         return { newItem, matches: [] };
       } catch (_) {}
+      updateUploadTask(taskId, {
+        status: "ERROR",
+        error: e?.message || "Erro durante upload",
+        statusMessage: "Falha no upload do item",
+      });
       handleFirestoreError(e, OperationType.WRITE, `items/${newItem.id}`);
     }
 
@@ -2470,9 +2648,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isOnline,
         pendingSyncCount,
         syncOfflineQueue,
+        triggerManualSync,
         lastHeartbeatTimestamp,
         indexedDbLoaded,
         errorLogsList,
+        activeUploadTasks,
+        addUploadTask,
+        updateUploadTask,
+        removeUploadTask,
+        retryUploadTask,
       }}
     >
       {children}

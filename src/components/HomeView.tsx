@@ -90,23 +90,10 @@ export const HomeView: React.FC = () => {
   const totalReturned = items.filter((i) => i.status === "DEVOLVIDO").length;
   const successRate = totalRegistered > 0 ? Math.round((totalReturned / totalRegistered) * 100) : 0;
 
-  // Semantic Search Effect with Debounce and Comprehensive Debug Logging
+  // Semantic Search Effect with Debounce
   useEffect(() => {
     // Sanitize search query input safely against null/undefined
     const sanitizedQuery = sanitizeQuery(homeSearch);
-    
-    // Debug log to trace search variable state before invoking Gemini AI
-    console.log("[HomeView Search Debug] Estado da variável de busca:", {
-      rawHomeSearch: homeSearch,
-      type: typeof homeSearch,
-      isNull: homeSearch === null,
-      isUndefined: homeSearch === undefined,
-      sanitizedQuery,
-      queryLength: sanitizedQuery.length,
-      semanticMode,
-      itemsCount: Array.isArray(items) ? items.length : 0,
-      retryCount,
-    });
 
     if (!sanitizedQuery || sanitizedQuery.length < 3 || !semanticMode) {
       setSemanticResults(null);
@@ -121,18 +108,7 @@ export const HomeView: React.FC = () => {
 
     const timer = setTimeout(async () => {
       try {
-        console.log("[HomeView Search Debug] Disparando busca semântica Gemini API para:", {
-          query: sanitizedQuery,
-          totalCandidateItems: items.length,
-        });
-
         const response = await clientSemanticSearch(sanitizedQuery, items || []);
-        
-        console.log("[HomeView Search Debug] Resposta recebida da IA Gemini:", {
-          success: response?.success,
-          totalMatches: response?.results?.length || 0,
-          modelUsed: response?.modelUsed,
-        });
 
         if (isMounted) {
           if (response?.success) {
@@ -140,7 +116,6 @@ export const HomeView: React.FC = () => {
             setSemanticModelUsed(response.modelUsed || "gemini-3.7-flash");
             setSemanticError(null);
           } else {
-            console.warn("[HomeView Search Debug] Resposta não-sucedida da API semântica:", response?.message);
             setSemanticResults(null);
             setSemanticError({
               hasError: true,

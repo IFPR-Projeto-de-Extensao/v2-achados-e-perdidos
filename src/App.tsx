@@ -16,6 +16,7 @@ import { ToastContainer } from "./components/ToastContainer";
 import { PWAInstallBanner } from "./components/PWAInstallBanner";
 import { MobileBottomNav } from "./components/MobileBottomNav";
 import { KeyboardShortcutsModal } from "./components/KeyboardShortcutsModal";
+import { UploadStatusIndicator } from "./components/UploadStatusIndicator";
 import { initGoogleAnalytics, trackPageView } from "./lib/analytics";
 import { registerUptimeServiceWorker } from "./lib/uptimeManager";
 import { traceFirebasePerformance } from "./lib/firebase";
@@ -222,6 +223,9 @@ const MainContent: React.FC = () => {
         isOpen={shortcutsModalOpen}
         onClose={() => setShortcutsModalOpen(false)}
       />
+
+      {/* PWA Background Sync & Real-time Upload Status Indicator */}
+      <UploadStatusIndicator />
 
       {/* Mobile Bottom Navigation for PWA & Smartphones */}
       <MobileBottomNav />

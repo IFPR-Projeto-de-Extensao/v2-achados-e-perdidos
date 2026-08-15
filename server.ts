@@ -404,16 +404,12 @@ app.post("/api/ai/match-similarity", async (req, res) => {
         .filter(Boolean)
         .map((cand: any) => {
           let score = 0;
-          console.log(`[server.ts] cand?.category:`, cand?.category, `newItem?.category:`, newItem?.category);
           const candCat = String(cand?.category ?? "").toLowerCase();
           const newCat = String(newItem?.category ?? "").toLowerCase();
-          console.log(`[server.ts] cand?.color:`, cand?.color, `newItem?.color:`, newItem?.color);
           const candColor = String(cand?.color ?? "").toLowerCase();
           const newColor = String(newItem?.color ?? "").toLowerCase();
-          console.log(`[server.ts] cand?.brand:`, cand?.brand, `newItem?.brand:`, newItem?.brand);
           const candBrand = String(cand?.brand ?? "").toLowerCase();
           const newBrand = String(newItem?.brand ?? "").toLowerCase();
-          console.log(`[server.ts] cand?.title:`, cand?.title, `newItem?.title:`, newItem?.title);
           const candTitle = String(cand?.title ?? "").toLowerCase();
           const newTitle = String(newItem?.title ?? "").toLowerCase();
 
@@ -509,7 +505,6 @@ app.post("/api/gemini/semantic-search", async (req, res) => {
 
     if (!ai) {
       // Local fallback semantic search when Gemini key is not configured
-      console.log(`[server.ts] searchQuery:`, searchQuery);
       const qLower = String(searchQuery ?? "").toLowerCase();
       const qWords = qLower.split(/\s+/).filter((w: string) => w.length > 2);
 
@@ -517,7 +512,6 @@ app.post("/api/gemini/semantic-search", async (req, res) => {
         .filter(Boolean)
         .map((item: any) => {
           let score = 0;
-          console.log(`[server.ts -> semanticSearch] item.id:`, item?.id, `title:`, item?.title, `desc:`, item?.description);
           const title = String(item?.title ?? "").toLowerCase();
           const desc = String(item?.description ?? "").toLowerCase();
           const loc = String(item?.location ?? "").toLowerCase();

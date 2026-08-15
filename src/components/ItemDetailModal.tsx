@@ -236,7 +236,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const handleDownloadQRCodePNG = () => {
     vibrateClick();
     try {
-      const qrSvg = document.getElementById(`qr-code-svg-${item.id}`) as SVGElement | null;
+      const qrSvg = document.getElementById(`qr-code-svg-${item.id}`) as unknown as SVGElement | null;
       if (!qrSvg) {
         addToast("Código QR não encontrado no documento.", "error");
         return;
@@ -244,8 +244,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       const svgData = new XMLSerializer().serializeToString(qrSvg);
       const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-      const DOMURL = window.URL || window.webkitURL || window;
-      const url = DOMURL.createObjectURL(svgBlob);
+      const url = URL.createObjectURL(svgBlob);
 
       const img = new Image();
       img.onload = () => {
@@ -310,7 +309,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           document.body.appendChild(downloadLink);
           downloadLink.click();
           document.body.removeChild(downloadLink);
-          DOMURL.revokeObjectURL(url);
+          URL.revokeObjectURL(url);
 
           vibrateSuccess();
           addToast("QR Code baixado em formato PNG de alta resolução!", "success");

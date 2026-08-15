@@ -33,17 +33,12 @@ export function formatDateTime(dateString: string): string {
  */
 export function safeToLower(value: unknown, contextOrigin?: string): string {
   if (value === null || value === undefined) {
-    if (contextOrigin) {
-      console.warn(`[src/lib/utils.ts -> safeToLower] Variável: "${contextOrigin}" está ${value === null ? "null" : "undefined"}`);
-    }
     return "";
   }
   if (typeof value === "string") {
-    console.log(`[src/lib/utils.ts -> safeToLower] value (string):`, value, contextOrigin ? `(Context: ${contextOrigin})` : "");
     return value.toLowerCase().trim();
   }
   if (typeof value === "number" || typeof value === "boolean") {
-    console.log(`[src/lib/utils.ts -> safeToLower] value (converted from ${typeof value}):`, value, contextOrigin ? `(Context: ${contextOrigin})` : "");
     return String(value).toLowerCase().trim();
   }
   return "";
@@ -69,10 +64,7 @@ export function safeIncludes(target: unknown, query: unknown): boolean {
 
 export function safeTextCorpus(...parts: unknown[]): string {
   return parts
-    .map((p, idx) => {
-      console.log(`[src/lib/utils.ts -> safeTextCorpus] part[${idx}]:`, p);
-      return p === null || p === undefined ? "" : String(p).toLowerCase().trim();
-    })
+    .map((p) => (p === null || p === undefined ? "" : String(p).toLowerCase().trim()))
     .filter(Boolean)
     .join(" ");
 }

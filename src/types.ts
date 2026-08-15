@@ -262,3 +262,30 @@ export interface BackupScheduleConfig {
   lastBackupTimestamp?: string;
   nextBackupTimestamp?: string;
 }
+
+export type UploadStatusType =
+  | "IDLE"
+  | "COMPRESSING"
+  | "SAVING_LOCAL"
+  | "QUEUED_SYNC"
+  | "UPLOADING"
+  | "COMPLETED"
+  | "ERROR";
+
+export interface UploadTaskStatus {
+  id: string;
+  itemId: string;
+  itemTitle: string;
+  itemType: "PERDIDO" | "ENCONTRADO";
+  thumbnailUrl?: string;
+  progress: number; // 0 to 100
+  status: UploadStatusType;
+  statusMessage: string;
+  originalSizeBytes?: number;
+  compressedSizeBytes?: number;
+  savingsPercentage?: number;
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
+  isBackgroundSyncRegistered?: boolean;
+}

@@ -1,16 +1,18 @@
 // ==============================================================================
 // Service Worker - Localiza+ PWA (IFPR Campus Ivaiporã)
-// Versão: v5.1.0-localiza-pwa
-// Estratégia: Stale-While-Revalidate para assets estáticos e Network-First para navegação.
-// Prevenção de cache obsoleto com ciclo de vida dinâmico, limpeza de versões antigas
-// e fallback para página offline (offline.html).
+// Versão: v5.2.0-localiza-pwa
+// Estratégias:
+// - Pré-cache Inteligente do Shell de Aplicação, Ícones e Assets de UI (Offline Instantâneo em 3G)
+// - Stale-While-Revalidate com isolamento e purga automática de caches obsoletos
+// - Background Sync para envio resiliente de cadastros e fotos de objetos em segundo plano
+// - Mensageria em tempo real com clientes para status de upload e monitoramento
 // ==============================================================================
 
-const SW_VERSION = 'v5.1.0-localiza-pwa';
+const SW_VERSION = 'v5.2.0-localiza-pwa';
 const CACHE_STATIC = `localiza-static-${SW_VERSION}`;
 const CACHE_MEDIA = `localiza-media-${SW_VERSION}`;
 
-// Pre-caching essencial na instalação
+// Pré-cache inteligente do Shell da Aplicação e Ícones de Interface
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
@@ -27,22 +29,28 @@ const PRECACHE_ASSETS = [
   '/apple-touch-icon.png'
 ];
 
-// Instalação do Service Worker
+// Instalação do Service Worker com Pré-Cache Inteligente
 self.addEventListener('install', (event) => {
-  console.log(`[PWA SW] Instalando versão ${SW_VERSION}...`);
   event.waitUntil(
-    caches.open(CACHE_STATIC).then((cache) => {
-      return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-        console.warn('[PWA SW] Aviso de precache parcial de assets:', err);
-      });
+    caches.open(CACHE_STATIC).then(async (cache) => {
+      // Tenta armazenar os ativos do shell
+      for (const asset of PRECACHE_ASSETS) {
+        try {
+          const response = await fetch(asset, { cache: 'no-cache' });
+          if (response && response.ok) {
+            await cache.put(asset, response);
+          }
+        } catch (_) {
+          // Ignora falhas pontuais de assets opcionais em build local
+        }
+      }
     })
   );
-  // Mantém no estado 'waiting' até o skipWaiting ser chamado ou clientes serem atualizados
+  // Não força skipWaiting agressivo para não quebrar sessões ativas com TDZ
 });
 
-// Ativação e Limpeza Automática de caches obsoletos (qualquer cache que não pertença à versão ativa)
+// Ativação e Purga Automática de Versões Anteriores de Cache
 self.addEventListener('activate', (event) => {
-  console.log(`[PWA SW] Versão ${SW_VERSION} ativada. Executando purga de caches antigos...`);
   const activeCaches = new Set([CACHE_STATIC, CACHE_MEDIA]);
 
   event.waitUntil(
@@ -50,24 +58,22 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
           if (!activeCaches.has(cacheName)) {
-            console.log(`[PWA SW] Removendo cache obsoleto identificado: ${cacheName}`);
             return caches.delete(cacheName);
           }
         })
       );
     }).then(() => {
-      console.log('[PWA SW] Limpeza de cache concluída. Assumindo controle dos clientes.');
       return self.clients.claim();
     })
   );
 });
 
-// Helper de Stale-While-Revalidate para ativos estáticos
+// Helper de Stale-While-Revalidate para ativos estáticos e ícones
 async function staleWhileRevalidate(cacheName, request) {
   const cache = await caches.open(cacheName);
   const cachedResponse = await cache.match(request);
 
-  // Dispara a busca na rede em segundo plano para atualizar o cache (Revalidate)
+  // Dispara busca na rede em segundo plano para revalidar
   const networkFetch = fetch(request)
     .then((networkResponse) => {
       if (networkResponse && networkResponse.status === 200) {
@@ -75,13 +81,9 @@ async function staleWhileRevalidate(cacheName, request) {
       }
       return networkResponse;
     })
-    .catch((error) => {
-      console.debug('[PWA SW] Rede offline durante revalidação:', request.url);
-      return null;
-    });
+    .catch(() => null);
 
-  // Retorna a resposta em cache imediatamente (Stale) se disponível,
-  // ou aguarda a resposta da rede se ainda não estiver em cache
+  // Retorna resposta em cache imediatamente se disponível, senão aguarda rede
   return cachedResponse || (await networkFetch) || caches.match('/favicon.ico');
 }
 
@@ -89,12 +91,13 @@ async function staleWhileRevalidate(cacheName, request) {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // 1. Ignorar requisições não-GET e esquemas não suportados (ex: extensões de navegador)
+  // 1. Ignora requisições não-GET e esquemas externos de extensões
   if (event.request.method !== 'GET' || url.protocol === 'chrome-extension:' || url.protocol === 'moz-extension:') {
     return;
   }
 
-  // 2. SEGURANÇA: NUNCA armazenar em cache chamadas de API, Firebase, Auth ou Google
+  // 2. SEGURANÇA E DADOS DINÂMICOS: NUNCA armazenar em cache Firestore, Auth, APIs ou Google Services
+  // Garante que dados do Firestore não sejam baixados desnecessariamente e fiquem sempre atualizados
   if (
     url.hostname.includes('firestore.googleapis.com') ||
     url.hostname.includes('identitytoolkit.googleapis.com') ||
@@ -109,7 +112,6 @@ self.addEventListener('fetch', (event) => {
   }
 
   // 3. Documentos de navegação HTML: Network-First com fallback para cache e offline.html
-  // Garante que o usuário sempre receba a versão mais recente e nunca fique preso em HTML obsoleto
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
@@ -122,22 +124,19 @@ self.addEventListener('fetch', (event) => {
           return networkResponse;
         })
         .catch(async () => {
-          // Se a rede falhar, tenta recuperar o index.html em cache; se não houver, serve a página offline.html
           const cachedIndex = await caches.match('/index.html');
-          if (cachedIndex) {
-            return cachedIndex;
-          }
+          if (cachedIndex) return cachedIndex;
+
           const offlinePage = await caches.match('/offline.html');
-          if (offlinePage) {
-            return offlinePage;
-          }
+          if (offlinePage) return offlinePage;
+
           return caches.match('/');
         })
     );
     return;
   }
 
-  // 4. Scripts, folhas de estilo e fontes: Estratégia Stale-While-Revalidate
+  // 4. Scripts JS, CSS, fontes e chunks do Vite
   if (
     url.pathname.match(/\.(js|css|woff2|woff|ttf|eot)$/i) ||
     url.pathname.startsWith('/assets/')
@@ -146,7 +145,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 5. Imagens estáticas, ícones e Web Manifest: Estratégia Stale-While-Revalidate
+  // 5. Imagens de interface, ícones, logos e Web Manifest
   if (
     url.pathname.match(/\.(png|jpg|jpeg|svg|gif|webp|ico|webmanifest|json)$/i) ||
     url.hostname.includes('fonts.googleapis.com') ||
@@ -157,7 +156,49 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
-// Mensageria do Service Worker (SKIP_WAITING e Monitoramento de Uptime)
+// ==============================================================================
+// BACKGROUND SYNC - Sincronização em Segundo Plano de Objetos e Fotos
+// ==============================================================================
+
+async function broadcastToClients(message) {
+  const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+  for (const client of clients) {
+    client.postMessage(message);
+  }
+}
+
+// Background Sync Handler (Disparado quando a conexão é restabelecida ou evento sync é registrado)
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-item-uploads' || event.tag === 'sync-items' || event.tag === 'ifpr-background-sync') {
+    event.waitUntil(
+      (async () => {
+        await broadcastToClients({
+          type: 'BACKGROUND_SYNC_TRIGGERED',
+          tag: event.tag,
+          timestamp: new Date().toISOString(),
+          message: 'Sincronização em segundo plano acionada pelo Service Worker.'
+        });
+      })()
+    );
+  }
+});
+
+// Periodic Sync (se suportado pelo navegador em segundo plano)
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === 'ifpr-periodic-sync') {
+    event.waitUntil(
+      broadcastToClients({
+        type: 'PERIODIC_SYNC_TRIGGERED',
+        timestamp: new Date().toISOString()
+      })
+    );
+  }
+});
+
+// ==============================================================================
+// MENSAGERIA DO SERVICE WORKER (Upload Status, Uptime e Skip Waiting)
+// ==============================================================================
+
 let lastHeartbeat = Date.now();
 let totalPings = 0;
 let successfulPings = 0;
@@ -168,8 +209,18 @@ self.addEventListener('message', (event) => {
 
   // Comando para aplicar nova versão imediatamente (Skip Waiting)
   if (data.type === 'SKIP_WAITING') {
-    console.log('[PWA SW] Aplicando SKIP_WAITING. Ativando versão mais recente...');
     self.skipWaiting();
+    return;
+  }
+
+  // Notificação de progresso de upload disparada pelo app
+  if (data.type === 'UPLOAD_PROGRESS_UPDATE') {
+    // Reencaminha para todas as abas / janelas ativas
+    broadcastToClients({
+      type: 'UPLOAD_STATUS_BROADCAST',
+      task: data.task,
+      timestamp: Date.now()
+    });
     return;
   }
 

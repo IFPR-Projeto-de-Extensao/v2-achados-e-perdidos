@@ -4,6 +4,7 @@ import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
 import { safeFetchJson, clientAnalyzeObject, clientAnalyzeImage } from "../lib/apiHelper";
 import { triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, safeToLower, safeIncludes, safeTextCorpus, sanitizeQuery } from "../lib/utils";
+import { compressImage, formatBytes } from "../lib/imageCompression";
 import {
   Sparkles,
   PlusCircle,
@@ -65,6 +66,15 @@ export const RegisterItemView: React.FC = () => {
   const [imageUrl, setImageUrl] = useState(
     "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=600&auto=format&fit=crop&q=80"
   );
+  const [aiPrompt, setAiPrompt] = useState("");
+
+  // Real-time image compression state
+  const [compressionStats, setCompressionStats] = useState<{
+    original: string;
+    compressed: string;
+    savings: number;
+  } | null>(null);
+  const [isCompressing, setIsCompressing] = useState(false);
 
   // Draft Save & Restore State
   const [draftRestored, setDraftRestored] = useState(false);
@@ -194,7 +204,7 @@ export const RegisterItemView: React.FC = () => {
     }
   };
 
-  const handleCaptureSnapshot = () => {
+  const handleCaptureSnapshot = async () => {
     if (!videoRef.current) return;
     const video = videoRef.current;
     const canvas = document.createElement("canvas");
@@ -203,12 +213,33 @@ export const RegisterItemView: React.FC = () => {
     const ctx = canvas.getContext("2d");
     if (ctx) {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-      setImageUrl(dataUrl);
-      analyzeImageWithGemini(dataUrl);
-      addToast("Foto capturada da câmera com sucesso!", "success");
-      stopCamera();
-      setCameraModalOpen(false);
+      const rawDataUrl = canvas.toDataURL("image/jpeg", 0.9);
+      
+      try {
+        setIsCompressing(true);
+        const compressed = await compressImage(rawDataUrl, {
+          maxWidth: 1280,
+          maxHeight: 1280,
+          quality: 0.82,
+          outputFormat: "image/webp",
+        });
+        setImageUrl(compressed.base64);
+        setCompressionStats({
+          original: compressed.formattedOriginalSize,
+          compressed: compressed.formattedCompressedSize,
+          savings: compressed.savingsPercentage,
+        });
+        analyzeImageWithGemini(compressed.base64);
+        addToast(`Foto capturada e comprimida (-${compressed.savingsPercentage}%) com sucesso!`, "success");
+      } catch (_) {
+        setImageUrl(rawDataUrl);
+        analyzeImageWithGemini(rawDataUrl);
+        addToast("Foto capturada da câmera com sucesso!", "success");
+      } finally {
+        setIsCompressing(false);
+        stopCamera();
+        setCameraModalOpen(false);
+      }
     }
   };
 
@@ -218,7 +249,6 @@ export const RegisterItemView: React.FC = () => {
   const recognitionRef = useRef<any>(null);
 
   // AI States
-  const [aiPrompt, setAiPrompt] = useState("");
   const [isAnalyzingAI, setIsAnalyzingAI] = useState(false);
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
 
@@ -375,14 +405,40 @@ export const RegisterItemView: React.FC = () => {
     setImageUrl(url);
   };
 
-  // Handle direct file upload for photo
-  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle direct file upload for photo with real-time PWA compression
+  const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 8 * 1024 * 1024) {
-        addToast("Por favor, selecione uma imagem menor que 8MB.", "error");
-        return;
-      }
+    if (!file) return;
+
+    if (file.size > 15 * 1024 * 1024) {
+      addToast("Por favor, selecione uma imagem menor que 15MB.", "error");
+      return;
+    }
+
+    try {
+      setIsCompressing(true);
+      const compressed = await compressImage(file, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.82,
+        outputFormat: "image/webp",
+      });
+
+      setImageUrl(compressed.base64);
+      setCompressionStats({
+        original: compressed.formattedOriginalSize,
+        compressed: compressed.formattedCompressedSize,
+        savings: compressed.savingsPercentage,
+      });
+
+      addToast(
+        `Imagem otimizada com sucesso! Economia de ${compressed.savingsPercentage}% nos seus dados móveis (${compressed.formattedOriginalSize} ➔ ${compressed.formattedCompressedSize}).`,
+        "success"
+      );
+
+      analyzeImageWithGemini(compressed.base64);
+    } catch (compErr) {
+      console.warn("Aviso na compressão de arquivo:", compErr);
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64 = reader.result as string;
@@ -390,6 +446,8 @@ export const RegisterItemView: React.FC = () => {
         analyzeImageWithGemini(base64);
       };
       reader.readAsDataURL(file);
+    } finally {
+      setIsCompressing(false);
     }
   };
 
@@ -842,7 +900,6 @@ export const RegisterItemView: React.FC = () => {
           const matches = candidates
             .map((item) => {
               if (!item) return { item, matchPercentage: 0 };
-              console.log(`[RegisterItemView.tsx -> SmartSearch] item.id:`, item?.id, `item.title:`, item?.title, `item.category:`, item?.category, `item.color:`, item?.color);
               let score = 0;
               const itemText = safeTextCorpus(item.title, item.category, item.color, item.brand, item.location, item.description);
 
@@ -985,6 +1042,28 @@ export const RegisterItemView: React.FC = () => {
               <img src={imageUrl} alt="Visualização do objeto" className="w-full h-full object-cover" />
             </div>
           </div>
+
+          {/* Real-time Compression Status Pill */}
+          {isCompressing && (
+            <div className="flex items-center space-x-2 px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 text-blue-800 dark:text-blue-200 text-xs font-semibold animate-pulse">
+              <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+              <span>Otimizando e comprimindo imagem em alta resolução para o PWA...</span>
+            </div>
+          )}
+
+          {compressionStats && !isCompressing && (
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-200 text-xs font-bold">
+              <div className="flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-[#00843D] dark:text-green-400 shrink-0" />
+                <span>
+                  Otimização PWA: Economia de {compressionStats.savings}% nos dados móveis ({compressionStats.original} ➔ {compressionStats.compressed})
+                </span>
+              </div>
+              <span className="text-[10px] bg-[#00843D] text-white px-2 py-0.5 rounded-md font-extrabold uppercase">
+                WebP Otimizado
+              </span>
+            </div>
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
             <button

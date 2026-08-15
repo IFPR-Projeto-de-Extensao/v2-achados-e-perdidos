@@ -1795,10 +1795,43 @@ export const DashboardView: React.FC = () => {
                                   <option value="DEVOLVIDO">DEVOLVIDO</option>
                                 </select>
                               </td>
-                              <td className="p-3.5 text-right">
+                              <td className="p-3.5 text-right whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  title={`Enviar notificação para o aluno que cadastrou "${item.title}"`}
+                                  onClick={() => {
+                                    vibrateClick();
+                                    const studentUser = (allUsers || []).find(
+                                      (u) =>
+                                        u &&
+                                        (u.id === item.registeredByUserId ||
+                                          (item.contactInfo && (u.email === item.contactInfo || u.phone === item.contactInfo)))
+                                    );
+                                    const targetUser = studentUser || {
+                                      id: item.registeredByUserId || "aluno-ifpr",
+                                      name: item.registeredByName || "Aluno(a) Cadastrante",
+                                      email: (studentUser as any)?.email || item.contactInfo || "aluno@estudantes.ifpr.edu.br",
+                                      role: "ALUNO" as UserRole,
+                                      courseOrDept: "IFPR Campus Ivaiporã",
+                                      registrationNumber: "20261001",
+                                      reputationScore: 10,
+                                    };
+                                    setNotifyModalUser(targetUser);
+                                    setIsBroadcastNotification(false);
+                                    setNotifyRelatedItemId(item.id);
+                                    setNotifyTitle(`Atualização sobre seu item: ${item.title}`);
+                                    setNotifyMessage(
+                                      `Olá, ${targetUser.name}! Há uma atualização referente ao seu objeto "${item.title}" registrado no Achados e Perdidos do IFPR Campus Ivaiporã.`
+                                    );
+                                  }}
+                                  className="p-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-600 text-purple-600 hover:text-white font-bold text-[11px] transition-colors border border-purple-500/20 mr-1.5 inline-flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Bell className="w-3.5 h-3.5" />
+                                  <span>Notificar</span>
+                                </button>
                                 <button
                                   onClick={() => setSelectedItemForDetail(item)}
-                                  className="px-3 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white font-bold text-[11px] transition-colors"
+                                  className="px-3 py-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white font-bold text-[11px] transition-colors inline-flex items-center"
                                 >
                                   Detalhes
                                 </button>
@@ -2300,7 +2333,6 @@ export const DashboardView: React.FC = () => {
                         {(allUsers || [])
                           .filter((u) => u && (u.approvalStatus === "PENDENTE" || String(u.email ?? "").includes("ifpr.edu.br")))
                           .map((pendingUser, index) => {
-                            console.log(`[DashboardView.tsx -> pendingUsers] pendingUser.email:`, pendingUser?.email, `approvalStatus:`, pendingUser?.approvalStatus);
                             const userEmail = String(pendingUser?.email ?? "");
                             const isStudent = userEmail.endsWith("@estudantes.ifpr.edu.br") || userEmail.endsWith("@estudante.ifpr.edu.br");
                             const isStaff = userEmail.endsWith("@ifpr.edu.br");

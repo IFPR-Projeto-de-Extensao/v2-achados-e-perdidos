@@ -91,7 +91,6 @@ export const QRCodeScannerModal: React.FC = () => {
       return;
     }
 
-    console.log(`[QRCodeScannerModal.tsx -> handleScanOrSearch] Buscando por query:`, query);
     const item = (items || []).find(
       (it) =>
         it &&

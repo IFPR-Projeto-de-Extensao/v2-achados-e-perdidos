@@ -123,7 +123,6 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
     const trimmed = sanitizeQuery(term);
     if (!trimmed || trimmed.length < 2) return;
     setSearchHistory((prev) => {
-      console.log(`[ObjectsView.tsx -> saveSearchTerm] term:`, term, `prev:`, prev);
       const filtered = (prev || []).filter((t) => safeToLower(t, "ObjectsView.tsx -> saveSearchTerm -> t") !== safeToLower(trimmed, "ObjectsView.tsx -> saveSearchTerm -> trimmed"));
       const updated = [trimmed, ...filtered].slice(0, 6);
       try {
@@ -955,6 +954,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                           <img
                             src={item.imageUrl}
                             alt={item.title}
+                            loading="lazy"
+                            decoding="async"
                             className="w-10 h-10 rounded-xl object-cover border border-neutral-200 dark:border-neutral-700"
                           />
                           <div>
@@ -1043,6 +1044,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                     <img
                       src={item.imageUrl}
                       alt={item.title}
+                      loading="lazy"
+                      decoding="async"
                       className="w-12 h-12 rounded-2xl object-cover border border-neutral-200 dark:border-neutral-700"
                     />
                     <div>

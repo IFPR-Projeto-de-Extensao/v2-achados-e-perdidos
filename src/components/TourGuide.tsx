@@ -165,9 +165,7 @@ export const TourGuide: React.FC<TourGuideProps> = ({ isOpen, onClose }) => {
   const handleComplete = () => {
     vibrateSuccess();
     try {
-      if (dontShowAgain) {
-        TOUR_STORAGE_KEYS.forEach((k) => localStorage.setItem(k, "true"));
-      }
+      TOUR_STORAGE_KEYS.forEach((k) => localStorage.setItem(k, "true"));
     } catch (_) {}
     onClose();
   };
@@ -175,9 +173,7 @@ export const TourGuide: React.FC<TourGuideProps> = ({ isOpen, onClose }) => {
   const handleSkip = () => {
     vibrateClick();
     try {
-      if (dontShowAgain) {
-        TOUR_STORAGE_KEYS.forEach((k) => localStorage.setItem(k, "true"));
-      }
+      TOUR_STORAGE_KEYS.forEach((k) => localStorage.setItem(k, "true"));
     } catch (_) {}
     onClose();
   };
