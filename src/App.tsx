@@ -12,6 +12,7 @@ import { registerUptimeServiceWorker } from "./lib/uptimeManager";
 import { traceFirebasePerformance } from "./lib/firebase";
 import { savePerformanceMetricLog } from "./lib/offlineDb";
 import { Loader2 } from "lucide-react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 // Lazy-loaded heavy views and modals for optimal bundle splitting and fast initial paint
 const ObjectsView = lazy(() => import("./components/ObjectsView").then((m) => ({ default: m.ObjectsView })));
@@ -250,6 +251,7 @@ export default function App() {
   return (
     <AppProvider>
       <MainContent />
+      <SpeedInsights />
     </AppProvider>
   );
 }
