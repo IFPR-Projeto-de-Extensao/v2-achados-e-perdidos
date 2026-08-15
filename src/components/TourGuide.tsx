@@ -101,6 +101,8 @@ const TOUR_STEPS: TourStep[] = [
   },
 ];
 
+const TOUR_STORAGE_KEYS = ["ifpr_achados_tour_completed", "ifpr_tour_completed", "ifpr_dont_show_tour"];
+
 interface TourGuideProps {
   isOpen: boolean;
   onClose: () => void;
@@ -108,11 +110,21 @@ interface TourGuideProps {
 
 export const TourGuide: React.FC<TourGuideProps> = ({ isOpen, onClose }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [dontShowAgain, setDontShowAgain] = useState(false);
+  const [dontShowAgain, setDontShowAgain] = useState<boolean>(() => {
+    try {
+      return TOUR_STORAGE_KEYS.some((key) => localStorage.getItem(key) === "true");
+    } catch (_) {
+      return false;
+    }
+  });
 
   useEffect(() => {
     if (isOpen) {
       setCurrentStepIndex(0);
+      try {
+        const isDismissed = TOUR_STORAGE_KEYS.some((key) => localStorage.getItem(key) === "true");
+        setDontShowAgain(isDismissed);
+      } catch (_) {}
     }
   }, [isOpen]);
 
@@ -122,6 +134,17 @@ export const TourGuide: React.FC<TourGuideProps> = ({ isOpen, onClose }) => {
   const isFirstStep = currentStepIndex === 0;
   const isLastStep = currentStepIndex === TOUR_STEPS.length - 1;
   const IconComponent = currentStep.icon;
+
+  const handleDontShowAgainChange = (checked: boolean) => {
+    setDontShowAgain(checked);
+    try {
+      if (checked) {
+        TOUR_STORAGE_KEYS.forEach((k) => localStorage.setItem(k, "true"));
+      } else {
+        TOUR_STORAGE_KEYS.forEach((k) => localStorage.removeItem(k));
+      }
+    } catch (_) {}
+  };
 
   const handleNext = () => {
     vibrateClick();
@@ -141,21 +164,21 @@ export const TourGuide: React.FC<TourGuideProps> = ({ isOpen, onClose }) => {
 
   const handleComplete = () => {
     vibrateSuccess();
-    if (dontShowAgain) {
-      try {
-        localStorage.setItem("ifpr_tour_completed", "true");
-      } catch (_) {}
-    }
+    try {
+      if (dontShowAgain) {
+        TOUR_STORAGE_KEYS.forEach((k) => localStorage.setItem(k, "true"));
+      }
+    } catch (_) {}
     onClose();
   };
 
   const handleSkip = () => {
     vibrateClick();
-    if (dontShowAgain) {
-      try {
-        localStorage.setItem("ifpr_tour_completed", "true");
-      } catch (_) {}
-    }
+    try {
+      if (dontShowAgain) {
+        TOUR_STORAGE_KEYS.forEach((k) => localStorage.setItem(k, "true"));
+      }
+    } catch (_) {}
     onClose();
   };
 
@@ -257,8 +280,8 @@ export const TourGuide: React.FC<TourGuideProps> = ({ isOpen, onClose }) => {
               <input
                 type="checkbox"
                 checked={dontShowAgain}
-                onChange={(e) => setDontShowAgain(e.target.checked)}
-                className="w-4 h-4 rounded text-[#00843D] focus:ring-[#00843D] border-neutral-300 dark:border-neutral-700"
+                onChange={(e) => handleDontShowAgainChange(e.target.checked)}
+                className="w-4 h-4 rounded text-[#00843D] focus:ring-[#00843D] border-neutral-300 dark:border-neutral-700 cursor-pointer"
               />
               <span>Não exibir automaticamente</span>
             </label>

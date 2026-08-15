@@ -51,6 +51,12 @@ import {
   saveItemsToIndexedDB,
   getItemsFromIndexedDB,
   saveSingleItemIndexedDB,
+  queueOfflineItemRegistration,
+  getPendingSyncQueue,
+  removeSyncQueueEntry,
+  updateSyncQueueEntry,
+  getSyncQueueCount,
+  clearSyncQueue,
 } from "../lib/indexedDB";
 import { clear30DayUptimeRecords } from "../lib/uptimeManager";
 import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower } from "../lib/utils";
@@ -151,6 +157,7 @@ interface AppContextType {
   deleteItem: (id: string) => void;
   submitClaim: (itemId: string, verificationAnswer: string) => void;
   updateClaimStatus: (claimId: string, status: ItemClaim["status"]) => void;
+  sendNotificationToUser: (targetUserId: string, title: string, message: string, relatedItemId?: string) => Promise<void>;
   markNotificationRead: (id: string) => void;
   clearAllNotifications: () => void;
   qrScannerOpen: boolean;
@@ -163,6 +170,8 @@ interface AppContextType {
   setRegisterTypeSelection: (type: "PERDIDO" | "ENCONTRADO") => void;
   systemLatencyMs: number | null;
   isOnline: boolean;
+  pendingSyncCount: number;
+  syncOfflineQueue: () => Promise<void>;
   lastHeartbeatTimestamp: string | null;
   indexedDbLoaded: boolean;
   errorLogsList: any[];
@@ -232,12 +241,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Heartbeat & System Health Monitoring (RNF01 & RNF02)
   const [systemLatencyMs, setSystemLatencyMs] = useState<number | null>(24);
-  const [isOnline, setIsOnline] = useState<boolean>(true);
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
+  const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
   const [lastHeartbeatTimestamp, setLastHeartbeatTimestamp] = useState<string | null>(new Date().toISOString());
   const [indexedDbLoaded, setIndexedDbLoaded] = useState<boolean>(false);
   const [errorLogsList, setErrorLogsList] = useState<any[]>([]);
 
-  // Load items from IndexedDB instantly on boot (RNF02 - Instant local load)
+  // Load items and sync queue count from IndexedDB instantly on boot
   useEffect(() => {
     getItemsFromIndexedDB()
       .then((cached) => {
@@ -247,6 +257,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       })
       .catch((e) => console.warn("IndexedDB inicialização notice:", e));
+
+    getSyncQueueCount().then(setPendingSyncCount).catch(() => {});
   }, []);
 
   // Save items snapshot to IndexedDB whenever items state updates
@@ -256,9 +268,100 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [items]);
 
+  // Synchronize pending offline registration queue with Firestore
+  const syncOfflineQueue = async () => {
+    try {
+      const queue = await getPendingSyncQueue();
+      if (!queue || queue.length === 0) {
+        setPendingSyncCount(0);
+        return;
+      }
+
+      console.log(`[Offline Sync] Sincronizando ${queue.length} ocorrências pendentes com Firestore...`);
+      let syncedCount = 0;
+
+      for (const entry of queue) {
+        try {
+          await updateSyncQueueEntry(entry.id, {
+            status: "SINCRONIZANDO",
+            attempts: (entry.attempts || 0) + 1,
+            lastAttempt: new Date().toISOString(),
+          });
+
+          const itemToSave = {
+            ...entry.payload,
+            isOfflineQueued: false,
+            syncedAt: new Date().toISOString(),
+          };
+
+          await setDoc(doc(db, "items", itemToSave.id), sanitizeFirestoreData(itemToSave));
+
+          await removeSyncQueueEntry(entry.id);
+          syncedCount++;
+
+          // Update local item in state
+          setItems((prev) =>
+            prev.map((it) => (it.id === itemToSave.id ? itemToSave : it))
+          );
+        } catch (syncErr: any) {
+          console.error(`[Offline Sync] Falha ao sincronizar item #${entry.id}:`, syncErr);
+          await updateSyncQueueEntry(entry.id, {
+            status: "ERRO",
+            error: syncErr?.message || "Erro durante sincronização",
+          });
+        }
+      }
+
+      const remaining = await getSyncQueueCount();
+      setPendingSyncCount(remaining);
+
+      if (syncedCount > 0) {
+        addToast(
+          `Conexão restabelecida! ${syncedCount} ${
+            syncedCount === 1 ? "ocorrência cadastrada offline foi sincronizada" : "ocorrências cadastradas offline foram sincronizadas"
+          } com o Firestore com sucesso!`,
+          "success"
+        );
+      }
+    } catch (e) {
+      console.warn("Aviso ao sincronizar fila offline:", e);
+    }
+  };
+
+  // Listen to browser online/offline network connectivity events
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleOnline = () => {
+      console.log("[Rede] Dispositivo online conectado à internet.");
+      setIsOnline(true);
+      syncOfflineQueue();
+    };
+
+    const handleOffline = () => {
+      console.log("[Rede] Dispositivo desconectado da internet. Modo offline ativado.");
+      setIsOnline(false);
+      getSyncQueueCount().then(setPendingSyncCount).catch(() => {});
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
   // Heartbeat 1-minute interval ping to Firebase (RNF01 & RNF02)
   useEffect(() => {
     const runPing = async () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        setIsOnline(false);
+        setSystemLatencyMs(null);
+        return;
+      }
+
       const startTime = Date.now();
       try {
         const pingDocRef = doc(db, "system_metrics", "heartbeat");
@@ -276,7 +379,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsOnline(true);
         setLastHeartbeatTimestamp(new Date().toISOString());
       } catch (e) {
-        setIsOnline(false);
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          setIsOnline(false);
+        }
         setSystemLatencyMs(null);
       }
     };
@@ -468,6 +573,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return window.matchMedia("(prefers-color-scheme: dark)").matches;
   });
+
+  // Sync dark class on HTML element & localStorage whenever darkMode changes
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      if (darkMode) {
+        document.documentElement.classList.add("dark");
+        try {
+          localStorage.setItem(LOCAL_STORAGE_THEME_KEY, "dark");
+        } catch (_) {}
+      } else {
+        document.documentElement.classList.remove("dark");
+        try {
+          localStorage.setItem(LOCAL_STORAGE_THEME_KEY, "light");
+        } catch (_) {}
+      }
+    }
+  }, [darkMode]);
+
+  const toggleDarkMode = () => {
+    vibrateClick();
+    setDarkMode((prev) => !prev);
+  };
 
   // High Contrast Accessibility Mode State
   const [highContrastMode, setHighContrastMode] = useState<boolean>(() => {
@@ -1428,21 +1555,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Sync Theme class
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add("dark");
-      localStorage.setItem(LOCAL_STORAGE_THEME_KEY, "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-      localStorage.setItem(LOCAL_STORAGE_THEME_KEY, "light");
-    }
-  }, [darkMode]);
-
-  const toggleDarkMode = () => {
-    setDarkMode((prev) => !prev);
-  };
-
   const loginWithGoogle = async (customGoogleUser?: { email?: string; name?: string; role?: UserRole; avatarUrl?: string }) => {
     try {
       if (customGoogleUser?.email) {
@@ -1767,7 +1879,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       storageDeadlineDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
     };
 
-    // Save item to Firestore
+    // Check offline status before attempting Firestore write
+    const isCurrentlyOffline = typeof navigator !== "undefined" && !navigator.onLine;
+
+    if (isCurrentlyOffline) {
+      try {
+        await queueOfflineItemRegistration(newItem);
+        setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
+        const queueCount = await getSyncQueueCount();
+        setPendingSyncCount(queueCount);
+        addToast(
+          `Modo Offline: O objeto "${newItem.title}" foi salvo no seu dispositivo (IndexedDB) e será sincronizado com o Firestore assim que a conexão retornar!`,
+          "info"
+        );
+      } catch (offErr) {
+        console.warn("Aviso ao enfileirar offline:", offErr);
+        setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
+      }
+      return { newItem, matches: [] };
+    }
+
+    // Online: Save item to Firestore
     try {
       await setDoc(doc(db, "items", newItem.id), sanitizeFirestoreData(newItem));
       await logAdminAction(
@@ -1775,6 +1907,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         `Cadastrou a ocorrência #${newItem.id} "${newItem.title}" (${newItem.type}) - Local: ${newItem.location}`
       );
     } catch (e) {
+      console.warn("Aviso ao gravar no Firestore, salvando na fila offline do IndexedDB:", e);
+      try {
+        await queueOfflineItemRegistration(newItem);
+        setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
+        const queueCount = await getSyncQueueCount();
+        setPendingSyncCount(queueCount);
+        addToast(
+          `Conexão instável. O cadastro de "${newItem.title}" foi salvo localmente e sincronizará automaticamente.`,
+          "info"
+        );
+        return { newItem, matches: [] };
+      } catch (_) {}
       handleFirestoreError(e, OperationType.WRITE, `items/${newItem.id}`);
     }
 
@@ -2183,6 +2327,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const sendNotificationToUser = async (
+    targetUserId: string,
+    title: string,
+    message: string,
+    relatedItemId?: string
+  ) => {
+    if (!title.trim() || !message.trim()) {
+      addToast("Informe o título e a mensagem da notificação.", "error");
+      return;
+    }
+
+    const notif: NotificationItem = {
+      id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      userId: targetUserId,
+      title: title.trim(),
+      message: message.trim(),
+      timestamp: new Date().toISOString(),
+      read: false,
+      type: "SYSTEM",
+      relatedItemId,
+    };
+
+    try {
+      await setDoc(doc(db, "notifications", notif.id), sanitizeFirestoreData(notif));
+      const targetUserName = allUsers.find((u) => u.id === targetUserId)?.name || targetUserId;
+      await logAdminAction(
+        "ADMIN_NOTIFICATION",
+        `Notificação enviada por ${currentUser.name} (${currentUser.role}) para ${targetUserName}: "${title}"`
+      );
+      addToast(`Notificação enviada para ${targetUserName} com sucesso!`, "success");
+    } catch (e) {
+      console.warn("Aviso ao salvar notificação no Firestore:", e);
+      setNotifications((prev) => [notif, ...prev]);
+      addToast(`Notificação enviada com sucesso!`, "success");
+    }
+  };
+
   const markNotificationRead = async (id: string) => {
     try {
       await updateDoc(doc(db, "notifications", id), sanitizeFirestoreData({ read: true }));
@@ -2274,6 +2455,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteItem,
         submitClaim,
         updateClaimStatus,
+        sendNotificationToUser,
         markNotificationRead,
         clearAllNotifications,
         qrScannerOpen,
@@ -2286,6 +2468,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setRegisterTypeSelection,
         systemLatencyMs,
         isOnline,
+        pendingSyncCount,
+        syncOfflineQueue,
         lastHeartbeatTimestamp,
         indexedDbLoaded,
         errorLogsList,

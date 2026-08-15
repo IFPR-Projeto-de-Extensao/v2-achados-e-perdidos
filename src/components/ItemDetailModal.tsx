@@ -125,35 +125,6 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   // Find associated approved claim for PDF receipt details
   const approvedClaim = claims.find((c) => c.itemId === item.id && (c.status === "APROVADO" || c.status === "CONCLUIDO"));
 
-  // Web Share API Handler
-  const handleShareItem = async () => {
-    const shareUrl = window.location.href;
-    const shareText = `[IFPR Achados & Perdidos] Confira o item "${item.title}" (${item.type}) registrado no Campus Ivaiporã:`;
-
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `IFPR Achados & Perdidos - ${item.title}`,
-          text: shareText,
-          url: shareUrl,
-        });
-        addToast("Link compartilhado com sucesso!", "success");
-      } catch (err) {
-        console.log("Compartilhamento cancelado:", err);
-      }
-    } else {
-      // Fallback: Copy link and offer WhatsApp
-      try {
-        await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
-        const encodedText = encodeURIComponent(`${shareText}\n${shareUrl}`);
-        window.open(`https://api.whatsapp.com/send?text=${encodedText}`, "_blank");
-        addToast("Link copiado para a área de transferência e redirecionado ao WhatsApp!", "success");
-      } catch (e) {
-        addToast("Link copiado para a área de transferência!", "info");
-      }
-    }
-  };
-
   // Generate and Print PDF Receipt
   const handlePrintReceiptPDF = () => {
     const printWindow = window.open("", "_blank", "width=750,height=900");
@@ -259,6 +230,142 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
     printWindow.document.write(htmlContent);
     printWindow.document.close();
+  };
+
+  // Download high-resolution QR Code PNG for tracking and identification
+  const handleDownloadQRCodePNG = () => {
+    vibrateClick();
+    try {
+      const qrSvg = document.getElementById(`qr-code-svg-${item.id}`) as SVGElement | null;
+      if (!qrSvg) {
+        addToast("Código QR não encontrado no documento.", "error");
+        return;
+      }
+
+      const svgData = new XMLSerializer().serializeToString(qrSvg);
+      const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+      const DOMURL = window.URL || window.webkitURL || window;
+      const url = DOMURL.createObjectURL(svgBlob);
+
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 600;
+        canvas.height = 700;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          // White Background
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          // Top Header Banner
+          ctx.fillStyle = "#00843D";
+          ctx.fillRect(0, 0, canvas.width, 16);
+
+          ctx.font = "bold 26px sans-serif";
+          ctx.fillStyle = "#0F172A";
+          ctx.textAlign = "center";
+          ctx.fillText("IFPR CAMPUS IVAIPORÃ", canvas.width / 2, 60);
+
+          ctx.font = "bold 18px sans-serif";
+          ctx.fillStyle = "#00843D";
+          ctx.fillText("SISTEMA DE ACHADOS E PERDIDOS", canvas.width / 2, 90);
+
+          // Draw QR Code Image
+          const qrSize = 340;
+          ctx.drawImage(img, (canvas.width - qrSize) / 2, 115, qrSize, qrSize);
+
+          // Item Title
+          ctx.font = "bold 22px sans-serif";
+          ctx.fillStyle = "#1E293B";
+          const cleanTitle = item.title.length > 32 ? item.title.substring(0, 29) + "..." : item.title;
+          ctx.fillText(cleanTitle, canvas.width / 2, 500);
+
+          // QR Code ID Tag
+          ctx.font = "bold 18px monospace";
+          ctx.fillStyle = "#00843D";
+          ctx.fillText(`CÓDIGO: ${item.qrCodeId}`, canvas.width / 2, 535);
+
+          // Location & Date Info
+          ctx.font = "16px sans-serif";
+          ctx.fillStyle = "#475569";
+          ctx.fillText(`Local: ${item.location} • Data: ${formatDate(item.date)}`, canvas.width / 2, 570);
+
+          // Category & Type Badge Info
+          ctx.font = "14px sans-serif";
+          ctx.fillStyle = "#64748B";
+          ctx.fillText(`Categoria: ${item.category} (${item.type})`, canvas.width / 2, 600);
+
+          // Footer Guidance
+          ctx.fillStyle = "#F8FAFC";
+          ctx.fillRect(20, 630, canvas.width - 40, 50);
+          ctx.font = "13px sans-serif";
+          ctx.fillStyle = "#334155";
+          ctx.fillText("Apresente na guarita / SEBAC para identificação e devolução.", canvas.width / 2, 660);
+
+          const pngUrl = canvas.toDataURL("image/png");
+          const downloadLink = document.createElement("a");
+          downloadLink.href = pngUrl;
+          downloadLink.download = `qrcode_${item.qrCodeId || item.id}.png`;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+          DOMURL.revokeObjectURL(url);
+
+          vibrateSuccess();
+          addToast("QR Code baixado em formato PNG de alta resolução!", "success");
+        }
+      };
+      img.src = url;
+    } catch (err) {
+      console.error("Erro ao fazer download do QR Code:", err);
+      addToast("Erro ao exportar imagem do QR Code.", "error");
+    }
+  };
+
+  // Web Share API Implementation for native sharing (WhatsApp, Email, Telegram, System Share Sheet)
+  const handleShareItem = async () => {
+    vibrateClick();
+    const typeLabel = item.type === "PERDIDO" ? "Objeto Perdido" : "Objeto Encontrado";
+    const shareTitle = `[IFPR Achados e Perdidos] ${typeLabel}: ${item.title}`;
+    const shareText = `Campus Ivaiporã • ${typeLabel}: "${item.title}" (${item.category})\nLocal: ${item.location}\nData: ${formatDate(item.date)}\nStatus: ${String(item.status).replace("_", " ")}\n\nConsulte o item no Localiza+ IFPR:`;
+    const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/?tab=${item.type === "PERDIDO" ? "lost" : "found"}&itemId=${encodeURIComponent(item.id)}` : "";
+
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl,
+        });
+        vibrateSuccess();
+        addToast("Detalhes do item compartilhados com sucesso!", "success");
+      } catch (err: any) {
+        if (err?.name !== "AbortError") {
+          console.warn("Aviso ao acionar Web Share API:", err);
+          copyToClipboardFallback(shareTitle, shareText, shareUrl);
+        }
+      }
+    } else {
+      copyToClipboardFallback(shareTitle, shareText, shareUrl);
+    }
+  };
+
+  const copyToClipboardFallback = (title: string, text: string, url: string) => {
+    const fullText = `${title}\n\n${text}\n${url}`;
+    if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard
+        .writeText(fullText)
+        .then(() => {
+          vibrateSuccess();
+          addToast("Link e informações do objeto copiados! Você já pode colar no WhatsApp ou E-mail.", "info");
+        })
+        .catch(() => {
+          addToast(`Link do item: ${url}`, "info");
+        });
+    } else {
+      addToast(`Link do item: ${url}`, "info");
+    }
   };
 
   const handlePostComment = async (e: React.FormEvent) => {
@@ -652,7 +759,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             <div className="p-4 rounded-2xl bg-[#00843D]/5 dark:bg-[#00843D]/10 border border-[#00843D]/20 space-y-3">
               <div className="flex items-center space-x-4">
                 <div className="p-2 bg-white rounded-xl shadow-xs shrink-0">
-                  <QRCodeSVG value={item.qrCodeId} size={72} level="H" />
+                  <QRCodeSVG id={`qr-code-svg-${item.id}`} value={item.qrCodeId} size={72} level="H" />
                 </div>
                 <div>
                   <h5 className="font-bold text-xs text-neutral-900 dark:text-white flex items-center gap-1">
@@ -667,30 +774,40 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadQRCodePNG}
+                  className="w-full py-2 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                  title="Baixar imagem PNG do QR Code em alta resolução"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Baixar PNG</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setShowRestrictedQRView(true)}
-                  className="w-full py-2 px-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                  className="w-full py-2 px-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
                 >
                   <Eye className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Modo Restrito QR</span>
+                  <span>Modo QR</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handlePrintQRTag}
-                  className="w-full py-2 px-2.5 rounded-xl bg-white dark:bg-neutral-800 border border-[#00843D]/30 text-[#00843D] dark:text-green-400 font-bold text-xs hover:bg-[#00843D] hover:text-white transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                  className="w-full py-2 px-2 rounded-xl bg-white dark:bg-neutral-800 border border-[#00843D]/30 text-[#00843D] dark:text-green-400 font-bold text-xs hover:bg-[#00843D] hover:text-white transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>Etiqueta PDF</span>
+                  <span>Etiqueta</span>
                 </button>
 
                 {/* Generate PDF Receipt Button */}
                 <button
                   type="button"
                   onClick={handlePrintReceiptPDF}
-                  className="w-full py-2 px-2.5 rounded-xl bg-[#00843D] text-white font-bold text-xs hover:bg-[#006e33] transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                  className="w-full py-2 px-2 rounded-xl bg-[#00843D] text-white font-bold text-xs hover:bg-[#006e33] transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
                 >
                   <FileCheck className="w-3.5 h-3.5" />
                   <span>Recibo PDF</span>

@@ -62,8 +62,11 @@ export const HomeView: React.FC = () => {
   // Check if tour should auto-open on first visit
   useEffect(() => {
     try {
-      const hasCompleted = localStorage.getItem("ifpr_achados_tour_completed");
-      if (!hasCompleted) {
+      const isDismissed =
+        localStorage.getItem("ifpr_achados_tour_completed") === "true" ||
+        localStorage.getItem("ifpr_tour_completed") === "true" ||
+        localStorage.getItem("ifpr_dont_show_tour") === "true";
+      if (!isDismissed) {
         // Automatically open for first-time users after a brief delay
         const timer = setTimeout(() => {
           setIsTourOpen(true);

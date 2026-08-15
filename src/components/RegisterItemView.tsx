@@ -28,7 +28,14 @@ import {
   X,
   Printer,
   QrCode,
+  WifiOff,
+  Save,
+  Trash2,
+  History,
+  RotateCcw,
 } from "lucide-react";
+
+const DRAFT_STORAGE_KEY = "ifpr_achados_register_draft";
 
 export const RegisterItemView: React.FC = () => {
   const {
@@ -42,6 +49,7 @@ export const RegisterItemView: React.FC = () => {
     addToast,
     prefilledItemFromAI,
     setPrefilledItemFromAI,
+    isOnline,
   } = useApp();
 
   // Form State
@@ -57,6 +65,88 @@ export const RegisterItemView: React.FC = () => {
   const [imageUrl, setImageUrl] = useState(
     "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=600&auto=format&fit=crop&q=80"
   );
+
+  // Draft Save & Restore State
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+
+  // Restore Draft on Mount
+  useEffect(() => {
+    try {
+      const savedDraftStr = localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (savedDraftStr) {
+        const draft = JSON.parse(savedDraftStr);
+        if (draft && (draft.title || draft.description || draft.brand || draft.color || draft.aiPrompt)) {
+          if (draft.type) setType(draft.type);
+          if (draft.title) setTitle(draft.title);
+          if (draft.category) setCategory(draft.category);
+          if (draft.description) setDescription(draft.description);
+          if (draft.color) setColor(draft.color);
+          if (draft.brand) setBrand(draft.brand);
+          if (draft.location) setLocation(draft.location);
+          if (draft.date) setDate(draft.date);
+          if (draft.contactInfo) setContactInfo(draft.contactInfo);
+          if (draft.imageUrl) setImageUrl(draft.imageUrl);
+          if (draft.aiPrompt) setAiPrompt(draft.aiPrompt);
+          if (draft.savedAt) setDraftSavedAt(draft.savedAt);
+          setDraftRestored(true);
+        }
+      }
+    } catch (e) {
+      console.warn("Erro ao restaurar rascunho:", e);
+    }
+  }, []);
+
+  // Auto-Save Draft on Form Changes (Debounced)
+  useEffect(() => {
+    if (!title && !description && !color && !brand && !aiPrompt) {
+      return;
+    }
+    setIsSavingDraft(true);
+    const timer = setTimeout(() => {
+      try {
+        const now = new Date().toISOString();
+        const draftObj = {
+          type,
+          title,
+          category,
+          description,
+          color,
+          brand,
+          location,
+          date,
+          contactInfo,
+          imageUrl,
+          aiPrompt,
+          savedAt: now,
+        };
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftObj));
+        setDraftSavedAt(now);
+        setIsSavingDraft(false);
+      } catch (_) {}
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [type, title, category, description, color, brand, location, date, contactInfo, imageUrl, aiPrompt]);
+
+  const handleClearDraft = () => {
+    vibrateClick();
+    try {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch (_) {}
+    setTitle("");
+    setDescription("");
+    setColor("");
+    setBrand("");
+    setLocation(IFPR_LOCATIONS[0]);
+    setDate(new Date().toISOString().split("T")[0]);
+    setAiPrompt("");
+    setImageUrl("https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=600&auto=format&fit=crop&q=80");
+    setDraftRestored(false);
+    setDraftSavedAt(null);
+    addToast("Rascunho descartado e formulário redefinido com sucesso.", "info");
+  };
 
   // Camera capture state
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
@@ -373,6 +463,13 @@ export const RegisterItemView: React.FC = () => {
       contactInfo,
     });
 
+    // Clear saved draft on successful submission
+    try {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      setDraftSavedAt(null);
+      setDraftRestored(false);
+    } catch (_) {}
+
     vibrateSuccess();
 
     if (res.matches.length === 0) {
@@ -384,13 +481,72 @@ export const RegisterItemView: React.FC = () => {
     <div className="max-w-4xl mx-auto space-y-8 pb-16">
       {/* Top Header */}
       <div className="border-b border-neutral-200 dark:border-neutral-800 pb-5">
-        <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
-          <PlusCircle className="w-7 h-7 text-[#00843D]" /> Cadastro de Objeto • IFPR Campus Ivaiporã
-        </h1>
-        <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
-          Informe os detalhes para ajudar a comunidade a localizar ou devolver este pertence.
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
+              <PlusCircle className="w-7 h-7 text-[#00843D]" /> Cadastro de Objeto • IFPR Campus Ivaiporã
+            </h1>
+            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+              Informe os detalhes para ajudar a comunidade a localizar ou devolver este pertence.
+            </p>
+          </div>
+
+          {/* Auto-save draft status indicator */}
+          <div className="flex items-center space-x-2 shrink-0">
+            {isSavingDraft ? (
+              <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 text-[11px] font-bold border border-neutral-200 dark:border-neutral-700 animate-pulse">
+                <Save className="w-3.5 h-3.5 animate-spin text-[#00843D]" />
+                <span>Salvando rascunho...</span>
+              </span>
+            ) : draftSavedAt ? (
+              <span
+                title={`Último rascunho salvo em ${new Date(draftSavedAt).toLocaleTimeString()}`}
+                className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold border border-emerald-500/20"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Rascunho salvo no navegador</span>
+              </span>
+            ) : null}
+
+            {(title || description || color || brand) && (
+              <button
+                type="button"
+                onClick={handleClearDraft}
+                title="Descartar rascunho e limpar campos"
+                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-red-600 dark:text-red-400 hover:bg-red-500/10 border border-red-500/20 transition-colors"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Limpar</span>
+              </button>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Restored Draft Alert Banner */}
+      {draftRestored && (
+        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between gap-3 animate-in fade-in duration-300">
+          <div className="flex items-center space-x-3 text-xs text-emerald-900 dark:text-emerald-200">
+            <div className="p-2 rounded-xl bg-[#00843D] text-white shrink-0">
+              <History className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="font-bold">Rascunho salvo recuperado automaticamente!</span>
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                Seus dados foram preservados para que você não perca o preenchimento.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleClearDraft}
+            className="px-3 py-1.5 rounded-xl bg-white dark:bg-neutral-800 border border-emerald-500/30 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 text-xs font-bold text-neutral-700 dark:text-neutral-300 transition-colors shrink-0 flex items-center space-x-1"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Descartar Rascunho</span>
+          </button>
+        </div>
+      )}
 
       {/* TYPE TOGGLE: PERDIDO vs ENCONTRADO */}
       <div className="grid grid-cols-2 gap-3 p-1.5 bg-neutral-100 dark:bg-[#1E1E1E] rounded-2xl border border-neutral-200 dark:border-neutral-800">
@@ -892,6 +1048,16 @@ export const RegisterItemView: React.FC = () => {
             className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
           />
         </div>
+
+        {/* Offline Status Advisory */}
+        {!isOnline && (
+          <div className="flex items-center gap-2.5 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs">
+            <WifiOff className="w-4 h-4 text-amber-500 shrink-0" />
+            <span>
+              <strong>Modo Offline Ativo:</strong> Você não perderá nenhum dado. Ao clicar em salvar, este cadastro será armazenado com segurança no seu dispositivo (IndexedDB) e sincronizado com o Firestore assim que a conexão retornar.
+            </span>
+          </div>
+        )}
 
         {/* Submit Actions */}
         <div className="pt-4 flex justify-end space-x-3 border-t border-neutral-200 dark:border-neutral-800">

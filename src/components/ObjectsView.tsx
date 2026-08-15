@@ -136,13 +136,20 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
   const removeSearchHistoryItem = (termToRemove: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setSearchHistory((prev) => {
-      console.log(`[ObjectsView.tsx -> removeSearchHistoryItem] termToRemove:`, termToRemove);
       const updated = (prev || []).filter((t) => safeToLower(t, "ObjectsView.tsx -> removeSearchHistoryItem -> t") !== safeToLower(termToRemove, "ObjectsView.tsx -> removeSearchHistoryItem -> termToRemove"));
       try {
         localStorage.setItem("ifpr_achados_search_history", JSON.stringify(updated));
       } catch (_) {}
       return updated;
     });
+  };
+
+  const clearAllSearchHistory = () => {
+    vibrateClick();
+    setSearchHistory([]);
+    try {
+      localStorage.removeItem("ifpr_achados_search_history");
+    } catch (_) {}
   };
 
   const categoriesList: { name: ItemCategory; icon: React.ComponentType<{ className?: string }> }[] = [
@@ -395,11 +402,11 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
               )}
             </div>
 
-            {/* Search History Chips */}
+            {/* Search History Chips (Recent Searches) */}
             {searchHistory.length > 0 && (
               <div className="flex items-center gap-1.5 flex-wrap pt-2 text-[11px]">
-                <span className="text-neutral-400 flex items-center gap-1 font-semibold">
-                  <Clock className="w-3 h-3 text-[#00843D]" /> Recentes:
+                <span className="text-neutral-500 dark:text-neutral-400 flex items-center gap-1 font-bold">
+                  <Clock className="w-3 h-3 text-[#00843D]" /> Buscas Recentes:
                 </span>
                 {searchHistory.map((historyTerm) => (
                   <button
@@ -409,17 +416,27 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                       setSearch(historyTerm);
                       saveSearchTerm(historyTerm);
                     }}
-                    className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D]/10 hover:text-[#00843D] dark:hover:text-green-400 text-neutral-600 dark:text-neutral-300 transition-all border border-neutral-200/80 dark:border-neutral-700 font-medium cursor-pointer"
+                    title={`Buscar novamente "${historyTerm}"`}
+                    className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D]/10 hover:text-[#00843D] dark:hover:text-green-400 text-neutral-700 dark:text-neutral-300 transition-all border border-neutral-200/80 dark:border-neutral-700 font-medium cursor-pointer group"
                   >
                     <span>{historyTerm}</span>
                     <span
                       onClick={(e) => removeSearchHistoryItem(historyTerm, e)}
-                      className="hover:text-red-500 ml-0.5"
+                      title="Remover termo"
+                      className="hover:text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-full w-3.5 h-3.5 flex items-center justify-center ml-0.5 text-xs text-neutral-400"
                     >
                       ×
                     </span>
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={clearAllSearchHistory}
+                  title="Limpar histórico de pesquisas recentes"
+                  className="text-[10px] text-neutral-400 hover:text-red-500 underline ml-1 cursor-pointer font-semibold"
+                >
+                  Limpar
+                </button>
               </div>
             )}
           </div>

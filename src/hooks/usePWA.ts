@@ -15,15 +15,21 @@ export function usePWA() {
   const [isInstallable, setIsInstallable] = useState<boolean>(false);
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
   const [isIOS, setIsIOS] = useState<boolean>(false);
+  const [isAndroid, setIsAndroid] = useState<boolean>(false);
   const [showInstructionsModal, setShowInstructionsModal] = useState<boolean>(false);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState<boolean>(false);
   const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
-  const [isDismissed, setIsDismissed] = useState<boolean>(() => {
+  
+  // Track if banner was dismissed in this session
+  const [isSessionDismissed, setIsSessionDismissed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
-    return sessionStorage.getItem("pwa_install_dismissed") === "true";
+    return (
+      sessionStorage.getItem("pwa_session_dismissed") === "true" ||
+      sessionStorage.getItem("pwa_install_dismissed") === "true"
+    );
   });
 
-  // Check standalone mode (already installed or opened as PWA)
+  // Check standalone mode and device OS
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -48,10 +54,12 @@ export function usePWA() {
       mediaQuery.addListener(handleMediaChange);
     }
 
-    // Check iOS device
+    // Check OS
     const userAgent = window.navigator.userAgent.toLowerCase();
-    const isAppleDevice = /iphone|ipad|ipod/.test(userAgent) && !(window as any).MSStream;
-    setIsIOS(isAppleDevice);
+    const isApple = /iphone|ipad|ipod/.test(userAgent) && !(window as any).MSStream;
+    const isAndroidDevice = /android/.test(userAgent);
+    setIsIOS(isApple);
+    setIsAndroid(isAndroidDevice);
 
     return () => {
       try {
@@ -80,6 +88,7 @@ export function usePWA() {
       setIsInstallable(false);
       setDeferredPrompt(null);
       setShowInstructionsModal(false);
+      sessionStorage.setItem("pwa_installed_session", "true");
       vibrateSuccess();
     };
 
@@ -102,12 +111,10 @@ export function usePWA() {
         if (registration) {
           setSwRegistration(registration);
 
-          // Check if a worker is already waiting
           if (registration.waiting) {
             setIsUpdateAvailable(true);
           }
 
-          // Listen for new workers entering 'waiting' state
           registration.addEventListener("updatefound", () => {
             const newWorker = registration.installing;
             if (newWorker) {
@@ -136,48 +143,60 @@ export function usePWA() {
     });
   }, []);
 
-  // Action: Trigger browser install prompt or open instructions
-  const promptInstall = useCallback(async (openInstructionsIfNoPrompt: boolean = true) => {
+  // Dedicated "Install to Homescreen" action specifically using the deferred beforeinstallprompt event
+  const installToHomescreen = useCallback(async () => {
     vibrateClick();
-    if (isIOS) {
-      setShowInstructionsModal(true);
-      return;
-    }
 
-    if (!deferredPrompt) {
-      console.log("[PWA] Prompt nativo indisponível no momento. Abrindo instruções de instalação.");
-      if (openInstructionsIfNoPrompt) {
+    if (deferredPrompt) {
+      try {
+        // Record that the prompt was triggered in this session (ensure appears once per session)
+        sessionStorage.setItem("pwa_android_prompt_invoked_session", "true");
+        sessionStorage.setItem("pwa_session_dismissed", "true");
+
+        await deferredPrompt.prompt();
+        const choice = await deferredPrompt.userChoice;
+        console.log("[PWA] userChoice outcome:", choice.outcome);
+
+        if (choice.outcome === "accepted") {
+          setIsInstalled(true);
+          setIsInstallable(false);
+        }
+        setDeferredPrompt(null);
+      } catch (err) {
+        console.error("[PWA] Erro ao invocar prompt nativo do Android:", err);
         setShowInstructionsModal(true);
       }
-      return;
-    }
-
-    try {
-      await deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-      console.log("[PWA] Resposta do usuário à instalação:", choice.outcome);
-
-      if (choice.outcome === "accepted") {
-        setIsInstalled(true);
-        setIsInstallable(false);
-      }
-      setDeferredPrompt(null);
-    } catch (err) {
-      console.error("[PWA] Erro ao invocar prompt nativo:", err);
+    } else if (isIOS) {
+      setShowInstructionsModal(true);
+    } else {
       setShowInstructionsModal(true);
     }
   }, [deferredPrompt, isIOS]);
 
-  // Action: Dismiss install banner for current session
+  // General install prompt
+  const promptInstall = useCallback(
+    async (openInstructionsIfNoPrompt: boolean = true) => {
+      if (deferredPrompt) {
+        await installToHomescreen();
+      } else if (openInstructionsIfNoPrompt) {
+        vibrateClick();
+        setShowInstructionsModal(true);
+      }
+    },
+    [deferredPrompt, installToHomescreen]
+  );
+
+  // Dismiss install banner for current session
   const dismissInstallPrompt = useCallback(() => {
     vibrateClick();
-    setIsDismissed(true);
+    setIsSessionDismissed(true);
     if (typeof window !== "undefined") {
+      sessionStorage.setItem("pwa_session_dismissed", "true");
       sessionStorage.setItem("pwa_install_dismissed", "true");
     }
   }, []);
 
-  // Action: Apply service worker update (skip waiting)
+  // Apply service worker update (skip waiting)
   const applyUpdate = useCallback(() => {
     vibrateSuccess();
     if (swRegistration && swRegistration.waiting) {
@@ -188,15 +207,17 @@ export function usePWA() {
   }, [swRegistration]);
 
   return {
-    isInstallable: (isInstallable || (isIOS && !isInstalled)) && !isDismissed && !isInstalled,
+    isInstallable: (isInstallable || (isIOS && !isInstalled)) && !isSessionDismissed && !isInstalled,
     isInstalled,
     isIOS,
+    isAndroid,
     canPromptNative: !!deferredPrompt,
     showInstructionsModal,
     setShowInstructionsModal,
     showIOSPrompt: showInstructionsModal,
     setShowIOSPrompt: setShowInstructionsModal,
     isUpdateAvailable,
+    installToHomescreen,
     promptInstall,
     dismissInstallPrompt,
     applyUpdate,

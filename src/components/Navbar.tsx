@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
 import { triggerVibration, vibrateClick, vibrateSuccess } from "../lib/utils";
 import { usePWA } from "../hooks/usePWA";
+import { ThemeToggle } from "./ThemeToggle";
 import {
   Search,
   PlusCircle,
@@ -24,6 +25,10 @@ import {
   Sparkles,
   Smartphone,
   Download,
+  WifiOff,
+  Wifi,
+  RefreshCw,
+  CloudOff,
 } from "lucide-react";
 
 export const Navbar: React.FC = () => {
@@ -35,6 +40,7 @@ export const Navbar: React.FC = () => {
     currentUser,
     switchUserRole,
     notifications,
+    markNotificationRead,
     fcmPermissionGranted,
     requestNotificationPermission,
     setQrScannerOpen,
@@ -45,6 +51,11 @@ export const Navbar: React.FC = () => {
     logout,
     t,
     language,
+    isOnline,
+    pendingSyncCount,
+    syncOfflineQueue,
+    items,
+    setSelectedItemForDetail,
   } = useApp();
 
   const { isInstalled, promptInstall } = usePWA();
@@ -52,7 +63,15 @@ export const Navbar: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const userNotifications = notifications.filter(
+    (n) =>
+      currentUser.role === "ADMIN" ||
+      n.userId === currentUser.id ||
+      n.userId === "all" ||
+      n.userId === "todos_alunos"
+  );
+
+  const unreadCount = userNotifications.filter((n) => !n.read).length;
 
   const handleNavClick = (tab: "home" | "lost" | "found" | "register" | "dashboard" | "profile" | "image_analyzer") => {
     vibrateClick();
@@ -80,31 +99,71 @@ export const Navbar: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo & Brand Name */}
-          <div
-            role="button"
-            tabIndex={0}
-            aria-label="Ir para a página inicial do Localiza+ IFPR"
-            onKeyDown={(e) => e.key === "Enter" && handleNavClick("home")}
-            className="flex items-center space-x-3 cursor-pointer select-none"
-            onClick={() => handleNavClick("home")}
-          >
-            <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-[#00843D] text-white font-bold shadow-md shadow-[#00843D]/20 hover:scale-105 transition-transform">
-              <span className="text-xl tracking-tighter font-extrabold">IF</span>
-              <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#C8102E] rounded-full border-2 border-white dark:border-[#181818]" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-1.5">
-                <span className="font-extrabold text-lg tracking-tight text-neutral-900 dark:text-white">
-                  Localiza+
-                </span>
-                <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 border border-[#00843D]/20">
-                  IFPR
-                </span>
+          <div className="flex items-center space-x-3">
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Ir para a página inicial do Localiza+ IFPR"
+              onKeyDown={(e) => e.key === "Enter" && handleNavClick("home")}
+              className="flex items-center space-x-3 cursor-pointer select-none"
+              onClick={() => handleNavClick("home")}
+            >
+              <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-[#00843D] text-white font-bold shadow-md shadow-[#00843D]/20 hover:scale-105 transition-transform">
+                <span className="text-xl tracking-tighter font-extrabold">IF</span>
+                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#C8102E] rounded-full border-2 border-white dark:border-[#181818]" />
               </div>
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 hidden sm:block">
-                Achados &amp; Perdidos • Campus Ivaiporã
-              </p>
+              <div>
+                <div className="flex items-center space-x-1.5">
+                  <span className="font-extrabold text-lg tracking-tight text-neutral-900 dark:text-white">
+                    Localiza+
+                  </span>
+                  <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 border border-[#00843D]/20">
+                    IFPR
+                  </span>
+                </div>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 hidden sm:block">
+                  Achados &amp; Perdidos • Campus Ivaiporã
+                </p>
+              </div>
             </div>
+
+            {/* Floating Status Indicator in Navbar for Offline Mode */}
+            {!isOnline ? (
+              <div
+                role="status"
+                aria-live="polite"
+                title={
+                  pendingSyncCount > 0
+                    ? `Modo Offline ativado. ${pendingSyncCount} ocorrência(s) salva(s) no IndexedDB aguardando sincronização.`
+                    : "Modo Offline: Formulários e dados são preservados com segurança localmente via IndexedDB."
+                }
+                className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-bold animate-in fade-in duration-300"
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                </span>
+                <WifiOff className="w-3.5 h-3.5" />
+                <span className="text-[11px] tracking-tight whitespace-nowrap">Modo Offline</span>
+                {pendingSyncCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-extrabold">
+                    {pendingSyncCount}
+                  </span>
+                )}
+              </div>
+            ) : pendingSyncCount > 0 ? (
+              <button
+                onClick={() => {
+                  vibrateClick();
+                  syncOfflineQueue();
+                }}
+                title="Sincronizar dados pendentes do IndexedDB com o Firestore"
+                className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-[#00843D]/10 hover:bg-[#00843D]/20 border border-[#00843D]/30 text-[#00843D] dark:text-green-400 text-xs font-bold transition-colors animate-pulse"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span className="text-[11px]">Sincronizar ({pendingSyncCount})</span>
+              </button>
+            ) : null}
           </div>
 
           {/* Desktop Navigation Links */}
@@ -267,18 +326,28 @@ export const Navbar: React.FC = () => {
                   )}
 
                   <div className="mt-3 space-y-2.5 max-h-72 overflow-y-auto pr-1">
-                    {notifications.length === 0 ? (
+                    {userNotifications.length === 0 ? (
                       <p className="text-xs text-center py-6 text-neutral-500">
                         Nenhuma notificação recente.
                       </p>
                     ) : (
-                      notifications.map((n) => (
+                      userNotifications.map((n) => (
                         <div
                           key={n.id}
-                          className={`p-3 rounded-xl text-xs transition-colors border ${
+                          onClick={() => {
+                            vibrateClick();
+                            if (!n.read) {
+                              markNotificationRead(n.id);
+                            }
+                            if (n.relatedItemId) {
+                              const it = items.find((i) => i.id === n.relatedItemId);
+                              if (it) setSelectedItemForDetail(it);
+                            }
+                          }}
+                          className={`p-3 rounded-xl text-xs transition-colors border cursor-pointer ${
                             !n.read
-                              ? "bg-[#00843D]/5 border-[#00843D]/20 dark:bg-[#00843D]/10"
-                              : "bg-neutral-50 dark:bg-neutral-800/50 border-neutral-200 dark:border-neutral-800"
+                              ? "bg-[#00843D]/5 border-[#00843D]/20 dark:bg-[#00843D]/10 hover:bg-[#00843D]/10"
+                              : "bg-neutral-50 dark:bg-neutral-800/50 border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                           }`}
                         >
                           <div className="flex justify-between items-start font-semibold text-neutral-900 dark:text-white mb-1">
@@ -298,27 +367,8 @@ export const Navbar: React.FC = () => {
               )}
             </div>
 
-            {/* Dark Mode Toggle Switch */}
-            <button
-              type="button"
-              onClick={toggleDarkMode}
-              aria-label="Alternar Tema Claro / Escuro"
-              title={darkMode ? "Alternar para Modo Claro" : "Alternar para Modo Escuro"}
-              className="relative inline-flex items-center h-8 w-14 rounded-full p-1 bg-neutral-200 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 transition-colors duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#00843D] shrink-0"
-            >
-              <span className="sr-only">Alternar Tema</span>
-              <span
-                className={`flex items-center justify-center w-6 h-6 rounded-full bg-white dark:bg-neutral-900 shadow-md transform transition-transform duration-300 ${
-                  darkMode ? "translate-x-6" : "translate-x-0"
-                }`}
-              >
-                {darkMode ? (
-                  <Moon className="w-3.5 h-3.5 fill-amber-300 text-amber-300" />
-                ) : (
-                  <Sun className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                )}
-              </span>
-            </button>
+            {/* Dark Mode Toggle Switch Component */}
+            <ThemeToggle />
 
             {/* Login / Cadastro or User Profile & Logout */}
             {currentUser.id === "guest_visitor" && !firebaseUser ? (
@@ -481,38 +531,16 @@ export const Navbar: React.FC = () => {
           </button>
 
           {/* Mobile Theme Toggle Switch */}
-          <div className="flex items-center justify-between py-2.5 px-3.5 rounded-xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700/80 my-1">
+          <div className="flex items-center justify-between py-2 px-3.5 rounded-xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700/80 my-1">
             <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-2">
               {darkMode ? (
                 <Moon className="w-4 h-4 text-amber-400 fill-amber-400" />
               ) : (
                 <Sun className="w-4 h-4 text-amber-500 fill-amber-500" />
               )}
-              <span>{darkMode ? "Modo Escuro" : "Modo Claro"}</span>
+              <span>{darkMode ? "Modo Escuro Ativo" : "Modo Claro Ativo"}</span>
             </span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={darkMode}
-              aria-label="Alternar entre modo claro e escuro"
-              onClick={() => {
-                vibrateClick();
-                toggleDarkMode();
-              }}
-              className="relative inline-flex items-center h-7 w-12 rounded-full p-0.5 bg-neutral-200 dark:bg-neutral-700 border border-neutral-300 dark:border-neutral-600 transition-colors duration-300 cursor-pointer"
-            >
-              <span
-                className={`flex items-center justify-center w-5 h-5 rounded-full bg-white dark:bg-neutral-900 shadow-sm transform transition-transform duration-300 ${
-                  darkMode ? "translate-x-5 text-amber-300" : "translate-x-0 text-amber-500"
-                }`}
-              >
-                {darkMode ? (
-                  <Moon className="w-3 h-3 fill-amber-300 text-amber-300" />
-                ) : (
-                  <Sun className="w-3 h-3 text-amber-500 fill-amber-500" />
-                )}
-              </span>
-            </button>
+            <ThemeToggle />
           </div>
 
           {/* PWA Install Button in Mobile Menu */}

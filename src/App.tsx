@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { Navbar } from "./components/Navbar";
 import { Footer } from "./components/Footer";
@@ -15,6 +15,7 @@ import { AuthModal } from "./components/AuthModal";
 import { ToastContainer } from "./components/ToastContainer";
 import { PWAInstallBanner } from "./components/PWAInstallBanner";
 import { MobileBottomNav } from "./components/MobileBottomNav";
+import { KeyboardShortcutsModal } from "./components/KeyboardShortcutsModal";
 import { initGoogleAnalytics, trackPageView } from "./lib/analytics";
 import { registerUptimeServiceWorker } from "./lib/uptimeManager";
 import { traceFirebasePerformance } from "./lib/firebase";
@@ -33,6 +34,66 @@ const MainContent: React.FC = () => {
     maintenanceCustomMessage,
     currentUser,
   } = useApp();
+
+  const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
+
+  // Global Keyboard Shortcuts for rapid navigation and power-user accessibility
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName?.toLowerCase();
+      const isInput =
+        activeTag === "input" ||
+        activeTag === "textarea" ||
+        activeTag === "select" ||
+        (document.activeElement as HTMLElement)?.isContentEditable;
+
+      if (isInput) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      const key = e.key.toUpperCase();
+
+      switch (key) {
+        case "H":
+          e.preventDefault();
+          setActiveTab("home");
+          break;
+        case "S":
+          e.preventDefault();
+          setActiveTab("lost");
+          break;
+        case "R":
+          e.preventDefault();
+          setActiveTab("register");
+          break;
+        case "D":
+          e.preventDefault();
+          setActiveTab("dashboard");
+          break;
+        case "P":
+          e.preventDefault();
+          setActiveTab("profile");
+          break;
+        case "A":
+          e.preventDefault();
+          setActiveTab("image_analyzer");
+          break;
+        case "Q":
+          e.preventDefault();
+          setQrScannerOpen(true);
+          break;
+        case "?":
+          e.preventDefault();
+          setShortcutsModalOpen((prev) => !prev);
+          break;
+        case "ESCAPE":
+          setShortcutsModalOpen(false);
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [setActiveTab, setQrScannerOpen]);
 
   useEffect(() => {
     initGoogleAnalytics();
@@ -155,6 +216,12 @@ const MainContent: React.FC = () => {
 
       {/* Auth Modal */}
       <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+
+      {/* Keyboard Shortcuts Accessibility Guide Modal */}
+      <KeyboardShortcutsModal
+        isOpen={shortcutsModalOpen}
+        onClose={() => setShortcutsModalOpen(false)}
+      />
 
       {/* Mobile Bottom Navigation for PWA & Smartphones */}
       <MobileBottomNav />

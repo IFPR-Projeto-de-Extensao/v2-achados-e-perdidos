@@ -1,5 +1,5 @@
 import React from "react";
-import { Download, RefreshCw, X, HelpCircle, Smartphone } from "lucide-react";
+import { Download, RefreshCw, X, HelpCircle, Smartphone, CheckCircle } from "lucide-react";
 import { usePWA } from "../hooks/usePWA";
 import { InstallInstructionsModal } from "./InstallInstructionsModal";
 import { vibrateClick } from "../lib/utils";
@@ -9,10 +9,12 @@ export const PWAInstallBanner: React.FC = () => {
     isInstallable,
     isInstalled,
     isIOS,
+    isAndroid,
     canPromptNative,
     showInstructionsModal,
     setShowInstructionsModal,
     isUpdateAvailable,
+    installToHomescreen,
     promptInstall,
     dismissInstallPrompt,
     applyUpdate,
@@ -49,12 +51,12 @@ export const PWAInstallBanner: React.FC = () => {
         </div>
       )}
 
-      {/* 2. Discrete Install Banner (Bottom floating pill / bar) */}
+      {/* 2. Discrete Install Banner with Dedicated 'Install to Homescreen' Trigger Button */}
       {isInstallable && !isInstalled && (
         <div
           role="region"
           aria-label="Instalação do Aplicativo Localiza+"
-          className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-40 max-w-sm w-[calc(100%-2rem)] sm:w-auto bg-white/95 dark:bg-[#1e1e1e]/95 backdrop-blur-md border border-gray-200 dark:border-neutral-700/80 rounded-2xl shadow-xl p-3.5 flex items-center justify-between gap-3 transition-all duration-300"
+          className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-40 max-w-md w-[calc(100%-2rem)] sm:w-auto bg-white/95 dark:bg-[#1e1e1e]/95 backdrop-blur-md border border-gray-200 dark:border-neutral-700/80 rounded-2xl shadow-xl p-3.5 flex items-center justify-between gap-3 transition-all duration-300 animate-in fade-in slide-in-from-bottom-2"
         >
           <div
             className="flex items-center space-x-3 min-w-0 cursor-pointer select-none"
@@ -74,23 +76,41 @@ export const PWAInstallBanner: React.FC = () => {
                   Instalar Localiza+
                 </span>
                 <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#00843D]/10 text-[#00843D] dark:text-green-400">
-                  App PWA
+                  PWA Nativo
                 </span>
               </div>
               <p className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate">
-                Acesso rápido e tela cheia
+                {isAndroid
+                  ? "Instale direto na tela inicial do Android"
+                  : isIOS
+                  ? "Adicionar à tela de início do iOS"
+                  : "Acesso rápido e funcionamento offline"}
               </p>
             </div>
           </div>
 
           <div className="flex items-center space-x-1.5 shrink-0">
-            <button
-              onClick={() => promptInstall(true)}
-              className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold shadow-md shadow-[#00843D]/20 active:scale-95 transition-all"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Instalar</span>
-            </button>
+            {/* Dedicated Android / Chromium 'Install to Homescreen' Trigger Button */}
+            {canPromptNative ? (
+              <button
+                onClick={installToHomescreen}
+                title="Instalar na Tela Inicial via prompt nativo do Android"
+                className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold shadow-md shadow-[#00843D]/20 active:scale-95 transition-all"
+              >
+                <Smartphone className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Adicionar à</span>
+                <span>Tela Inicial</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => promptInstall(true)}
+                className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold shadow-md shadow-[#00843D]/20 active:scale-95 transition-all"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Instalar</span>
+              </button>
+            )}
+
             <button
               onClick={() => {
                 vibrateClick();
@@ -104,7 +124,8 @@ export const PWAInstallBanner: React.FC = () => {
             </button>
             <button
               onClick={dismissInstallPrompt}
-              aria-label="Dispensar aviso de instalação"
+              aria-label="Dispensar aviso de instalação nesta sessão"
+              title="Dispensar nesta sessão"
               className="p-1.5 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
             >
               <X className="w-4 h-4" />
@@ -119,7 +140,7 @@ export const PWAInstallBanner: React.FC = () => {
         onClose={() => setShowInstructionsModal(false)}
         isIOS={isIOS}
         canPromptNative={canPromptNative}
-        onPromptNative={() => promptInstall(false)}
+        onPromptNative={installToHomescreen}
       />
     </>
   );

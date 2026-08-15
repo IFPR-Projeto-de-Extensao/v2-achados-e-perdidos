@@ -101,6 +101,21 @@ export interface LostFoundItem {
   // Timeline history log
   history?: ItemHistoryLog[];
   historyLogs?: ItemHistoryLog[];
+
+  // Offline Sync metadata
+  isOfflineQueued?: boolean;
+  syncedAt?: string;
+}
+
+export interface SyncQueueEntry {
+  id: string;
+  type: "REGISTER_ITEM";
+  payload: LostFoundItem;
+  createdAt: string;
+  status: "PENDENTE" | "SINCRONIZANDO" | "ERRO";
+  attempts: number;
+  lastAttempt?: string;
+  error?: string;
 }
 
 export interface ItemClaim {

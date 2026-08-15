@@ -59,6 +59,10 @@ import {
   XCircle,
   Cpu,
   HardDrive,
+  Mail,
+  Send,
+  Bell,
+  MessageSquare,
 } from "lucide-react";
 
 export const DashboardView: React.FC = () => {
@@ -95,7 +99,16 @@ export const DashboardView: React.FC = () => {
     lastHeartbeatTimestamp,
     indexedDbLoaded,
     errorLogsList,
+    sendNotificationToUser,
   } = useApp();
+
+  // Notification Modal State (Admin to Student)
+  const [notifyModalUser, setNotifyModalUser] = useState<any | null>(null);
+  const [isBroadcastNotification, setIsBroadcastNotification] = useState(false);
+  const [notifyTitle, setNotifyTitle] = useState("");
+  const [notifyMessage, setNotifyMessage] = useState("");
+  const [notifyRelatedItemId, setNotifyRelatedItemId] = useState("");
+  const [isSendingNotif, setIsSendingNotif] = useState(false);
 
   // Active role panel for viewing/testing (Default to current user's role)
   const [activeDashboardRole, setActiveDashboardRole] = useState<UserRole>(currentUser.role);
@@ -276,6 +289,49 @@ export const DashboardView: React.FC = () => {
     setNewUserEmail("");
     setNewUserRegNumber("");
     setIsAddingUserOpen(false);
+  };
+
+  const handleSendAdminNotification = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!notifyTitle.trim() || !notifyMessage.trim()) {
+      addToast("Preencha o título e o conteúdo da notificação.", "error");
+      return;
+    }
+    setIsSendingNotif(true);
+    try {
+      if (isBroadcastNotification) {
+        const studentUsers = (allUsers || []).filter((u) => u && u.role === "ALUNO");
+        for (const student of studentUsers) {
+          await sendNotificationToUser(
+            student.id,
+            notifyTitle.trim(),
+            notifyMessage.trim(),
+            notifyRelatedItemId || undefined
+          );
+        }
+        vibrateSuccess();
+        addToast(`Notificação enviada em massa para ${studentUsers.length} alunos!`, "success");
+      } else if (notifyModalUser) {
+        await sendNotificationToUser(
+          notifyModalUser.id,
+          notifyTitle.trim(),
+          notifyMessage.trim(),
+          notifyRelatedItemId || undefined
+        );
+        vibrateSuccess();
+        addToast(`Notificação enviada para ${notifyModalUser.name}!`, "success");
+      }
+      setNotifyModalUser(null);
+      setIsBroadcastNotification(false);
+      setNotifyTitle("");
+      setNotifyMessage("");
+      setNotifyRelatedItemId("");
+    } catch (err: any) {
+      vibrateCritical();
+      addToast("Erro ao enviar notificação para o aluno.", "error");
+    } finally {
+      setIsSendingNotif(false);
+    }
   };
 
   // Metrics Calculations
@@ -771,6 +827,20 @@ export const DashboardView: React.FC = () => {
               <UserCheck className="w-4 h-4" />
               <span>Painel do {currentUser.role} ({currentUser.name})</span>
             </div>
+          )}
+
+          {/* Administrative CSV Export Report Button */}
+          {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && (
+            <button
+              onClick={handleExportItemsCSV}
+              type="button"
+              aria-label="Exportar relatório completo de itens em CSV"
+              title="Download do Relatório Completo de Achados & Perdidos (CSV)"
+              className="px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold transition-all flex items-center justify-center space-x-2 shadow-xs cursor-pointer"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Exportar Base (CSV)</span>
+            </button>
           )}
         </div>
       </div>
@@ -1378,6 +1448,22 @@ export const DashboardView: React.FC = () => {
                   </button>
 
                   <button
+                    onClick={() => {
+                      vibrateClick();
+                      const firstStudent = (allUsers || []).find((u) => u && u.role === "ALUNO") || allUsers[0];
+                      setNotifyModalUser(firstStudent || null);
+                      setIsBroadcastNotification(false);
+                      setNotifyTitle("Aviso Institucional - Achados e Perdidos");
+                      setNotifyMessage("Olá! Informamos que há uma atualização referente aos seus registros no sistema do IFPR.");
+                      setNotifyRelatedItemId("");
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black transition-all flex items-center space-x-1.5 shadow-sm cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Notificar Alunos</span>
+                  </button>
+
+                  <button
                     onClick={() => setIsAddingUserOpen(true)}
                     className="px-3.5 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-black transition-all flex items-center space-x-1 shadow-sm"
                   >
@@ -1591,14 +1677,29 @@ export const DashboardView: React.FC = () => {
                                     <option value="ADMIN">ADMIN (TI)</option>
                                   </select>
                                 </td>
-                                <td className="p-3.5 text-right">
+                                <td className="p-3.5 text-right whitespace-nowrap">
+                                  <button
+                                    type="button"
+                                    title={`Enviar notificação direta para ${u.name}`}
+                                    onClick={() => {
+                                      vibrateClick();
+                                      setNotifyModalUser(u);
+                                      setIsBroadcastNotification(false);
+                                      setNotifyTitle("Aviso Institucional - Achados e Perdidos");
+                                      setNotifyMessage(`Olá, ${u.name}. Informamos que há uma atualização sobre o Achados & Perdidos para você.`);
+                                      setNotifyRelatedItemId("");
+                                    }}
+                                    className="p-2 rounded-xl bg-purple-500/10 text-purple-600 hover:bg-purple-600 hover:text-white border border-purple-500/20 transition-all mr-1.5 inline-flex items-center justify-center cursor-pointer"
+                                  >
+                                    <Bell className="w-4 h-4" />
+                                  </button>
                                   <button
                                     disabled={u.id === currentUser.id}
                                     onClick={() => setUserToDelete({ id: u.id, name: u.name })}
-                                    className={`p-2 rounded-xl border transition-all ${
+                                    className={`p-2 rounded-xl border transition-all inline-flex items-center justify-center ${
                                       u.id === currentUser.id
                                         ? "opacity-30 cursor-not-allowed bg-neutral-100 text-neutral-400 border-neutral-200"
-                                        : "bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white border-red-500/20"
+                                        : "bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white border-red-500/20 cursor-pointer"
                                     }`}
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -2929,6 +3030,224 @@ export const DashboardView: React.FC = () => {
                 Sim, Remover Usuário
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Enviar Notificação Direta para Aluno(s) */}
+      {(notifyModalUser || isBroadcastNotification) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-lg bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-7 border border-purple-500/30 dark:border-purple-500/30 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-3">
+              <div className="flex items-center space-x-3 text-purple-600 dark:text-purple-400">
+                <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20">
+                  <Send className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                    Enviar Notificação do Sistema
+                  </h3>
+                  <p className="text-xs text-neutral-500">
+                    Aviso direto ao discente no painel e sininho do app
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setNotifyModalUser(null);
+                  setIsBroadcastNotification(false);
+                }}
+                className="p-1.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSendAdminNotification} className="space-y-4">
+              {/* Target Selector */}
+              <div>
+                <label className="block text-xs font-black uppercase text-neutral-600 dark:text-neutral-400 mb-1.5">
+                  Destinatário da Notificação
+                </label>
+                <div className="flex items-center gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsBroadcastNotification(false);
+                      if (!notifyModalUser) {
+                        const first = (allUsers || []).find((u) => u && u.role === "ALUNO") || allUsers[0];
+                        setNotifyModalUser(first || null);
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      !isBroadcastNotification
+                        ? "bg-purple-600 text-white"
+                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                    }`}
+                  >
+                    Aluno Específico
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsBroadcastNotification(true);
+                      setNotifyModalUser(null);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      isBroadcastNotification
+                        ? "bg-purple-600 text-white"
+                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                    }`}
+                  >
+                    📢 Todos os Alunos ({allUsers.filter((u) => u && u.role === "ALUNO").length})
+                  </button>
+                </div>
+
+                {!isBroadcastNotification && (
+                  <select
+                    value={notifyModalUser?.id || ""}
+                    onChange={(e) => {
+                      const sel = allUsers.find((u) => u.id === e.target.value);
+                      setNotifyModalUser(sel || null);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none font-bold"
+                  >
+                    {allUsers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} — {u.email} ({u.role})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Quick Presets */}
+              <div>
+                <label className="block text-[11px] font-bold text-neutral-500 mb-1">
+                  Modelos Rápidos:
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotifyTitle("Objeto com características similares registrado!");
+                      setNotifyMessage(
+                        `Olá${notifyModalUser ? ` ${notifyModalUser.name}` : ""}! Um novo item similar ao seu relato foi cadastrado no sistema. Acesse a aba 'Encontrados' para conferir e solicitar a devolução.`
+                      );
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-purple-500/10 hover:text-purple-600 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 transition-colors"
+                  >
+                    ✨ Objeto Similar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotifyTitle("Comparecer à Recepção / Seção de Achados");
+                      setNotifyMessage(
+                        `Prezado(a)${notifyModalUser ? ` ${notifyModalUser.name}` : ""}, favor comparecer à recepção do campus IFPR Ivaiporã com documento com foto para retirada de seu item.`
+                      );
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-purple-500/10 hover:text-purple-600 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 transition-colors"
+                  >
+                    🏢 Retirada Presencial
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotifyTitle("Solicitação de Devolução Aprovada");
+                      setNotifyMessage(
+                        `Sua comprovação de propriedade foi validada pela equipe do IFPR. O item está liberado para entrega.`
+                      );
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-purple-500/10 hover:text-purple-600 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 transition-colors"
+                  >
+                    ✅ Devolução Aprovada
+                  </button>
+                </div>
+              </div>
+
+              {/* Title Input */}
+              <div>
+                <label className="block text-xs font-black uppercase text-neutral-600 dark:text-neutral-400 mb-1.5">
+                  Título da Notificação
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={notifyTitle}
+                  onChange={(e) => setNotifyTitle(e.target.value)}
+                  placeholder="Ex: Item similar encontrado na Biblioteca..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:border-purple-500 font-bold"
+                />
+              </div>
+
+              {/* Related Item (Optional) */}
+              <div>
+                <label className="block text-xs font-black uppercase text-neutral-600 dark:text-neutral-400 mb-1.5">
+                  Objeto Relacionado (Opcional)
+                </label>
+                <select
+                  value={notifyRelatedItemId}
+                  onChange={(e) => setNotifyRelatedItemId(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none"
+                >
+                  <option value="">Nenhum objeto específico vinculado</option>
+                  {items.map((it) => (
+                    <option key={it.id} value={it.id}>
+                      #{it.id.slice(-6)} - {it.title} ({it.type} - {it.category})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Message Textarea */}
+              <div>
+                <label className="block text-xs font-black uppercase text-neutral-600 dark:text-neutral-400 mb-1.5">
+                  Mensagem Detalhada
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={notifyMessage}
+                  onChange={(e) => setNotifyMessage(e.target.value)}
+                  placeholder="Digite as instruções e informações para o aluno..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:border-purple-500"
+                />
+              </div>
+
+              {/* Modal Buttons */}
+              <div className="flex items-center justify-end space-x-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isSendingNotif}
+                  onClick={() => {
+                    setNotifyModalUser(null);
+                    setIsBroadcastNotification(false);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSendingNotif}
+                  className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black shadow-md flex items-center space-x-1.5 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {isSendingNotif ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Enviando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Enviar Notificação</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
