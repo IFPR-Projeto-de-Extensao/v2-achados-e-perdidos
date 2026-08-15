@@ -12,6 +12,7 @@ import { registerUptimeServiceWorker } from "./lib/uptimeManager";
 import { traceFirebasePerformance } from "./lib/firebase";
 import { savePerformanceMetricLog } from "./lib/offlineDb";
 import { Loader2 } from "lucide-react";
+import { Analytics } from "@vercel/analytics/react";
 
 // Lazy-loaded heavy views and modals for optimal bundle splitting and fast initial paint
 const ObjectsView = lazy(() => import("./components/ObjectsView").then((m) => ({ default: m.ObjectsView })));
@@ -242,6 +243,9 @@ const MainContent: React.FC = () => {
 
       {/* Footer */}
       <Footer />
+
+      {/* Vercel Web Analytics */}
+      <Analytics />
     </div>
   );
 };
