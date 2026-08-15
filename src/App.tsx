@@ -1,26 +1,38 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense, lazy } from "react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { Navbar } from "./components/Navbar";
 import { Footer } from "./components/Footer";
 import { HomeView } from "./components/HomeView";
-import { ObjectsView } from "./components/ObjectsView";
-import { RegisterItemView } from "./components/RegisterItemView";
-import { DashboardView } from "./components/DashboardView";
-import { ProfileView } from "./components/ProfileView";
-import { ImageAnalyzerView } from "./components/ImageAnalyzerView";
-import { ItemDetailModal } from "./components/ItemDetailModal";
-import { QRCodeScannerModal } from "./components/QRCodeScannerModal";
-import { AIMatchModal } from "./components/AIMatchModal";
-import { AuthModal } from "./components/AuthModal";
 import { ToastContainer } from "./components/ToastContainer";
 import { PWAInstallBanner } from "./components/PWAInstallBanner";
 import { MobileBottomNav } from "./components/MobileBottomNav";
-import { KeyboardShortcutsModal } from "./components/KeyboardShortcutsModal";
 import { UploadStatusIndicator } from "./components/UploadStatusIndicator";
 import { initGoogleAnalytics, trackPageView } from "./lib/analytics";
 import { registerUptimeServiceWorker } from "./lib/uptimeManager";
 import { traceFirebasePerformance } from "./lib/firebase";
 import { savePerformanceMetricLog } from "./lib/offlineDb";
+import { Loader2 } from "lucide-react";
+
+// Lazy-loaded heavy views and modals for optimal bundle splitting and fast initial paint
+const ObjectsView = lazy(() => import("./components/ObjectsView").then((m) => ({ default: m.ObjectsView })));
+const RegisterItemView = lazy(() => import("./components/RegisterItemView").then((m) => ({ default: m.RegisterItemView })));
+const DashboardView = lazy(() => import("./components/DashboardView").then((m) => ({ default: m.DashboardView })));
+const ProfileView = lazy(() => import("./components/ProfileView").then((m) => ({ default: m.ProfileView })));
+const ImageAnalyzerView = lazy(() => import("./components/ImageAnalyzerView").then((m) => ({ default: m.ImageAnalyzerView })));
+const ItemDetailModal = lazy(() => import("./components/ItemDetailModal").then((m) => ({ default: m.ItemDetailModal })));
+const QRCodeScannerModal = lazy(() => import("./components/QRCodeScannerModal").then((m) => ({ default: m.QRCodeScannerModal })));
+const AIMatchModal = lazy(() => import("./components/AIMatchModal").then((m) => ({ default: m.AIMatchModal })));
+const AuthModal = lazy(() => import("./components/AuthModal").then((m) => ({ default: m.AuthModal })));
+const KeyboardShortcutsModal = lazy(() => import("./components/KeyboardShortcutsModal").then((m) => ({ default: m.KeyboardShortcutsModal })));
+
+const ViewLoadingFallback: React.FC = () => (
+  <div className="flex flex-col items-center justify-center py-24 space-y-3 min-h-[300px]">
+    <Loader2 className="w-8 h-8 text-[#00843D] animate-spin" />
+    <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+      Carregando módulo do IFPR...
+    </span>
+  </div>
+);
 
 const MainContent: React.FC = () => {
   const {
@@ -139,15 +151,8 @@ const MainContent: React.FC = () => {
       {/* Toast Notifications */}
       <ToastContainer />
 
-      {/* PWA Install Banner and Update Manager */}
+      {/* PWA Install Banner */}
       <PWAInstallBanner />
-
-      {/* Maintenance Mode Banner for Admin */}
-      {maintenanceMode && currentUser.role === "ADMIN" && (
-        <div className="bg-amber-500 text-black px-4 py-2 text-xs font-black text-center flex items-center justify-center space-x-2 shadow-md animate-pulse">
-          <span>⚠️ MODO DE MANUTENÇÃO ATIVO NO CAMPUS. Mensagem aos usuários: "{maintenanceCustomMessage}"</span>
-        </div>
-      )}
 
       {/* Pending User Approval Banner for Academic Users */}
       {currentUser.approvalStatus === "PENDENTE" && (
@@ -192,37 +197,42 @@ const MainContent: React.FC = () => {
 
       {/* Main View Container (responsive spacing for mobile bottom navigation) */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-20 lg:pb-12">
-        {activeTab === "home" && <HomeView />}
-        {activeTab === "lost" && <ObjectsView initialFilterType="PERDIDO" />}
-        {activeTab === "found" && <ObjectsView initialFilterType="ENCONTRADO" />}
-        {activeTab === "register" && <RegisterItemView />}
-        {activeTab === "dashboard" && <DashboardView />}
-        {activeTab === "profile" && <ProfileView />}
-        {activeTab === "image_analyzer" && <ImageAnalyzerView />}
+        <Suspense fallback={<ViewLoadingFallback />}>
+          {activeTab === "home" && <HomeView />}
+          {activeTab === "lost" && <ObjectsView initialFilterType="PERDIDO" />}
+          {activeTab === "found" && <ObjectsView initialFilterType="ENCONTRADO" />}
+          {activeTab === "register" && <RegisterItemView />}
+          {activeTab === "dashboard" && <DashboardView />}
+          {activeTab === "profile" && <ProfileView />}
+          {activeTab === "image_analyzer" && <ImageAnalyzerView />}
+        </Suspense>
       </main>
 
-      {/* Item Details Modal */}
-      {selectedItemForDetail && (
-        <ItemDetailModal
-          item={selectedItemForDetail}
-          onClose={() => setSelectedItemForDetail(null)}
+      {/* Suspense Modals */}
+      <Suspense fallback={null}>
+        {/* Item Details Modal */}
+        {selectedItemForDetail && (
+          <ItemDetailModal
+            item={selectedItemForDetail}
+            onClose={() => setSelectedItemForDetail(null)}
+          />
+        )}
+
+        {/* QR Code Scanner Modal */}
+        <QRCodeScannerModal />
+
+        {/* AI Match Alert Modal */}
+        <AIMatchModal />
+
+        {/* Auth Modal */}
+        <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
+
+        {/* Keyboard Shortcuts Accessibility Guide Modal */}
+        <KeyboardShortcutsModal
+          isOpen={shortcutsModalOpen}
+          onClose={() => setShortcutsModalOpen(false)}
         />
-      )}
-
-      {/* QR Code Scanner Modal */}
-      <QRCodeScannerModal />
-
-      {/* AI Match Alert Modal */}
-      <AIMatchModal />
-
-      {/* Auth Modal */}
-      <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />
-
-      {/* Keyboard Shortcuts Accessibility Guide Modal */}
-      <KeyboardShortcutsModal
-        isOpen={shortcutsModalOpen}
-        onClose={() => setShortcutsModalOpen(false)}
-      />
+      </Suspense>
 
       {/* PWA Background Sync & Real-time Upload Status Indicator */}
       <UploadStatusIndicator />
