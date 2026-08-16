@@ -7,10 +7,10 @@ import { ToastContainer } from "./components/ToastContainer";
 import { PWAInstallBanner } from "./components/PWAInstallBanner";
 import { MobileBottomNav } from "./components/MobileBottomNav";
 import { UploadStatusIndicator } from "./components/UploadStatusIndicator";
-import { initGoogleAnalytics, trackPageView } from "./lib/analytics";
-import { registerUptimeServiceWorker } from "./lib/uptimeManager";
+import { trackPageView } from "./lib/analytics";
 import { traceFirebasePerformance } from "./lib/firebase";
 import { savePerformanceMetricLog } from "./lib/offlineDb";
+import { APP_VALID_TABS, DEFAULT_MAINTENANCE_MESSAGE, type AppTabType } from "./lib/shared-constants";
 import { Loader2 } from "lucide-react";
 
 // Lazy-loaded heavy views and modals for optimal bundle splitting and fast initial paint
@@ -108,9 +108,16 @@ const MainContent: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [setActiveTab, setQrScannerOpen]);
 
+  // Secondary non-blocking services (Analytics, Performance, PWA Uptime) initialized after DOM mount & render
   useEffect(() => {
-    initGoogleAnalytics();
-    registerUptimeServiceWorker();
+    const timer = setTimeout(async () => {
+      try {
+        const { initSecondaryServices } = await import("./lib/secondaryServices");
+        initSecondaryServices();
+      } catch (err) {
+        console.warn("[App] Falha ao inicializar serviços secundários:", err);
+      }
+    }, 60);
 
     // Check PWA launch shortcuts from URL query params (?tab=... or ?action=scan)
     if (typeof window !== "undefined") {
@@ -118,13 +125,15 @@ const MainContent: React.FC = () => {
       const tabParam = params.get("tab");
       const actionParam = params.get("action");
 
-      if (tabParam && ["home", "lost", "found", "register", "dashboard", "profile", "image_analyzer"].includes(tabParam)) {
-        setActiveTab(tabParam as any);
+      if (tabParam && (APP_VALID_TABS as readonly string[]).includes(tabParam)) {
+        setActiveTab(tabParam as AppTabType);
       }
       if (actionParam === "scan") {
         setQrScannerOpen(true);
       }
     }
+
+    return () => clearTimeout(timer);
   }, [setActiveTab, setQrScannerOpen]);
 
   // RNF01 & RNF02: Firebase Performance Monitoring tracking component render time & tab latency
@@ -176,7 +185,7 @@ const MainContent: React.FC = () => {
                 Sistema em Atualização Técnica
               </h2>
               <p className="text-xs text-neutral-300 leading-relaxed bg-neutral-950/60 p-4 rounded-xl border border-neutral-800 text-amber-200/90 font-medium">
-                {maintenanceCustomMessage || "Estamos efetuando uma manutenção preventiva no banco de dados do Achados & Perdidos do IFPR. As consultas e registros estão temporariamente pausados. Por favor, volte em instantes!"}
+                {maintenanceCustomMessage || DEFAULT_MAINTENANCE_MESSAGE}
               </p>
             </div>
 

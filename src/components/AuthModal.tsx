@@ -261,10 +261,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           <div className="p-3 bg-neutral-100 dark:bg-neutral-800/80 rounded-2xl border border-neutral-200 dark:border-neutral-700/80 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-600 dark:text-neutral-300">
-                ⚡ Acesso Rápido de Demonstração
+                ⚡ Preenchimento Rápido para Testes
               </span>
               <span className="text-[10px] text-[#00843D] dark:text-green-400 font-semibold">
-                Sem necessidade de senha
+                Credenciais Institucionais
               </span>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -273,8 +273,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 onClick={() => {
                   setLoginEmail("maria.oliveira@ifpr.edu.br");
                   setLoginPassword("servidor123");
-                  useApp().switchUserRole("SERVIDOR");
-                  onClose();
+                  setMode("login");
                 }}
                 className="p-2.5 rounded-xl bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 text-[11px] font-bold text-neutral-800 dark:text-neutral-100 hover:border-[#00843D] hover:text-[#00843D] transition-all text-left"
               >
@@ -286,8 +285,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 onClick={() => {
                   setLoginEmail("lucas.santos@estudante.ifpr.edu.br");
                   setLoginPassword("aluno123");
-                  useApp().switchUserRole("ALUNO");
-                  onClose();
+                  setMode("login");
                 }}
                 className="p-2.5 rounded-xl bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 text-[11px] font-bold text-neutral-800 dark:text-neutral-100 hover:border-[#00843D] hover:text-[#00843D] transition-all text-left"
               >

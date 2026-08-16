@@ -8,6 +8,8 @@ export interface SystemErrorLog {
   errorMessage: string;
   errorStack?: string;
   componentStack?: string;
+  failedModulePath?: string;
+  location?: string;
   url: string;
   userAgent: string;
   isMobile: boolean;
@@ -20,7 +22,11 @@ export interface SystemErrorLog {
 
 export async function logErrorToFirestore(
   error: Error | string,
-  errorInfo?: { componentStack?: string }
+  errorInfo?: {
+    componentStack?: string;
+    failedModulePath?: string;
+    location?: string;
+  }
 ): Promise<void> {
   const isMobile =
     typeof navigator !== "undefined" &&
@@ -34,6 +40,8 @@ export async function logErrorToFirestore(
     errorMessage,
     errorStack,
     componentStack: errorInfo?.componentStack,
+    failedModulePath: errorInfo?.failedModulePath,
+    location: errorInfo?.location,
     url: typeof window !== "undefined" ? window.location.href : "",
     userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
     isMobile,

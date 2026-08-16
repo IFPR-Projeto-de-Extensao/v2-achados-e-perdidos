@@ -1,15 +1,212 @@
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
+import firebaseAppConfig from "./firebase-applet-config.json";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
+const FIREBASE_PROJECT_ID = firebaseAppConfig.projectId || "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
+const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
 
 app.use(express.json({ limit: "10mb" }));
+
+// =================================================================
+// Security & Rate Limiting Infrastructure
+// =================================================================
+
+interface RateLimitRecord {
+  count: number;
+  resetTime: number;
+}
+
+const rateLimitStore = new Map<string, RateLimitRecord>();
+
+function createRateLimiter(maxRequests: number, windowMs: number, label: string) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const identifier = req.authUser?.uid ? `user:${req.authUser.uid}` : `ip:${req.ip || req.socket.remoteAddress || "unknown"}`;
+    const key = `${label}:${identifier}`;
+    const now = Date.now();
+    const current = rateLimitStore.get(key);
+
+    if (!current || now > current.resetTime) {
+      rateLimitStore.set(key, { count: 1, resetTime: now + windowMs });
+      return next();
+    }
+
+    if (current.count >= maxRequests) {
+      return res.status(429).json({
+        success: false,
+        error: `Limite de requisições excedido para ${label}. Aguarde ${Math.ceil((current.resetTime - now) / 1000)}s antes de tentar novamente.`,
+      });
+    }
+
+    current.count++;
+    return next();
+  };
+}
+
+const aiRateLimiter = createRateLimiter(20, 60 * 1000, "IA");
+const generalRateLimiter = createRateLimiter(120, 60 * 1000, "API");
+
+// Clean up stale rate limit entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of rateLimitStore.entries()) {
+    if (now > val.resetTime) {
+      rateLimitStore.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
+// =================================================================
+// Firebase Auth Token Verification Middleware
+// =================================================================
+
+export interface AuthenticatedUser {
+  uid: string;
+  email?: string;
+  email_verified?: boolean;
+  role?: string;
+  isAdmin: boolean;
+}
+
+declare global {
+  namespace Express {
+    interface Request {
+      authUser?: AuthenticatedUser;
+    }
+  }
+}
+
+function parseJwtPayload(token: string): any {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const payloadBase64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const jsonStr = Buffer.from(payloadBase64, "base64").toString("utf-8");
+    return JSON.parse(jsonStr);
+  } catch {
+    return null;
+  }
+}
+
+function authenticateToken(req: Request, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return next();
+  }
+
+  const token = authHeader.split(" ")[1];
+  const payload = parseJwtPayload(token);
+
+  if (payload) {
+    const nowInSec = Math.floor(Date.now() / 1000);
+    // Basic verification of issuer, audience, and expiration
+    const isValidIss = payload.iss === `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`;
+    const isValidAud = payload.aud === FIREBASE_PROJECT_ID;
+    const isNotExpired = payload.exp && payload.exp > nowInSec;
+
+    if (isValidIss && isValidAud && isNotExpired) {
+      const isRoot = payload.email === ROOT_ADMIN_EMAIL && payload.email_verified === true;
+      const isAdmin = isRoot || payload.role === "ADMIN" || payload.admin === true;
+
+      req.authUser = {
+        uid: payload.user_id || payload.sub,
+        email: payload.email,
+        email_verified: payload.email_verified,
+        role: isAdmin ? "ADMIN" : payload.role || "ALUNO",
+        isAdmin,
+      };
+    }
+  }
+
+  next();
+}
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!req.authUser || !req.authUser.uid) {
+    const unauthAudit = logAIAudit({
+      userId: "ANONYMOUS_UNAUTHENTICATED",
+      userEmail: "unauthenticated",
+      userRole: "NONE",
+      endpoint: req.originalUrl || req.path,
+      action: "UNAUTHORIZED_AI_ATTEMPT",
+      status: "REJECTED_UNAUTHORIZED",
+      details: {
+        method: req.method,
+        ip: req.ip || req.socket.remoteAddress,
+        headersSent: Object.keys(req.headers),
+      },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
+    console.warn(`[Security Alert] Tentativa de acesso não autenticado a recurso de IA rejeitada com 401. Audit ID: ${unauthAudit.id}`);
+
+    return res.status(401).json({
+      success: false,
+      error: "Autenticação obrigatória. Faça login com sua conta institucional para utilizar os recursos de inteligência artificial.",
+      auditId: unauthAudit.id,
+    });
+  }
+  next();
+}
+
+function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.authUser || !req.authUser.isAdmin) {
+    return res.status(403).json({
+      success: false,
+      error: "Acesso negado. Apenas administradores autorizados do IFPR podem executar esta operação.",
+    });
+  }
+  next();
+}
+
+// =================================================================
+// AI Security & Usage Audit Trail Store
+// =================================================================
+
+export interface AIAuditRecord {
+  id: string;
+  userId: string;
+  userEmail?: string;
+  userRole?: string;
+  endpoint: string;
+  action: string;
+  status: "SUCCESS" | "FAILED" | "REJECTED_UNAUTHORIZED" | "REJECTED_RATE_LIMIT";
+  modelUsed?: string;
+  promptSnippet?: string;
+  details?: Record<string, any>;
+  ip?: string;
+  timestamp: string;
+}
+
+const aiAuditLogs: AIAuditRecord[] = [];
+
+function logAIAudit(entry: Omit<AIAuditRecord, "id" | "timestamp">): AIAuditRecord {
+  const record: AIAuditRecord = {
+    id: `audit_ai_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+    timestamp: new Date().toISOString(),
+    ...entry,
+  };
+
+  aiAuditLogs.unshift(record);
+  if (aiAuditLogs.length > 1000) {
+    aiAuditLogs.pop();
+  }
+
+  const counterKey = `ai_audit:${entry.action}:${entry.status}`;
+  eventCounters[counterKey] = (eventCounters[counterKey] || 0) + 1;
+
+  console.log(`[AI AUDIT LOG] [${record.status}] UID: ${record.userId} (${record.userEmail || "none"}) | Endpoint: ${record.endpoint} | Action: ${record.action} | Model: ${record.modelUsed || "none"}`);
+  return record;
+}
+
+app.use(authenticateToken);
+app.use(generalRateLimiter);
 
 // Initialize Google GenAI Server Client safely
 let aiClient: GoogleGenAI | null = null;
@@ -59,19 +256,19 @@ app.get("/api/system/config", (_req, res) => {
   });
 });
 
-app.post("/api/system/config", (req, res) => {
+app.post("/api/system/config", requireAdmin, (req, res) => {
   try {
-    const { maintenanceMode, maintenanceCustomMessage, updatedBy } = req.body;
+    const { maintenanceMode, maintenanceCustomMessage } = req.body;
     if (typeof maintenanceMode === "boolean") {
       globalSystemConfig.maintenanceMode = maintenanceMode;
     }
     if (typeof maintenanceCustomMessage === "string" && maintenanceCustomMessage.trim()) {
-      globalSystemConfig.maintenanceCustomMessage = maintenanceCustomMessage.trim();
+      globalSystemConfig.maintenanceCustomMessage = maintenanceCustomMessage.trim().substring(0, 500);
     }
     globalSystemConfig.lastUpdated = new Date().toISOString();
-    globalSystemConfig.updatedBy = updatedBy || "ADMIN_SESSION";
+    globalSystemConfig.updatedBy = req.authUser?.email || "ADMIN_SESSION";
 
-    console.log(`[System Config Updated] Modo Manutenção: ${globalSystemConfig.maintenanceMode}`);
+    console.log(`[System Config Updated] Modo Manutenção: ${globalSystemConfig.maintenanceMode} por ${globalSystemConfig.updatedBy}`);
     return res.json({ success: true, config: globalSystemConfig });
   } catch (err: any) {
     return res.status(500).json({ error: "Erro ao atualizar configuração do sistema." });
@@ -93,15 +290,15 @@ app.get("/api/health", (_req, res) => {
 app.post("/api/analytics/track", (req, res) => {
   try {
     const { eventName, params, timestamp, url } = req.body;
-    if (!eventName) {
-      return res.status(400).json({ error: "Nome do evento obrigatório." });
+    if (!eventName || typeof eventName !== "string" || eventName.length > 100) {
+      return res.status(400).json({ error: "Nome do evento inválido ou ausente." });
     }
 
     const eventRecord = {
-      eventName,
-      params: params || {},
+      eventName: eventName.replace(/[^a-zA-Z0-9_-]/g, ""),
+      params: params && typeof params === "object" ? params : {},
       timestamp: timestamp || new Date().toISOString(),
-      url: url || "",
+      url: typeof url === "string" ? url.substring(0, 300) : "",
       ip: req.ip,
     };
 
@@ -110,9 +307,8 @@ app.post("/api/analytics/track", (req, res) => {
       analyticsEvents.pop();
     }
 
-    eventCounters[eventName] = (eventCounters[eventName] || 0) + 1;
+    eventCounters[eventRecord.eventName] = (eventCounters[eventRecord.eventName] || 0) + 1;
 
-    console.log(`[Analytics Tracked] Evento: ${eventName}`, params || "");
     return res.json({ success: true, logged: eventRecord });
   } catch (err: any) {
     return res.status(500).json({ error: "Erro ao processar telemetria de analíticos." });
@@ -124,31 +320,53 @@ app.get("/api/analytics/metrics", (_req, res) => {
   res.json({
     totalServerRequests,
     totalAnalyticsEvents: analyticsEvents.length,
+    totalAIAuditRecords: aiAuditLogs.length,
     eventCounters,
     recentEvents: analyticsEvents.slice(0, 50),
+    recentAIAudits: aiAuditLogs.slice(0, 20),
     uptimeSeconds: Math.floor((Date.now() - serverStartTime) / 1000),
     systemMemoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
   });
 });
 
 // AI Endpoint: Extrair detalhes de um objeto com base no relato ou imagem
-app.post("/api/ai/analyze-object", async (req, res) => {
+app.post("/api/ai/analyze-object", requireAuth, aiRateLimiter, async (req, res) => {
+  const userId = req.authUser!.uid;
+  const userEmail = req.authUser?.email;
+  const userRole = req.authUser?.role;
+
   try {
     const { promptText, imageBase64 } = req.body;
+    const cleanPrompt = typeof promptText === "string" ? promptText.substring(0, 10000) : "";
     const ai = getGenAIClient();
 
     if (!ai) {
       // Fallback inteligente caso a chave não esteja definida ainda no ambiente
+      const fallbackExtracted = {
+        title: cleanPrompt.slice(0, 30) || "Objeto Cadastrado",
+        category: "Outros",
+        color: "Não especificada",
+        brand: "Desconhecida",
+        location: "Campus IFPR",
+        description: cleanPrompt || "Objeto cadastrado sem descrição adicional.",
+      };
+
+      logAIAudit({
+        userId,
+        userEmail,
+        userRole,
+        endpoint: "/api/ai/analyze-object",
+        action: "EXTRACT_OBJECT_DETAILS",
+        status: "SUCCESS",
+        modelUsed: "local-fallback-engine",
+        promptSnippet: cleanPrompt.substring(0, 100),
+        details: { hasImage: !!imageBase64, isFallback: true },
+        ip: req.ip || req.socket.remoteAddress,
+      });
+
       return res.json({
         success: true,
-        extracted: {
-          title: promptText?.slice(0, 30) || "Objeto Cadastrado",
-          category: "Outros",
-          color: "Não especificada",
-          brand: "Desconhecida",
-          location: "Campus IFPR",
-          description: promptText || "Objeto cadastrado sem descrição adicional.",
-        },
+        extracted: fallbackExtracted,
         fallback: true,
       });
     }
@@ -160,7 +378,7 @@ Preencha todos os campos da melhor forma possível. Se um campo não puder ser i
 A resposta DEVE ser estritamente no formato JSON definido no schema.`;
 
     const contents: any[] = [];
-    if (imageBase64) {
+    if (imageBase64 && typeof imageBase64 === "string" && imageBase64.length < 8000000) {
       const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, "");
       contents.push({
         inlineData: {
@@ -171,12 +389,11 @@ A resposta DEVE ser estritamente no formato JSON definido no schema.`;
     }
     
     contents.push({
-      text: promptText 
-        ? `Analise este relato/objeto no IFPR: "${promptText}"`
+      text: cleanPrompt 
+        ? `Analise este relato/objeto no IFPR: "${cleanPrompt}"`
         : "Analise esta foto de objeto encontrado/perdido no IFPR e descreva com precisão.",
     });
 
-    // Use gemini-3.1-pro-preview for vision/images or complex requests, otherwise gemini-3.5-flash
     const chosenModel = imageBase64 ? "gemini-3.1-pro-preview" : "gemini-3.5-flash";
 
     const response = await ai.models.generateContent({
@@ -221,12 +438,41 @@ A resposta DEVE ser estritamente no formato JSON definido no schema.`;
     const responseText = response.text || "{}";
     const extractedData = JSON.parse(responseText);
 
+    logAIAudit({
+      userId,
+      userEmail,
+      userRole,
+      endpoint: "/api/ai/analyze-object",
+      action: "EXTRACT_OBJECT_DETAILS",
+      status: "SUCCESS",
+      modelUsed: chosenModel,
+      promptSnippet: cleanPrompt.substring(0, 100),
+      details: {
+        hasImage: !!imageBase64,
+        extractedTitle: extractedData?.title,
+        extractedCategory: extractedData?.category,
+      },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
     return res.json({
       success: true,
       extracted: extractedData,
     });
   } catch (error: any) {
     console.error("Erro na rota /api/ai/analyze-object:", error);
+
+    logAIAudit({
+      userId,
+      userEmail,
+      userRole,
+      endpoint: "/api/ai/analyze-object",
+      action: "EXTRACT_OBJECT_DETAILS",
+      status: "FAILED",
+      details: { error: error.message },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
     res.status(500).json({
       success: false,
       error: error.message || "Erro interno ao processar inteligência artificial.",
@@ -235,28 +481,47 @@ A resposta DEVE ser estritamente no formato JSON definido no schema.`;
 });
 
 // Dedicated Vision & Image Understanding Endpoint using gemini-3.1-pro-preview
-app.post("/api/ai/analyze-image", async (req, res) => {
+app.post("/api/ai/analyze-image", requireAuth, aiRateLimiter, async (req, res) => {
+  const userId = req.authUser!.uid;
+  const userEmail = req.authUser?.email;
+  const userRole = req.authUser?.role;
+
   try {
     const { imageBase64, customContext } = req.body;
+    const cleanContext = typeof customContext === "string" ? customContext.substring(0, 5000) : "";
     const ai = getGenAIClient();
 
-    if (!imageBase64) {
-      return res.status(400).json({ error: "Imagem em formato Base64 não fornecida." });
+    if (!imageBase64 || typeof imageBase64 !== "string" || imageBase64.length > 8000000) {
+      return res.status(400).json({ error: "Imagem em formato Base64 não fornecida ou excede o tamanho limite permitido." });
     }
 
     if (!ai) {
+      const fallbackAnalysis = {
+        title: "Objeto Detectado na Foto",
+        category: "Outros",
+        color: "Análise visual pendente de chave API",
+        brand: "Não identificada",
+        condition: "Bom estado de conservação",
+        distinctiveFeatures: ["Detalhes visíveis na foto"],
+        suggestedSecretHint: "Iniciais ou marcas no verso",
+        description: "Análise realizada com fallback local. Defina GEMINI_API_KEY para visão multimodal avançada.",
+      };
+
+      logAIAudit({
+        userId,
+        userEmail,
+        userRole,
+        endpoint: "/api/ai/analyze-image",
+        action: "VISION_IMAGE_ANALYSIS",
+        status: "SUCCESS",
+        modelUsed: "local-vision-fallback",
+        details: { isFallback: true },
+        ip: req.ip || req.socket.remoteAddress,
+      });
+
       return res.json({
         success: true,
-        analysis: {
-          title: "Objeto Detectado na Foto",
-          category: "Outros",
-          color: "Análise visual pendente de chave API",
-          brand: "Não identificada",
-          condition: "Bom estado de conservação",
-          distinctiveFeatures: ["Detalhes visíveis na foto"],
-          suggestedSecretHint: "Iniciais ou marcas no verso",
-          description: "Análise realizada com fallback local. Defina GEMINI_API_KEY para visão multimodal avançada.",
-        },
+        analysis: fallbackAnalysis,
         fallback: true,
       });
     }
@@ -284,8 +549,8 @@ Retorne um JSON rigorosamente estruturado conforme o schema.`;
             },
           },
           {
-            text: customContext
-              ? `Contexto adicional do usuário: "${customContext}". Realize a análise completa da imagem.`
+            text: cleanContext
+              ? `Contexto adicional do usuário: "${cleanContext}". Realize a análise completa da imagem.`
               : "Analise esta fotografia de objeto com máxima precisão e descreva todos os aspectos para o cadastro no IFPR Ivaiporã.",
           },
         ],
@@ -346,29 +611,75 @@ Retorne um JSON rigorosamente estruturado conforme o schema.`;
 
     const analysis = JSON.parse(response.text || "{}");
 
+    logAIAudit({
+      userId,
+      userEmail,
+      userRole,
+      endpoint: "/api/ai/analyze-image",
+      action: "VISION_IMAGE_ANALYSIS",
+      status: "SUCCESS",
+      modelUsed: "gemini-3.1-pro-preview",
+      details: {
+        detectedTitle: analysis?.title,
+        detectedCategory: analysis?.category,
+        brand: analysis?.brand,
+      },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
     return res.json({
       success: true,
       analysis,
     });
   } catch (err: any) {
     console.error("Erro no endpoint /api/ai/analyze-image:", err);
+
+    logAIAudit({
+      userId,
+      userEmail,
+      userRole,
+      endpoint: "/api/ai/analyze-image",
+      action: "VISION_IMAGE_ANALYSIS",
+      status: "FAILED",
+      modelUsed: "gemini-3.1-pro-preview",
+      details: { error: err.message },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
     res.status(500).json({ error: err.message || "Erro na análise de visão do Gemini Pro." });
   }
 });
 
 // AI Endpoint Fast Query Expansion / Quick Auto-Tagging using gemini-3.1-flash-lite
-app.post("/api/ai/quick-tag", async (req, res) => {
+app.post("/api/ai/quick-tag", requireAuth, aiRateLimiter, async (req, res) => {
+  const userId = req.authUser!.uid;
+  const userEmail = req.authUser?.email;
+  const userRole = req.authUser?.role;
+
   try {
     const { text } = req.body;
+    const cleanText = typeof text === "string" ? text.substring(0, 500) : "";
     const ai = getGenAIClient();
 
-    if (!text || !ai) {
+    if (!cleanText || !ai) {
+      logAIAudit({
+        userId,
+        userEmail,
+        userRole,
+        endpoint: "/api/ai/quick-tag",
+        action: "QUICK_AUTO_TAG",
+        status: "SUCCESS",
+        modelUsed: "fallback",
+        promptSnippet: cleanText.substring(0, 100),
+        ip: req.ip || req.socket.remoteAddress,
+      });
+
       return res.json({ tags: ["Geral"], suggestedCategory: "Outros" });
     }
 
     const response = await ai.models.generateContent({
       model: "gemini-3.1-flash-lite",
-      contents: `Gere 3 a 5 tags curtas e indique a categoria ideal para o texto: "${text}". Categorias: Eletrônicos, Documentos & Cartões, Roupas & Calçados, Chaves, Material Escolar & Livros, Acessórios & Bijuterias, Garrafas & Marmitas, Guarda-chuvas, Outros.`,
+      contents: `Gere 3 a 5 tags curtas e indique a categoria ideal para o texto: "${cleanText}". Categorias: Eletrônicos, Documentos & Cartões, Roupas & Calçados, Chaves, Material Escolar & Livros, Acessórios & Bijuterias, Garrafas & Marmitas, Guarda-chuvas, Outros.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -382,25 +693,60 @@ app.post("/api/ai/quick-tag", async (req, res) => {
       },
     });
 
-    return res.json(JSON.parse(response.text || "{}"));
+    const parsedResult = JSON.parse(response.text || "{}");
+
+    logAIAudit({
+      userId,
+      userEmail,
+      userRole,
+      endpoint: "/api/ai/quick-tag",
+      action: "QUICK_AUTO_TAG",
+      status: "SUCCESS",
+      modelUsed: "gemini-3.1-flash-lite",
+      promptSnippet: cleanText.substring(0, 100),
+      details: { suggestedCategory: parsedResult.suggestedCategory, tagCount: parsedResult.tags?.length },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
+    return res.json(parsedResult);
   } catch (err: any) {
+    logAIAudit({
+      userId,
+      userEmail,
+      userRole,
+      endpoint: "/api/ai/quick-tag",
+      action: "QUICK_AUTO_TAG",
+      status: "FAILED",
+      details: { error: err.message },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
     return res.json({ tags: ["IFPR"], suggestedCategory: "Outros" });
   }
 });
 
 // AI Endpoint: Comparação de similaridade textual e semântica entre novo item e existentes
-app.post("/api/ai/match-similarity", async (req, res) => {
+app.post("/api/ai/match-similarity", requireAuth, aiRateLimiter, async (req, res) => {
+  const userId = req.authUser!.uid;
+  const userEmail = req.authUser?.email;
+  const userRole = req.authUser?.role;
+
   try {
     const { newItem, candidateItems } = req.body;
+    if (!newItem || typeof newItem !== "object") {
+      return res.status(400).json({ error: "Item de referência inválido." });
+    }
+
+    const safeCandidates = Array.isArray(candidateItems) ? candidateItems.slice(0, 50) : [];
     const ai = getGenAIClient();
 
-    if (!candidateItems || candidateItems.length === 0) {
+    if (safeCandidates.length === 0) {
       return res.json({ matches: [] });
     }
 
     if (!ai) {
       // Local fallback text matching logic if AI key is pending
-      const simpleMatches = (candidateItems || [])
+      const simpleMatches = safeCandidates
         .filter(Boolean)
         .map((cand: any) => {
           let score = 0;
@@ -427,31 +773,43 @@ app.post("/api/ai/match-similarity", async (req, res) => {
         .filter((m: any) => m.matchScore >= 40)
         .sort((a: any, b: any) => b.matchScore - a.matchScore);
 
+      logAIAudit({
+        userId,
+        userEmail,
+        userRole,
+        endpoint: "/api/ai/match-similarity",
+        action: "MATCH_SIMILARITY",
+        status: "SUCCESS",
+        modelUsed: "local-rule-fallback",
+        details: { candidatesCount: safeCandidates.length, matchedCount: simpleMatches.length, isFallback: true },
+        ip: req.ip || req.socket.remoteAddress,
+      });
+
       return res.json({ matches: simpleMatches });
     }
 
     const prompt = `Você é um algoritmo de correspondência inteligente do Achados & Perdidos IFPR Campus Ivaiporã.
 Compare o novo objeto cadastrado:
-- Título: ${newItem.title}
-- Tipo: ${newItem.type} (Buscando oposto nos existentes)
+- Título: ${String(newItem.title || "").substring(0, 100)}
+- Tipo: ${newItem.type}
 - Categoria: ${newItem.category}
 - Cor: ${newItem.color}
 - Marca: ${newItem.brand}
 - Local: ${newItem.location}
-- Descrição: ${newItem.description}
+- Descrição: ${String(newItem.description || "").substring(0, 500)}
 
 E compare com esta lista de objetos pré-cadastrados:
-${JSON.stringify(candidateItems.map((c: any) => ({
+${JSON.stringify(safeCandidates.map((c: any) => ({
   id: c.id,
-  title: c.title,
+  title: String(c.title || "").substring(0, 100),
   category: c.category,
   color: c.color,
   brand: c.brand,
   location: c.location,
-  description: c.description
+  description: String(c.description || "").substring(0, 200)
 })), null, 2)}
 
-Avalie a probabilidade de algum desses objetos pré-cadastrados ser O MESMO objeto ou a contraparte (por exemplo: um objeto perdido que coincide com um encontrado).
+Avalie a probabilidade de algum desses objetos pré-cadastrados ser O MESMO objeto ou a contraparte.
 Calcule uma pontuação de similaridade de 0 a 100 para cada um. Retorne apenas os itens com pontuação >= 50.`;
 
     const response = await ai.models.generateContent({
@@ -486,29 +844,64 @@ Calcule uma pontuação de similaridade de 0 a 100 para cada um. Retorne apenas 
     });
 
     const parsed = JSON.parse(response.text || '{"matches":[]}');
+
+    logAIAudit({
+      userId,
+      userEmail,
+      userRole,
+      endpoint: "/api/ai/match-similarity",
+      action: "MATCH_SIMILARITY",
+      status: "SUCCESS",
+      modelUsed: "gemini-3.5-flash",
+      details: {
+        referenceTitle: newItem.title,
+        candidatesCount: safeCandidates.length,
+        matchedCount: parsed.matches?.length || 0,
+      },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
     return res.json(parsed);
   } catch (err: any) {
     console.error("Erro no endpoint /api/ai/match-similarity:", err);
+
+    logAIAudit({
+      userId,
+      userEmail,
+      userRole,
+      endpoint: "/api/ai/match-similarity",
+      action: "MATCH_SIMILARITY",
+      status: "FAILED",
+      details: { error: err.message },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
     res.status(500).json({ error: err.message || "Erro no cruzamento de dados de IA." });
   }
 });
 
 // Gemini Semantic Search Endpoint (Home Search Bar NL Search)
-app.post("/api/gemini/semantic-search", async (req, res) => {
+app.post("/api/gemini/semantic-search", requireAuth, aiRateLimiter, async (req, res) => {
+  const userId = req.authUser!.uid;
+  const userEmail = req.authUser?.email;
+  const userRole = req.authUser?.role;
+
   try {
     const { query: searchQuery, items: candidateItems } = req.body;
+    const cleanQuery = typeof searchQuery === "string" ? searchQuery.substring(0, 500) : "";
+    const safeCandidates = Array.isArray(candidateItems) ? candidateItems.slice(0, 60) : [];
     const ai = getGenAIClient();
 
-    if (!searchQuery || !candidateItems || candidateItems.length === 0) {
+    if (!cleanQuery || safeCandidates.length === 0) {
       return res.json({ success: true, results: [], totalCandidates: 0 });
     }
 
     if (!ai) {
       // Local fallback semantic search when Gemini key is not configured
-      const qLower = String(searchQuery ?? "").toLowerCase();
+      const qLower = cleanQuery.toLowerCase();
       const qWords = qLower.split(/\s+/).filter((w: string) => w.length > 2);
 
-      const localResults = (candidateItems || [])
+      const localResults = safeCandidates
         .filter(Boolean)
         .map((item: any) => {
           let score = 0;
@@ -547,18 +940,31 @@ app.post("/api/gemini/semantic-search", async (req, res) => {
         .filter((r: any) => r.relevanceScore >= 25)
         .sort((a: any, b: any) => b.relevanceScore - a.relevanceScore);
 
+      logAIAudit({
+        userId,
+        userEmail,
+        userRole,
+        endpoint: "/api/gemini/semantic-search",
+        action: "SEMANTIC_SEARCH",
+        status: "SUCCESS",
+        modelUsed: "local-semantic-fallback",
+        promptSnippet: cleanQuery,
+        details: { candidatesCount: safeCandidates.length, resultsCount: localResults.length, isFallback: true },
+        ip: req.ip || req.socket.remoteAddress,
+      });
+
       return res.json({
         success: true,
         results: localResults,
         modelUsed: "local-semantic-fallback",
-        totalCandidates: candidateItems.length,
+        totalCandidates: safeCandidates.length,
       });
     }
 
-    const itemsSummary = candidateItems.map((c: any) => ({
+    const itemsSummary = safeCandidates.map((c: any) => ({
       id: c.id,
-      title: c.title,
-      description: c.description,
+      title: String(c.title || "").substring(0, 80),
+      description: String(c.description || "").substring(0, 150),
       location: c.location,
       category: c.category,
       color: c.color,
@@ -568,17 +974,11 @@ app.post("/api/gemini/semantic-search", async (req, res) => {
     }));
 
     const systemInstruction = `Você é um motor de busca semântica inteligente para o Achados e Perdidos do IFPR Campus Ivaiporã.
-Sua missão é receber a consulta em linguagem natural do usuário (por exemplo: "chave azul esquecida perto da biblioteca" ou "garrafa térmica preta deixada no refeitório") e identificar os objetos mais relevantes na lista fornecida.
-Leve em consideração:
-- Sinônimos e variações de palavras (ex: chaves, chaveiro, chaveiro com fita).
-- Cores e características descritivas.
-- Proximidade espacial e locais citados no Campus Ivaiporã (ex: Biblioteca, SEBAC, Refeitório, Ginásio, Bloco A/B, Quadra, Portaria).
-- Descrição detalhada do objeto.
-
+Sua missão é receber a consulta em linguagem natural do usuário e identificar os objetos mais relevantes na lista fornecida.
 Calcule a pontuação de relevância de 0 a 100 para cada objeto correspondente.
 Retorne apenas itens com relevanceScore >= 40, ordenados do mais relevante para o menos relevante.`;
 
-    const prompt = `Consulta do usuário: "${searchQuery}"
+    const prompt = `Consulta do usuário: "${cleanQuery}"
 
 Lista de objetos cadastrados no IFPR Campus Ivaiporã:
 ${JSON.stringify(itemsSummary, null, 2)}
@@ -618,26 +1018,65 @@ Retorne a lista com os IDs dos itens correspondentes, nota de relevância de 0 a
     });
 
     const parsed = JSON.parse(response.text || '{"results":[]}');
+
+    logAIAudit({
+      userId,
+      userEmail,
+      userRole,
+      endpoint: "/api/gemini/semantic-search",
+      action: "SEMANTIC_SEARCH",
+      status: "SUCCESS",
+      modelUsed: "gemini-3.7-flash",
+      promptSnippet: cleanQuery,
+      details: {
+        candidatesCount: safeCandidates.length,
+        resultsCount: parsed.results?.length || 0,
+      },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
     return res.json({
       success: true,
       results: parsed.results || [],
       modelUsed: "gemini-3.7-flash",
-      totalCandidates: candidateItems.length,
+      totalCandidates: safeCandidates.length,
     });
   } catch (err: any) {
     console.error("Erro no endpoint /api/gemini/semantic-search:", err);
+
+    logAIAudit({
+      userId,
+      userEmail,
+      userRole,
+      endpoint: "/api/gemini/semantic-search",
+      action: "SEMANTIC_SEARCH",
+      status: "FAILED",
+      details: { error: err.message },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
     res.status(500).json({ error: err.message || "Erro na busca semântica Gemini." });
   }
 });
 
+// Dedicated AI Security & Audit Logs Query Endpoint
+app.get("/api/ai/audit-logs", requireAuth, requireAdmin, (_req, res) => {
+  res.json({
+    success: true,
+    totalRecords: aiAuditLogs.length,
+    logs: aiAuditLogs.slice(0, 100),
+  });
+});
+
 // Endpoint to export comprehensive monitoring & performance diagnostic logs
-app.get("/api/monitoring/export-logs", (_req, res) => {
+app.get("/api/monitoring/export-logs", (req, res) => {
   try {
     const memory = process.memoryUsage();
     const payload = {
       institution: "Instituto Federal do Paraná (IFPR) - Campus Ivaiporã",
       system: "IFPR Achados & Perdidos - Monitoramento & Telemetria",
       exportedAt: new Date().toISOString(),
+      requestedBy: req.authUser?.email || "anonymous_session",
       server: {
         uptimeSeconds: Math.floor((Date.now() - serverStartTime) / 1000),
         startTime: new Date(serverStartTime).toISOString(),
@@ -653,11 +1092,13 @@ app.get("/api/monitoring/export-logs", (_req, res) => {
       },
       systemConfig: globalSystemConfig,
       eventCounters,
-      recentAnalyticsEvents: analyticsEvents,
+      recentAnalyticsEvents: analyticsEvents.slice(0, 100),
+      recentAIAuditEvents: aiAuditLogs.slice(0, 100),
       diagnosticsSummary: {
         status: "OPERATIONAL",
         healthCheck: "HEALTHY",
         totalAnalyticsEventsCaptured: analyticsEvents.length,
+        totalAIAuditRecordsCaptured: aiAuditLogs.length,
       },
     };
 
@@ -680,7 +1121,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (req, res) => {
+    app.get("*", (_req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

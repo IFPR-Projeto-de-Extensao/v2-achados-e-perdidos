@@ -4,8 +4,9 @@ import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './index.css';
 
-// Ensure root DOM mounting happens safely
+// Ensure the root DOM element exists and mount React
 const container = document.getElementById('root');
+
 if (container) {
   const root = createRoot(container);
   root.render(
@@ -15,31 +16,20 @@ if (container) {
       </ErrorBoundary>
     </StrictMode>
   );
+
+  // Asynchronously initialize background application services
+  if (typeof window !== 'undefined') {
+    const triggerInit = () => {
+      import('./lib/appInit')
+        .then(({ initializeAppServices }) => initializeAppServices())
+        .catch((err) => console.warn('[Main] Aviso ao inicializar appInit:', err));
+    };
+
+    if ('requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(triggerInit, { timeout: 1000 });
+    } else {
+      setTimeout(triggerInit, 100);
+    }
+  }
 }
 
-// Deferred Service Worker registration after initial DOM hydration and load event
-if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    setTimeout(async () => {
-      try {
-        const { registerSW } = await import('virtual:pwa-register');
-        registerSW({
-          immediate: false,
-          onNeedRefresh() {
-            console.log('[PWA IFPR] Nova versão da aplicação disponível.');
-          },
-          onOfflineReady() {
-            console.log('[PWA IFPR] Aplicação pronta para operação offline.');
-          },
-        });
-      } catch (_) {
-        try {
-          const reg = await navigator.serviceWorker.register('/sw.js');
-          console.log('[SW IFPR] Service Worker ativo:', reg.scope);
-        } catch (swErr) {
-          console.warn('[SW IFPR] Registro do Service Worker adiado:', swErr);
-        }
-      }
-    }, 120);
-  });
-}

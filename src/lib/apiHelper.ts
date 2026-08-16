@@ -23,6 +23,8 @@ export interface AIExtractedObject {
   description: string;
 }
 
+import { auth } from "./firebase";
+
 // Helper to safely perform API fetch without throwing SyntaxError on 404/non-JSON responses
 export async function safeFetchJson<T>(
   url: string,
@@ -30,7 +32,22 @@ export async function safeFetchJson<T>(
   fallbackGenerator: () => T | Promise<T>
 ): Promise<T> {
   try {
-    const res = await fetch(url, options);
+    const headers = new Headers(options.headers || {});
+    
+    // Inject Firebase ID Token if user is authenticated
+    if (auth.currentUser) {
+      try {
+        const idToken = await auth.currentUser.getIdToken();
+        if (idToken && !headers.has("Authorization")) {
+          headers.set("Authorization", `Bearer ${idToken}`);
+        }
+      } catch (_) {}
+    }
+
+    const res = await fetch(url, {
+      ...options,
+      headers,
+    });
     const contentType = res.headers.get("content-type");
     if (res.ok && contentType && contentType.includes("application/json")) {
       const data = await res.json();

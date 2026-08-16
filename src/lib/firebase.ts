@@ -4,41 +4,41 @@ import { getFirestore } from 'firebase/firestore';
 import { getAnalytics, isSupported as isAnalyticsSupported, logEvent as logFbEvent, Analytics } from 'firebase/analytics';
 import { getPerformance, FirebasePerformance, trace } from 'firebase/performance';
 import firebaseConfig from '../../firebase-applet-config.json';
+import { getFirebaseApp, getFirebaseAuth, getFirebaseDb, getGoogleAuthProvider, firebaseReadyPromise } from './firebaseInit';
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-const dbId = (firebaseConfig as any).firestoreDatabaseId || "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
-export const db = getFirestore(app, dbId);
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
-googleProvider.addScope('https://mail.google.com/');
-googleProvider.addScope('https://www.googleapis.com/auth/gmail.send');
-googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+export const app = getFirebaseApp();
+export const db = getFirebaseDb();
+export const auth = getFirebaseAuth();
+export const googleProvider = getGoogleAuthProvider();
+export { firebaseReadyPromise };
 
 export let firebaseAnalytics: Analytics | null = null;
-if (typeof window !== 'undefined') {
-  isAnalyticsSupported()
-    .then((supported) => {
-      if (supported) {
-        try {
-          firebaseAnalytics = getAnalytics(app);
-          console.log("Firebase Analytics inicializado com sucesso.");
-        } catch (err) {
-          // Analytics suppressed or unneeded in current domain environment
-        }
-      }
-    })
-    .catch(() => {
-      // Ignored non-critical analytics error
-    });
-}
-
 export let firebasePerformance: FirebasePerformance | null = null;
-if (typeof window !== 'undefined') {
+
+/**
+ * Asynchronously initializes secondary Firebase services (Analytics and Performance)
+ * without blocking the critical render path or main thread during initial DOM load.
+ */
+export async function initFirebaseSecondaryServices() {
+  if (typeof window === 'undefined') return;
+
   try {
-    firebasePerformance = getPerformance(app);
-    console.log("Firebase Performance Monitoring inicializado com sucesso.");
-  } catch (err) {
-    console.warn("Aviso ao inicializar Firebase Performance Monitoring:", err);
+    const supported = await isAnalyticsSupported();
+    if (supported && !firebaseAnalytics) {
+      firebaseAnalytics = getAnalytics(app);
+      console.log("[Firebase] Analytics inicializado de forma assíncrona.");
+    }
+  } catch (_) {
+    // Non-blocking in dev or restricted domains
+  }
+
+  try {
+    if (!firebasePerformance) {
+      firebasePerformance = getPerformance(app);
+      console.log("[Firebase] Performance Monitoring inicializado de forma assíncrona.");
+    }
+  } catch (_) {
+    // Non-blocking
   }
 }
 

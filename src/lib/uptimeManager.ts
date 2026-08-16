@@ -134,34 +134,30 @@ export function clear30DayUptimeRecords() {
   }
 }
 
-// Registra Service Worker e configura comunicação de Heartbeat
+// Monitora Service Worker e configura comunicação de Heartbeat sem conflito de registro
 export function registerUptimeServiceWorker(
   onStatusChange?: (swStatus: 'ACTIVE' | 'REGISTERING' | 'FALLBACK', lastPing: number) => void
 ) {
-  if (!('serviceWorker' in navigator)) {
-    console.warn('Service Workers não são suportados neste navegador.');
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     if (onStatusChange) onStatusChange('FALLBACK', Date.now());
     return;
   }
 
-  window.addEventListener('load', async () => {
-    try {
-      const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-      console.log('[SW Uptime] Registrado no escopo:', registration.scope);
-
+  // Utiliza a instância ativa do Service Worker gerenciada pelo vite-plugin-pwa
+  navigator.serviceWorker.ready
+    .then((registration) => {
       if (onStatusChange) {
         onStatusChange('ACTIVE', Date.now());
       }
 
-      // Envia ping inicial
       if (navigator.serviceWorker.controller) {
         navigator.serviceWorker.controller.postMessage({ type: 'PING_HEALTH' });
       }
-    } catch (err) {
-      console.warn('[SW Uptime] Falha ao registrar Service Worker (usando modo Fallback):', err);
+    })
+    .catch((err) => {
+      console.warn('[SW Uptime] Service Worker em modo fallback:', err);
       if (onStatusChange) onStatusChange('FALLBACK', Date.now());
-    }
-  });
+    });
 
   navigator.serviceWorker.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'PONG_HEALTH') {

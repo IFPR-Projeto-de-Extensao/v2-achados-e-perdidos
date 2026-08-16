@@ -7,59 +7,205 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Helper functions
+    // ==========================================
+    // Core Security & Auth Helper Functions
+    // ==========================================
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Users Collection
+    function isAuthUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isRootAdmin() {
+      return isSignedIn() && 
+             request.auth.token.email_verified == true && 
+             request.auth.token.email == 'paulocauan39@gmail.com';
+    }
+
+    function isDocAdmin() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN';
+    }
+
+    function isAdmin() {
+      return isRootAdmin() || isDocAdmin();
+    }
+
+    function isServidor() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'SERVIDOR' ||
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // ==========================================
+    // 1. Users Collection
+    // ==========================================
     match /users/{userId} {
-      allow read, write: if true;
+      // Authenticated users can view profiles; unauthenticated users cannot harvest user directory
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+
+      // Creation: user can only create their own user doc with matching uid and cannot elevate to ADMIN unless root admin
+      allow create: if isSignedIn() && 
+                       request.auth.uid == userId && 
+                       incoming().id == userId &&
+                       incoming().email == request.auth.token.email &&
+                       (incoming().role != 'ADMIN' || isRootAdmin());
+
+      // Update: User can update their own profile fields without altering id, email, or elevating role; Admin can update anything
+      allow update: if (isSignedIn() && 
+                        request.auth.uid == userId && 
+                        incoming().id == existing().id &&
+                        incoming().email == existing().email &&
+                        incoming().role == existing().role) ||
+                       isAdmin();
+
+      // Deletion: Only Admin can delete users (and cannot delete their own active account)
+      allow delete: if isAdmin() && request.auth.uid != userId;
     }
 
-    // Lost & Found Items Collection
+    // ==========================================
+    // 2. Lost & Found Items Collection
+    // ==========================================
     match /items/{itemId} {
-      allow read, write: if true;
+      // Public catalog read: anyone on campus can view lost & found objects
+      allow get: if true;
+      allow list: if true;
+
+      // Creation: Authenticated user only, with their own user id
+      allow create: if isSignedIn() && 
+                       incoming().registeredByUserId == request.auth.uid &&
+                       (incoming().registeredByRole != 'ADMIN' || isAdmin());
+
+      // Update: Admin, Servidor, or the item owner can update
+      allow update: if isAdmin() ||
+                       (isSignedIn() && existing().registeredByUserId == request.auth.uid) ||
+                       isServidor();
+
+      // Delete: Admin or the user who registered the item
+      allow delete: if isAdmin() || (isSignedIn() && existing().registeredByUserId == request.auth.uid);
     }
 
-    // Item Claims Collection
+    // ==========================================
+    // 3. Item Claims Collection (Solicitações de Devolução)
+    // ==========================================
     match /claims/{claimId} {
-      allow read, write: if true;
+      // Claims can only be read by the claimer or Admin/Servidor
+      allow get: if isSignedIn() && (existing().claimerId == request.auth.uid || isServidor() || isAdmin());
+      allow list: if isSignedIn() && (isServidor() || isAdmin() || resource.data.claimerId == request.auth.uid);
+
+      // Create: Authenticated user making a claim with their own user id
+      allow create: if isSignedIn() && incoming().claimerId == request.auth.uid;
+
+      // Update: Admin/Servidor can change claim status/notes; claimer can update verification answer if still pending
+      allow update: if isAdmin() || 
+                       isServidor() ||
+                       (isSignedIn() && existing().claimerId == request.auth.uid && existing().status == 'PENDENTE');
+
+      // Delete: Admin only
+      allow delete: if isAdmin();
     }
 
-    // Notifications Collection
+    // ==========================================
+    // 4. Notifications Collection (Notificações do Usuário)
+    // ==========================================
     match /notifications/{notificationId} {
-      allow read, write: if true;
+      // Users can ONLY read notifications destined to them; Admins can read
+      allow get: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+
+      // Create: Admin, Servidor or system generating notification for owner
+      allow create: if isSignedIn();
+
+      // Update: User can mark their own notification as read
+      allow update: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+
+      // Delete: User or Admin
+      allow delete: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
     }
 
-    // System Configuration & Maintenance Mode
+    // ==========================================
+    // 5. System Configuration Doc (Modo de Manutenção)
+    // ==========================================
     match /system/{docId} {
-      allow read, write: if true;
+      // Anyone can read maintenance banner state
+      allow get: if true;
+      allow list: if true;
+
+      // Only verified Admin can modify system settings
+      allow write: if isAdmin();
     }
 
-    // Activity Logs Collection
+    // ==========================================
+    // 6. Audit Logs Collection (Trilha de Auditoria Imutável)
+    // ==========================================
     match /activity_logs/{logId} {
-      allow read, write: if true;
+      // Only Admin and Servidor can inspect audit trail
+      allow get: if isAdmin() || isServidor();
+      allow list: if isAdmin() || isServidor();
+
+      // Create: Only authenticated users for their logged actions
+      allow create: if isSignedIn() && incoming().adminId == request.auth.uid;
+
+      // Immutability: Audit logs can never be altered or tampered with
+      allow update: if false;
+      allow delete: if false;
     }
 
-    // Backup Logs Collection
+    // ==========================================
+    // 7. Backup Logs Collection
+    // ==========================================
     match /backup_logs/{logId} {
-      allow read, write: if true;
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin() && incoming().adminId == request.auth.uid;
+      allow update: if false;
+      allow delete: if isAdmin();
     }
 
-    // Error Logs Collection
+    // ==========================================
+    // 8. Error Logs Collection
+    // ==========================================
     match /error_logs/{logId} {
-      allow read, write: if true;
+      allow get: if isAdmin() || isServidor();
+      allow list: if isAdmin() || isServidor();
+      allow create: if isSignedIn();
+      allow update: if false;
+      allow delete: if isAdmin();
     }
 
-    // System Metrics Collection
+    // ==========================================
+    // 9. System Metrics Collection
+    // ==========================================
     match /system_metrics/{metricId} {
-      allow read, write: if true;
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create, update: if isSignedIn();
+      allow delete: if isAdmin();
     }
 
-    // Comments Collection
+    // ==========================================
+    // 10. Comments Collection
+    // ==========================================
     match /comments/{commentId} {
-      allow read, write: if true;
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn() && existing().userId == request.auth.uid;
+      allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
     }
   }
 }
+
