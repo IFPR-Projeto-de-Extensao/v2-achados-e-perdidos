@@ -152,6 +152,10 @@
     "/found_items/{itemId}": {
       "schema": { "$ref": "#/entities/LostFoundItem" },
       "description": "Found items collection triggering onNewFoundItemCreated Discord alerts"
+    },
+    "/lost_items/{itemId}": {
+      "schema": { "$ref": "#/entities/LostFoundItem" },
+      "description": "Lost items collection triggering onNewLostItemCreated Discord alerts"
     }
   }
 }

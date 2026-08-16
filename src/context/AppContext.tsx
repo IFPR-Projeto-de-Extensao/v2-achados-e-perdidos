@@ -2042,6 +2042,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ).catch((webhookErr) => {
           console.warn("[Novos Achados Webhook Notice] Envio assíncrono ao Discord:", webhookErr);
         });
+      } else if (newItem.type === "PERDIDO") {
+        // Trigger automatic Discord Webhook notification to '#novas-perdas' ONLY after confirmed database save
+        safeFetchJson(
+          "/api/items/notify-novas-perdas",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ item: newItem }),
+          },
+          () => ({ success: true })
+        ).catch((webhookErr) => {
+          console.warn("[Novas Perdas Webhook Notice] Envio assíncrono ao Discord:", webhookErr);
+        });
       }
     } catch (e: any) {
       console.warn("Aviso ao gravar no Firestore, salvando na fila offline do IndexedDB:", e);

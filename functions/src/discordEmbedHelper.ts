@@ -244,3 +244,106 @@ export function buildNovosAchadosEmbed(item: FoundItemPayload): DiscordWebhookPa
     embeds: [embed],
   };
 }
+
+/**
+ * Formats a newly created lost item report (Perda) into a sanitized, professional Discord Webhook Payload for #novas-perdas
+ */
+export function buildNovasPerdasEmbed(item: FoundItemPayload): DiscordWebhookPayload {
+  const sanitizedTitle = sanitizePii(item.title || "Objeto Perdido").substring(0, 200);
+  const rawDesc = item.description || "Nenhuma descrição fornecida.";
+  const sanitizedDesc = sanitizePii(rawDesc).substring(0, 3800);
+  const sanitizedLocation = sanitizePii(item.location || "Campus Ivaiporã (Local não especificado)").substring(0, 100);
+  const categoryKey = (item.category || "outros").toLowerCase().trim();
+  const categoryInfo = ITEM_CATEGORY_MAP[categoryKey] || {
+    label: item.category || "Outros",
+    icon: "📦",
+    badge: item.category || "Perda",
+  };
+
+  const protocol = (item.qrCodeId || item.id || "N/A").toString().trim().substring(0, 80);
+  const registrarName = sanitizePii(item.registeredByName || "Comunidade Acadêmica do IFPR").substring(0, 100);
+  const roleLabel = item.registeredByRole ? ` (${item.registeredByRole})` : "";
+  const registrarDisplay = `${registrarName}${roleLabel}`;
+
+  const eventDateFormatted = formatToBrtDate(item.date);
+  const createdAtFormatted = formatToBrtDateTime(item.createdAt || new Date().toISOString());
+
+  const fields: DiscordEmbedField[] = [
+    {
+      name: "🏷️ Categoria",
+      value: `${categoryInfo.icon} ${categoryInfo.label}`,
+      inline: true,
+    },
+    {
+      name: "📍 Último Local Onde Foi Visto",
+      value: sanitizedLocation,
+      inline: true,
+    },
+    {
+      name: "📅 Data da Perda",
+      value: eventDateFormatted,
+      inline: true,
+    },
+    {
+      name: "👤 Usuário Responsável pelo Cadastro",
+      value: registrarDisplay,
+      inline: true,
+    },
+    {
+      name: "📋 Número / Protocolo",
+      value: `\`${protocol}\``,
+      inline: true,
+    },
+    {
+      name: "🟡 Status Atual",
+      value: "🟡 **Perdido** *(Procura Ativa no Campus)*",
+      inline: true,
+    },
+  ];
+
+  // Optional visual characteristics
+  const visualDetails: string[] = [];
+  if (item.color && item.color.trim()) {
+    visualDetails.push(`Cor: **${sanitizePii(item.color.trim())}**`);
+  }
+  if (item.brand && item.brand.trim()) {
+    visualDetails.push(`Marca/Modelo: **${sanitizePii(item.brand.trim())}**`);
+  }
+  if (visualDetails.length > 0) {
+    fields.push({
+      name: "🎨 Características Visuais",
+      value: visualDetails.join(" • ").substring(0, 1024),
+      inline: false,
+    });
+  }
+
+  fields.push({
+    name: "🕐 Data e Hora do Cadastro",
+    value: createdAtFormatted,
+    inline: false,
+  });
+
+  const embed: DiscordEmbed = {
+    title: `🔎 Novo Objeto Perdido Registrado: ${sanitizedTitle}`.substring(0, 256),
+    description: sanitizedDesc,
+    color: DISCORD_THEME_COLORS.LOST_ITEM, // Amber 0xf59e0b
+    fields,
+    footer: {
+      text: "IFPR Campus Ivaiporã • Central de Achados e Perdidos",
+      icon_url: "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/shield-check.png",
+    },
+    timestamp: item.createdAt || new Date().toISOString(),
+  };
+
+  // Safe HTTP/HTTPS image URL inclusion
+  if (item.imageUrl && (item.imageUrl.startsWith("http://") || item.imageUrl.startsWith("https://"))) {
+    embed.image = { url: item.imageUrl };
+  }
+
+  return {
+    username: "IFPR Achados e Perdidos • #novas-perdas",
+    avatar_url: "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/search.png",
+    embeds: [embed],
+  };
+}
+

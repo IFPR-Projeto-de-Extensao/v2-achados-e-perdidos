@@ -6,6 +6,7 @@ import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import {
   buildNovosAchadosEmbed,
+  buildNovasPerdasEmbed,
   FoundItemPayload,
   sanitizePii,
   DISCORD_THEME_COLORS,
@@ -692,3 +693,242 @@ export const onNovoAchadoCreated = onDocumentCreated("items/{itemId}", async (ev
     }
   }
 });
+
+// ============================================================================
+// DISCORD WEBHOOK INTEGRATION FOR #novas-perdas (NOVAS PERDAS REGISTRADAS)
+// ============================================================================
+
+/**
+ * Returns the configured Discord Webhook URL for #novas-perdas from runtime environment or functions config.
+ */
+export function getDiscordNovasPerdasWebhookUrl(): string {
+  try {
+    const functionsConfig = typeof (functions as any).config === "function" ? (functions as any).config() : null;
+    const configUrl =
+      functionsConfig?.discord?.novas_perdas_webhook_url ||
+      functionsConfig?.discord?.webhook_url_novas_perdas;
+    if (configUrl && typeof configUrl === "string" && configUrl.trim()) {
+      return configUrl.trim();
+    }
+  } catch {
+    // Ignore config errors in local or non-v1 runtime
+  }
+
+  const envUrl =
+    process.env.DISCORD_NOVAS_PERDAS_WEBHOOK_URL ||
+    process.env.DISCORD_WEBHOOK_URL_NOVAS_PERDAS;
+  if (envUrl && typeof envUrl === "string" && envUrl.trim()) {
+    return envUrl.trim();
+  }
+
+  return "";
+}
+
+/**
+ * Formats a newly registered lost item (Perda) into a clean, professional Discord Embed using the helper module.
+ */
+export function formatNovasPerdasDiscordEmbed(item: FoundItemData): DiscordWebhookPayload {
+  return buildNovasPerdasEmbed(item);
+}
+
+/**
+ * Dispatches a new lost item notification to the '#novas-perdas' Discord Webhook.
+ * Non-blocking: all errors are isolated and logged to Firebase Cloud Logging using functions.logger.error.
+ */
+export async function sendNovaPerdaToDiscord(item: FoundItemData): Promise<DiscordDispatchResult> {
+  // If item explicitly has a type field and it's not PERDIDO, ignore
+  if (item.type && item.type !== "PERDIDO") {
+    functions.logger.info(`[sendNovaPerdaToDiscord] Item type is '${item.type}', not 'PERDIDO'. Skipping Discord notification.`);
+    return { success: false, error: "Not a lost item (type != PERDIDO)" };
+  }
+
+  const webhookUrl = getDiscordNovasPerdasWebhookUrl();
+  if (!webhookUrl) {
+    functions.logger.warn(
+      "[Discord Novas Perdas Notice] DISCORD_NOVAS_PERDAS_WEBHOOK_URL is not configured in secrets or config. Skipping Discord dispatch."
+    );
+    return { success: false, error: "WEBHOOK_URL_NOT_CONFIGURED" };
+  }
+
+  try {
+    const payload = buildNovasPerdasEmbed(item);
+
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      functions.logger.error(
+        `[Discord Novas Perdas Error] Discord API returned HTTP error ${response.status} (${response.statusText}) for lost item '${item.id || item.title}':`,
+        {
+          status: response.status,
+          statusText: response.statusText,
+          responseText: errText,
+          itemId: item.id,
+          itemTitle: item.title,
+        }
+      );
+      return {
+        success: false,
+        status: response.status,
+        statusText: response.statusText,
+        error: errText,
+        itemId: item.id,
+      };
+    }
+
+    functions.logger.info(`[Discord Novas Perdas Success] Notificação enviada com sucesso para #novas-perdas: "${item.title}" (${item.id})`);
+    return { success: true, status: response.status, itemId: item.id };
+  } catch (err: any) {
+    functions.logger.error(
+      `[Discord Novas Perdas Error] Falha de conexão ou rede ao enviar notificação da perda '${item.id || item.title}' para o Discord:`,
+      {
+        errorMessage: err?.message || String(err),
+        stack: err?.stack,
+        itemId: item.id,
+        itemTitle: item.title,
+      }
+    );
+    return {
+      success: false,
+      error: err?.message || String(err),
+      itemId: item.id,
+    };
+  }
+}
+
+/**
+ * Cloud Function HTTPS endpoint: notifyNovaPerda
+ * Invoked by backend or client after a lost item is saved to Firestore.
+ */
+export const notifyNovaPerda = onRequest({ cors: true }, async (req, res) => {
+  if (req.method !== "POST") {
+    res.status(405).json({ success: false, error: "Method not allowed. Use POST." });
+    return;
+  }
+
+  try {
+    const item: FoundItemData = req.body?.item || req.body;
+    if (!item || !item.title) {
+      res.status(400).json({ success: false, error: "Dados do item ausentes ou incompletos." });
+      return;
+    }
+
+    if (item.type && item.type !== "PERDIDO") {
+      res.status(200).json({ success: true, message: "Item não é do tipo PERDIDO. Ignorado para o canal #novas-perdas." });
+      return;
+    }
+
+    const result = await sendNovaPerdaToDiscord(item);
+    res.status(200).json({
+      success: true,
+      dispatched: result.success,
+      status: result.status,
+      message: result.success
+        ? "Notificação despachada com sucesso para o canal #novas-perdas."
+        : "Webhook não configurado ou retorno com aviso.",
+    });
+  } catch (error: any) {
+    functions.logger.error("[notifyNovaPerda Cloud Function Error]:", error);
+    res.status(500).json({ success: false, error: error?.message || "Erro interno ao processar notificação." });
+  }
+});
+
+/**
+ * Cloud Function Firestore Trigger: onNewLostItemCreated
+ * Triggers automatically whenever a new document is created in the 'lost_items' collection in Firestore.
+ * Securely logs diagnostic details and HTTP error status to Firebase Cloud Logging using functions.logger.error.
+ */
+export const onNewLostItemCreated = onDocumentCreated("lost_items/{itemId}", async (event) => {
+  const data = event.data?.data() as FoundItemData | undefined;
+  const itemId = event.params.itemId;
+
+  if (!data) {
+    functions.logger.warn(`[onNewLostItemCreated] Event triggered for document 'lost_items/${itemId}', but snapshot contains no data.`);
+    return;
+  }
+
+  functions.logger.info(`[onNewLostItemCreated] Novo registro detectado em 'lost_items/${itemId}': "${data.title || 'Sem título'}"`);
+
+  try {
+    const dispatchResult = await sendNovaPerdaToDiscord({
+      ...data,
+      id: data.id || itemId,
+      type: "PERDIDO",
+    });
+
+    if (!dispatchResult.success) {
+      functions.logger.error(
+        `[onNewLostItemCreated] Falha no envio da notificação ao Discord para a perda '${itemId}':`,
+        {
+          itemId,
+          itemTitle: data.title,
+          errorStatus: dispatchResult.status || "N/A",
+          statusText: dispatchResult.statusText || "N/A",
+          errorMessage: dispatchResult.error || "Erro desconhecido ao comunicar com o webhook do Discord",
+          timestamp: new Date().toISOString(),
+        }
+      );
+    }
+  } catch (error: any) {
+    functions.logger.error(
+      `[onNewLostItemCreated] Exceção não tratada durante o envio da notificação ao Discord para a perda '${itemId}':`,
+      {
+        itemId,
+        itemTitle: data.title,
+        errorName: error?.name,
+        errorMessage: error?.message,
+        errorStack: error?.stack,
+        timestamp: new Date().toISOString(),
+      }
+    );
+  }
+});
+
+/**
+ * Cloud Function Firestore Trigger: onNovaPerdaCreated (also listens on 'items' collection with type PERDIDO)
+ * Triggers automatically whenever a new document is created in the 'items' collection in Firestore.
+ */
+export const onNovaPerdaCreated = onDocumentCreated("items/{itemId}", async (event) => {
+  const data = event.data?.data() as FoundItemData | undefined;
+  const itemId = event.params.itemId;
+
+  if (!data) return;
+
+  if (data.type === "PERDIDO") {
+    functions.logger.info(`[onNovaPerdaCreated] Novo item PERDIDO detectado em 'items/${itemId}': "${data.title}"`);
+    try {
+      const dispatchResult = await sendNovaPerdaToDiscord({
+        ...data,
+        id: data.id || itemId,
+      });
+
+      if (!dispatchResult.success) {
+        functions.logger.error(
+          `[onNovaPerdaCreated] Falha no envio da notificação ao Discord para o item '${itemId}':`,
+          {
+            itemId,
+            itemTitle: data.title,
+            errorStatus: dispatchResult.status || "N/A",
+            errorMessage: dispatchResult.error,
+          }
+        );
+      }
+    } catch (err: any) {
+      functions.logger.error(
+        `[onNovaPerdaCreated Error] Falha de execução ao processar notificação no Discord para a perda '${itemId}':`,
+        {
+          itemId,
+          errorMessage: err?.message,
+          stack: err?.stack,
+        }
+      );
+    }
+  }
+});
+

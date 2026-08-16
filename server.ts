@@ -1460,6 +1460,187 @@ app.post("/api/items/notify-novos-achados", generalRateLimiter, async (req, res)
   }
 });
 
+// ==========================================
+// Discord Integration for #novas-perdas
+// ==========================================
+function getDiscordNovasPerdasWebhookUrl(): string {
+  return (
+    process.env.DISCORD_NOVAS_PERDAS_WEBHOOK_URL ||
+    process.env.DISCORD_WEBHOOK_URL_NOVAS_PERDAS ||
+    ""
+  ).trim();
+}
+
+async function sendNovaPerdaToDiscord(item: {
+  id: string;
+  title: string;
+  category: string;
+  type: string;
+  status: string;
+  description: string;
+  color?: string;
+  brand?: string;
+  location: string;
+  date: string;
+  imageUrl?: string;
+  qrCodeId?: string;
+  registeredByName?: string;
+  registeredByRole?: string;
+  createdAt?: string;
+}): Promise<boolean> {
+  if (item.type !== "PERDIDO") {
+    return false;
+  }
+
+  const webhookUrl = getDiscordNovasPerdasWebhookUrl();
+  if (!webhookUrl) {
+    console.info(
+      "[Discord Novas Perdas Notice] DISCORD_NOVAS_PERDAS_WEBHOOK_URL não configurada no servidor. O cadastro da perda foi salvo normalmente."
+    );
+    return false;
+  }
+
+  try {
+    const sanitizedTitle = String(item.title || "Objeto Perdido").trim().substring(0, 200);
+    const sanitizedDesc = String(item.description || "Nenhuma descrição detalhada fornecida.").trim().substring(0, 3900);
+    const sanitizedLocation = String(item.location || "Campus Ivaiporã (Local não especificado)").trim().substring(0, 100);
+    const sanitizedCategory = String(item.category || "Outros").trim().substring(0, 80);
+    const sanitizedProtocol = String(item.qrCodeId || item.id || "N/A").trim().substring(0, 80);
+    const sanitizedRegistrar = String(item.registeredByName || "Comunidade Acadêmica do IFPR").trim().substring(0, 100);
+    const sanitizedColor = item.color && item.color.trim() ? item.color.trim() : null;
+    const sanitizedBrand = item.brand && item.brand.trim() ? item.brand.trim() : null;
+
+    let dateFormatted = item.date || "Data não informada";
+    if (item.date) {
+      try {
+        const parsedDate = new Date(item.date.includes("T") ? item.date : `${item.date}T12:00:00Z`);
+        dateFormatted = parsedDate.toLocaleDateString("pt-BR", {
+          timeZone: "America/Sao_Paulo",
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        });
+      } catch {
+        dateFormatted = item.date;
+      }
+    }
+
+    let createdAtFormatted = item.createdAt || new Date().toISOString();
+    try {
+      createdAtFormatted = new Date(createdAtFormatted).toLocaleString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      createdAtFormatted = item.createdAt || "Hoje";
+    }
+
+    const fields: Array<{ name: string; value: string; inline?: boolean }> = [
+      { name: "🏷️ Categoria", value: sanitizedCategory, inline: true },
+      { name: "📍 Último Local Onde Foi Visto", value: sanitizedLocation, inline: true },
+      { name: "📅 Data da Perda", value: dateFormatted, inline: true },
+      { name: "👤 Cadastrado Por", value: sanitizedRegistrar, inline: true },
+      { name: "📋 Protocolo / ID", value: `\`${sanitizedProtocol}\``, inline: true },
+      { name: "🟡 Status Atual", value: "🟡 Perdido (Procura Ativa)", inline: true },
+    ];
+
+    if (sanitizedColor || sanitizedBrand) {
+      const visualParts = [
+        sanitizedColor ? `Cor: **${sanitizedColor}**` : null,
+        sanitizedBrand ? `Marca: **${sanitizedBrand}**` : null,
+      ].filter(Boolean);
+
+      fields.push({
+        name: "🎨 Características Visuais",
+        value: visualParts.join(" • ").substring(0, 1024),
+        inline: true,
+      });
+    }
+
+    fields.push({
+      name: "🕐 Data e Hora do Cadastro",
+      value: createdAtFormatted,
+      inline: true,
+    });
+
+    const embed: any = {
+      title: `🔎 Novo Objeto Perdido Cadastrado: ${sanitizedTitle}`.substring(0, 256),
+      description: sanitizedDesc,
+      color: 0xf59e0b, // Amber 0xf59e0b representing alert/lost item
+      fields,
+      footer: {
+        text: "IFPR Campus Ivaiporã • Canal #novas-perdas",
+        icon_url: "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/shield-check.png",
+      },
+      timestamp: item.createdAt || new Date().toISOString(),
+    };
+
+    if (item.imageUrl && (item.imageUrl.startsWith("http://") || item.imageUrl.startsWith("https://"))) {
+      embed.image = { url: item.imageUrl };
+    }
+
+    const discordPayload = {
+      username: "IFPR Achados e Perdidos • #novas-perdas",
+      avatar_url: "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/search.png",
+      embeds: [embed],
+    };
+
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(discordPayload),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.warn(`[Discord Novas Perdas Warning] HTTP ${response.status} do Webhook:`, errText);
+      return false;
+    }
+
+    console.log(`[Discord Novas Perdas Success] Notificação enviada para #novas-perdas: "${item.title}" (${item.id})`);
+    return true;
+  } catch (err: any) {
+    // Isolamento resiliente total: falhas no Discord nunca desfazem o cadastro da perda
+    console.error("[Discord Novas Perdas Error] Falha ao enviar para o Discord:", err?.message || err);
+    return false;
+  }
+}
+
+app.post("/api/items/notify-novas-perdas", generalRateLimiter, async (req, res) => {
+  try {
+    const item = req.body?.item || req.body;
+    if (!item || !item.title) {
+      return res.status(400).json({ success: false, error: "Dados do item ausentes ou incompletos." });
+    }
+
+    if (item.type !== "PERDIDO") {
+      return res.json({ success: true, message: "Item não é do tipo PERDIDO. Ignorado para o canal #novas-perdas." });
+    }
+
+    // Envio assíncrono e resiliente
+    sendNovaPerdaToDiscord(item).catch((err) => {
+      console.error("[Discord Novas Perdas Background Error]:", err);
+    });
+
+    return res.json({
+      success: true,
+      message: "Notificação de nova perda encaminhada para o canal #novas-perdas.",
+      itemId: item.id,
+    });
+  } catch (error: any) {
+    console.error("Erro no endpoint notify-novas-perdas:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Erro ao processar notificação para o Discord.",
+    });
+  }
+});
+
+
 
 // Gemini Semantic Search Endpoint (Home Search Bar NL Search)
 app.post("/api/gemini/semantic-search", requireAuth, aiRateLimiter, async (req, res) => {

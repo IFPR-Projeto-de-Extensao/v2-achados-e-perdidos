@@ -325,7 +325,7 @@ export function formatItemToDiscordEmbed(item: ItemData): DiscordWebhookPayload 
     return {
       username: isFound
         ? "IFPR Achados e Perdidos • #novos-achados"
-        : "IFPR Achados e Perdidos • Alerta",
+        : "IFPR Achados e Perdidos • #novas-perdas",
       avatar_url: isFound
         ? "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/package-search.png"
         : "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/search.png",
@@ -341,12 +341,12 @@ export function formatItemToDiscordEmbed(item: ItemData): DiscordWebhookPayload 
 
     // Fallback safe embed so notification payload is never totally broken
     return {
-      username: "IFPR Achados e Perdidos",
+      username: item?.type === "PERDIDO" ? "IFPR Achados e Perdidos • #novas-perdas" : "IFPR Achados e Perdidos",
       embeds: [
         {
           title: `📦 Objeto Registrado: ${String(item?.title || "Item").substring(0, 200)}`,
           description: String(item?.description || "Registro no sistema IFPR.").substring(0, 1000),
-          color: STATUS_COLORS.DEFAULT_FOUND,
+          color: item?.type === "PERDIDO" ? STATUS_COLORS.PERDIDO : STATUS_COLORS.DEFAULT_FOUND,
           fields: [
             {
               name: "📋 Protocolo",
@@ -368,3 +368,14 @@ export function formatItemToDiscordEmbed(item: ItemData): DiscordWebhookPayload 
     };
   }
 }
+
+/**
+ * Dedicated function to format new lost items for the #novas-perdas channel
+ */
+export function formatNovasPerdasDiscordEmbed(item: ItemData): DiscordWebhookPayload {
+  return formatItemToDiscordEmbed({
+    ...item,
+    type: "PERDIDO",
+  });
+}
+
