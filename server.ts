@@ -1374,7 +1374,14 @@ function getIsoDatabaseTimestampServer(createdAt?: any, updatedAt?: any): string
 }
 
 function getDiscordNovosAchadosWebhookUrl(): string {
-  return (process.env.DISCORD_NOVOS_ACHADOS_WEBHOOK_URL || "").trim();
+  return (
+    process.env.DISCORD_NOVOS_ACHADOS_WEBHOOK_URL ||
+    process.env.DISCORD_WEBHOOK_URL_NOVOS_ACHADOS ||
+    process.env.DISCORD_ACHADOS_WEBHOOK_URL ||
+    process.env.DISCORD_ACHADOS_URL ||
+    process.env.DISCORD_WEBHOOK_ACHADOS ||
+    ""
+  ).trim();
 }
 
 async function sendNovoAchadoToDiscord(item: {
@@ -1395,11 +1402,15 @@ async function sendNovoAchadoToDiscord(item: {
   createdAt?: string;
   updatedAt?: string;
 }): Promise<boolean> {
+  console.log("[NOVO_ACHADO_DISCORD] função chamada");
+
   if (item.type !== "ENCONTRADO") {
     return false;
   }
 
   const webhookUrl = getDiscordNovosAchadosWebhookUrl();
+  console.log(`[NOVO_ACHADO_DISCORD] webhook configurado: ${webhookUrl ? "SIM" : "NÃO"}`);
+
   if (!webhookUrl) {
     console.info(
       "[Discord Novos Achados Notice] DISCORD_NOVOS_ACHADOS_WEBHOOK_URL não configurada no servidor. O cadastro do achado foi salvo normalmente."
@@ -1412,8 +1423,6 @@ async function sendNovoAchadoToDiscord(item: {
     const sanitizedDesc = String(item.description || "Nenhuma descrição fornecida.").trim().substring(0, 3900);
     const sanitizedLocation = String(item.location || "Campus Ivaiporã").trim().substring(0, 100);
     const sanitizedCategory = String(item.category || "Outros").trim().substring(0, 80);
-    const sanitizedProtocol = String(item.qrCodeId || item.id || "N/A").trim().substring(0, 80);
-    const sanitizedRegistrar = String(item.registeredByName || "Servidor/Aluno do IFPR").trim().substring(0, 100);
     const sanitizedColor = item.color && item.color.trim() ? item.color.trim() : null;
     const sanitizedBrand = item.brand && item.brand.trim() ? item.brand.trim() : null;
 
@@ -1472,7 +1481,7 @@ async function sendNovoAchadoToDiscord(item: {
 
     const embed: any = {
       title: `📦 Novo Achado Cadastrado: ${sanitizedTitle}`.substring(0, 256),
-      description: sanitizedDesc,
+      description: sanitizedDesc || "Objeto cadastrado no sistema do IFPR Campus Ivaiporã.",
       color: 0x10b981, // Emerald Green representing IFPR / Achados
       fields,
       footer: {
@@ -1492,11 +1501,16 @@ async function sendNovoAchadoToDiscord(item: {
       embeds: [embed],
     };
 
+    console.log("[NOVO_ACHADO_DISCORD] dados preparados");
+
+    console.log("[NOVO_ACHADO_DISCORD] requisição enviada");
     const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(discordPayload),
     });
+
+    console.log(`[NOVO_ACHADO_DISCORD] status HTTP: ${response.status}`);
 
     if (!response.ok) {
       const errText = await response.text();
@@ -1550,6 +1564,9 @@ function getDiscordNovasPerdasWebhookUrl(): string {
   return (
     process.env.DISCORD_NOVAS_PERDAS_WEBHOOK_URL ||
     process.env.DISCORD_WEBHOOK_URL_NOVAS_PERDAS ||
+    process.env.DISCORD_PERDAS_WEBHOOK_URL ||
+    process.env.DISCORD_PERDAS_URL ||
+    process.env.DISCORD_WEBHOOK_PERDAS ||
     ""
   ).trim();
 }
@@ -1572,11 +1589,15 @@ async function sendNovaPerdaToDiscord(item: {
   createdAt?: string;
   updatedAt?: string;
 }): Promise<boolean> {
+  console.log("[NOVA_PERDA_DISCORD] função chamada");
+
   if (item.type !== "PERDIDO") {
     return false;
   }
 
   const webhookUrl = getDiscordNovasPerdasWebhookUrl();
+  console.log(`[NOVA_PERDA_DISCORD] webhook configurado: ${webhookUrl ? "SIM" : "NÃO"}`);
+
   if (!webhookUrl) {
     console.info(
       "[Discord Novas Perdas Notice] DISCORD_NOVAS_PERDAS_WEBHOOK_URL não configurada no servidor. O cadastro da perda foi salvo normalmente."
@@ -1589,8 +1610,6 @@ async function sendNovaPerdaToDiscord(item: {
     const sanitizedDesc = String(item.description || "Nenhuma descrição detalhada fornecida.").trim().substring(0, 3900);
     const sanitizedLocation = String(item.location || "Campus Ivaiporã (Local não especificado)").trim().substring(0, 100);
     const sanitizedCategory = String(item.category || "Outros").trim().substring(0, 80);
-    const sanitizedProtocol = String(item.qrCodeId || item.id || "N/A").trim().substring(0, 80);
-    const sanitizedRegistrar = String(item.registeredByName || "Comunidade Acadêmica do IFPR").trim().substring(0, 100);
     const sanitizedColor = item.color && item.color.trim() ? item.color.trim() : null;
     const sanitizedBrand = item.brand && item.brand.trim() ? item.brand.trim() : null;
 
@@ -1649,7 +1668,7 @@ async function sendNovaPerdaToDiscord(item: {
 
     const embed: any = {
       title: `🔎 Novo Objeto Perdido Cadastrado: ${sanitizedTitle}`.substring(0, 256),
-      description: sanitizedDesc,
+      description: sanitizedDesc || "Objeto registrado como perdido no IFPR Campus Ivaiporã.",
       color: 0xf59e0b, // Amber 0xf59e0b representing alert/lost item
       fields,
       footer: {
@@ -1669,11 +1688,16 @@ async function sendNovaPerdaToDiscord(item: {
       embeds: [embed],
     };
 
+    console.log("[NOVA_PERDA_DISCORD] dados preparados");
+
+    console.log("[NOVA_PERDA_DISCORD] requisição enviada");
     const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(discordPayload),
     });
+
+    console.log(`[NOVA_PERDA_DISCORD] status HTTP: ${response.status}`);
 
     if (!response.ok) {
       const errText = await response.text();

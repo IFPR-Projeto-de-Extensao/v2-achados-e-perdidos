@@ -359,18 +359,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             prev.map((it) => (it.id === itemToSave.id ? itemToSave : it))
           );
 
-          // If found item, notify #novos-achados on Discord (non-blocking)
+          // If found or lost item, notify Discord (non-blocking)
+          const sanitizedPayload = {
+            ...itemToSave,
+            imageUrl:
+              itemToSave.imageUrl &&
+              (itemToSave.imageUrl.startsWith("http://") || itemToSave.imageUrl.startsWith("https://"))
+                ? itemToSave.imageUrl
+                : undefined,
+          };
+
           if (itemToSave.type === "ENCONTRADO") {
             safeFetchJson(
               "/api/items/notify-novos-achados",
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ item: itemToSave }),
+                body: JSON.stringify({ item: sanitizedPayload }),
               },
               () => ({ success: true })
             ).catch((discordErr) => {
               console.warn("[Novos Achados Webhook Notice] Envio offline-sync ao Discord:", discordErr);
+            });
+          } else if (itemToSave.type === "PERDIDO") {
+            safeFetchJson(
+              "/api/items/notify-novas-perdas",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ item: sanitizedPayload }),
+              },
+              () => ({ success: true })
+            ).catch((discordErr) => {
+              console.warn("[Novas Perdas Webhook Notice] Envio offline-sync ao Discord:", discordErr);
             });
           }
         } catch (syncErr: any) {
@@ -2029,14 +2050,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       vibrateSuccess();
 
-      // Trigger automatic Discord Webhook notification to '#novos-achados' ONLY after confirmed database save
+      // Trigger automatic Discord Webhook notification ONLY after confirmed database save
+      const discordItemPayload = {
+        ...newItem,
+        imageUrl:
+          newItem.imageUrl &&
+          (newItem.imageUrl.startsWith("http://") || newItem.imageUrl.startsWith("https://"))
+            ? newItem.imageUrl
+            : undefined,
+      };
+
       if (newItem.type === "ENCONTRADO") {
         safeFetchJson(
           "/api/items/notify-novos-achados",
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ item: newItem }),
+            body: JSON.stringify({ item: discordItemPayload }),
           },
           () => ({ success: true })
         ).catch((webhookErr) => {
@@ -2049,7 +2079,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ item: newItem }),
+            body: JSON.stringify({ item: discordItemPayload }),
           },
           () => ({ success: true })
         ).catch((webhookErr) => {
