@@ -145,6 +145,9 @@
     },
     "/fcm_subscriptions/{userId}": {
       "description": "User Firebase Cloud Messaging tokens and push notification preferences"
+    },
+    "/support_tickets/{ticketId}": {
+      "description": "User feedback and bug report tickets sent to campus support team"
     }
   }
 }

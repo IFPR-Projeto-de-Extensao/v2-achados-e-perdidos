@@ -289,3 +289,21 @@ export interface UploadTaskStatus {
   error?: string;
   isBackgroundSyncRegistered?: boolean;
 }
+
+export type SupportCategory = "BUG_REPORT" | "FEEDBACK" | "BELONGING_QUERY" | "OTHER";
+
+export interface SupportFeedbackTicket {
+  id: string;
+  name: string;
+  email: string;
+  category: SupportCategory;
+  subject: string;
+  message: string;
+  priority?: "BAIXA" | "MEDIA" | "ALTA";
+  userId?: string;
+  userRole?: UserRole;
+  createdAt: string;
+  status: "NOVO" | "EM_ATENDIMENTO" | "RESOLVIDO";
+  userAgent?: string;
+  protocol: string;
+}

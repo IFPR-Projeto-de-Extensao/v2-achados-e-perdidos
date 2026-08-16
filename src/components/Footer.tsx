@@ -1,13 +1,15 @@
-import React from "react";
-import { ShieldCheck, MapPin, Phone, Mail, Globe, Heart, Languages, Check, Download, Smartphone } from "lucide-react";
+import React, { useState } from "react";
+import { ShieldCheck, MapPin, Phone, Mail, Globe, Heart, Languages, Check, Download, Smartphone, MessageSquarePlus, LifeBuoy } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { SupportedLanguage } from "../lib/i18n";
 import { vibrateClick } from "../lib/utils";
 import { usePWA } from "../hooks/usePWA";
+import { ContactSupportModal } from "./ContactSupportModal";
 
 export const Footer: React.FC = () => {
   const { language, setLanguage, t } = useApp();
   const { isInstalled, promptInstall } = usePWA();
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
 
   const handleLanguageChange = (lang: SupportedLanguage) => {
     vibrateClick();
@@ -132,6 +134,19 @@ export const Footer: React.FC = () => {
                 </button>
               </li>
               <li>
+                <button
+                  id="footer-open-support-link"
+                  onClick={() => {
+                    vibrateClick();
+                    setIsContactModalOpen(true);
+                  }}
+                  className="hover:text-[#00843D] dark:hover:text-green-400 transition-colors flex items-center space-x-1.5 text-left font-medium text-[#00843D] dark:text-green-400"
+                >
+                  <LifeBuoy className="w-3.5 h-3.5 shrink-0" />
+                  <span>{t("contactSupport", "Fale com o Suporte / Feedback")}</span>
+                </button>
+              </li>
+              <li>
                 <a href="https://ivaipora.ifpr.edu.br" target="_blank" rel="noopener noreferrer" className="hover:text-[#00843D] transition-colors flex items-center space-x-1">
                   <Globe className="w-3.5 h-3.5" />
                   <span>Portal IFPR Campus Ivaiporã</span>
@@ -167,11 +182,32 @@ export const Footer: React.FC = () => {
               </li>
               <li className="flex items-center space-x-2">
                 <Mail className="w-3.5 h-3.5 text-[#00843D]" />
-                <span>achados.ivaipora@ifpr.edu.br</span>
+                <button
+                  onClick={() => {
+                    vibrateClick();
+                    setIsContactModalOpen(true);
+                  }}
+                  className="hover:underline hover:text-[#00843D] dark:hover:text-green-400 text-left transition-colors font-medium"
+                >
+                  achados.ivaipora@ifpr.edu.br
+                </button>
               </li>
-              <li className="pt-2">
-                <span className="inline-block px-2.5 py-1 rounded-md bg-[#00843D]/10 text-[#00843D] dark:text-green-400 font-bold text-[11px]">
-                  {language === "pt" ? "Horário de Atendimento: 07h30 às 21h30" : "Service Hours: 7:30 AM to 9:30 PM"}
+              <li className="pt-1">
+                <button
+                  id="footer-support-btn"
+                  onClick={() => {
+                    vibrateClick();
+                    setIsContactModalOpen(true);
+                  }}
+                  className="w-full py-2.5 px-3 rounded-xl bg-[#00843D] hover:bg-[#006e32] text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center space-x-2"
+                >
+                  <MessageSquarePlus className="w-4 h-4" />
+                  <span>{t("contactSupportBtn", "Enviar Feedback ou Relatar Bug")}</span>
+                </button>
+              </li>
+              <li className="pt-1">
+                <span className="inline-block px-2.5 py-1 rounded-md bg-neutral-100 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 font-semibold text-[11px] border border-neutral-200 dark:border-neutral-800">
+                  {language === "pt" ? "Horário: 07h30 às 21h30" : "Hours: 7:30 AM to 9:30 PM"}
                 </span>
               </li>
             </ul>
@@ -190,6 +226,12 @@ export const Footer: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Contact Support & Feedback Modal */}
+      <ContactSupportModal
+        isOpen={isContactModalOpen}
+        onClose={() => setIsContactModalOpen(false)}
+      />
     </footer>
   );
 };

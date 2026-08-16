@@ -81,6 +81,24 @@ export interface TranslationDictionary {
   claimItem: string;
   share: string;
   close: string;
+  contactSupport: string;
+  contactSupportBtn: string;
+  contactModalTitle: string;
+  contactModalDesc: string;
+  contactNameLabel: string;
+  contactEmailLabel: string;
+  contactCategoryLabel: string;
+  contactSubjectLabel: string;
+  contactMessageLabel: string;
+  contactPriorityLabel: string;
+  contactSubmitBtn: string;
+  contactSubmitting: string;
+  contactDirectMailBtn: string;
+  contactSuccessTitle: string;
+  contactSuccessDesc: string;
+  contactProtocolLabel: string;
+  contactCopyProtocol: string;
+  contactCopied: string;
 }
 
 export const translations: Record<SupportedLanguage, TranslationDictionary> = {
@@ -163,6 +181,24 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     claimItem: "Solicitar Posse",
     share: "Compartilhar",
     close: "Fechar",
+    contactSupport: "Fale com o Suporte / Feedback",
+    contactSupportBtn: "Enviar Feedback ou Relatar Bug",
+    contactModalTitle: "Suporte & Feedback Institucional",
+    contactModalDesc: "Envie relatos de erros, sugestões de melhoria ou dúvidas diretamente para a equipe de apoio do Campus Ivaiporã.",
+    contactNameLabel: "Seu Nome Completo",
+    contactEmailLabel: "Seu E-mail Institucional ou Pessoal",
+    contactCategoryLabel: "Tipo de Mensagem",
+    contactSubjectLabel: "Assunto",
+    contactMessageLabel: "Mensagem / Descrição Detalhada",
+    contactPriorityLabel: "Nível de Prioridade",
+    contactSubmitBtn: "Enviar Mensagem por E-mail",
+    contactSubmitting: "Enviando à equipe...",
+    contactDirectMailBtn: "Abrir no Meu Aplicativo de E-mail",
+    contactSuccessTitle: "Mensagem Encaminhada com Sucesso!",
+    contactSuccessDesc: "Seu relato foi registrado e notificado para a equipe de suporte do IFPR Campus Ivaiporã.",
+    contactProtocolLabel: "Protocolo de Atendimento",
+    contactCopyProtocol: "Copiar Protocolo",
+    contactCopied: "Protocolo copiado!",
   },
   en: {
     appName: "IFPR Lost & Found",
@@ -243,5 +279,23 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     claimItem: "Claim Item",
     share: "Share",
     close: "Close",
+    contactSupport: "Contact Support / Feedback",
+    contactSupportBtn: "Send Feedback or Report Bug",
+    contactModalTitle: "Institutional Support & Feedback",
+    contactModalDesc: "Send bug reports, feature suggestions, or queries directly to the IFPR Ivaiporã Campus team.",
+    contactNameLabel: "Your Full Name",
+    contactEmailLabel: "Your Email Address",
+    contactCategoryLabel: "Message Category",
+    contactSubjectLabel: "Subject",
+    contactMessageLabel: "Detailed Message / Description",
+    contactPriorityLabel: "Priority Level",
+    contactSubmitBtn: "Send Message via Email",
+    contactSubmitting: "Sending to campus team...",
+    contactDirectMailBtn: "Open in My Email App",
+    contactSuccessTitle: "Message Dispatched Successfully!",
+    contactSuccessDesc: "Your feedback has been logged and forwarded directly to the IFPR Ivaiporã support team.",
+    contactProtocolLabel: "Service Ticket Protocol",
+    contactCopyProtocol: "Copy Protocol",
+    contactCopied: "Protocol copied!",
   },
 };

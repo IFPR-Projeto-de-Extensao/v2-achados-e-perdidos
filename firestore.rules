@@ -216,6 +216,16 @@ service cloud.firestore {
       allow create, update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
+
+    // ==========================================
+    // 12. Support & Feedback Tickets Collection
+    // ==========================================
+    match /support_tickets/{ticketId} {
+      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
   }
 }
 

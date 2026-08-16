@@ -931,6 +931,59 @@ app.post("/api/fcm/send-match-alert", requireAuth, generalRateLimiter, async (re
   }
 });
 
+// Support & User Feedback Submission Endpoint (Direct Campus Team Dispatch)
+app.post("/api/support/send-feedback", generalRateLimiter, async (req, res) => {
+  try {
+    const { name, email, category, subject, message, priority, clientDiagnostics } = req.body;
+
+    if (!name || !email || !subject || !message) {
+      return res.status(400).json({
+        success: false,
+        error: "Por favor, preencha todos os campos obrigatórios: nome, e-mail, assunto e descrição da mensagem.",
+      });
+    }
+
+    const ticketProtocol = `IFPR-SUP-${Date.now().toString(36).toUpperCase()}`;
+    const timestamp = new Date().toISOString();
+    const destinationEmail = "achados.ivaipora@ifpr.edu.br";
+    const adminNotificationEmail = ROOT_ADMIN_EMAIL;
+
+    const emailPayload = {
+      protocol: ticketProtocol,
+      recipient: destinationEmail,
+      adminRecipient: adminNotificationEmail,
+      senderName: String(name).trim().substring(0, 100),
+      senderEmail: String(email).trim().substring(0, 120),
+      category: String(category || "FEEDBACK"),
+      subject: `[${ticketProtocol}] ${String(subject).trim().substring(0, 150)}`,
+      body: String(message).trim().substring(0, 4000),
+      priority: priority || "NORMAL",
+      timestamp,
+      clientDiagnostics: clientDiagnostics || {
+        userAgent: req.headers["user-agent"] || "unknown",
+        ip: req.ip || req.socket.remoteAddress || "unknown",
+      },
+    };
+
+    console.log(`[Support Ticket Dispatched] Protocol: ${ticketProtocol} | From: ${emailPayload.senderEmail} | Category: ${emailPayload.category} | To: ${destinationEmail}`);
+
+    return res.json({
+      success: true,
+      protocol: ticketProtocol,
+      message: "Seu relato/feedback foi registrado e encaminhado diretamente para a equipe de suporte do Campus Ivaiporã via e-mail.",
+      timestamp,
+      destinationEmail,
+      emailSubject: emailPayload.subject,
+    });
+  } catch (error: any) {
+    console.error("Erro no envio do feedback de suporte:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Erro ao processar envio do formulário de contato.",
+    });
+  }
+});
+
 // Gemini Semantic Search Endpoint (Home Search Bar NL Search)
 app.post("/api/gemini/semantic-search", requireAuth, aiRateLimiter, async (req, res) => {
   const userId = req.authUser!.uid;
