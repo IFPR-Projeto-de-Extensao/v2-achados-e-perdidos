@@ -12,6 +12,7 @@ import { traceFirebasePerformance } from "./lib/firebase";
 import { savePerformanceMetricLog } from "./lib/offlineDb";
 import { APP_VALID_TABS, DEFAULT_MAINTENANCE_MESSAGE, type AppTabType } from "./lib/shared-constants";
 import { Loader2 } from "lucide-react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 // Lazy-loaded heavy views and modals for optimal bundle splitting and fast initial paint
 const ObjectsView = lazy(() => import("./components/ObjectsView").then((m) => ({ default: m.ObjectsView })));
@@ -259,6 +260,7 @@ export default function App() {
   return (
     <AppProvider>
       <MainContent />
+      <SpeedInsights />
     </AppProvider>
   );
 }
