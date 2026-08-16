@@ -74,7 +74,14 @@ import {
   sanitizeFirestoreData,
 } from "../lib/shared-constants";
 import { SupportedLanguage, TranslationDictionary, translations } from "../lib/i18n";
-import { requestFCMPermissionAndToken, displayWebPushNotification, checkFCMSubscriptionStatus } from "../lib/fcm";
+import {
+  requestFCMPermissionAndToken,
+  displayWebPushNotification,
+  checkFCMSubscriptionStatus,
+  sendRealtimeMatchPushAlert,
+  playNotificationChime,
+  setupFCMForegroundListener,
+} from "../lib/fcm";
 
 interface Toast {
   id: string;
@@ -497,6 +504,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (_) {}
     }
   }, [allUsers]);
+
+  // Foreground Firebase Cloud Messaging Listener
+  useEffect(() => {
+    const cleanupFCM = setupFCMForegroundListener((payload) => {
+      addToast(`${payload.title}: ${payload.body}`, "info");
+      displayWebPushNotification(payload.title, payload.body, payload.data);
+    });
+
+    return () => {
+      cleanupFCM();
+    };
+  }, []);
 
   // Claims state
   const [claims, setClaims] = useState<ItemClaim[]>([]);
@@ -1486,6 +1505,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, []);
 
+  // Track seen notification IDs to only alert on newly arriving real-time notifications
+  const initialNotifsLoadedRef = React.useRef(false);
+  const seenNotifsRef = React.useRef<Set<string>>(new Set());
+
   // Sync Notifications from Firestore
   useEffect(() => {
     const unsubscribe = onSnapshot(
@@ -1496,6 +1519,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } else {
           const loadedNotifs: NotificationItem[] = snapshot.docs.map((d) => d.data() as NotificationItem);
           loadedNotifs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          
+          // Real-time Push Alert for newly received MATCH notifications for the active user
+          if (initialNotifsLoadedRef.current && currentUser?.id) {
+            snapshot.docChanges().forEach((change) => {
+              if (change.type === "added") {
+                const notif = change.doc.data() as NotificationItem;
+                if (
+                  notif.userId === currentUser.id &&
+                  notif.type === "MATCH" &&
+                  !notif.read &&
+                  !seenNotifsRef.current.has(notif.id)
+                ) {
+                  seenNotifsRef.current.add(notif.id);
+                  playNotificationChime();
+                  displayWebPushNotification(
+                    notif.title || "IFPR Achados • Objeto Similar!",
+                    notif.message,
+                    {
+                      url: `/?item=${notif.relatedItemId || ""}`,
+                      itemId: notif.relatedItemId,
+                    }
+                  );
+                  addToast(notif.title + ": " + notif.message, "info");
+                }
+              }
+            });
+          }
+
+          // Mark loaded IDs as seen
+          loadedNotifs.forEach((n) => seenNotifsRef.current.add(n.id));
+          initialNotifsLoadedRef.current = true;
           setNotifications(loadedNotifs);
         }
       },
@@ -1505,7 +1559,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [currentUser?.id]);
 
   // Sync Comments from Firestore
   useEffect(() => {
@@ -2016,12 +2070,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (aiMatches.length > 0) {
+      // 1. Send push notifications and Firestore alerts to ALL counterpart owners whose items matched
+      for (const match of aiMatches) {
+        const targetUserId = match.matchedItem.registeredByUserId;
+
+        if (targetUserId && targetUserId !== currentUser.id) {
+          const isCounterpartLost = match.matchedItem.type === "PERDIDO";
+          const notifTitle = isCounterpartLost
+            ? `🔍 Possível Objeto Encontrado (${match.matchScore}% de compatibilidade)!`
+            : `📢 Novo Relato de Objeto Compatível (${match.matchScore}%)`;
+
+          const featuresStr = match.matchedFeatures && match.matchedFeatures.length > 0
+            ? ` (Semelhanças: ${match.matchedFeatures.join(", ")})`
+            : "";
+
+          const notifMsg = isCounterpartLost
+            ? `Um(a) "${newItem.title}" similar ao seu pertence perdido "${match.matchedItem.title}"${featuresStr} acaba de ser registrado no IFPR (${newItem.location}).`
+            : `Um usuário registrou um pertence "${newItem.title}", correspondente ao objeto sob custódia "${match.matchedItem.title}".`;
+
+          const counterpartNotif: NotificationItem = {
+            id: `notif-match-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            userId: targetUserId,
+            title: notifTitle,
+            message: notifMsg,
+            timestamp: new Date().toISOString(),
+            read: false,
+            type: "MATCH",
+            relatedItemId: newItem.id,
+          };
+
+          try {
+            await setDoc(doc(db, "notifications", counterpartNotif.id), sanitizeFirestoreData(counterpartNotif));
+          } catch (e) {
+            handleFirestoreError(e, OperationType.WRITE, `notifications/${counterpartNotif.id}`);
+          }
+
+          // Trigger server push notification dispatch & audit trail
+          try {
+            safeFetchJson(
+              "/api/fcm/send-match-alert",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  targetUserId,
+                  matchScore: match.matchScore,
+                  newRegisteredItem: newItem,
+                  userLostItem: match.matchedItem,
+                  matchedFeatures: match.matchedFeatures,
+                }),
+              },
+              () => ({ success: true })
+            ).catch(() => {});
+          } catch (_) {}
+        }
+      }
+
+      // 2. Alert the current user registering the item if a match was identified
       const topMatch = aiMatches[0];
       const newNotif: NotificationItem = {
         id: `notif-${Date.now()}`,
         userId: currentUser.id,
         title: "Correspondência de IA Identificada!",
-        message: `A IA encontrou ${topMatch.matchScore}% de similaridade com: ${topMatch.matchedItem.title}`,
+        message: `A IA encontrou ${topMatch.matchScore}% de similaridade com: ${topMatch.matchedItem.title} (${topMatch.matchedItem.location})`,
         timestamp: new Date().toISOString(),
         read: false,
         type: "MATCH",
@@ -2034,16 +2145,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       setAiMatchAlert({ newItem, matches: aiMatches });
 
-      if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-        try {
-          new Notification("IFPR Achados & Perdidos • Alerta de Correspondência", {
-            body: `Objeto compatível encontrado (${topMatch.matchScore}%): ${topMatch.matchedItem.title} (${topMatch.matchedItem.location})`,
-            icon: "/favicon.ico",
-          });
-        } catch (e) {
-          console.warn("Aviso ao disparar notificação do navegador:", e);
+      displayWebPushNotification(
+        "IFPR Achados & Perdidos • Alerta de Correspondência",
+        `Objeto compatível encontrado (${topMatch.matchScore}%): ${topMatch.matchedItem.title} (${topMatch.matchedItem.location})`,
+        {
+          url: `/?item=${topMatch.matchedItem.id}`,
+          itemId: topMatch.matchedItem.id,
+          matchScore: topMatch.matchScore,
         }
-      }
+      );
     }
 
     addToast(`Objeto "${newItem.title}" cadastrado com sucesso no Firestore!`, "success");

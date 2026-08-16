@@ -142,6 +142,9 @@
     },
     "/comments/{commentId}": {
       "description": "Item public and staff comments"
+    },
+    "/fcm_subscriptions/{userId}": {
+      "description": "User Firebase Cloud Messaging tokens and push notification preferences"
     }
   }
 }

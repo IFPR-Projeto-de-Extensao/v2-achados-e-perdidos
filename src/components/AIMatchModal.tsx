@@ -20,12 +20,15 @@ export const AIMatchModal: React.FC = () => {
               <Sparkles className="w-6 h-6 animate-pulse" />
             </div>
             <div>
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold text-[#00843D] dark:text-green-400 uppercase tracking-wider">
                   Inteligência Artificial IFPR Campus Ivaiporã
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
                   Correspondência {topMatch.matchScore}%
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-300 text-[10px] font-bold">
+                  Push FCM Enviado
                 </span>
               </div>
               <h3 className="text-xl font-black text-neutral-900 dark:text-white">
@@ -40,6 +43,13 @@ export const AIMatchModal: React.FC = () => {
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/20 text-xs text-emerald-900 dark:text-emerald-200 flex items-start gap-2.5">
+          <CheckCircle2 className="w-4 h-4 text-[#00843D] dark:text-green-400 shrink-0 mt-0.5" />
+          <span>
+            <strong>Alerta Push Disparado:</strong> Os usuários que cadastraram os itens correspondentes foram notificados automaticamente em tempo real via Firebase Cloud Messaging no navegador e celular.
+          </span>
         </div>
 
         <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">

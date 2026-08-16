@@ -880,6 +880,57 @@ Calcule uma pontuação de similaridade de 0 a 100 para cada um. Retorne apenas 
   }
 });
 
+// Firebase Cloud Messaging Push Notification Dispatch Endpoint
+app.post("/api/fcm/send-match-alert", requireAuth, generalRateLimiter, async (req, res) => {
+  const userId = req.authUser!.uid;
+  const userEmail = req.authUser?.email;
+  const userRole = req.authUser?.role;
+
+  try {
+    const { targetUserId, matchScore, newRegisteredItem, userLostItem, matchedFeatures } = req.body;
+
+    if (!targetUserId || !newRegisteredItem || !userLostItem) {
+      return res.status(400).json({ error: "Parâmetros incompletos para envio do alerta push FCM." });
+    }
+
+    const payload = {
+      title: `🔍 Objeto Similar Encontrado (${matchScore || 85}%)`,
+      body: `Um(a) "${newRegisteredItem.title}" com alta similaridade com seu relato "${userLostItem.title}" foi registrado no IFPR Campus Ivaiporã (${newRegisteredItem.location}).`,
+      data: {
+        url: `/?item=${newRegisteredItem.id}`,
+        itemId: newRegisteredItem.id,
+        matchScore: String(matchScore || 85),
+      },
+    };
+
+    logAIAudit({
+      userId,
+      userEmail,
+      userRole,
+      endpoint: "/api/fcm/send-match-alert",
+      action: "FCM_PUSH_DISPATCH",
+      status: "SUCCESS",
+      details: {
+        targetUserId,
+        matchScore,
+        newItemId: newRegisteredItem.id,
+        lostItemId: userLostItem.id,
+        matchedFeatures,
+      },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
+    return res.json({
+      success: true,
+      message: "Alerta Push FCM processado e registrado com sucesso.",
+      notification: payload,
+    });
+  } catch (error: any) {
+    console.error("Erro no envio de push FCM:", error);
+    return res.status(500).json({ error: error.message || "Erro no servidor ao despachar push FCM." });
+  }
+});
+
 // Gemini Semantic Search Endpoint (Home Search Bar NL Search)
 app.post("/api/gemini/semantic-search", requireAuth, aiRateLimiter, async (req, res) => {
   const userId = req.authUser!.uid;

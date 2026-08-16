@@ -206,6 +206,16 @@ service cloud.firestore {
       allow update: if isSignedIn() && existing().userId == request.auth.uid;
       allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
     }
+
+    // ==========================================
+    // 11. FCM Subscriptions Collection
+    // ==========================================
+    match /fcm_subscriptions/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
   }
 }
 

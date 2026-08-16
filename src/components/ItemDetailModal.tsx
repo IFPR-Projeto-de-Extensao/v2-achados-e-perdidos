@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { LostFoundItem } from "../types";
 import { useApp } from "../context/AppContext";
 import { usePossessionVerification } from "../hooks/usePossessionVerification";
@@ -32,6 +34,7 @@ import {
   PackageCheck,
   FileSpreadsheet,
   Eye,
+  FileText,
 } from "lucide-react";
 
 interface ItemDetailModalProps {
@@ -124,6 +127,340 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
   // Find associated approved claim for PDF receipt details
   const approvedClaim = claims.find((c) => c.itemId === item.id && (c.status === "APROVADO" || c.status === "CONCLUIDO"));
+
+  // Helper to convert SVG QR code to image data URL for embedding in jsPDF
+  const getQRCodeDataUrl = async (qrId: string): Promise<string | null> => {
+    try {
+      const qrSvg = document.getElementById(`qr-code-svg-${qrId}`) as unknown as SVGElement | null;
+      if (!qrSvg) return null;
+      const svgData = new XMLSerializer().serializeToString(qrSvg);
+      const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(svgBlob);
+
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = 240;
+          canvas.height = 240;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillRect(0, 0, 240, 240);
+            ctx.drawImage(img, 0, 0, 240, 240);
+            const dataUrl = canvas.toDataURL("image/png");
+            URL.revokeObjectURL(url);
+            resolve(dataUrl);
+          } else {
+            URL.revokeObjectURL(url);
+            resolve(null);
+          }
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          resolve(null);
+        };
+        img.src = url;
+      });
+    } catch {
+      return null;
+    }
+  };
+
+  // Generate Official Printable Item Summary / Campus Report PDF using jsPDF
+  const handleGenerateItemSummaryPDF = async () => {
+    vibrateClick();
+    try {
+      const doc = new jsPDF("p", "mm", "a4");
+      const safeId = String(item?.id ?? "ITEM").replace(/[^a-zA-Z0-9_-]/g, "").toUpperCase();
+      const docReportCode = `LAUDO-IFPR-${safeId}-${Date.now().toString().slice(-4)}`;
+      const emissionDate = new Date().toLocaleString("pt-BR");
+      const safeTitle = item?.title || "Item sem Título";
+
+      // 1. Institutional Top Banner (IFPR Emerald Green #00843D)
+      doc.setFillColor(0, 132, 61);
+      doc.rect(0, 0, 210, 24, "F");
+
+      // Red Accent Line (IFPR Identity Red #C81E1E)
+      doc.setFillColor(200, 30, 30);
+      doc.rect(0, 24, 210, 2.5, "F");
+
+      // Header Text
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.text("INSTITUTO FEDERAL DO PARANÁ - CAMPUS IVAIPORÃ", 14, 11);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8.5);
+      doc.text("SISTEMA OFICIAL DE ACHADOS E PERDIDOS • LAUDO INDIVIDUAL DE PERTENCE", 14, 18);
+
+      // 2. Report Overview & Identification Metadata
+      doc.setTextColor(15, 23, 42);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("FICHA CADASTRAL E LAUDO DE GESTÃO PATRIMONIAL", 14, 34);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Código do Laudo: ${docReportCode}`, 14, 40);
+      doc.text(`Data de Emissão: ${emissionDate}`, 14, 45);
+      doc.text(`Emitido por: ${currentUser?.name || "Usuário IFPR"} (${currentUser?.role || "USUÁRIO"} • ${currentUser?.email || "campus.ivaipora@ifpr.edu.br"})`, 14, 50);
+      doc.text(`Código de Rastreamento QR: ${item?.qrCodeId || item?.id}`, 14, 55);
+
+      // Status Badge inside document
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      let statusColor: [number, number, number] = [0, 132, 61];
+      if (item.status === "PERDIDO") statusColor = [220, 38, 38];
+      else if (item.status === "EM_ANALISE") statusColor = [217, 119, 6];
+      else if (item.status === "DEVOLVIDO") statusColor = [37, 99, 235];
+
+      doc.setFillColor(statusColor[0], statusColor[1], statusColor[2]);
+      doc.roundedRect(14, 58, 48, 6.5, 1.5, 1.5, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.text(`STATUS: ${String(item?.status || "REGISTRADO").replace("_", " ")}`, 16, 62.5);
+
+      // Render QR Code onto the top-right corner if available
+      try {
+        const qrDataUrl = await getQRCodeDataUrl(item.id);
+        if (qrDataUrl) {
+          doc.setDrawColor(0, 132, 61);
+          doc.setLineWidth(0.4);
+          doc.roundedRect(165, 30, 31, 31, 1, 1, "D");
+          doc.addImage(qrDataUrl, "PNG", 166, 31, 29, 29);
+          doc.setFontSize(6.5);
+          doc.setTextColor(0, 132, 61);
+          doc.setFont("helvetica", "bold");
+          doc.text("QR OFICIAL", 180.5, 64, { align: "center" });
+        }
+      } catch (e) {
+        console.warn("QR code render in PDF skipped:", e);
+      }
+
+      // 3. Section 1 Table: Dados Cadastrais do Objeto
+      const generalDataRows = [
+        ["ID da Ocorrência:", item.id, "Tipo do Registro:", item.type === "PERDIDO" ? "Perdido (Procura-se)" : "Encontrado (No Acervo)"],
+        ["Título / Denominação:", safeTitle, "Categoria:", item.category || "Outros"],
+        ["Local da Ocorrência:", item.location || "Campus IFPR", "Data do Registro / Entrada:", formatDate(item.date)],
+        ["Cor Predominante:", item.color || "Não especificada", "Marca / Fabricante:", item.brand || "Não identificada"],
+        ["Cadastrado por:", `${item.registeredByName || "Usuário IFPR"} (${item.registeredByRole || "IFPR"})`, "Validação de Posse (RNF04):", item.secretVerificationKey || item.secretVerificationHint ? "Chave Secreta Configurada (Ativa)" : "Verificação Convencional"],
+        ["Setor de Custódia / Contato:", item.contactInfo || "Guarita Principal / SEBAC Campus Ivaiporã", "Código de Etiqueta QR:", item.qrCodeId || item.id],
+      ];
+
+      autoTable(doc, {
+        startY: 68,
+        head: [["1. DADOS DE IDENTIFICAÇÃO E CARACTERÍSTICAS", "", "", ""]],
+        body: generalDataRows,
+        theme: "grid",
+        headStyles: {
+          fillColor: [0, 132, 61],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+          fontSize: 8.5,
+        },
+        styles: {
+          fontSize: 7.5,
+          cellPadding: 2,
+          textColor: [30, 41, 59],
+        },
+        columnStyles: {
+          0: { fontStyle: "bold", cellWidth: 42, fillColor: [248, 250, 252] },
+          1: { cellWidth: 60 },
+          2: { fontStyle: "bold", cellWidth: 42, fillColor: [248, 250, 252] },
+          3: { cellWidth: "auto" },
+        },
+      });
+
+      let currentY = (doc as any).lastAutoTable.finalY + 5;
+
+      // 4. Section 2: Descrição Detalhada
+      autoTable(doc, {
+        startY: currentY,
+        head: [["2. DESCRIÇÃO DETALHADA E CARACTERÍSTICAS VISUAIS"]],
+        body: [[item.description || "Nenhuma observação descritiva complementar informada no momento do registro."]],
+        theme: "grid",
+        headStyles: {
+          fillColor: [30, 41, 59],
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+          fontSize: 8.5,
+        },
+        styles: {
+          fontSize: 7.5,
+          cellPadding: 3,
+          textColor: [51, 65, 85],
+        },
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 5;
+
+      // 5. Section 3: Histórico de Tramitação e Auditoria
+      const timelineRows = (sortedTimeline.length > 0 ? sortedTimeline : [
+        {
+          timestamp: item.date,
+          action: "Registro do Objeto no Sistema",
+          actorName: item.registeredByName || "Sistema",
+          actorRole: "AUTOR",
+          details: "Objeto inserido no banco de dados oficial de Achados & Perdidos.",
+        },
+      ]).slice(0, 10).map((log: any) => [
+        formatDateTime(log.timestamp),
+        log.action || "Registro",
+        `${log.actorName || log.userName || "Usuário"} (${log.actorRole || log.userRole || "IFPR"})`,
+        log.details || "-",
+      ]);
+
+      autoTable(doc, {
+        startY: currentY,
+        head: [["Data / Hora", "Ação Registrada", "Responsável", "Detalhes da Tramitação"]],
+        body: timelineRows,
+        theme: "striped",
+        headStyles: {
+          fillColor: [79, 70, 229], // Indigo #4F46E5
+          textColor: [255, 255, 255],
+          fontStyle: "bold",
+          fontSize: 8,
+        },
+        styles: {
+          fontSize: 7,
+          cellPadding: 2,
+        },
+        columnStyles: {
+          0: { cellWidth: 32 },
+          1: { cellWidth: 42, fontStyle: "bold" },
+          2: { cellWidth: 45 },
+          3: { cellWidth: "auto" },
+        },
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 5;
+
+      // Check if we need a new page for restitution/closure or signatures
+      if (currentY > 230) {
+        doc.addPage();
+        currentY = 20;
+      }
+
+      // 6. Section 4: Informações de Restituição / Reivindicação (se houver)
+      if (approvedClaim || item.status === "DEVOLVIDO") {
+        const claimerName = approvedClaim ? approvedClaim.claimerName : (item.registeredByName || "Proprietário Identificado");
+        const claimerEmail = approvedClaim ? approvedClaim.claimerEmail : (currentUser?.email || "E-mail Registrado");
+
+        autoTable(doc, {
+          startY: currentY,
+          head: [["4. DADOS DA RESTITUIÇÃO E ENCERRAMENTO"]],
+          body: [
+            [`Proprietário / Recebedor: ${claimerName} (${claimerEmail})\nData de Encerramento: ${item.resolutionDate ? formatDateTime(item.resolutionDate) : emissionDate}\nComprovação Registrada: ${approvedClaim?.verificationAnswer || "Conferência presencial realizada na guarita / SEBAC com documento oficial."}`],
+          ],
+          theme: "grid",
+          headStyles: {
+            fillColor: [37, 99, 235], // Blue #2563EB
+            textColor: [255, 255, 255],
+            fontStyle: "bold",
+            fontSize: 8.5,
+          },
+          styles: {
+            fontSize: 7.5,
+            cellPadding: 2.5,
+          },
+        });
+
+        currentY = (doc as any).lastAutoTable.finalY + 8;
+      }
+
+      // Ensure space for signature lines (~35mm)
+      if (currentY > 240) {
+        doc.addPage();
+        currentY = 20;
+      }
+
+      // 7. Termo de Autenticidade & Assinaturas Oficiais
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(100, 116, 139);
+      doc.text(
+        "Declaro para os devidos fins institucionais e regulamentares que as informações acima transcritas correspondem fielmente aos registros oficiais do Sistema de Achados e Perdidos do IFPR Campus Ivaiporã.",
+        14,
+        currentY,
+        { maxWidth: 182 }
+      );
+
+      currentY += 15;
+
+      // Signature lines
+      doc.setDrawColor(30, 41, 59);
+      doc.setLineWidth(0.5);
+
+      // Left Signature: Responsável SEBAC / Guarita
+      doc.line(18, currentY, 92, currentY);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text("Servidor Responsável (SEBAC / Portaria)", 55, currentY + 4, { align: "center" });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("IFPR Campus Ivaiporã", 55, currentY + 7.5, { align: "center" });
+
+      // Right Signature: Proprietário / Requerente
+      doc.line(118, currentY, 192, currentY);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.setTextColor(30, 41, 59);
+      doc.text("Proprietário / Requerente do Pertence", 155, currentY + 4, { align: "center" });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text("Assinatura e Documento", 155, currentY + 7.5, { align: "center" });
+
+      // 8. Footer on All Pages with Page Numbers & Institutional Watermark
+      const totalPages = (doc as any).internal.getNumberOfPages();
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        doc.setFontSize(6.5);
+        doc.setTextColor(148, 163, 184);
+        doc.setDrawColor(226, 232, 240);
+        doc.line(14, 286, 196, 286);
+        doc.text(
+          `IFPR Campus Ivaiporã • Sistema de Gestão de Achados e Perdidos • Laudo ${docReportCode} • Página ${i} de ${totalPages}`,
+          14,
+          290
+        );
+        doc.text(
+          `Emitido em ${emissionDate}`,
+          196,
+          290,
+          { align: "right" }
+        );
+      }
+
+      // Save PDF to user device
+      const fileName = `Laudo_Oficial_IFPR_${safeId}_${new Date().toISOString().slice(0, 10)}.pdf`;
+      doc.save(fileName);
+
+      // Also open printable blob preview in browser
+      try {
+        const pdfBlob = doc.output("blob");
+        const blobUrl = URL.createObjectURL(pdfBlob);
+        const printWindow = window.open(blobUrl, "_blank");
+        if (printWindow) {
+          setTimeout(() => {
+            try {
+              printWindow.print();
+            } catch (_) {}
+          }, 800);
+        }
+      } catch (_) {}
+
+      vibrateSuccess();
+      addToast("Relatório oficial PDF gerado e baixado com sucesso!", "success");
+    } catch (error: any) {
+      console.error("Erro ao gerar relatório oficial PDF:", error);
+      addToast("Erro ao gerar relatório em PDF. Tente novamente.", "error");
+    }
+  };
 
   // Generate and Print PDF Receipt
   const handlePrintReceiptPDF = () => {
@@ -628,6 +965,21 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           </div>
 
           <div className="flex items-center space-x-2">
+            {/* Printable PDF Campus Summary Report Button */}
+            <button
+              onClick={() => {
+                vibrateClick();
+                handleGenerateItemSummaryPDF();
+              }}
+              role="button"
+              aria-label="Gerar Laudo e Relatório Oficial em PDF deste Item"
+              className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-[#00843D] hover:text-white border border-[#00843D]/30 text-[#00843D] dark:text-green-400 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title="Gerar Laudo / Relatório Oficial em PDF (jsPDF)"
+            >
+              <FileText className="w-4 h-4" />
+              <span className="hidden sm:inline">Relatório PDF</span>
+            </button>
+
             {/* Share Button (Web Share API) */}
             <button
               onClick={() => {
@@ -773,7 +1125,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
                 <button
                   type="button"
                   onClick={handleDownloadQRCodePNG}
@@ -802,11 +1154,23 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   <span>Etiqueta</span>
                 </button>
 
+                {/* Generate jsPDF Campus Summary Report Button */}
+                <button
+                  type="button"
+                  onClick={handleGenerateItemSummaryPDF}
+                  className="w-full py-2 px-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                  title="Gerar Ficha / Relatório Oficial do Campus em PDF (jsPDF)"
+                >
+                  <FileText className="w-3.5 h-3.5 text-emerald-300" />
+                  <span>Laudo PDF</span>
+                </button>
+
                 {/* Generate PDF Receipt Button */}
                 <button
                   type="button"
                   onClick={handlePrintReceiptPDF}
                   className="w-full py-2 px-2 rounded-xl bg-[#00843D] text-white font-bold text-xs hover:bg-[#006e33] transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                  title="Recibo de Devolução Individual"
                 >
                   <FileCheck className="w-3.5 h-3.5" />
                   <span>Recibo PDF</span>
@@ -1003,6 +1367,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               >
                 <Send className="w-4 h-4 text-red-500" />
                 <span>Enviar Notificação / Dúvida via Gmail</span>
+              </button>
+
+              {/* Generate Official Printable Item Summary / Campus Report PDF Button */}
+              <button
+                type="button"
+                onClick={handleGenerateItemSummaryPDF}
+                className="w-full py-2.5 px-4 rounded-xl border border-[#00843D]/30 bg-[#00843D]/10 hover:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer"
+                title="Gerar Laudo / Relatório Oficial em PDF (jsPDF)"
+              >
+                <FileText className="w-4 h-4 text-[#00843D]" />
+                <span>Gerar Relatório Oficial do Campus (Ficha em PDF)</span>
               </button>
 
               {/* Servidor / Admin Privileges: Formal Devolution Flow */}

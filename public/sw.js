@@ -256,3 +256,55 @@ self.addEventListener('message', (event) => {
     }
   }
 });
+
+// ==============================================================================
+// PUSH NOTIFICATIONS & MATCH ALERTS
+// ==============================================================================
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  try {
+    const payload = event.data.json();
+    const title = payload.notification?.title || payload.title || 'IFPR Achados & Perdidos';
+    const options = {
+      body: payload.notification?.body || payload.body || 'Alerta de objeto correspondente registrado no campus.',
+      icon: payload.notification?.icon || '/icon-192.png',
+      badge: '/icon-192.png',
+      vibrate: [200, 100, 200, 100, 200],
+      tag: payload.data?.tag || `ifpr-match-${Date.now()}`,
+      renotify: true,
+      data: payload.data || { url: '/' },
+    };
+
+    event.waitUntil(self.registration.showNotification(title, options));
+  } catch (_) {
+    const rawText = event.data.text();
+    event.waitUntil(
+      self.registration.showNotification('IFPR Achados & Perdidos', {
+        body: rawText,
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        vibrate: [200, 100, 200],
+      })
+    );
+  }
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const urlToOpen = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url.includes(self.registration.scope) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(urlToOpen);
+      }
+    })
+  );
+});
