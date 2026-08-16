@@ -232,74 +232,195 @@ function getGenAIClient(): GoogleGenAI | null {
 // In-memory Analytics & Monitoring Store
 const serverStartTime = Date.now();
 let totalServerRequests = 0;
-const analyticsEvents: Array<{ eventName: string; params?: any; timestamp: string; ip?: string }> = [];
+const analyticsEvents: Array<{
+  eventName: string;
+  params?: any;
+  timestamp: string;
+  url?: string;
+  ip?: string;
+  userId?: string;
+  userEmail?: string;
+}> = [];
 const eventCounters: Record<string, number> = {};
 
 // Global System Configuration State (Maintenance Mode & Campus Announcements)
-let globalSystemConfig = {
+interface SystemConfigState {
+  maintenanceMode: boolean;
+  maintenanceCustomMessage: string;
+  lastUpdated: string;
+  updatedBy: string;
+}
+
+const DEFAULT_SYSTEM_CONFIG: SystemConfigState = {
   maintenanceMode: false,
   maintenanceCustomMessage: "⚠️ ATENÇÃO: O SISTEMA ESTÁ EM MODO DE MANUTENÇÃO / ATUALIZAÇÃO PROGRAMADA NO CAMPUS IVAIPORÃ",
   lastUpdated: new Date().toISOString(),
   updatedBy: "SYSTEM",
 };
 
+let globalSystemConfig: SystemConfigState = { ...DEFAULT_SYSTEM_CONFIG };
+
+function getValidatedSystemConfig(): SystemConfigState {
+  if (!globalSystemConfig || typeof globalSystemConfig !== "object") {
+    console.warn("[System Config Warning] globalSystemConfig inválido. Restaurando estado padrão.");
+    globalSystemConfig = { ...DEFAULT_SYSTEM_CONFIG, lastUpdated: new Date().toISOString() };
+  }
+  return {
+    maintenanceMode: Boolean(globalSystemConfig.maintenanceMode),
+    maintenanceCustomMessage:
+      typeof globalSystemConfig.maintenanceCustomMessage === "string" && globalSystemConfig.maintenanceCustomMessage.trim()
+        ? globalSystemConfig.maintenanceCustomMessage.trim()
+        : DEFAULT_SYSTEM_CONFIG.maintenanceCustomMessage,
+    lastUpdated: globalSystemConfig.lastUpdated || new Date().toISOString(),
+    updatedBy: globalSystemConfig.updatedBy || "SYSTEM",
+  };
+}
+
 app.use((_req, _res, next) => {
   totalServerRequests++;
   next();
 });
 
-// API System Configuration Endpoints (Works seamlessly online & server-side)
-app.get("/api/system/config", (_req, res) => {
-  res.json({
-    success: true,
-    config: globalSystemConfig,
-  });
+// API System Configuration Endpoints (Works seamlessly online, in serverless & container environments)
+app.get("/api/system/config", (req: Request, res: Response) => {
+  try {
+    const config = getValidatedSystemConfig();
+    return res.status(200).json({
+      success: true,
+      config,
+      environment: {
+        isVercel: Boolean(process.env.VERCEL),
+        nodeEnv: process.env.NODE_ENV || "development",
+        serverTimestamp: new Date().toISOString(),
+      },
+    });
+  } catch (err: any) {
+    console.error("[System Config Error] Falha ao ler configuração do sistema:", {
+      message: err?.message || String(err),
+      stack: err?.stack,
+      ip: req.ip || req.socket.remoteAddress,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(200).json({
+      success: true,
+      config: { ...DEFAULT_SYSTEM_CONFIG, lastUpdated: new Date().toISOString() },
+      warning: "Configuração recuperada via fallback de segurança.",
+    });
+  }
 });
 
-app.post("/api/system/config", requireAdmin, (req, res) => {
+app.post("/api/system/config", requireAdmin, (req: Request, res: Response) => {
   try {
+    if (!req.body || typeof req.body !== "object") {
+      console.warn("[System Config POST Warning] Corpo da requisição ausente ou inválido:", {
+        body: req.body,
+        user: req.authUser?.email || req.authUser?.uid,
+        ip: req.ip,
+      });
+      return res.status(400).json({
+        success: false,
+        error: "Corpo da requisição inválido. Envie um objeto JSON válido.",
+      });
+    }
+
     const { maintenanceMode, maintenanceCustomMessage } = req.body;
+    const current = getValidatedSystemConfig();
+
     if (typeof maintenanceMode === "boolean") {
-      globalSystemConfig.maintenanceMode = maintenanceMode;
+      current.maintenanceMode = maintenanceMode;
     }
     if (typeof maintenanceCustomMessage === "string" && maintenanceCustomMessage.trim()) {
-      globalSystemConfig.maintenanceCustomMessage = maintenanceCustomMessage.trim().substring(0, 500);
+      current.maintenanceCustomMessage = maintenanceCustomMessage.trim().substring(0, 500);
     }
-    globalSystemConfig.lastUpdated = new Date().toISOString();
-    globalSystemConfig.updatedBy = req.authUser?.email || "ADMIN_SESSION";
+    current.lastUpdated = new Date().toISOString();
+    current.updatedBy = req.authUser?.email || req.authUser?.uid || "ADMIN_SESSION";
 
-    console.log(`[System Config Updated] Modo Manutenção: ${globalSystemConfig.maintenanceMode} por ${globalSystemConfig.updatedBy}`);
-    return res.json({ success: true, config: globalSystemConfig });
+    globalSystemConfig = current;
+
+    console.log(
+      `[System Config Updated] Modo Manutenção: ${globalSystemConfig.maintenanceMode} por ${globalSystemConfig.updatedBy} às ${globalSystemConfig.lastUpdated}`
+    );
+    return res.status(200).json({ success: true, config: globalSystemConfig });
   } catch (err: any) {
-    return res.status(500).json({ error: "Erro ao atualizar configuração do sistema." });
+    console.error("[System Config POST Error] Falha ao atualizar configuração do sistema:", {
+      message: err?.message || String(err),
+      stack: err?.stack,
+      user: req.authUser?.email || req.authUser?.uid,
+      ip: req.ip,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Erro ao atualizar configuração do sistema.",
+      details: process.env.NODE_ENV !== "production" ? err?.message : undefined,
+    });
   }
 });
 
 // API Health Check & System Monitoring
 app.get("/api/health", (_req, res) => {
-  res.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    uptimeSeconds: Math.floor((Date.now() - serverStartTime) / 1000),
-    geminiAvailable: !!process.env.GEMINI_API_KEY,
-    memoryUsageMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
-  });
+  try {
+    const memUsage = process.memoryUsage ? Math.round(process.memoryUsage().heapUsed / 1024 / 1024) : 0;
+    const uptimeSec = Math.floor((Date.now() - serverStartTime) / 1000);
+    res.status(200).json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      uptimeSeconds: uptimeSec >= 0 ? uptimeSec : 0,
+      geminiAvailable: !!process.env.GEMINI_API_KEY,
+      memoryUsageMB: memUsage,
+      isVercel: Boolean(process.env.VERCEL),
+    });
+  } catch (err: any) {
+    res.status(200).json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      uptimeSeconds: 0,
+      geminiAvailable: !!process.env.GEMINI_API_KEY,
+      memoryUsageMB: 0,
+    });
+  }
 });
 
 // Analytics Tracking Endpoint (Google Analytics + Firebase Backend Receiver)
-app.post("/api/analytics/track", (req, res) => {
+app.post("/api/analytics/track", (req: Request, res: Response) => {
   try {
-    const { eventName, params, timestamp, url } = req.body;
-    if (!eventName || typeof eventName !== "string" || eventName.length > 100) {
-      return res.status(400).json({ error: "Nome do evento inválido ou ausente." });
+    if (!req.body || typeof req.body !== "object") {
+      console.warn("[Analytics Track Warning] Payload inválido recebido em /api/analytics/track", {
+        body: req.body,
+        ip: req.ip,
+      });
+      return res.status(400).json({ success: false, error: "Payload JSON inválido." });
     }
 
+    const { eventName, params, timestamp, url } = req.body;
+    if (!eventName || typeof eventName !== "string" || eventName.trim().length === 0 || eventName.length > 100) {
+      console.warn("[Analytics Track Warning] Nome do evento inválido ou ausente:", {
+        eventName,
+        ip: req.ip,
+      });
+      return res.status(400).json({ success: false, error: "Nome do evento ('eventName') inválido ou ausente." });
+    }
+
+    const sanitizedEventName = eventName.trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    if (!sanitizedEventName) {
+      return res.status(400).json({ success: false, error: "Nome do evento contém apenas caracteres inválidos." });
+    }
+
+    const safeParams = params && typeof params === "object" && !Array.isArray(params) ? params : {};
+    const safeTimestamp =
+      timestamp && typeof timestamp === "string" && !isNaN(Date.parse(timestamp))
+        ? timestamp
+        : new Date().toISOString();
+    const safeUrl = typeof url === "string" ? url.substring(0, 300) : "";
+
     const eventRecord = {
-      eventName: eventName.replace(/[^a-zA-Z0-9_-]/g, ""),
-      params: params && typeof params === "object" ? params : {},
-      timestamp: timestamp || new Date().toISOString(),
-      url: typeof url === "string" ? url.substring(0, 300) : "",
-      ip: req.ip,
+      eventName: sanitizedEventName,
+      params: safeParams,
+      timestamp: safeTimestamp,
+      url: safeUrl,
+      ip: req.ip || req.socket.remoteAddress || "unknown",
+      userId: req.authUser?.uid || "ANONYMOUS",
+      userEmail: req.authUser?.email,
     };
 
     analyticsEvents.unshift(eventRecord);
@@ -307,26 +428,61 @@ app.post("/api/analytics/track", (req, res) => {
       analyticsEvents.pop();
     }
 
-    eventCounters[eventRecord.eventName] = (eventCounters[eventRecord.eventName] || 0) + 1;
+    eventCounters[sanitizedEventName] = (eventCounters[sanitizedEventName] || 0) + 1;
 
-    return res.json({ success: true, logged: eventRecord });
+    return res.status(200).json({ success: true, logged: eventRecord });
   } catch (err: any) {
-    return res.status(500).json({ error: "Erro ao processar telemetria de analíticos." });
+    console.error("[Analytics Track Error] Falha ao processar telemetria:", {
+      message: err?.message || String(err),
+      stack: err?.stack,
+      ip: req.ip,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Erro interno ao processar telemetria de analíticos.",
+      details: process.env.NODE_ENV !== "production" ? err?.message : undefined,
+    });
   }
 });
 
 // Analytics Dashboard Metrics Endpoint
-app.get("/api/analytics/metrics", (_req, res) => {
-  res.json({
-    totalServerRequests,
-    totalAnalyticsEvents: analyticsEvents.length,
-    totalAIAuditRecords: aiAuditLogs.length,
-    eventCounters,
-    recentEvents: analyticsEvents.slice(0, 50),
-    recentAIAudits: aiAuditLogs.slice(0, 20),
-    uptimeSeconds: Math.floor((Date.now() - serverStartTime) / 1000),
-    systemMemoryMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
-  });
+app.get("/api/analytics/metrics", (req: Request, res: Response) => {
+  try {
+    const memoryHeap = process.memoryUsage ? Math.round(process.memoryUsage().heapUsed / 1024 / 1024) : 0;
+    const uptimeSec = Math.floor((Date.now() - (serverStartTime || Date.now())) / 1000);
+
+    const metricsData = {
+      success: true,
+      totalServerRequests: typeof totalServerRequests === "number" ? totalServerRequests : 0,
+      totalAnalyticsEvents: Array.isArray(analyticsEvents) ? analyticsEvents.length : 0,
+      totalAIAuditRecords: Array.isArray(aiAuditLogs) ? aiAuditLogs.length : 0,
+      eventCounters: eventCounters && typeof eventCounters === "object" ? eventCounters : {},
+      recentEvents: Array.isArray(analyticsEvents) ? analyticsEvents.slice(0, 50) : [],
+      recentAIAudits: Array.isArray(aiAuditLogs) ? aiAuditLogs.slice(0, 20) : [],
+      uptimeSeconds: uptimeSec >= 0 ? uptimeSec : 0,
+      systemMemoryMB: memoryHeap,
+      serverTimestamp: new Date().toISOString(),
+      environment: {
+        isVercel: Boolean(process.env.VERCEL),
+        nodeVersion: process.version,
+      },
+    };
+
+    return res.status(200).json(metricsData);
+  } catch (err: any) {
+    console.error("[Analytics Metrics Error] Falha ao compilar métricas do sistema:", {
+      message: err?.message || String(err),
+      stack: err?.stack,
+      ip: req.ip,
+      timestamp: new Date().toISOString(),
+    });
+    return res.status(500).json({
+      success: false,
+      error: "Erro ao gerar métricas do sistema.",
+      details: process.env.NODE_ENV !== "production" ? err?.message : undefined,
+    });
+  }
 });
 
 // AI Endpoint: Extrair detalhes de um objeto com base no relato ou imagem
@@ -931,7 +1087,128 @@ app.post("/api/fcm/send-match-alert", requireAuth, generalRateLimiter, async (re
   }
 });
 
-// Support & User Feedback Submission Endpoint (Direct Campus Team Dispatch)
+// Support & User Feedback Submission Endpoint (Direct Campus Team Dispatch & Discord Webhook Forwarding)
+const DISCORD_FEEDBACK_WEBHOOK_URL =
+  process.env.DISCORD_FEEDBACK_WEBHOOK_URL ||
+  "https://discord.com/api/webhooks/1538403537833299968/fdWJobAEIY3ZX8TtHUhUw663s7MQ-fOXvPLNr1KOYIxduDFmv8YpRjtD6J-FhZhxhwtk";
+
+async function sendFeedbackToDiscord(ticket: {
+  protocol: string;
+  name: string;
+  email: string;
+  category: string;
+  subject: string;
+  message: string;
+  priority?: string;
+  timestamp: string;
+  clientDiagnostics?: any;
+}): Promise<boolean> {
+  if (!DISCORD_FEEDBACK_WEBHOOK_URL) {
+    console.warn("[Discord Feedback] Webhook URL não configurada.");
+    return false;
+  }
+
+  try {
+    const categoryMap: Record<string, { label: string; color: number; emoji: string }> = {
+      BUG_REPORT: { label: "Relato de Bug / Erro no Sistema", color: 0xef4444, emoji: "🐛" },
+      FEEDBACK: { label: "Sugestão ou Melhoria", color: 0xf59e0b, emoji: "💡" },
+      BELONGING_QUERY: { label: "Dúvida sobre Pertence / Retirada", color: 0x3b82f6, emoji: "🔍" },
+      OTHER: { label: "Elogio ou Outro Assunto", color: 0x10b981, emoji: "💬" },
+    };
+
+    const cat = categoryMap[ticket.category] || {
+      label: ticket.category || "Feedback Geral",
+      color: 0x6366f1,
+      emoji: "📝",
+    };
+
+    const priorityLabel =
+      ticket.priority === "ALTA"
+        ? "🔴 Alta"
+        : ticket.priority === "BAIXA"
+        ? "🟢 Baixa"
+        : "🟡 Média";
+
+    let dateFormatted = ticket.timestamp;
+    try {
+      dateFormatted = new Date(ticket.timestamp).toLocaleString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    } catch {}
+
+    const fields: Array<{ name: string; value: string; inline?: boolean }> = [
+      { name: "👤 Usuário", value: ticket.name || "Não informado", inline: true },
+      { name: "📧 E-mail", value: ticket.email || "Não informado", inline: true },
+      { name: "🏷️ Tipo de Feedback", value: `${cat.emoji} ${cat.label}`, inline: true },
+      { name: "⚡ Prioridade", value: priorityLabel, inline: true },
+      { name: "📋 Protocolo", value: `\`${ticket.protocol}\``, inline: true },
+      { name: "🕒 Data e Hora", value: dateFormatted, inline: true },
+    ];
+
+    if (ticket.clientDiagnostics && typeof ticket.clientDiagnostics === "object") {
+      const diagParts = [
+        ticket.clientDiagnostics.screen ? `🖥️ Tela: ${ticket.clientDiagnostics.screen}` : null,
+        ticket.clientDiagnostics.currentPath ? `📍 Rota: \`${ticket.clientDiagnostics.currentPath}\`` : null,
+        typeof ticket.clientDiagnostics.online === "boolean"
+          ? `📶 Conexão: ${ticket.clientDiagnostics.online ? "Online" : "Offline"}`
+          : null,
+      ].filter(Boolean);
+
+      if (diagParts.length > 0) {
+        fields.push({
+          name: "🛠️ Diagnóstico do Cliente",
+          value: diagParts.join(" | ").substring(0, 1024),
+          inline: false,
+        });
+      }
+    }
+
+    const discordPayload = {
+      username: "IFPR Achados e Perdidos - Feedback",
+      avatar_url: "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/life-buoy.png",
+      embeds: [
+        {
+          title: `${cat.emoji} [${cat.label}] ${ticket.subject}`.substring(0, 256),
+          description: ticket.message.substring(0, 4000),
+          color: cat.color,
+          fields,
+          footer: {
+            text: "IFPR Campus Ivaiporã • Central de Atendimento & Feedback",
+          },
+          timestamp: ticket.timestamp,
+        },
+      ],
+    };
+
+    const response = await fetch(DISCORD_FEEDBACK_WEBHOOK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(discordPayload),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.warn(`[Discord Feedback Warning] Resposta HTTP ${response.status} do Webhook:`, errText);
+      return false;
+    }
+
+    console.log(`[Discord Feedback Success] Webhook despachado com sucesso para o protocolo ${ticket.protocol}.`);
+    return true;
+  } catch (webhookErr: any) {
+    // Isolamento resiliente: falhas no Discord nunca quebram a resposta do servidor nem o envio por e-mail
+    console.error("[Discord Feedback Error] Falha de conexão ao enviar para o Discord:", webhookErr?.message || webhookErr);
+    return false;
+  }
+}
+
 app.post("/api/support/send-feedback", generalRateLimiter, async (req, res) => {
   try {
     const { name, email, category, subject, message, priority, clientDiagnostics } = req.body;
@@ -966,6 +1243,21 @@ app.post("/api/support/send-feedback", generalRateLimiter, async (req, res) => {
     };
 
     console.log(`[Support Ticket Dispatched] Protocol: ${ticketProtocol} | From: ${emailPayload.senderEmail} | Category: ${emailPayload.category} | To: ${destinationEmail}`);
+
+    // Envio simultâneo para o Discord Webhook de forma assíncrona e resiliente
+    sendFeedbackToDiscord({
+      protocol: ticketProtocol,
+      name: emailPayload.senderName,
+      email: emailPayload.senderEmail,
+      category: emailPayload.category,
+      subject: String(subject).trim(),
+      message: emailPayload.body,
+      priority: String(priority || "MEDIA"),
+      timestamp,
+      clientDiagnostics,
+    }).catch((err) => {
+      console.error("[Discord Webhook Background Error]:", err);
+    });
 
     return res.json({
       success: true,

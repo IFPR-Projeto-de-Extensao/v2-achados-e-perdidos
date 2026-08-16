@@ -760,9 +760,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     vibrateClick();
     try {
       await setDoc(doc(db, "system", "config"), { maintenanceCustomMessage: msg }, { merge: true });
+      const token = await auth.currentUser?.getIdToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       fetch("/api/system/config", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ maintenanceCustomMessage: msg, updatedBy: currentUser.name }),
       }).catch(() => {});
       await logAdminAction(
@@ -772,11 +775,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast("Mensagem do banner de manutenção atualizada em tempo real!", "success");
     } catch (e) {
       console.warn("Aviso ao salvar mensagem de manutenção no Firestore:", e);
-      fetch("/api/system/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maintenanceCustomMessage: msg, updatedBy: currentUser.name }),
-      }).catch(() => {});
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        fetch("/api/system/config", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ maintenanceCustomMessage: msg, updatedBy: currentUser.name }),
+        }).catch(() => {});
+      } catch {}
     }
   };
 
@@ -896,9 +904,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setMaintenanceMode(nextVal);
     try {
       await setDoc(doc(db, "system", "config"), { maintenanceMode: nextVal }, { merge: true });
+      const token = await auth.currentUser?.getIdToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`;
       fetch("/api/system/config", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ maintenanceMode: nextVal, updatedBy: currentUser.name }),
       }).catch(() => {});
       await logAdminAction(
@@ -915,11 +926,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     } catch (e) {
       console.warn("Aviso ao salvar modo de manutenção no Firestore:", e);
-      fetch("/api/system/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maintenanceMode: nextVal, updatedBy: currentUser.name }),
-      }).catch(() => {});
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        fetch("/api/system/config", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ maintenanceMode: nextVal, updatedBy: currentUser.name }),
+        }).catch(() => {});
+      } catch {}
       addToast(
         nextVal
           ? "🚨 Modo Manutenção ATIVADO pelo Administrador!"
