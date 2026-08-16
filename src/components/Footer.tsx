@@ -189,7 +189,7 @@ export const Footer: React.FC = () => {
                   }}
                   className="hover:underline hover:text-[#00843D] dark:hover:text-green-400 text-left transition-colors font-medium"
                 >
-                  achados.ivaipora@ifpr.edu.br
+                  localizamais6@gmail.com
                 </button>
               </li>
               <li className="pt-1">

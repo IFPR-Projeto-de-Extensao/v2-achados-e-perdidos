@@ -1230,7 +1230,7 @@ app.post("/api/support/send-feedback", generalRateLimiter, async (req, res) => {
 
     const ticketProtocol = `IFPR-SUP-${Date.now().toString(36).toUpperCase()}`;
     const timestamp = new Date().toISOString();
-    const destinationEmail = "achados.ivaipora@ifpr.edu.br";
+    const destinationEmail = "localizamais6@gmail.com";
     const adminNotificationEmail = ROOT_ADMIN_EMAIL;
 
     const emailPayload = {

@@ -1,7 +1,7 @@
 import React from "react";
 import { LostFoundItem } from "../types";
-import { formatDate } from "../lib/utils";
-import { MapPin, Calendar, Tag, ArrowRight, ShieldCheck, QrCode, CheckSquare, Square, Printer } from "lucide-react";
+import { formatDate, isItemNew } from "../lib/utils";
+import { MapPin, Calendar, Tag, ArrowRight, ShieldCheck, QrCode, CheckSquare, Square, Printer, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 
 interface ItemCardProps {
@@ -60,6 +60,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
   };
 
   const badge = getStatusBadge(item.status, item.type);
+  const isNew = isItemNew(item);
 
   const handleQuickPrintTag = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -141,7 +142,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
 
           {/* Select Checkbox for Bulk Ops */}
           {selectable && (
-            <div className="absolute top-3 left-3 z-10 flex items-center space-x-1.5">
+            <div className="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
                 onClick={(e) => {
@@ -166,17 +167,37 @@ export const ItemCard: React.FC<ItemCardProps> = ({
               >
                 {badge.label}
               </span>
+              {isNew && (
+                <span
+                  id={`item-card-new-badge-${item.id}`}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-600/95 text-white border border-emerald-400/60 shadow-sm backdrop-blur-md animate-pulse"
+                  title="Item registrado no campus nas últimas 24 horas"
+                >
+                  <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
+                  <span>Novo • 24h</span>
+                </span>
+              )}
             </div>
           )}
 
-          {/* Type/Status Badge (when not selectable) */}
+          {/* Type/Status Badge & New Item Badge (when not selectable) */}
           {!selectable && (
-            <div className="absolute top-3 left-3 flex items-center space-x-1.5">
+            <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5 z-10 max-w-[70%]">
               <span
                 className={`px-2.5 py-1 rounded-full text-[11px] font-extrabold tracking-wide uppercase border backdrop-blur-md ${badge.bgColor} ${badge.textColor} ${badge.borderColor}`}
               >
                 {badge.label}
               </span>
+              {isNew && (
+                <span
+                  id={`item-card-new-badge-${item.id}`}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-emerald-600 to-[#00843D] text-white border border-emerald-300/60 shadow-sm backdrop-blur-md animate-pulse"
+                  title="Item registrado no campus nas últimas 24 horas"
+                >
+                  <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
+                  <span>Novo • 24h</span>
+                </span>
+              )}
             </div>
           )}
 

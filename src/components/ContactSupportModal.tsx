@@ -157,8 +157,8 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
       setSubmittedProtocol(protocol);
       addToast(
         language === "pt"
-          ? "Feedback enviado com sucesso para achados.ivaipora@ifpr.edu.br!"
-          : "Feedback sent successfully to achados.ivaipora@ifpr.edu.br!",
+          ? "Feedback enviado com sucesso para localizamais6@gmail.com!"
+          : "Feedback sent successfully to localizamais6@gmail.com!",
         "success"
       );
     } catch (err: any) {
@@ -176,7 +176,7 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
   };
 
   const generateMailtoUrl = () => {
-    const dest = "achados.ivaipora@ifpr.edu.br";
+    const dest = "localizamais6@gmail.com";
     const sub = `[IFPR Suporte - ${category}] ${subject || "Contato de Usuário"}`;
     const bodyLines = [
       `Olá Equipe de Atendimento do IFPR Campus Ivaiporã,`,
@@ -268,7 +268,7 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
                 <p className="text-xs text-neutral-600 dark:text-neutral-400 max-w-md mx-auto leading-relaxed">
                   {t(
                     "contactSuccessDesc",
-                    "Seu relato foi registrado e notificado para a equipe de suporte do IFPR Campus Ivaiporã via e-mail institucional (achados.ivaipora@ifpr.edu.br)."
+                    "Seu relato foi registrado e notificado para a equipe de suporte do IFPR Campus Ivaiporã via e-mail (localizamais6@gmail.com)."
                   )}
                 </p>
               </div>
@@ -298,8 +298,8 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
                 <Mail className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
                 <span>
                   {language === "pt"
-                    ? "Cópia despachada para: achados.ivaipora@ifpr.edu.br"
-                    : "Copy dispatched to: achados.ivaipora@ifpr.edu.br"}
+                    ? "Cópia despachada para: localizamais6@gmail.com"
+                    : "Copy dispatched to: localizamais6@gmail.com"}
                 </span>
               </div>
 

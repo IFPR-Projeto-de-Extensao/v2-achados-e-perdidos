@@ -4,7 +4,7 @@ import { useApp } from "../context/AppContext";
 import { ItemCard } from "./ItemCard";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
-import { formatDate, vibrateClick, vibrateSuccess, safeToLower, safeIncludes, sanitizeQuery } from "../lib/utils";
+import { formatDate, vibrateClick, vibrateSuccess, safeToLower, safeIncludes, sanitizeQuery, isItemNew } from "../lib/utils";
 import {
   Search,
   Filter,
@@ -59,6 +59,7 @@ const CAMPUS_BLOCKS = [
 
 const TIME_PRESETS = [
   { id: "TODOS", label: "Qualquer período" },
+  { id: "24H", label: "✨ Últimas 24 horas (Novos)" },
   { id: "HOJE", label: "Hoje" },
   { id: "7_DIAS", label: "Últimos 7 dias" },
   { id: "30_DIAS", label: "Últimos 30 dias" },
@@ -222,7 +223,10 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
           const itemTime = new Date(item.date || item.createdAt || new Date()).getTime();
           const now = new Date();
 
-          if (selectedTimePreset === "HOJE") {
+          if (selectedTimePreset === "24H") {
+            const twentyFourHoursAgo = now.getTime() - 24 * 60 * 60 * 1000;
+            if (itemTime < twentyFourHoursAgo) return false;
+          } else if (selectedTimePreset === "HOJE") {
             const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
             if (itemTime < startOfToday) return false;
           } else if (selectedTimePreset === "7_DIAS") {
@@ -959,7 +963,18 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                             className="w-10 h-10 rounded-xl object-cover border border-neutral-200 dark:border-neutral-700"
                           />
                           <div>
-                            <p className="font-bold text-neutral-900 dark:text-white text-xs">{item.title}</p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-bold text-neutral-900 dark:text-white text-xs">{item.title}</p>
+                              {isItemNew(item) && (
+                                <span
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-600 text-white border border-emerald-400 shadow-2xs"
+                                  title="Cadastrado nas últimas 24 horas"
+                                >
+                                  <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
+                                  Novo
+                                </span>
+                              )}
+                            </div>
                             <p className="text-[11px] text-neutral-400 font-mono">ID: {item.id}</p>
                           </div>
                         </div>
@@ -1049,9 +1064,20 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                       className="w-12 h-12 rounded-2xl object-cover border border-neutral-200 dark:border-neutral-700"
                     />
                     <div>
-                      <h4 className="font-extrabold text-xs text-neutral-900 dark:text-white">
-                        {item.title}
-                      </h4>
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="font-extrabold text-xs text-neutral-900 dark:text-white">
+                          {item.title}
+                        </h4>
+                        {isItemNew(item) && (
+                          <span
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-600 text-white border border-emerald-400 shadow-2xs"
+                            title="Cadastrado nas últimas 24 horas"
+                          >
+                            <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
+                            Novo 24h
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[11px] text-neutral-500">
                         {item.category} • {item.location}
                       </p>

@@ -100,3 +100,51 @@ export function vibrateCritical(): boolean {
   return triggerVibration([70, 50, 70]);
 }
 
+/**
+ * Checks if an item was registered / added within the last 24 hours (or custom hour window)
+ */
+export function isItemNew(
+  item: { createdAt?: string; date?: string; updatedAt?: string } | null | undefined,
+  maxHours = 24
+): boolean {
+  if (!item) return false;
+  const dateStr = item.createdAt || item.updatedAt || item.date;
+  if (!dateStr) return false;
+  try {
+    const timestamp = new Date(dateStr).getTime();
+    if (isNaN(timestamp)) return false;
+    const now = Date.now();
+    const diffMs = now - timestamp;
+    // Allow small clock skew (up to 1 minute into future) and within maxHours
+    return diffMs >= -60000 && diffMs <= maxHours * 60 * 60 * 1000;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns a human-friendly age string for recent items (e.g., "Há 2 horas", "Há 45 min", "Hoje")
+ */
+export function getItemAgeText(dateString?: string): string {
+  if (!dateString) return "";
+  try {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    if (isNaN(diffMs)) return formatDate(dateString);
+
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+
+    if (diffMinutes < 1) return "Agora mesmo";
+    if (diffMinutes < 60) return `Há ${diffMinutes} min`;
+    if (diffHours < 24) return `Há ${diffHours}h`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return "Ontem";
+    if (diffDays < 7) return `Há ${diffDays} dias`;
+    return formatDate(dateString);
+  } catch {
+    return dateString || "";
+  }
+}
+

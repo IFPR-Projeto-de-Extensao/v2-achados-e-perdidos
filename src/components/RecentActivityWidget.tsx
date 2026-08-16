@@ -1,5 +1,6 @@
 import React from "react";
 import { LostFoundItem, NotificationItem } from "../types";
+import { isItemNew } from "../lib/utils";
 import { Activity, Sparkles, CheckCircle2, PackageSearch, Clock, ArrowRight, UserCheck } from "lucide-react";
 
 interface RecentActivityWidgetProps {
@@ -90,9 +91,20 @@ export const RecentActivityWidget: React.FC<RecentActivityWidgetProps> = ({
             {/* Content Details */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between gap-2">
-                <h4 className="font-bold text-xs text-neutral-900 dark:text-white truncate group-hover:text-[#00843D] dark:group-hover:text-green-400 transition-colors">
-                  {activity.title}
-                </h4>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <h4 className="font-bold text-xs text-neutral-900 dark:text-white truncate group-hover:text-[#00843D] dark:group-hover:text-green-400 transition-colors">
+                    {activity.title}
+                  </h4>
+                  {isItemNew(activity.item) && (
+                    <span
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-600 text-white shrink-0 shadow-2xs"
+                      title="Registrado nas últimas 24 horas"
+                    >
+                      <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
+                      Novo
+                    </span>
+                  )}
+                </div>
                 <span className="text-[10px] text-neutral-400 flex items-center gap-1 shrink-0 font-medium">
                   <Clock className="w-3 h-3" /> {activity.time}
                 </span>

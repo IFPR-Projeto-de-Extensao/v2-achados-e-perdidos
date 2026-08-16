@@ -4,7 +4,7 @@ import autoTable from "jspdf-autotable";
 import { LostFoundItem } from "../types";
 import { useApp } from "../context/AppContext";
 import { usePossessionVerification } from "../hooks/usePossessionVerification";
-import { formatDate, formatDateTime, triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical } from "../lib/utils";
+import { formatDate, formatDateTime, triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, isItemNew, getItemAgeText } from "../lib/utils";
 import { QRCodeSVG } from "qrcode.react";
 import { RestrictedQRViewModal } from "./RestrictedQRViewModal";
 import {
@@ -35,6 +35,7 @@ import {
   FileSpreadsheet,
   Eye,
   FileText,
+  Sparkles,
 } from "lucide-react";
 
 interface ItemDetailModalProps {
@@ -92,7 +93,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
   // Gmail send state
   const [emailModalOpen, setEmailModalOpen] = useState(false);
-  const [recipientEmail, setRecipientEmail] = useState(item?.contactInfo || "achados.ivaipora@ifpr.edu.br");
+  const [recipientEmail, setRecipientEmail] = useState(item?.contactInfo || "localizamais6@gmail.com");
   const [emailSubject, setEmailSubject] = useState(`[IFPR Achados & Perdidos] Consulta: ${item?.title || "Item"}`);
   const [emailBody, setEmailBody] = useState(`Olá,\n\nEstou entrando em contato a respeito do item "${item?.title || "Item"}" (ID: ${item?.id || ""}) cadastrado no Achados e Perdidos do IFPR Campus Ivaiporã.\n\nAtenciosamente,\n${currentUser?.name || "Usuário IFPR"}`);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
@@ -953,7 +954,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       >
         {/* Header Bar */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-[#181818]">
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <span
               className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${getStatusBadgeClass(
                 item?.status || "PERDIDO"
@@ -961,6 +962,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             >
               {String(item?.status || "REGISTRADO").replace("_", " ")}
             </span>
+            {isItemNew(item) && (
+              <span
+                id={`detail-new-badge-${item.id}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-gradient-to-r from-emerald-600 to-[#00843D] text-white border border-emerald-400/60 shadow-sm animate-pulse"
+                title="Cadastrado nas últimas 24 horas no campus"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
+                <span>Item Novo • 24h</span>
+              </span>
+            )}
             <span className="text-xs text-neutral-500 font-mono">ID: {item.id}</span>
           </div>
 
@@ -1206,7 +1217,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               </div>
               <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800">
                 <span className="text-neutral-400 block mb-0.5">Data do Registro</span>
-                <span className="font-bold text-neutral-900 dark:text-white">{formatDate(item.date)}</span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-bold text-neutral-900 dark:text-white">{formatDate(item.date)}</span>
+                  {item.createdAt && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                      ({getItemAgeText(item.createdAt)})
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800">
                 <span className="text-neutral-400 block mb-0.5">Cadastrado por</span>
