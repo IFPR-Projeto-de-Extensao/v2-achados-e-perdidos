@@ -21,6 +21,15 @@ if (getApps().length === 0) {
 }
 
 export * from "./discordEmbedHelper";
+export {
+  formatItemToDiscordEmbed,
+  getStatusColor,
+  getStatusLabel,
+  getCategoryMeta,
+  STATUS_COLORS,
+  STATUS_LABELS,
+  CATEGORY_MAP,
+} from "./utils/discordHelper";
 
 export interface FeedbackData {
   name: string;
@@ -472,23 +481,31 @@ export function formatNovosAchadosDiscordEmbed(item: FoundItemData): DiscordWebh
   return buildNovosAchadosEmbed(item);
 }
 
+export interface DiscordDispatchResult {
+  success: boolean;
+  status?: number;
+  statusText?: string;
+  error?: string;
+  itemId?: string;
+}
+
 /**
  * Dispatches a new found item notification to the '#novos-achados' Discord Webhook.
  * Non-blocking: all errors are isolated and logged to Firebase Cloud Logging to never interrupt the user flow.
  */
-export async function sendNovoAchadoToDiscord(item: FoundItemData): Promise<boolean> {
+export async function sendNovoAchadoToDiscord(item: FoundItemData): Promise<DiscordDispatchResult> {
   // If item explicitly has a type field and it's not ENCONTRADO, ignore
   if (item.type && item.type !== "ENCONTRADO") {
-    logger.info(`[sendNovoAchadoToDiscord] Item type is '${item.type}', not 'ENCONTRADO'. Skipping Discord notification.`);
-    return false;
+    functions.logger.info(`[sendNovoAchadoToDiscord] Item type is '${item.type}', not 'ENCONTRADO'. Skipping Discord notification.`);
+    return { success: false, error: "Not a found item (type != ENCONTRADO)" };
   }
 
   const webhookUrl = getDiscordNovosAchadosWebhookUrl();
   if (!webhookUrl) {
-    logger.info(
+    functions.logger.warn(
       "[Discord Novos Achados Notice] DISCORD_NOVOS_ACHADOS_WEBHOOK_URL is not configured in secrets or config. Skipping Discord dispatch."
     );
-    return false;
+    return { success: false, error: "WEBHOOK_URL_NOT_CONFIGURED" };
   }
 
   try {
@@ -504,17 +521,29 @@ export async function sendNovoAchadoToDiscord(item: FoundItemData): Promise<bool
 
     if (!response.ok) {
       const errText = await response.text();
-      logger.error(
-        `[Discord Novos Achados Warning] Discord API returned HTTP ${response.status} for item '${item.id || item.title}':`,
-        { status: response.status, responseText: errText, itemId: item.id }
+      functions.logger.error(
+        `[Discord Novos Achados Error] Discord API returned HTTP error ${response.status} (${response.statusText}) for item '${item.id || item.title}':`,
+        {
+          status: response.status,
+          statusText: response.statusText,
+          responseText: errText,
+          itemId: item.id,
+          itemTitle: item.title,
+        }
       );
-      return false;
+      return {
+        success: false,
+        status: response.status,
+        statusText: response.statusText,
+        error: errText,
+        itemId: item.id,
+      };
     }
 
-    logger.info(`[Discord Novos Achados Success] Notificação enviada para #novos-achados: "${item.title}" (${item.id})`);
-    return true;
+    functions.logger.info(`[Discord Novos Achados Success] Notificação enviada com sucesso para #novos-achados: "${item.title}" (${item.id})`);
+    return { success: true, status: response.status, itemId: item.id };
   } catch (err: any) {
-    logger.error(
+    functions.logger.error(
       `[Discord Novos Achados Error] Falha de conexão ou rede ao enviar notificação do item '${item.id || item.title}' para o Discord:`,
       {
         errorMessage: err?.message || String(err),
@@ -523,7 +552,11 @@ export async function sendNovoAchadoToDiscord(item: FoundItemData): Promise<bool
         itemTitle: item.title,
       }
     );
-    return false;
+    return {
+      success: false,
+      error: err?.message || String(err),
+      itemId: item.id,
+    };
   }
 }
 
@@ -549,16 +582,17 @@ export const notifyNovoAchado = onRequest({ cors: true }, async (req, res) => {
       return;
     }
 
-    const dispatched = await sendNovoAchadoToDiscord(item);
+    const result = await sendNovoAchadoToDiscord(item);
     res.status(200).json({
       success: true,
-      dispatched,
-      message: dispatched
+      dispatched: result.success,
+      status: result.status,
+      message: result.success
         ? "Notificação despachada com sucesso para o canal #novos-achados."
         : "Webhook não configurado ou retorno com aviso.",
     });
   } catch (error: any) {
-    logger.error("[notifyNovoAchado Cloud Function Error]:", error);
+    functions.logger.error("[notifyNovoAchado Cloud Function Error]:", error);
     res.status(500).json({ success: false, error: error?.message || "Erro interno ao processar notificação." });
   }
 });
@@ -566,40 +600,54 @@ export const notifyNovoAchado = onRequest({ cors: true }, async (req, res) => {
 /**
  * Cloud Function Firestore Trigger: onNewFoundItemCreated
  * Triggers automatically whenever a new document is created in the 'found_items' collection in Firestore.
- * Securely logs diagnostic details to Firebase Cloud Logging if notification fails,
- * while ensuring database operations remain fully decoupled.
+ * Securely logs diagnostic details and HTTP error status to Firebase Cloud Logging using functions.logger.error,
+ * ensuring the database operation remains 100% decoupled and never throws an uncaught error.
  */
 export const onNewFoundItemCreated = onDocumentCreated("found_items/{itemId}", async (event) => {
   const data = event.data?.data() as FoundItemData | undefined;
   const itemId = event.params.itemId;
 
   if (!data) {
-    logger.warn(`[onNewFoundItemCreated] Event triggered for document 'found_items/${itemId}', but snapshot contains no data.`);
+    functions.logger.warn(`[onNewFoundItemCreated] Event triggered for document 'found_items/${itemId}', but snapshot contains no data.`);
     return;
   }
 
-  logger.info(`[onNewFoundItemCreated] Novo registro detectado em 'found_items/${itemId}': "${data.title || 'Sem título'}"`);
+  functions.logger.info(`[onNewFoundItemCreated] Novo registro detectado em 'found_items/${itemId}': "${data.title || 'Sem título'}"`);
 
   try {
-    const success = await sendNovoAchadoToDiscord({
+    const dispatchResult = await sendNovoAchadoToDiscord({
       ...data,
       id: data.id || itemId,
       type: "ENCONTRADO",
     });
 
-    if (!success) {
-      logger.warn(
-        `[onNewFoundItemCreated Diagnostics] Discord notification was not completed for found item '${itemId}'. Check webhook secret configuration or network response above.`
+    if (!dispatchResult.success) {
+      // Record failure and HTTP status in Firebase Cloud Logging using functions.logger.error
+      functions.logger.error(
+        `[onNewFoundItemCreated] Falha no envio da notificação ao Discord para o item '${itemId}':`,
+        {
+          itemId,
+          itemTitle: data.title,
+          errorStatus: dispatchResult.status || "N/A",
+          statusText: dispatchResult.statusText || "N/A",
+          errorMessage: dispatchResult.error || "Erro desconhecido ao comunicar com o webhook do Discord",
+          timestamp: new Date().toISOString(),
+        }
       );
     }
   } catch (error: any) {
-    // Log fatal unexpected exceptions to Firebase Cloud Logging without throwing to avoid trigger retries if undesired
-    logger.error(`[onNewFoundItemCreated Critical Error] Unhandled failure during Discord dispatch for found item '${itemId}':`, {
-      itemId,
-      errorName: error?.name,
-      errorMessage: error?.message,
-      stack: error?.stack,
-    });
+    // Catch-all isolation: record unexpected runtime failure to Cloud Logging without interrupting Firestore
+    functions.logger.error(
+      `[onNewFoundItemCreated] Exceção não tratada durante o envio da notificação ao Discord para o item '${itemId}':`,
+      {
+        itemId,
+        itemTitle: data.title,
+        errorName: error?.name,
+        errorMessage: error?.message,
+        errorStack: error?.stack,
+        timestamp: new Date().toISOString(),
+      }
+    );
   }
 });
 
@@ -614,22 +662,33 @@ export const onNovoAchadoCreated = onDocumentCreated("items/{itemId}", async (ev
   if (!data) return;
 
   if (data.type === "ENCONTRADO") {
-    logger.info(`[onNovoAchadoCreated] Novo item ENCONTRADO detectado em 'items/${itemId}': "${data.title}"`);
+    functions.logger.info(`[onNovoAchadoCreated] Novo item ENCONTRADO detectado em 'items/${itemId}': "${data.title}"`);
     try {
-      const success = await sendNovoAchadoToDiscord({
+      const dispatchResult = await sendNovoAchadoToDiscord({
         ...data,
         id: data.id || itemId,
       });
 
-      if (!success) {
-        logger.warn(`[onNovoAchadoCreated Diagnostics] Envio ao Discord para o item '${itemId}' não concluído com sucesso.`);
+      if (!dispatchResult.success) {
+        functions.logger.error(
+          `[onNovoAchadoCreated] Falha no envio da notificação ao Discord para o item '${itemId}':`,
+          {
+            itemId,
+            itemTitle: data.title,
+            errorStatus: dispatchResult.status || "N/A",
+            errorMessage: dispatchResult.error,
+          }
+        );
       }
     } catch (err: any) {
-      logger.error(`[onNovoAchadoCreated Error] Falha de execução ao processar notificação no Discord para o item '${itemId}':`, {
-        itemId,
-        errorMessage: err?.message,
-        stack: err?.stack,
-      });
+      functions.logger.error(
+        `[onNovoAchadoCreated Error] Falha de execução ao processar notificação no Discord para o item '${itemId}':`,
+        {
+          itemId,
+          errorMessage: err?.message,
+          stack: err?.stack,
+        }
+      );
     }
   }
 });
