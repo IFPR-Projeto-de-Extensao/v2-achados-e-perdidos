@@ -71,6 +71,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
   const { items, setSelectedItemForDetail, currentUser, bulkUpdateItemStatus, bulkDeleteItems, setActiveTab } = useApp();
 
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterType, setFilterType] = useState<"TODOS" | "PERDIDO" | "ENCONTRADO" | "DEVOLVIDO">(
     initialFilterType
   );
@@ -85,6 +86,17 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [layoutViewMode, setLayoutViewMode] = useState<"ADAPTATIVO" | "CARDS" | "LISTA">("ADAPTATIVO");
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState<boolean>(true);
+
+  // Debounced search effect with timer cancellation on keystroke & unmount
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 250);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [search]);
 
   // Bulk operations selection state
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
@@ -187,7 +199,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
 
   // Filter & Sort Logic (Simultaneous Multi-field Filtering with Firestore data)
   const filteredItems = useMemo(() => {
-    const cleanSearch = sanitizeQuery(search);
+    const cleanSearch = sanitizeQuery(debouncedSearch);
     const cleanBlock = sanitizeQuery(selectedCampusBlock);
     const cleanCategory = sanitizeQuery(selectedCategory);
     const cleanColor = sanitizeQuery(selectedColor);
@@ -286,7 +298,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
     selectedTimePreset,
     filterStartDate,
     filterEndDate,
-    search,
+    debouncedSearch,
     sortBy,
   ]);
 
@@ -304,6 +316,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
   const clearFilters = () => {
     vibrateClick();
     setSearch("");
+    setDebouncedSearch("");
     setFilterType("TODOS");
     setSelectedCategory("TODAS");
     setSelectedCampusBlock("TODOS");
@@ -397,7 +410,10 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
               {search && (
                 <button
                   type="button"
-                  onClick={() => setSearch("")}
+                  onClick={() => {
+                    setSearch("");
+                    setDebouncedSearch("");
+                  }}
                   className="absolute right-3 top-2.5 p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-white cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />

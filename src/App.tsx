@@ -12,6 +12,7 @@ import { traceFirebasePerformance } from "./lib/firebase";
 import { savePerformanceMetricLog } from "./lib/offlineDb";
 import { APP_VALID_TABS, DEFAULT_MAINTENANCE_MESSAGE, type AppTabType } from "./lib/shared-constants";
 import { Loader2 } from "lucide-react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 
 // Lazy-loaded heavy views and modals for optimal bundle splitting and fast initial paint
 const ObjectsView = lazy(() => import("./components/ObjectsView").then((m) => ({ default: m.ObjectsView })));
@@ -49,6 +50,7 @@ const MainContent: React.FC = () => {
   } = useApp();
 
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
+  const shouldReduceMotion = useReducedMotion();
 
   // Global Keyboard Shortcuts for rapid navigation and power-user accessibility
   useEffect(() => {
@@ -207,13 +209,24 @@ const MainContent: React.FC = () => {
       {/* Main View Container (responsive spacing for mobile bottom navigation) */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-20 lg:pb-12">
         <Suspense fallback={<ViewLoadingFallback />}>
-          {activeTab === "home" && <HomeView />}
-          {activeTab === "lost" && <ObjectsView initialFilterType="PERDIDO" />}
-          {activeTab === "found" && <ObjectsView initialFilterType="ENCONTRADO" />}
-          {activeTab === "register" && <RegisterItemView />}
-          {activeTab === "dashboard" && <DashboardView />}
-          {activeTab === "profile" && <ProfileView />}
-          {activeTab === "image_analyzer" && <ImageAnalyzerView />}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: -6 }}
+              transition={{ duration: shouldReduceMotion ? 0 : 0.16, ease: "easeOut" }}
+              className="w-full"
+            >
+              {activeTab === "home" && <HomeView />}
+              {activeTab === "lost" && <ObjectsView initialFilterType="PERDIDO" />}
+              {activeTab === "found" && <ObjectsView initialFilterType="ENCONTRADO" />}
+              {activeTab === "register" && <RegisterItemView />}
+              {activeTab === "dashboard" && <DashboardView />}
+              {activeTab === "profile" && <ProfileView />}
+              {activeTab === "image_analyzer" && <ImageAnalyzerView />}
+            </motion.div>
+          </AnimatePresence>
         </Suspense>
       </main>
 

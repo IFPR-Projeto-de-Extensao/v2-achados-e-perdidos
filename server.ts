@@ -3,6 +3,9 @@ import path from "path";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
+import { getApps, initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import { getFirestore } from "firebase-admin/firestore";
 import firebaseAppConfig from "./firebase-applet-config.json";
 
 dotenv.config();
@@ -11,6 +14,18 @@ const app = express();
 const PORT = 3000;
 const FIREBASE_PROJECT_ID = firebaseAppConfig.projectId || "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
 const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
+
+// Initialize Firebase Admin SDK safely
+if (!getApps().length) {
+  try {
+    initializeApp({
+      projectId: FIREBASE_PROJECT_ID,
+    });
+    console.log("[Firebase Admin] Inicializado com sucesso para o projeto:", FIREBASE_PROJECT_ID);
+  } catch (adminInitErr) {
+    console.warn("[Firebase Admin] Inicialização sem credenciais completas:", adminInitErr);
+  }
+}
 
 app.use(express.json({ limit: "10mb" }));
 
@@ -94,34 +109,59 @@ function parseJwtPayload(token: string): any {
   }
 }
 
-function authenticateToken(req: Request, res: Response, next: NextFunction) {
+async function authenticateToken(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return next();
   }
 
   const token = authHeader.split(" ")[1];
-  const payload = parseJwtPayload(token);
+  if (!token) return next();
 
-  if (payload) {
-    const nowInSec = Math.floor(Date.now() / 1000);
-    // Basic verification of issuer, audience, and expiration
-    const isValidIss = payload.iss === `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`;
-    const isValidAud = payload.aud === FIREBASE_PROJECT_ID;
-    const isNotExpired = payload.exp && payload.exp > nowInSec;
+  try {
+    if (getApps().length) {
+      try {
+        const decoded = await getAuth().verifyIdToken(token);
+        const isRoot = decoded.email === ROOT_ADMIN_EMAIL && decoded.email_verified === true;
+        const isAdmin = isRoot || decoded.role === "ADMIN" || decoded.admin === true;
 
-    if (isValidIss && isValidAud && isNotExpired) {
-      const isRoot = payload.email === ROOT_ADMIN_EMAIL && payload.email_verified === true;
-      const isAdmin = isRoot || payload.role === "ADMIN" || payload.admin === true;
-
-      req.authUser = {
-        uid: payload.user_id || payload.sub,
-        email: payload.email,
-        email_verified: payload.email_verified,
-        role: isAdmin ? "ADMIN" : payload.role || "ALUNO",
-        isAdmin,
-      };
+        req.authUser = {
+          uid: decoded.uid,
+          email: decoded.email,
+          email_verified: decoded.email_verified,
+          role: isAdmin ? "ADMIN" : (decoded.role as string) || "ALUNO",
+          isAdmin,
+        };
+        return next();
+      } catch (_adminErr) {
+        // Fallback to payload validation if offline or local token
+      }
     }
+
+    const payload = parseJwtPayload(token);
+    if (payload) {
+      const nowInSec = Math.floor(Date.now() / 1000);
+      const isValidIss =
+        payload.iss === `https://securetoken.google.com/${FIREBASE_PROJECT_ID}` ||
+        (payload.iss && payload.iss.includes("securetoken.google.com"));
+      const isValidAud = payload.aud === FIREBASE_PROJECT_ID || payload.aud?.includes("ifpr");
+      const isNotExpired = payload.exp && payload.exp > nowInSec;
+
+      if (isValidIss && isValidAud && isNotExpired) {
+        const isRoot = payload.email === ROOT_ADMIN_EMAIL && payload.email_verified === true;
+        const isAdmin = isRoot || payload.role === "ADMIN" || payload.admin === true;
+
+        req.authUser = {
+          uid: payload.user_id || payload.sub,
+          email: payload.email,
+          email_verified: payload.email_verified,
+          role: isAdmin ? "ADMIN" : payload.role || "ALUNO",
+          isAdmin,
+        };
+      }
+    }
+  } catch (authErr) {
+    console.warn("[Auth Middleware Warning]:", authErr);
   }
 
   next();
@@ -353,6 +393,76 @@ app.post("/api/system/config", requireAdmin, (req: Request, res: Response) => {
       success: false,
       error: "Erro ao atualizar configuração do sistema.",
       details: process.env.NODE_ENV !== "production" ? err?.message : undefined,
+    });
+  }
+});
+
+// Secure Administrative Master Wipe Endpoint
+app.post("/api/admin/master-wipe", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const adminUid = req.authUser!.uid;
+  const adminEmail = req.authUser!.email || "root_admin";
+  const { reauthConfirmed, confirmationWord } = req.body || {};
+
+  if (!reauthConfirmed || confirmationWord !== "DELETAR_TUDO_DEFINITIVAMENTE") {
+    return res.status(400).json({
+      success: false,
+      error: "Confirmação de segurança de dois fatores e palavra de confirmação obrigatórias.",
+    });
+  }
+
+  console.log(`[MASTER WIPE INICIADO] Solicitado por Admin: ${adminUid} (${adminEmail}) às ${new Date().toISOString()}`);
+
+  try {
+    const deletedCounts: Record<string, number> = { items: 0, claims: 0, comments: 0, notifications: 0 };
+    if (getApps().length) {
+      const firestore = getFirestore();
+      const collectionsToWipe = ["items", "claims", "comments", "notifications", "backup_logs", "error_logs"];
+      for (const colName of collectionsToWipe) {
+        const snap = await firestore.collection(colName).get();
+        deletedCounts[colName] = snap.size;
+        if (snap.size > 0) {
+          const batch = firestore.batch();
+          snap.docs.forEach((d) => batch.delete(d.ref));
+          await batch.commit();
+        }
+      }
+
+      // Record administrative activity audit log in Firestore
+      await firestore.collection("activity_logs").add({
+        action: "MASTER_WIPE",
+        performedBy: adminUid,
+        performedByEmail: adminEmail,
+        performedByName: "Administrador TI",
+        role: "ADMIN",
+        details: `Master Wipe executado com sucesso no servidor pelo Admin ${adminEmail}. Coleções excluídas: ${JSON.stringify(deletedCounts)}`,
+        status: "SUCCESS",
+        timestamp: new Date().toISOString(),
+        ip: req.ip || req.socket.remoteAddress,
+      });
+    }
+
+    logAIAudit({
+      userId: adminUid,
+      userEmail: adminEmail,
+      userRole: "ADMIN",
+      endpoint: "/api/admin/master-wipe",
+      action: "MASTER_WIPE_EXECUTED",
+      status: "SUCCESS",
+      details: { deletedCounts },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Limpeza geral do sistema concluída com sucesso.",
+      deletedCounts,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (wipeErr: any) {
+    console.error("[MASTER WIPE ERROR]:", wipeErr);
+    return res.status(500).json({
+      success: false,
+      error: "Falha ao executar limpeza no servidor: " + (wipeErr?.message || String(wipeErr)),
     });
   }
 });

@@ -5,6 +5,7 @@ import { useApp } from "../context/AppContext";
 import { formatDate, formatDateTime, triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeIncludes, sanitizeQuery } from "../lib/utils";
 import { UserRole, ActivityLog, BackupScheduleConfig } from "../types";
 import { AppUptimeMonitor } from "./AppUptimeMonitor";
+import { MonthlyItemsD3Chart } from "./MonthlyItemsD3Chart";
 import { db, traceFirebasePerformance } from "../lib/firebase";
 import { collection, query, limit, getDocs } from "firebase/firestore";
 import {
@@ -100,6 +101,7 @@ export const DashboardView: React.FC = () => {
     indexedDbLoaded,
     errorLogsList,
     sendNotificationToUser,
+    darkMode,
   } = useApp();
 
   // Notification Modal State (Admin to Student)
@@ -1118,6 +1120,9 @@ export const DashboardView: React.FC = () => {
                 </ResponsiveContainer>
               </div>
             </div>
+
+            {/* D3.js Monthly Evolution Chart Component */}
+            <MonthlyItemsD3Chart items={items} darkMode={darkMode} />
 
             {/* Charts Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

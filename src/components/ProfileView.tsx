@@ -34,6 +34,8 @@ import {
   Flame,
   Star,
   Info,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 export const ProfileView: React.FC = () => {
@@ -52,6 +54,8 @@ export const ProfileView: React.FC = () => {
     fcmSubscribed,
     subscribeToFCM,
     testFCMAlert,
+    darkMode,
+    toggleDarkMode,
     t,
     language,
   } = useApp();
@@ -570,6 +574,65 @@ export const ProfileView: React.FC = () => {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* TEMA DA INTERFACE (SELETOR CLARO / ESCURO) */}
+      <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 border border-neutral-200 dark:border-neutral-800 shadow-xs">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3.5">
+            <div className={`p-3 rounded-2xl border ${
+              darkMode
+                ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
+                : "bg-amber-500/10 text-amber-600 border-amber-500/20"
+            }`}>
+              {darkMode ? <Moon className="w-6 h-6" /> : <Sun className="w-6 h-6" />}
+            </div>
+            <div>
+              <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                Aparência &amp; Tema Visual
+              </h3>
+              <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-1 max-w-xl">
+                Escolha entre o modo claro institucional ou o modo escuro de alto contraste para maior conforto visual.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 w-full sm:w-auto">
+            <button
+              onClick={() => {
+                if (darkMode) {
+                  vibrateClick();
+                  toggleDarkMode();
+                }
+              }}
+              className={`flex-1 sm:flex-initial flex items-center justify-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                !darkMode
+                  ? "bg-white text-neutral-900 shadow-xs border border-neutral-200/80"
+                  : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+              }`}
+            >
+              <Sun className="w-4 h-4 text-amber-500" />
+              <span>Modo Claro</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (!darkMode) {
+                  vibrateClick();
+                  toggleDarkMode();
+                }
+              }}
+              className={`flex-1 sm:flex-initial flex items-center justify-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                darkMode
+                  ? "bg-neutral-900 text-white shadow-xs border border-neutral-700"
+                  : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+              }`}
+            >
+              <Moon className="w-4 h-4 text-indigo-400" />
+              <span>Modo Escuro</span>
+            </button>
           </div>
         </div>
       </div>

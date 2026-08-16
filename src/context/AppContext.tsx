@@ -115,6 +115,8 @@ interface AppContextType {
   updateUserProfileData: (updatedUser: User) => Promise<void>;
   logout: () => Promise<void>;
   firebaseUser: FirebaseUser | null;
+  authLoading: boolean;
+  isAuthLoading: boolean;
   authModalOpen: boolean;
   setAuthModalOpen: (open: boolean) => void;
   claims: ItemClaim[];
@@ -501,7 +503,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
 
-  // Current User State - initialized with safe guest default, authenticated state driven by Firebase Auth
+  // Current User State - initialized with safe guest default, authenticated state driven exclusively by Firebase Auth
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [currentUser, setCurrentUser] = useState<User>(DEFAULT_GUEST_USER);
 
   const [allUsers, setAllUsers] = useState<User[]>(() => {
@@ -1212,40 +1215,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Master Wipe: Deleta todos os registros de objetos, usuários e logs do Firestore (preservando o admin ativo)
+  // Master Wipe: Deleta todos os registros de objetos, usuários e logs do Firestore através de rota backend segura
   const masterWipeFirestore = async () => {
-    try {
-      for (const it of items) {
-        try { await deleteDoc(doc(db, "items", it.id)); } catch (_) {}
-      }
-      for (const c of claims) {
-        try { await deleteDoc(doc(db, "claims", c.id)); } catch (_) {}
-      }
-      for (const com of comments) {
-        try { await deleteDoc(doc(db, "comments", com.id)); } catch (_) {}
-      }
-      for (const n of notifications) {
-        try { await deleteDoc(doc(db, "notifications", n.id)); } catch (_) {}
-      }
-      for (const log of activityLogs) {
-        try { await deleteDoc(doc(db, "activity_logs", log.id)); } catch (_) {}
-      }
-      for (const blog of backupLogs) {
-        try { await deleteDoc(doc(db, "backup_logs", blog.id)); } catch (_) {}
-      }
-      for (const errLog of errorLogsList) {
-        if (errLog?.id) {
-          try { await deleteDoc(doc(db, "error_logs", errLog.id)); } catch (_) {}
-        }
-      }
+    if (currentUser.role !== "ADMIN") {
+      addToast("Operação restrita exclusivamente ao Administrador TI do IFPR.", "error");
+      return;
+    }
 
-      // Deleta todos os usuários exceto a conta ativa do administrador atual
-      const currentEmailLower = safeToLower(currentUser.email);
-      const usersToDelete = allUsers.filter(
-        (u) => u && u.id !== currentUser.id && safeToLower(u.email) !== currentEmailLower
-      );
-      for (const u of usersToDelete) {
-        try { await deleteDoc(doc(db, "users", u.id)); } catch (_) {}
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+
+      const res = await fetch("/api/admin/master-wipe", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          reauthConfirmed: true,
+          confirmationWord: "DELETAR_TUDO_DEFINITIVAMENTE",
+        }),
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || "Falha na resposta do servidor.");
       }
 
       setItems([]);
@@ -1260,20 +1253,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await saveItemsToIndexedDB([]);
       clear30DayUptimeRecords();
 
-      addToast("Banco de dados do Firestore ZERADO com sucesso! Sistema pronto para inserção de dados reais do IFPR.", "success");
-    } catch (e) {
+      addToast("Banco de dados do Firestore ZERADO com sucesso via rota administrativa autorizada!", "success");
+    } catch (e: any) {
       console.error("Erro no Master Wipe do Firestore:", e);
-      setItems([]);
-      setClaims([]);
-      setComments([]);
-      setNotifications([]);
-      setActivityLogs([]);
-      setBackupLogs([]);
-      setErrorLogsList([]);
-      setAllUsers([currentUser]);
-      await saveItemsToIndexedDB([]).catch(() => {});
-      clear30DayUptimeRecords();
-      addToast("Dados locais zerados com sucesso.", "success");
+      addToast(`Erro ao executar limpeza: ${e?.message || "Ação não autorizada"}`, "error");
     }
   };
 
@@ -1463,11 +1446,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unsubscribeProfileSnapshot = null;
       }
 
-      if (fbUser) {
-        const verified = await verifyAndSyncUserDoc(fbUser);
-        setCurrentUser(verified);
+      if (!fbUser) {
+        setCurrentUser(DEFAULT_GUEST_USER);
+        setAuthLoading(false);
+        return;
+      }
 
-        const userRef = doc(db, "users", verified.id);
+      // Initial user established directly from Firebase Auth
+      const userEmail = fbUser.email || "";
+      const isRoot = userEmail === "paulocauan39@gmail.com";
+      const isServidor = userEmail.includes("@ifpr.edu.br");
+      const initialAuthUser: User = {
+        id: fbUser.uid,
+        name: fbUser.displayName || userEmail.split("@")[0] || "Usuário IFPR",
+        email: userEmail,
+        role: isRoot ? "ADMIN" : (isServidor ? "SERVIDOR" : "ALUNO"),
+        courseOrDept: isServidor ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã",
+        registrationNumber: `2026${fbUser.uid.substring(0, 5)}`,
+        approvalStatus: isRoot ? "APROVADO" : "APROVADO",
+        avatarUrl: fbUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+      };
+      setCurrentUser(initialAuthUser);
+      setAuthLoading(false);
+
+      // Asynchronously fetch/sync full Firestore user profile
+      try {
+        const verified = await verifyAndSyncUserDoc(fbUser);
+        if (verified) {
+          setCurrentUser(verified);
+        }
+
+        const userRef = doc(db, "users", fbUser.uid);
         unsubscribeProfileSnapshot = onSnapshot(
           userRef,
           (userSnap) => {
@@ -1489,6 +1498,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.warn("Aviso ao escutar perfil no Firestore:", e);
           }
         );
+      } catch (profileErr) {
+        console.warn("Aviso ao sincronizar perfil do Firestore:", profileErr);
       }
     });
 
@@ -2657,6 +2668,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateUserProfileData,
         logout,
         firebaseUser,
+        authLoading,
+        isAuthLoading: authLoading,
         authModalOpen,
         setAuthModalOpen,
         claims,

@@ -37,14 +37,18 @@ export function getDiscordWebhookUrl(channel: DiscordChannelType): string {
       const configUrl =
         functionsConfig?.discord?.novos_achados_webhook_url ||
         functionsConfig?.discord?.webhook_url_novos_achados ||
-        functionsConfig?.discord?.achados_webhook_url;
+        functionsConfig?.discord?.achados_webhook_url ||
+        functionsConfig?.discord?.achados_url ||
+        functionsConfig?.discord?.webhook_achados;
       if (configUrl && typeof configUrl === "string" && configUrl.trim()) {
         return configUrl.trim();
       }
       const envUrl =
         process.env.DISCORD_NOVOS_ACHADOS_WEBHOOK_URL ||
         process.env.DISCORD_WEBHOOK_URL_NOVOS_ACHADOS ||
-        process.env.DISCORD_ACHADOS_WEBHOOK_URL;
+        process.env.DISCORD_ACHADOS_WEBHOOK_URL ||
+        process.env.DISCORD_ACHADOS_URL ||
+        process.env.DISCORD_WEBHOOK_ACHADOS;
       if (envUrl && typeof envUrl === "string" && envUrl.trim()) {
         return envUrl.trim();
       }
@@ -54,14 +58,18 @@ export function getDiscordWebhookUrl(channel: DiscordChannelType): string {
       const configUrl =
         functionsConfig?.discord?.novas_perdas_webhook_url ||
         functionsConfig?.discord?.webhook_url_novas_perdas ||
-        functionsConfig?.discord?.perdas_webhook_url;
+        functionsConfig?.discord?.perdas_webhook_url ||
+        functionsConfig?.discord?.perdas_url ||
+        functionsConfig?.discord?.webhook_perdas;
       if (configUrl && typeof configUrl === "string" && configUrl.trim()) {
         return configUrl.trim();
       }
       const envUrl =
         process.env.DISCORD_NOVAS_PERDAS_WEBHOOK_URL ||
         process.env.DISCORD_WEBHOOK_URL_NOVAS_PERDAS ||
-        process.env.DISCORD_PERDAS_WEBHOOK_URL;
+        process.env.DISCORD_PERDAS_WEBHOOK_URL ||
+        process.env.DISCORD_PERDAS_URL ||
+        process.env.DISCORD_WEBHOOK_PERDAS;
       if (envUrl && typeof envUrl === "string" && envUrl.trim()) {
         return envUrl.trim();
       }
@@ -78,6 +86,8 @@ export function getDiscordWebhookUrl(channel: DiscordChannelType): string {
       const envUrl =
         process.env.DISCORD_FEEDBACK_WEBHOOK_URL ||
         process.env.DISCORD_WEBHOOK_URL_FEEDBACK ||
+        process.env.DISCORD_FEEDBACK_URL ||
+        process.env.DISCORD_WEBHOOK_FEEDBACK ||
         process.env.DISCORD_WEBHOOK_URL;
       if (envUrl && typeof envUrl === "string" && envUrl.trim()) {
         return envUrl.trim();
@@ -109,6 +119,17 @@ export async function sendDiscordWebhook(
   const targetUrl = isDirectUrl ? target : getDiscordWebhookUrl(target as DiscordChannelType);
   const { source, entityId, entityTitle } = context;
 
+  logger.info(
+    `[DISCORD_DIAGNOSTIC] [${source}] Execução do trigger iniciada para entityId: "${entityId || "N/A"}" (título: "${entityTitle || "N/A"}")`,
+    { source, entityId, entityTitle }
+  );
+
+  const embedCount = payload?.embeds?.length || 0;
+  logger.info(
+    `[DISCORD_DIAGNOSTIC] [${source}] Payload de dados preparado (embeds: ${embedCount}, webhook configurado: ${targetUrl ? "SIM" : "NÃO"})`,
+    { source, entityId, embedCount, webhookConfigured: Boolean(targetUrl) }
+  );
+
   if (!targetUrl) {
     logger.info(
       `[DiscordWebhook Notice] [${source}] Webhook URL não configurada para '${target}'. Notificação ignorada silenciosamente.`,
@@ -125,6 +146,8 @@ export async function sendDiscordWebhook(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
+    logger.info(`[DISCORD_DIAGNOSTIC] [${source}] Enviando requisição HTTP POST para o Discord...`);
+
     const response = await fetch(targetUrl, {
       method: "POST",
       headers: {
@@ -135,6 +158,11 @@ export async function sendDiscordWebhook(
     });
 
     clearTimeout(timeoutId);
+
+    logger.info(
+      `[DISCORD_DIAGNOSTIC] [${source}] Discord respondeu com HTTP Status: ${response.status} (${response.statusText})`,
+      { source, entityId, status: response.status, statusText: response.statusText }
+    );
 
     if (!response.ok) {
       const errText = await response.text().catch(() => "Sem corpo de resposta");
