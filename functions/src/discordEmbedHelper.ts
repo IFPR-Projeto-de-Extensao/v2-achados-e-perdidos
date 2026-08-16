@@ -104,13 +104,60 @@ export function sanitizePii(text?: string | null): string {
 }
 
 /**
+ * Safely parses any date input (string, ISO, YYYY-MM-DD, timestamp, Firestore Timestamp) to a Date object.
+ */
+export function parseDateSafe(dateInput?: any): Date | null {
+  if (!dateInput) return null;
+  if (dateInput instanceof Date) {
+    return isNaN(dateInput.getTime()) ? null : dateInput;
+  }
+  // Handle Firestore Timestamp objects ({ seconds, nanoseconds } or { _seconds, _nanoseconds })
+  if (typeof dateInput === "object") {
+    if (typeof dateInput.toDate === "function") {
+      try {
+        const d = dateInput.toDate();
+        if (d instanceof Date && !isNaN(d.getTime())) return d;
+      } catch {
+        // Fall through
+      }
+    }
+    const secs = typeof dateInput.seconds === "number" ? dateInput.seconds : dateInput._seconds;
+    if (typeof secs === "number") {
+      const d = new Date(secs * 1000);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+  // Handle numeric epoch timestamps
+  if (typeof dateInput === "number") {
+    const d = new Date(dateInput > 1e11 ? dateInput : dateInput * 1000);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // Handle strings
+  if (typeof dateInput === "string") {
+    const trimmed = dateInput.trim();
+    if (!trimmed) return null;
+    // YYYY-MM-DD format: treat as noon UTC to avoid local timezone off-by-one shifts
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const parts = trimmed.split("-");
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const d = new Date(Date.UTC(year, month, day, 12, 0, 0));
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(trimmed);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+/**
  * Formats ISO or date strings into Brazilian Standard Time (BRT - America/Sao_Paulo)
  */
-export function formatToBrtDate(dateStr?: string | null): string {
-  if (!dateStr) return "Data não informada";
+export function formatToBrtDate(dateInput?: any): string {
+  const parsed = parseDateSafe(dateInput);
+  if (!parsed) return typeof dateInput === "string" && dateInput ? dateInput : "Data não informada";
   try {
-    const parsed = new Date(dateStr.includes("T") ? dateStr : `${dateStr}T12:00:00Z`);
-    if (isNaN(parsed.getTime())) return String(dateStr);
     return parsed.toLocaleDateString("pt-BR", {
       timeZone: "America/Sao_Paulo",
       day: "2-digit",
@@ -118,29 +165,43 @@ export function formatToBrtDate(dateStr?: string | null): string {
       year: "numeric",
     });
   } catch {
-    return String(dateStr);
+    return String(dateInput);
   }
 }
 
 /**
  * Formats full timestamp into Brazilian Standard Time with hours and minutes
  */
-export function formatToBrtDateTime(dateStr?: string | null): string {
-  if (!dateStr) return "Momento do registro";
+export function formatToBrtDateTime(dateInput?: any): string {
+  const parsed = parseDateSafe(dateInput);
+  if (!parsed) return typeof dateInput === "string" && dateInput ? dateInput : "Momento do registro";
   try {
-    const parsed = new Date(dateStr);
-    if (isNaN(parsed.getTime())) return String(dateStr);
-    return parsed.toLocaleString("pt-BR", {
+    const datePart = parsed.toLocaleDateString("pt-BR", {
       timeZone: "America/Sao_Paulo",
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
+    });
+    const timePart = parsed.toLocaleTimeString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
       hour: "2-digit",
       minute: "2-digit",
     });
+    return `${datePart} às ${timePart} (BRT)`;
   } catch {
-    return String(dateStr);
+    return String(dateInput);
   }
+}
+
+/**
+ * Returns a valid ISO 8601 string for the Discord embed timestamp from database event time
+ */
+export function getIsoDatabaseTimestamp(createdAt?: any, updatedAt?: any): string {
+  const parsed = parseDateSafe(createdAt) || parseDateSafe(updatedAt);
+  if (parsed) {
+    return parsed.toISOString();
+  }
+  return new Date().toISOString();
 }
 
 /**
@@ -158,18 +219,15 @@ export function buildNovosAchadosEmbed(item: FoundItemPayload): DiscordWebhookPa
     badge: item.category || "Achado",
   };
 
-  const protocol = (item.qrCodeId || item.id || "N/A").toString().trim().substring(0, 80);
-  const registrarName = sanitizePii(item.registeredByName || "Servidor/Aluno do IFPR").substring(0, 100);
-  const roleLabel = item.registeredByRole ? ` (${item.registeredByRole})` : "";
-  const registrarDisplay = `${registrarName}${roleLabel}`;
-
   const eventDateFormatted = formatToBrtDate(item.date);
-  const createdAtFormatted = formatToBrtDateTime(item.createdAt || new Date().toISOString());
+  const createdAtFormatted = formatToBrtDateTime(item.createdAt || item.updatedAt || new Date().toISOString());
+  const databaseIsoTimestamp = getIsoDatabaseTimestamp(item.createdAt, item.updatedAt);
 
+  // Mandatory structured fields: Category, Location, Date, Status
   const fields: DiscordEmbedField[] = [
     {
       name: "🏷️ Categoria",
-      value: `${categoryInfo.icon} ${categoryInfo.label}`,
+      value: `${categoryInfo.icon} **${categoryInfo.label}**`,
       inline: true,
     },
     {
@@ -179,32 +237,47 @@ export function buildNovosAchadosEmbed(item: FoundItemPayload): DiscordWebhookPa
     },
     {
       name: "📅 Data do Achado",
-      value: eventDateFormatted,
+      value: `**${eventDateFormatted}**`,
       inline: true,
     },
     {
-      name: "👤 Registrado Por",
-      value: registrarDisplay,
-      inline: true,
-    },
-    {
-      name: "📋 Protocolo / ID",
-      value: `\`${protocol}\``,
-      inline: true,
-    },
-    {
-      name: "🟢 Status do Pertence",
+      name: "📊 Status do Item",
       value: "🟢 **Sob Custódia** *(Aguardando Retirada)*",
       inline: true,
     },
   ];
 
+  // Extrai e formata o nome do usuário SOMENTE se estiver presente no registro
+  const rawRegistrar = item.registeredByName || item.userName || item.authorName || item.createdByName;
+  if (rawRegistrar && typeof rawRegistrar === "string" && rawRegistrar.trim()) {
+    const cleanRegistrar = sanitizePii(rawRegistrar.trim()).substring(0, 100);
+    const roleLabel = item.registeredByRole && typeof item.registeredByRole === "string" && item.registeredByRole.trim()
+      ? ` (${item.registeredByRole.trim()})`
+      : "";
+    fields.push({
+      name: "👤 Registrado Por",
+      value: `${cleanRegistrar}${roleLabel}`,
+      inline: true,
+    });
+  }
+
+  // Extrai e formata o número do protocolo SOMENTE se estiver presente no registro
+  const rawProtocol = item.qrCodeId || item.protocolNumber || item.protocol || item.id;
+  if (rawProtocol && typeof rawProtocol === "string" && rawProtocol.trim() && rawProtocol.trim().toUpperCase() !== "N/A") {
+    const cleanProtocol = rawProtocol.trim().substring(0, 80);
+    fields.push({
+      name: "📋 Número / Protocolo",
+      value: `\`${cleanProtocol}\``,
+      inline: true,
+    });
+  }
+
   // Optional visual characteristics
   const visualDetails: string[] = [];
-  if (item.color && item.color.trim()) {
+  if (item.color && typeof item.color === "string" && item.color.trim()) {
     visualDetails.push(`Cor: **${sanitizePii(item.color.trim())}**`);
   }
-  if (item.brand && item.brand.trim()) {
+  if (item.brand && typeof item.brand === "string" && item.brand.trim()) {
     visualDetails.push(`Marca/Modelo: **${sanitizePii(item.brand.trim())}**`);
   }
   if (visualDetails.length > 0) {
@@ -216,7 +289,7 @@ export function buildNovosAchadosEmbed(item: FoundItemPayload): DiscordWebhookPa
   }
 
   fields.push({
-    name: "🕐 Data e Hora do Cadastro",
+    name: "🕐 Registro no Banco de Dados",
     value: createdAtFormatted,
     inline: false,
   });
@@ -227,10 +300,10 @@ export function buildNovosAchadosEmbed(item: FoundItemPayload): DiscordWebhookPa
     color: DISCORD_THEME_COLORS.NEW_FOUND_ITEM,
     fields,
     footer: {
-      text: "IFPR Campus Ivaiporã • Central de Achados e Perdidos",
+      text: "IFPR Campus Ivaiporã • Central de Achados e Perdidos • Evento Registrado",
       icon_url: "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/shield-check.png",
     },
-    timestamp: item.createdAt || new Date().toISOString(),
+    timestamp: databaseIsoTimestamp,
   };
 
   // Safe HTTP/HTTPS image URL inclusion
@@ -260,18 +333,15 @@ export function buildNovasPerdasEmbed(item: FoundItemPayload): DiscordWebhookPay
     badge: item.category || "Perda",
   };
 
-  const protocol = (item.qrCodeId || item.id || "N/A").toString().trim().substring(0, 80);
-  const registrarName = sanitizePii(item.registeredByName || "Comunidade Acadêmica do IFPR").substring(0, 100);
-  const roleLabel = item.registeredByRole ? ` (${item.registeredByRole})` : "";
-  const registrarDisplay = `${registrarName}${roleLabel}`;
-
   const eventDateFormatted = formatToBrtDate(item.date);
-  const createdAtFormatted = formatToBrtDateTime(item.createdAt || new Date().toISOString());
+  const createdAtFormatted = formatToBrtDateTime(item.createdAt || item.updatedAt || new Date().toISOString());
+  const databaseIsoTimestamp = getIsoDatabaseTimestamp(item.createdAt, item.updatedAt);
 
+  // Mandatory structured fields: Category, Location, Date, Status
   const fields: DiscordEmbedField[] = [
     {
       name: "🏷️ Categoria",
-      value: `${categoryInfo.icon} ${categoryInfo.label}`,
+      value: `${categoryInfo.icon} **${categoryInfo.label}**`,
       inline: true,
     },
     {
@@ -281,32 +351,47 @@ export function buildNovasPerdasEmbed(item: FoundItemPayload): DiscordWebhookPay
     },
     {
       name: "📅 Data da Perda",
-      value: eventDateFormatted,
+      value: `**${eventDateFormatted}**`,
       inline: true,
     },
     {
-      name: "👤 Usuário Responsável pelo Cadastro",
-      value: registrarDisplay,
-      inline: true,
-    },
-    {
-      name: "📋 Número / Protocolo",
-      value: `\`${protocol}\``,
-      inline: true,
-    },
-    {
-      name: "🟡 Status Atual",
+      name: "📊 Status do Item",
       value: "🟡 **Perdido** *(Procura Ativa no Campus)*",
       inline: true,
     },
   ];
 
+  // Extrai e formata o nome do usuário SOMENTE se estiver presente no registro
+  const rawRegistrar = item.registeredByName || item.userName || item.authorName || item.createdByName;
+  if (rawRegistrar && typeof rawRegistrar === "string" && rawRegistrar.trim()) {
+    const cleanRegistrar = sanitizePii(rawRegistrar.trim()).substring(0, 100);
+    const roleLabel = item.registeredByRole && typeof item.registeredByRole === "string" && item.registeredByRole.trim()
+      ? ` (${item.registeredByRole.trim()})`
+      : "";
+    fields.push({
+      name: "👤 Usuário Responsável pelo Cadastro",
+      value: `${cleanRegistrar}${roleLabel}`,
+      inline: true,
+    });
+  }
+
+  // Extrai e formata o número do protocolo SOMENTE se estiver presente no registro
+  const rawProtocol = item.qrCodeId || item.protocolNumber || item.protocol || item.id;
+  if (rawProtocol && typeof rawProtocol === "string" && rawProtocol.trim() && rawProtocol.trim().toUpperCase() !== "N/A") {
+    const cleanProtocol = rawProtocol.trim().substring(0, 80);
+    fields.push({
+      name: "📋 Número / Protocolo",
+      value: `\`${cleanProtocol}\``,
+      inline: true,
+    });
+  }
+
   // Optional visual characteristics
   const visualDetails: string[] = [];
-  if (item.color && item.color.trim()) {
+  if (item.color && typeof item.color === "string" && item.color.trim()) {
     visualDetails.push(`Cor: **${sanitizePii(item.color.trim())}**`);
   }
-  if (item.brand && item.brand.trim()) {
+  if (item.brand && typeof item.brand === "string" && item.brand.trim()) {
     visualDetails.push(`Marca/Modelo: **${sanitizePii(item.brand.trim())}**`);
   }
   if (visualDetails.length > 0) {
@@ -318,7 +403,7 @@ export function buildNovasPerdasEmbed(item: FoundItemPayload): DiscordWebhookPay
   }
 
   fields.push({
-    name: "🕐 Data e Hora do Cadastro",
+    name: "🕐 Registro no Banco de Dados",
     value: createdAtFormatted,
     inline: false,
   });
@@ -329,10 +414,10 @@ export function buildNovasPerdasEmbed(item: FoundItemPayload): DiscordWebhookPay
     color: DISCORD_THEME_COLORS.LOST_ITEM, // Amber 0xf59e0b
     fields,
     footer: {
-      text: "IFPR Campus Ivaiporã • Central de Achados e Perdidos",
+      text: "IFPR Campus Ivaiporã • Central de Achados e Perdidos • Evento Registrado",
       icon_url: "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/shield-check.png",
     },
-    timestamp: item.createdAt || new Date().toISOString(),
+    timestamp: databaseIsoTimestamp,
   };
 
   // Safe HTTP/HTTPS image URL inclusion

@@ -184,13 +184,60 @@ export function sanitizePii(text?: string | null): string {
 }
 
 /**
- * Formats date into Brazilian Standard Time (BRT)
+ * Safely parses any date input (string, ISO, YYYY-MM-DD, timestamp, Firestore Timestamp) to a Date object.
  */
-export function formatBrtDate(dateStr?: string | null): string {
-  if (!dateStr) return "Data não informada";
+export function parseDateSafe(dateInput?: any): Date | null {
+  if (!dateInput) return null;
+  if (dateInput instanceof Date) {
+    return isNaN(dateInput.getTime()) ? null : dateInput;
+  }
+  // Handle Firestore Timestamp objects ({ seconds, nanoseconds } or { _seconds, _nanoseconds })
+  if (typeof dateInput === "object") {
+    if (typeof dateInput.toDate === "function") {
+      try {
+        const d = dateInput.toDate();
+        if (d instanceof Date && !isNaN(d.getTime())) return d;
+      } catch {
+        // Fall through
+      }
+    }
+    const secs = typeof dateInput.seconds === "number" ? dateInput.seconds : dateInput._seconds;
+    if (typeof secs === "number") {
+      const d = new Date(secs * 1000);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+  // Handle numeric epoch timestamps
+  if (typeof dateInput === "number") {
+    const d = new Date(dateInput > 1e11 ? dateInput : dateInput * 1000);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // Handle strings
+  if (typeof dateInput === "string") {
+    const trimmed = dateInput.trim();
+    if (!trimmed) return null;
+    // YYYY-MM-DD format: treat as noon UTC to avoid local timezone off-by-one shifts
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const parts = trimmed.split("-");
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const d = new Date(Date.UTC(year, month, day, 12, 0, 0));
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(trimmed);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+/**
+ * Formats date into Brazilian Standard Time (BRT) - e.g. "16/08/2026"
+ */
+export function formatBrtDate(dateInput?: any): string {
+  const parsed = parseDateSafe(dateInput);
+  if (!parsed) return typeof dateInput === "string" && dateInput ? dateInput : "Data não informada";
   try {
-    const parsed = new Date(dateStr.includes("T") ? dateStr : `${dateStr}T12:00:00Z`);
-    if (isNaN(parsed.getTime())) return String(dateStr);
     return parsed.toLocaleDateString("pt-BR", {
       timeZone: "America/Sao_Paulo",
       day: "2-digit",
@@ -198,29 +245,43 @@ export function formatBrtDate(dateStr?: string | null): string {
       year: "numeric",
     });
   } catch {
-    return String(dateStr);
+    return String(dateInput);
   }
 }
 
 /**
- * Formats full timestamp into Brazilian Standard Time with hour and minute
+ * Formats full timestamp into Brazilian Standard Time with hour and minute - e.g. "16/08/2026 às 14:30"
  */
-export function formatBrtDateTime(dateStr?: string | null): string {
-  if (!dateStr) return "Momento do registro";
+export function formatBrtDateTime(dateInput?: any): string {
+  const parsed = parseDateSafe(dateInput);
+  if (!parsed) return typeof dateInput === "string" && dateInput ? dateInput : "Momento do registro";
   try {
-    const parsed = new Date(dateStr);
-    if (isNaN(parsed.getTime())) return String(dateStr);
-    return parsed.toLocaleString("pt-BR", {
+    const datePart = parsed.toLocaleDateString("pt-BR", {
       timeZone: "America/Sao_Paulo",
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
+    });
+    const timePart = parsed.toLocaleTimeString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
       hour: "2-digit",
       minute: "2-digit",
     });
+    return `${datePart} às ${timePart} (BRT)`;
   } catch {
-    return String(dateStr);
+    return String(dateInput);
   }
+}
+
+/**
+ * Returns a valid ISO 8601 string for the Discord embed timestamp from database event time
+ */
+export function getIsoDatabaseTimestamp(createdAt?: any, updatedAt?: any): string {
+  const parsed = parseDateSafe(createdAt) || parseDateSafe(updatedAt);
+  if (parsed) {
+    return parsed.toISOString();
+  }
+  return new Date().toISOString();
 }
 
 /**
@@ -229,59 +290,69 @@ export function formatBrtDateTime(dateStr?: string | null): string {
  */
 export function formatItemToDiscordEmbed(item: ItemData): DiscordWebhookPayload {
   try {
-    const isFound = item.type !== "PERDIDO";
-    const typeLabel = isFound ? "Achado" : "Objeto Perdido";
-    const titlePrefix = isFound ? "📦 Novo Achado Registrado" : "🔍 Alerta de Objeto Perdido";
+    const isLost = item.type === "PERDIDO";
+    const titlePrefix = isLost ? "🔍 Objeto Perdido Cadastrado" : "📦 Novo Achado Registrado";
 
-    const sanitizedTitle = sanitizePii(item.title || "Objeto").substring(0, 200);
+    const sanitizedTitle = sanitizePii(item.title || (isLost ? "Objeto Perdido" : "Objeto Encontrado")).substring(0, 200);
     const rawDesc = item.description || "Nenhuma descrição detalhada informada.";
     const sanitizedDesc = sanitizePii(rawDesc).substring(0, 3800);
-    const sanitizedLocation = sanitizePii(item.location || "Campus Ivaiporã").substring(0, 100);
+    const sanitizedLocation = sanitizePii(item.location || (isLost ? "Local não especificado (Campus Ivaiporã)" : "Campus Ivaiporã")).substring(0, 100);
     
     const categoryInfo = getCategoryMeta(item.category);
-    const protocol = (item.qrCodeId || item.id || "N/A").toString().trim().substring(0, 80);
-    
-    const registrarName = sanitizePii(item.registeredByName || "Comunidade Acadêmica do IFPR").substring(0, 100);
-    const roleLabel = item.registeredByRole ? ` (${item.registeredByRole})` : "";
-    const registrarDisplay = `${registrarName}${roleLabel}`;
-
     const eventDateFormatted = formatBrtDate(item.date);
-    const createdAtFormatted = formatBrtDateTime(item.createdAt || new Date().toISOString());
+    const createdAtFormatted = formatBrtDateTime(item.createdAt || item.updatedAt || new Date().toISOString());
     const embedColor = getStatusColor(item.status, item.type);
     const statusDisplay = getStatusLabel(item.status, item.type);
+    const databaseIsoTimestamp = getIsoDatabaseTimestamp(item.createdAt, item.updatedAt);
 
+    // Primary structured fields: Category, Last Seen / Found Location, Date Lost / Found, Item Status
     const fields: DiscordEmbedField[] = [
       {
         name: "🏷️ Categoria",
-        value: `${categoryInfo.icon} ${categoryInfo.label}`,
+        value: `${categoryInfo.icon} **${categoryInfo.label}**`,
         inline: true,
       },
       {
-        name: isFound ? "📍 Local Encontrado" : "📍 Local Provável da Perda",
+        name: isLost ? "📍 Último Local Onde Foi Visto" : "📍 Local Encontrado",
         value: sanitizedLocation,
         inline: true,
       },
       {
-        name: isFound ? "📅 Data do Achado" : "📅 Data da Perda",
-        value: eventDateFormatted,
+        name: isLost ? "📅 Data da Perda" : "📅 Data do Achado",
+        value: `**${eventDateFormatted}**`,
         inline: true,
       },
       {
-        name: "👤 Registrado Por",
-        value: registrarDisplay,
-        inline: true,
-      },
-      {
-        name: "📋 Protocolo / ID",
-        value: `\`${protocol}\``,
-        inline: true,
-      },
-      {
-        name: "📊 Status Atual",
-        value: statusDisplay,
+        name: "📊 Status do Item",
+        value: `**${statusDisplay}**`,
         inline: true,
       },
     ];
+
+    // Safely extract and format User / Registrar name ONLY if present
+    const rawRegistrar = item.registeredByName || item.userName || item.authorName || item.createdByName;
+    if (rawRegistrar && typeof rawRegistrar === "string" && rawRegistrar.trim()) {
+      const cleanRegistrar = sanitizePii(rawRegistrar.trim()).substring(0, 100);
+      const roleLabel = item.registeredByRole && typeof item.registeredByRole === "string" && item.registeredByRole.trim()
+        ? ` (${item.registeredByRole.trim()})`
+        : "";
+      fields.push({
+        name: isLost ? "👤 Usuário Responsável pelo Cadastro" : "👤 Registrado Por",
+        value: `${cleanRegistrar}${roleLabel}`,
+        inline: true,
+      });
+    }
+
+    // Safely extract and format Protocol number ONLY if present in the document
+    const rawProtocol = item.qrCodeId || item.protocolNumber || item.protocol || item.id;
+    if (rawProtocol && typeof rawProtocol === "string" && rawProtocol.trim() && rawProtocol.trim().toUpperCase() !== "N/A") {
+      const cleanProtocol = rawProtocol.trim().substring(0, 80);
+      fields.push({
+        name: "📋 Número / Protocolo",
+        value: `\`${cleanProtocol}\``,
+        inline: true,
+      });
+    }
 
     // Optional visual characteristics
     const visualDetails: string[] = [];
@@ -300,7 +371,7 @@ export function formatItemToDiscordEmbed(item: ItemData): DiscordWebhookPayload 
     }
 
     fields.push({
-      name: "🕐 Data e Hora do Cadastro",
+      name: "🕐 Registro no Banco de Dados",
       value: createdAtFormatted,
       inline: false,
     });
@@ -311,10 +382,10 @@ export function formatItemToDiscordEmbed(item: ItemData): DiscordWebhookPayload 
       color: embedColor,
       fields,
       footer: {
-        text: "IFPR Campus Ivaiporã • Central de Achados e Perdidos",
+        text: "IFPR Campus Ivaiporã • Central de Achados e Perdidos • Evento Registrado",
         icon_url: "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/shield-check.png",
       },
-      timestamp: item.createdAt || new Date().toISOString(),
+      timestamp: databaseIsoTimestamp,
     };
 
     // Include image URL only if valid HTTP/HTTPS URL
@@ -323,12 +394,12 @@ export function formatItemToDiscordEmbed(item: ItemData): DiscordWebhookPayload 
     }
 
     return {
-      username: isFound
-        ? "IFPR Achados e Perdidos • #novos-achados"
-        : "IFPR Achados e Perdidos • #novas-perdas",
-      avatar_url: isFound
-        ? "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/package-search.png"
-        : "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/search.png",
+      username: isLost
+        ? "IFPR Achados e Perdidos • #novas-perdas"
+        : "IFPR Achados e Perdidos • #novos-achados",
+      avatar_url: isLost
+        ? "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/search.png"
+        : "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/package-search.png",
       embeds: [embed],
     };
   } catch (error: any) {
@@ -340,6 +411,7 @@ export function formatItemToDiscordEmbed(item: ItemData): DiscordWebhookPayload 
     });
 
     // Fallback safe embed so notification payload is never totally broken
+    const fallbackIso = getIsoDatabaseTimestamp(item?.createdAt, item?.updatedAt);
     return {
       username: item?.type === "PERDIDO" ? "IFPR Achados e Perdidos • #novas-perdas" : "IFPR Achados e Perdidos",
       embeds: [
@@ -349,8 +421,8 @@ export function formatItemToDiscordEmbed(item: ItemData): DiscordWebhookPayload 
           color: item?.type === "PERDIDO" ? STATUS_COLORS.PERDIDO : STATUS_COLORS.DEFAULT_FOUND,
           fields: [
             {
-              name: "📋 Protocolo",
-              value: `\`${item?.qrCodeId || item?.id || "N/A"}\``,
+              name: "🏷️ Categoria",
+              value: String(item?.category || "Outros"),
               inline: true,
             },
             {
@@ -358,11 +430,26 @@ export function formatItemToDiscordEmbed(item: ItemData): DiscordWebhookPayload 
               value: String(item?.location || "Campus Ivaiporã"),
               inline: true,
             },
+            {
+              name: "📅 Data",
+              value: formatBrtDate(item?.date),
+              inline: true,
+            },
+            {
+              name: "📊 Status",
+              value: getStatusLabel(item?.status, item?.type),
+              inline: true,
+            },
+            {
+              name: "📋 Protocolo",
+              value: `\`${item?.qrCodeId || item?.id || "N/A"}\``,
+              inline: true,
+            },
           ],
           footer: {
-            text: "IFPR Campus Ivaiporã • Central de Achados e Perdidos",
+            text: "IFPR Campus Ivaiporã • Central de Achados e Perdidos • Evento Registrado",
           },
-          timestamp: new Date().toISOString(),
+          timestamp: fallbackIso,
         },
       ],
     };

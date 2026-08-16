@@ -932,3 +932,60 @@ export const onNovaPerdaCreated = onDocumentCreated("items/{itemId}", async (eve
   }
 });
 
+/**
+ * Cloud Function Firestore Trigger: notifyNewLoss
+ * Triggers automatically whenever a new document is created in the 'perdas' collection in Firestore.
+ * Sends a structured, formatted Discord Embed to DISCORD_NOVAS_PERDAS_WEBHOOK_URL with category, date, location, and status.
+ * Safely extracts user name and protocol number if present.
+ * Uses a robust try-catch block to silently log errors in Cloud Logging / Firebase console without disrupting the creation flow.
+ */
+export const notifyNewLoss = onDocumentCreated("perdas/{lossId}", async (event) => {
+  const data = event.data?.data() as FoundItemData | undefined;
+  const lossId = event.params.lossId;
+
+  if (!data) {
+    functions.logger.warn(`[notifyNewLoss] Document 'perdas/${lossId}' was created without data.`);
+    return;
+  }
+
+  functions.logger.info(`[notifyNewLoss] Novo registro de perda detectado na coleção 'perdas/${lossId}': "${data.title || 'Sem título'}"`);
+
+  try {
+    const dispatchResult = await sendNovaPerdaToDiscord({
+      ...data,
+      id: data.id || (data as any).qrCodeId || (data as any).protocolNumber || lossId,
+      type: "PERDIDO",
+    });
+
+    if (!dispatchResult.success) {
+      // Log silencioso no console / Cloud Logging para não interromper o fluxo da aplicação
+      functions.logger.error(
+        `[notifyNewLoss] Falha silenciosa no envio da notificação ao Discord para a perda 'perdas/${lossId}':`,
+        {
+          lossId,
+          itemTitle: data.title,
+          status: dispatchResult.status || "N/A",
+          statusText: dispatchResult.statusText || "N/A",
+          error: dispatchResult.error,
+          timestamp: new Date().toISOString(),
+        }
+      );
+    } else {
+      functions.logger.info(`[notifyNewLoss] Notificação enviada com sucesso para Discord Webhook para a perda 'perdas/${lossId}'.`);
+    }
+  } catch (error: any) {
+    // Captura qualquer exceção inesperada e faz log silencioso no console do Firebase
+    functions.logger.error(
+      `[notifyNewLoss] Exceção capturada ao processar notificação no Discord para 'perdas/${lossId}':`,
+      {
+        lossId,
+        itemTitle: data.title,
+        errorMessage: error?.message,
+        stack: error?.stack,
+        timestamp: new Date().toISOString(),
+      }
+    );
+  }
+});
+
+

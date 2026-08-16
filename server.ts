@@ -1285,8 +1285,94 @@ app.post("/api/support/send-feedback", generalRateLimiter, async (req, res) => {
 });
 
 // ==========================================
-// Discord Integration for #novos-achados
+// Discord Integration for #novos-achados & #novas-perdas
 // ==========================================
+
+function parseDateSafeServer(dateInput?: any): Date | null {
+  if (!dateInput) return null;
+  if (dateInput instanceof Date) {
+    return isNaN(dateInput.getTime()) ? null : dateInput;
+  }
+  if (typeof dateInput === "object") {
+    if (typeof dateInput.toDate === "function") {
+      try {
+        const d = dateInput.toDate();
+        if (d instanceof Date && !isNaN(d.getTime())) return d;
+      } catch {
+        // Fall through
+      }
+    }
+    const secs = typeof dateInput.seconds === "number" ? dateInput.seconds : dateInput._seconds;
+    if (typeof secs === "number") {
+      const d = new Date(secs * 1000);
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+  if (typeof dateInput === "number") {
+    const d = new Date(dateInput > 1e11 ? dateInput : dateInput * 1000);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof dateInput === "string") {
+    const trimmed = dateInput.trim();
+    if (!trimmed) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const parts = trimmed.split("-");
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const d = new Date(Date.UTC(year, month, day, 12, 0, 0));
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(trimmed);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
+
+function formatBrtDateServer(dateInput?: any): string {
+  const parsed = parseDateSafeServer(dateInput);
+  if (!parsed) return typeof dateInput === "string" && dateInput ? dateInput : "Data não informada";
+  try {
+    return parsed.toLocaleDateString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+  } catch {
+    return String(dateInput);
+  }
+}
+
+function formatBrtDateTimeServer(dateInput?: any): string {
+  const parsed = parseDateSafeServer(dateInput);
+  if (!parsed) return typeof dateInput === "string" && dateInput ? dateInput : "Momento do registro";
+  try {
+    const datePart = parsed.toLocaleDateString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+    const timePart = parsed.toLocaleTimeString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    return `${datePart} às ${timePart} (BRT)`;
+  } catch {
+    return String(dateInput);
+  }
+}
+
+function getIsoDatabaseTimestampServer(createdAt?: any, updatedAt?: any): string {
+  const parsed = parseDateSafeServer(createdAt) || parseDateSafeServer(updatedAt);
+  if (parsed) {
+    return parsed.toISOString();
+  }
+  return new Date().toISOString();
+}
+
 function getDiscordNovosAchadosWebhookUrl(): string {
   return (process.env.DISCORD_NOVOS_ACHADOS_WEBHOOK_URL || "").trim();
 }
@@ -1307,6 +1393,7 @@ async function sendNovoAchadoToDiscord(item: {
   registeredByName?: string;
   registeredByRole?: string;
   createdAt?: string;
+  updatedAt?: string;
 }): Promise<boolean> {
   if (item.type !== "ENCONTRADO") {
     return false;
@@ -1330,43 +1417,39 @@ async function sendNovoAchadoToDiscord(item: {
     const sanitizedColor = item.color && item.color.trim() ? item.color.trim() : null;
     const sanitizedBrand = item.brand && item.brand.trim() ? item.brand.trim() : null;
 
-    let dateFormatted = item.date || "Data não informada";
-    if (item.date) {
-      try {
-        const parsedDate = new Date(item.date.includes("T") ? item.date : `${item.date}T12:00:00Z`);
-        dateFormatted = parsedDate.toLocaleDateString("pt-BR", {
-          timeZone: "America/Sao_Paulo",
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        });
-      } catch {
-        dateFormatted = item.date;
-      }
-    }
-
-    let createdAtFormatted = item.createdAt || new Date().toISOString();
-    try {
-      createdAtFormatted = new Date(createdAtFormatted).toLocaleString("pt-BR", {
-        timeZone: "America/Sao_Paulo",
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      createdAtFormatted = item.createdAt || "Hoje";
-    }
+    const dateFormatted = formatBrtDateServer(item.date);
+    const createdAtFormatted = formatBrtDateTimeServer(item.createdAt || item.updatedAt || new Date().toISOString());
+    const databaseIsoTimestamp = getIsoDatabaseTimestampServer(item.createdAt, item.updatedAt);
 
     const fields: Array<{ name: string; value: string; inline?: boolean }> = [
-      { name: "🏷️ Categoria", value: sanitizedCategory, inline: true },
-      { name: "📍 Local Encontrado", value: sanitizedLocation, inline: true },
-      { name: "📅 Data do Achado", value: dateFormatted, inline: true },
-      { name: "👤 Cadastrado Por", value: sanitizedRegistrar, inline: true },
-      { name: "📋 Protocolo / ID", value: `\`${sanitizedProtocol}\``, inline: true },
-      { name: "🟢 Status Atual", value: "🟢 Sob Custódia (Aguardando Retirada)", inline: true },
+      { name: "🏷️ Categoria", value: `**${sanitizedCategory}**`, inline: true },
+      { name: "📍 Local onde foi Encontrado", value: sanitizedLocation, inline: true },
+      { name: "📅 Data do Achado", value: `**${dateFormatted}**`, inline: true },
+      { name: "📊 Status do Item", value: "🟢 **Sob Custódia** *(Aguardando Retirada)*", inline: true },
     ];
+
+    // Inclui usuário responsável apenas se presente
+    const rawRegistrar = item.registeredByName || (item as any).userName || (item as any).authorName;
+    if (rawRegistrar && typeof rawRegistrar === "string" && rawRegistrar.trim()) {
+      const cleanRegistrar = rawRegistrar.trim().substring(0, 100);
+      const roleSuffix = item.registeredByRole ? ` (${item.registeredByRole})` : "";
+      fields.push({
+        name: "👤 Registrado Por",
+        value: `${cleanRegistrar}${roleSuffix}`,
+        inline: true,
+      });
+    }
+
+    // Inclui número de protocolo apenas se presente
+    const rawProtocol = item.qrCodeId || (item as any).protocolNumber || (item as any).protocol || item.id;
+    if (rawProtocol && typeof rawProtocol === "string" && rawProtocol.trim() && rawProtocol.trim().toUpperCase() !== "N/A") {
+      const cleanProtocol = rawProtocol.trim().substring(0, 80);
+      fields.push({
+        name: "📋 Número / Protocolo",
+        value: `\`${cleanProtocol}\``,
+        inline: true,
+      });
+    }
 
     if (sanitizedColor || sanitizedBrand) {
       const visualParts = [
@@ -1377,14 +1460,14 @@ async function sendNovoAchadoToDiscord(item: {
       fields.push({
         name: "🎨 Características Visuais",
         value: visualParts.join(" • ").substring(0, 1024),
-        inline: true,
+        inline: false,
       });
     }
 
     fields.push({
-      name: "🕐 Data e Hora do Cadastro",
+      name: "🕐 Registro no Banco de Dados",
       value: createdAtFormatted,
-      inline: true,
+      inline: false,
     });
 
     const embed: any = {
@@ -1393,10 +1476,10 @@ async function sendNovoAchadoToDiscord(item: {
       color: 0x10b981, // Emerald Green representing IFPR / Achados
       fields,
       footer: {
-        text: "IFPR Campus Ivaiporã • Canal #novos-achados",
+        text: "IFPR Campus Ivaiporã • Central de Achados e Perdidos • Evento Registrado",
         icon_url: "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/shield-check.png",
       },
-      timestamp: item.createdAt || new Date().toISOString(),
+      timestamp: databaseIsoTimestamp,
     };
 
     if (item.imageUrl && (item.imageUrl.startsWith("http://") || item.imageUrl.startsWith("https://"))) {
@@ -1487,6 +1570,7 @@ async function sendNovaPerdaToDiscord(item: {
   registeredByName?: string;
   registeredByRole?: string;
   createdAt?: string;
+  updatedAt?: string;
 }): Promise<boolean> {
   if (item.type !== "PERDIDO") {
     return false;
@@ -1510,43 +1594,39 @@ async function sendNovaPerdaToDiscord(item: {
     const sanitizedColor = item.color && item.color.trim() ? item.color.trim() : null;
     const sanitizedBrand = item.brand && item.brand.trim() ? item.brand.trim() : null;
 
-    let dateFormatted = item.date || "Data não informada";
-    if (item.date) {
-      try {
-        const parsedDate = new Date(item.date.includes("T") ? item.date : `${item.date}T12:00:00Z`);
-        dateFormatted = parsedDate.toLocaleDateString("pt-BR", {
-          timeZone: "America/Sao_Paulo",
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        });
-      } catch {
-        dateFormatted = item.date;
-      }
-    }
-
-    let createdAtFormatted = item.createdAt || new Date().toISOString();
-    try {
-      createdAtFormatted = new Date(createdAtFormatted).toLocaleString("pt-BR", {
-        timeZone: "America/Sao_Paulo",
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      createdAtFormatted = item.createdAt || "Hoje";
-    }
+    const dateFormatted = formatBrtDateServer(item.date);
+    const createdAtFormatted = formatBrtDateTimeServer(item.createdAt || item.updatedAt || new Date().toISOString());
+    const databaseIsoTimestamp = getIsoDatabaseTimestampServer(item.createdAt, item.updatedAt);
 
     const fields: Array<{ name: string; value: string; inline?: boolean }> = [
-      { name: "🏷️ Categoria", value: sanitizedCategory, inline: true },
+      { name: "🏷️ Categoria", value: `**${sanitizedCategory}**`, inline: true },
       { name: "📍 Último Local Onde Foi Visto", value: sanitizedLocation, inline: true },
-      { name: "📅 Data da Perda", value: dateFormatted, inline: true },
-      { name: "👤 Cadastrado Por", value: sanitizedRegistrar, inline: true },
-      { name: "📋 Protocolo / ID", value: `\`${sanitizedProtocol}\``, inline: true },
-      { name: "🟡 Status Atual", value: "🟡 Perdido (Procura Ativa)", inline: true },
+      { name: "📅 Data da Perda", value: `**${dateFormatted}**`, inline: true },
+      { name: "📊 Status do Item", value: "🟡 **Perdido** *(Procura Ativa no Campus)*", inline: true },
     ];
+
+    // Inclui usuário responsável apenas se presente
+    const rawRegistrar = item.registeredByName || (item as any).userName || (item as any).authorName;
+    if (rawRegistrar && typeof rawRegistrar === "string" && rawRegistrar.trim()) {
+      const cleanRegistrar = rawRegistrar.trim().substring(0, 100);
+      const roleSuffix = item.registeredByRole ? ` (${item.registeredByRole})` : "";
+      fields.push({
+        name: "👤 Usuário Responsável pelo Cadastro",
+        value: `${cleanRegistrar}${roleSuffix}`,
+        inline: true,
+      });
+    }
+
+    // Inclui número de protocolo apenas se presente
+    const rawProtocol = item.qrCodeId || (item as any).protocolNumber || (item as any).protocol || item.id;
+    if (rawProtocol && typeof rawProtocol === "string" && rawProtocol.trim() && rawProtocol.trim().toUpperCase() !== "N/A") {
+      const cleanProtocol = rawProtocol.trim().substring(0, 80);
+      fields.push({
+        name: "📋 Número / Protocolo",
+        value: `\`${cleanProtocol}\``,
+        inline: true,
+      });
+    }
 
     if (sanitizedColor || sanitizedBrand) {
       const visualParts = [
@@ -1557,14 +1637,14 @@ async function sendNovaPerdaToDiscord(item: {
       fields.push({
         name: "🎨 Características Visuais",
         value: visualParts.join(" • ").substring(0, 1024),
-        inline: true,
+        inline: false,
       });
     }
 
     fields.push({
-      name: "🕐 Data e Hora do Cadastro",
+      name: "🕐 Registro no Banco de Dados",
       value: createdAtFormatted,
-      inline: true,
+      inline: false,
     });
 
     const embed: any = {
@@ -1573,10 +1653,10 @@ async function sendNovaPerdaToDiscord(item: {
       color: 0xf59e0b, // Amber 0xf59e0b representing alert/lost item
       fields,
       footer: {
-        text: "IFPR Campus Ivaiporã • Canal #novas-perdas",
+        text: "IFPR Campus Ivaiporã • Central de Achados e Perdidos • Evento Registrado",
         icon_url: "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/shield-check.png",
       },
-      timestamp: item.createdAt || new Date().toISOString(),
+      timestamp: databaseIsoTimestamp,
     };
 
     if (item.imageUrl && (item.imageUrl.startsWith("http://") || item.imageUrl.startsWith("https://"))) {
