@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import { getAnalytics, isSupported as isAnalyticsSupported, logEvent as logFbEvent, Analytics } from 'firebase/analytics';
 import { getPerformance, FirebasePerformance, trace } from 'firebase/performance';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -14,6 +14,20 @@ export { firebaseReadyPromise };
 
 export let firebaseAnalytics: Analytics | null = null;
 export let firebasePerformance: FirebasePerformance | null = null;
+
+// Validate Connection to Firestore on boot
+async function testConnection() {
+  try {
+    if (typeof window !== "undefined" && db) {
+      await getDocFromServer(doc(db, 'test', 'connection'));
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn("Please check your Firebase configuration or network status.");
+    }
+  }
+}
+testConnection();
 
 /**
  * Asynchronously initializes secondary Firebase services (Analytics and Performance)
@@ -92,8 +106,22 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const rawMsg = error instanceof Error ? error.message : String(error);
+
+  // Filter out transient browser lifecycle / offline / closing signals to prevent unhandled UI disruption
+  if (
+    rawMsg.includes("closing") ||
+    rawMsg.includes("closed") ||
+    rawMsg.includes("hidden") ||
+    rawMsg.includes("the client is offline") ||
+    rawMsg.includes("AbortError")
+  ) {
+    console.debug(`[Firestore Lifecycle Notice] ${operationType} on ${path}: ${rawMsg}`);
+    return;
+  }
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: rawMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -110,3 +138,4 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   };
   console.warn('Firestore Notice: ', JSON.stringify(errInfo));
 }
+

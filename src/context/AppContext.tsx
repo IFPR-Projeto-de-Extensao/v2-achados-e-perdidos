@@ -1479,7 +1479,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, "items");
-        setItems([]);
       }
     );
     return () => unsubscribe();
@@ -1499,7 +1498,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, "claims");
-        setClaims([]);
       }
     );
     return () => unsubscribe();
@@ -1555,7 +1553,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, "notifications");
-        setNotifications([]);
       }
     );
     return () => unsubscribe();
@@ -1576,7 +1573,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, "comments");
-        setComments([]);
       }
     );
     return () => unsubscribe();
@@ -1620,7 +1616,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       (error) => {
         handleFirestoreError(error, OperationType.GET, "activity_logs");
-        setActivityLogs([]);
       }
     );
     return () => unsubscribe();

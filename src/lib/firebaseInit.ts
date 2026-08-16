@@ -6,7 +6,14 @@
 
 import { initializeApp, getApps, getApp, FirebaseApp } from "firebase/app";
 import { getAuth, Auth, GoogleAuthProvider } from "firebase/auth";
-import { getFirestore, Firestore } from "firebase/firestore";
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  memoryLocalCache,
+  Firestore,
+} from "firebase/firestore";
 import firebaseConfig from "../../firebase-applet-config.json";
 
 let appInstance: FirebaseApp | null = null;
@@ -38,7 +45,32 @@ export function getFirebaseDb(): Firestore {
     const dbId =
       (firebaseConfig as any).firestoreDatabaseId ||
       "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
-    dbInstance = getFirestore(getFirebaseApp(), dbId);
+    const app = getFirebaseApp();
+
+    try {
+      // Configure multi-tab cache manager to avoid IndexedDB lock or closing conflicts across iframe/tabs
+      dbInstance = initializeFirestore(
+        app,
+        {
+          localCache: persistentLocalCache({
+            tabManager: persistentMultipleTabManager(),
+          }),
+        },
+        dbId
+      );
+    } catch (err: any) {
+      try {
+        dbInstance = initializeFirestore(
+          app,
+          {
+            localCache: memoryLocalCache(),
+          },
+          dbId
+        );
+      } catch {
+        dbInstance = getFirestore(app, dbId);
+      }
+    }
   }
   return dbInstance;
 }
