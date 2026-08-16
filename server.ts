@@ -1088,9 +1088,14 @@ app.post("/api/fcm/send-match-alert", requireAuth, generalRateLimiter, async (re
 });
 
 // Support & User Feedback Submission Endpoint (Direct Campus Team Dispatch & Discord Webhook Forwarding)
-const DISCORD_FEEDBACK_WEBHOOK_URL =
-  process.env.DISCORD_FEEDBACK_WEBHOOK_URL ||
-  "https://discord.com/api/webhooks/1538403537833299968/fdWJobAEIY3ZX8TtHUhUw663s7MQ-fOXvPLNr1KOYIxduDFmv8YpRjtD6J-FhZhxhwtk";
+// Webhook URL is strictly loaded from secure server-side environment secrets / Firebase Functions configuration
+function getDiscordFeedbackWebhookUrl(): string {
+  return (
+    process.env.DISCORD_FEEDBACK_WEBHOOK_URL ||
+    process.env.DISCORD_WEBHOOK_URL ||
+    ""
+  ).trim();
+}
 
 async function sendFeedbackToDiscord(ticket: {
   protocol: string;
@@ -1103,8 +1108,11 @@ async function sendFeedbackToDiscord(ticket: {
   timestamp: string;
   clientDiagnostics?: any;
 }): Promise<boolean> {
-  if (!DISCORD_FEEDBACK_WEBHOOK_URL) {
-    console.warn("[Discord Feedback] Webhook URL não configurada.");
+  const webhookUrl = getDiscordFeedbackWebhookUrl();
+  if (!webhookUrl) {
+    console.info(
+      "[Discord Feedback Notice] DISCORD_FEEDBACK_WEBHOOK_URL não configurada no ambiente seguro do servidor. O feedback foi registrado e enviado por e-mail normalmente."
+    );
     return false;
   }
 
@@ -1186,7 +1194,7 @@ async function sendFeedbackToDiscord(ticket: {
       ],
     };
 
-    const response = await fetch(DISCORD_FEEDBACK_WEBHOOK_URL, {
+    const response = await fetch(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -1275,6 +1283,183 @@ app.post("/api/support/send-feedback", generalRateLimiter, async (req, res) => {
     });
   }
 });
+
+// ==========================================
+// Discord Integration for #novos-achados
+// ==========================================
+function getDiscordNovosAchadosWebhookUrl(): string {
+  return (process.env.DISCORD_NOVOS_ACHADOS_WEBHOOK_URL || "").trim();
+}
+
+async function sendNovoAchadoToDiscord(item: {
+  id: string;
+  title: string;
+  category: string;
+  type: string;
+  status: string;
+  description: string;
+  color?: string;
+  brand?: string;
+  location: string;
+  date: string;
+  imageUrl?: string;
+  qrCodeId?: string;
+  registeredByName?: string;
+  registeredByRole?: string;
+  createdAt?: string;
+}): Promise<boolean> {
+  if (item.type !== "ENCONTRADO") {
+    return false;
+  }
+
+  const webhookUrl = getDiscordNovosAchadosWebhookUrl();
+  if (!webhookUrl) {
+    console.info(
+      "[Discord Novos Achados Notice] DISCORD_NOVOS_ACHADOS_WEBHOOK_URL não configurada no servidor. O cadastro do achado foi salvo normalmente."
+    );
+    return false;
+  }
+
+  try {
+    const sanitizedTitle = String(item.title || "Objeto Encontrado").trim().substring(0, 200);
+    const sanitizedDesc = String(item.description || "Nenhuma descrição fornecida.").trim().substring(0, 3900);
+    const sanitizedLocation = String(item.location || "Campus Ivaiporã").trim().substring(0, 100);
+    const sanitizedCategory = String(item.category || "Outros").trim().substring(0, 80);
+    const sanitizedProtocol = String(item.qrCodeId || item.id || "N/A").trim().substring(0, 80);
+    const sanitizedRegistrar = String(item.registeredByName || "Servidor/Aluno do IFPR").trim().substring(0, 100);
+    const sanitizedColor = item.color && item.color.trim() ? item.color.trim() : null;
+    const sanitizedBrand = item.brand && item.brand.trim() ? item.brand.trim() : null;
+
+    let dateFormatted = item.date || "Data não informada";
+    if (item.date) {
+      try {
+        const parsedDate = new Date(item.date.includes("T") ? item.date : `${item.date}T12:00:00Z`);
+        dateFormatted = parsedDate.toLocaleDateString("pt-BR", {
+          timeZone: "America/Sao_Paulo",
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        });
+      } catch {
+        dateFormatted = item.date;
+      }
+    }
+
+    let createdAtFormatted = item.createdAt || new Date().toISOString();
+    try {
+      createdAtFormatted = new Date(createdAtFormatted).toLocaleString("pt-BR", {
+        timeZone: "America/Sao_Paulo",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      createdAtFormatted = item.createdAt || "Hoje";
+    }
+
+    const fields: Array<{ name: string; value: string; inline?: boolean }> = [
+      { name: "🏷️ Categoria", value: sanitizedCategory, inline: true },
+      { name: "📍 Local Encontrado", value: sanitizedLocation, inline: true },
+      { name: "📅 Data do Achado", value: dateFormatted, inline: true },
+      { name: "👤 Cadastrado Por", value: sanitizedRegistrar, inline: true },
+      { name: "📋 Protocolo / ID", value: `\`${sanitizedProtocol}\``, inline: true },
+      { name: "🟢 Status Atual", value: "🟢 Sob Custódia (Aguardando Retirada)", inline: true },
+    ];
+
+    if (sanitizedColor || sanitizedBrand) {
+      const visualParts = [
+        sanitizedColor ? `Cor: **${sanitizedColor}**` : null,
+        sanitizedBrand ? `Marca: **${sanitizedBrand}**` : null,
+      ].filter(Boolean);
+
+      fields.push({
+        name: "🎨 Características Visuais",
+        value: visualParts.join(" • ").substring(0, 1024),
+        inline: true,
+      });
+    }
+
+    fields.push({
+      name: "🕐 Data e Hora do Cadastro",
+      value: createdAtFormatted,
+      inline: true,
+    });
+
+    const embed: any = {
+      title: `📦 Novo Achado Cadastrado: ${sanitizedTitle}`.substring(0, 256),
+      description: sanitizedDesc,
+      color: 0x10b981, // Emerald Green representing IFPR / Achados
+      fields,
+      footer: {
+        text: "IFPR Campus Ivaiporã • Canal #novos-achados",
+        icon_url: "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/shield-check.png",
+      },
+      timestamp: item.createdAt || new Date().toISOString(),
+    };
+
+    if (item.imageUrl && (item.imageUrl.startsWith("http://") || item.imageUrl.startsWith("https://"))) {
+      embed.image = { url: item.imageUrl };
+    }
+
+    const discordPayload = {
+      username: "IFPR Achados e Perdidos • #novos-achados",
+      avatar_url: "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/package-search.png",
+      embeds: [embed],
+    };
+
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(discordPayload),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.warn(`[Discord Novos Achados Warning] HTTP ${response.status} do Webhook:`, errText);
+      return false;
+    }
+
+    console.log(`[Discord Novos Achados Success] Notificação enviada para #novos-achados: "${item.title}" (${item.id})`);
+    return true;
+  } catch (err: any) {
+    // Isolamento resiliente total: falhas no Discord nunca desfazem o cadastro do achado
+    console.error("[Discord Novos Achados Error] Falha ao enviar para o Discord:", err?.message || err);
+    return false;
+  }
+}
+
+app.post("/api/items/notify-novos-achados", generalRateLimiter, async (req, res) => {
+  try {
+    const item = req.body?.item || req.body;
+    if (!item || !item.title) {
+      return res.status(400).json({ success: false, error: "Dados do item ausentes ou incompletos." });
+    }
+
+    if (item.type !== "ENCONTRADO") {
+      return res.json({ success: true, message: "Item não é do tipo ENCONTRADO. Ignorado para o canal #novos-achados." });
+    }
+
+    // Envio assíncrono e resiliente
+    sendNovoAchadoToDiscord(item).catch((err) => {
+      console.error("[Discord Novos Achados Background Error]:", err);
+    });
+
+    return res.json({
+      success: true,
+      message: "Notificação de novo achado encaminhada para o canal #novos-achados.",
+      itemId: item.id,
+    });
+  } catch (error: any) {
+    console.error("Erro no endpoint notify-novos-achados:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "Erro ao processar notificação para o Discord.",
+    });
+  }
+});
+
 
 // Gemini Semantic Search Endpoint (Home Search Bar NL Search)
 app.post("/api/gemini/semantic-search", requireAuth, aiRateLimiter, async (req, res) => {

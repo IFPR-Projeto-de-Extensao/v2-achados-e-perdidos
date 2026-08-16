@@ -358,6 +358,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setItems((prev) =>
             prev.map((it) => (it.id === itemToSave.id ? itemToSave : it))
           );
+
+          // If found item, notify #novos-achados on Discord (non-blocking)
+          if (itemToSave.type === "ENCONTRADO") {
+            safeFetchJson(
+              "/api/items/notify-novos-achados",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ item: itemToSave }),
+              },
+              () => ({ success: true })
+            ).catch((discordErr) => {
+              console.warn("[Novos Achados Webhook Notice] Envio offline-sync ao Discord:", discordErr);
+            });
+          }
         } catch (syncErr: any) {
           console.error(`[Offline Sync] Falha ao sincronizar item #${entry.id}:`, syncErr);
           await updateSyncQueueEntry(entry.id, {
@@ -2013,6 +2028,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         completedAt: new Date().toISOString(),
       });
       vibrateSuccess();
+
+      // Trigger automatic Discord Webhook notification to '#novos-achados' ONLY after confirmed database save
+      if (newItem.type === "ENCONTRADO") {
+        safeFetchJson(
+          "/api/items/notify-novos-achados",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ item: newItem }),
+          },
+          () => ({ success: true })
+        ).catch((webhookErr) => {
+          console.warn("[Novos Achados Webhook Notice] Envio assíncrono ao Discord:", webhookErr);
+        });
+      }
     } catch (e: any) {
       console.warn("Aviso ao gravar no Firestore, salvando na fila offline do IndexedDB:", e);
       try {
