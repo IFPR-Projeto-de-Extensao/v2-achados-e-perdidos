@@ -104,6 +104,49 @@
         "timestamp": { "type": "string" }
       },
       "required": ["id", "action", "adminId", "adminName", "details", "timestamp"]
+    },
+    "DocumentTemplate": {
+      "title": "DocumentTemplate",
+      "description": "Editable PDF document template for administrative, extension and institutional documents",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string", "maxLength": 200 },
+        "code": { "type": "string", "maxLength": 50 },
+        "category": { "type": "string", "maxLength": 50 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["ATIVO", "INATIVO"] },
+        "version": { "type": "number" },
+        "headerText": { "type": "string", "maxLength": 1000 },
+        "footerText": { "type": "string", "maxLength": 500 },
+        "includeLogo": { "type": "boolean" },
+        "includeDocNumber": { "type": "boolean" },
+        "includeHeader": { "type": "boolean" },
+        "includeFooter": { "type": "boolean" },
+        "sections": { "type": "array" },
+        "fields": { "type": "array" },
+        "signatures": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "status", "sections", "fields", "signatures"]
+    },
+    "GeneratedDocumentRecord": {
+      "title": "GeneratedDocumentRecord",
+      "description": "History log of documents filled and emitted by administrators",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "templateId": { "type": "string" },
+        "templateTitle": { "type": "string", "maxLength": 200 },
+        "documentNumber": { "type": "string", "maxLength": 100 },
+        "recipientOrOrg": { "type": "string", "maxLength": 200 },
+        "fieldsData": { "type": "object" },
+        "generatedByUserId": { "type": "string" },
+        "generatedByName": { "type": "string", "maxLength": 100 },
+        "generatedAt": { "type": "string" }
+      },
+      "required": ["id", "templateId", "documentNumber", "generatedByUserId", "generatedAt"]
     }
   },
   "firestore": {
@@ -148,6 +191,14 @@
     },
     "/support_tickets/{ticketId}": {
       "description": "User feedback and bug report tickets sent to campus support team"
+    },
+    "/document_templates/{templateId}": {
+      "schema": { "$ref": "#/entities/DocumentTemplate" },
+      "description": "Document templates for customizable PDF creation (Admin only)"
+    },
+    "/generated_documents/{docId}": {
+      "schema": { "$ref": "#/entities/GeneratedDocumentRecord" },
+      "description": "Emission history of generated PDF documents"
     },
     "/found_items/{itemId}": {
       "schema": { "$ref": "#/entities/LostFoundItem" },

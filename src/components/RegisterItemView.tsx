@@ -55,6 +55,13 @@ export const RegisterItemView: React.FC = () => {
 
   // Form State
   const [type, setType] = useState<"PERDIDO" | "ENCONTRADO">(registerTypeSelection);
+
+  // Synchronize type whenever global registerTypeSelection changes (e.g. navigation clicks)
+  useEffect(() => {
+    if (registerTypeSelection) {
+      setType(registerTypeSelection);
+    }
+  }, [registerTypeSelection]);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<ItemCategory>("Eletrônicos");
   const [description, setDescription] = useState("");

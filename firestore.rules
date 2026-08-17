@@ -18,6 +18,12 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function hasAdminClaim() {
+      return isSignedIn() && 
+             (request.auth.token.role == 'ADMIN' || 
+              request.auth.token.admin == true);
+    }
+
     function isRootAdmin() {
       return isSignedIn() && 
              request.auth.token.email_verified == true && 
@@ -31,7 +37,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isRootAdmin() || isDocAdmin();
+      return hasAdminClaim() || isRootAdmin() || isDocAdmin();
     }
 
     function isServidor() {
@@ -250,6 +256,27 @@ service cloud.firestore {
       allow create: if true;
       allow update, delete: if isAdmin();
     }
+
+    // ==========================================
+    // 13. Document Templates Collection (Admin Only)
+    // ==========================================
+    match /document_templates/{templateId} {
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 14. Generated Documents Collection (Admin Only)
+    // ==========================================
+    match /generated_documents/{docId} {
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
   }
 }
+
 

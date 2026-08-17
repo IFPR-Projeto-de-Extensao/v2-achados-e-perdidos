@@ -228,8 +228,9 @@ export async function sendDiscordWebhook(
  * Dispatches a new found item notification to '#novos-achados'
  */
 export async function dispatchFoundItemWebhook(item: FoundItemPayload): Promise<DiscordDispatchResult> {
-  if (item.type && item.type !== "ENCONTRADO") {
-    logger.info(`[dispatchFoundItemWebhook] Item do tipo '${item.type}' ignorado para #novos-achados.`);
+  const normalizedType = String(item?.type || "").toUpperCase().trim();
+  if (normalizedType !== "ENCONTRADO" && normalizedType !== "ACHADO") {
+    logger.info(`[dispatchFoundItemWebhook] Item do tipo '${item?.type}' não é ENCONTRADO/ACHADO. Ignorado para #novos-achados.`);
     return { success: false, error: "TYPE_NOT_ENCONTRADO" };
   }
 
@@ -245,8 +246,9 @@ export async function dispatchFoundItemWebhook(item: FoundItemPayload): Promise<
  * Dispatches a new lost item notification to '#novas-perdas'
  */
 export async function dispatchLostItemWebhook(item: FoundItemPayload): Promise<DiscordDispatchResult> {
-  if (item.type && item.type !== "PERDIDO") {
-    logger.info(`[dispatchLostItemWebhook] Item do tipo '${item.type}' ignorado para #novas-perdas.`);
+  const normalizedType = String(item?.type || "").toUpperCase().trim();
+  if (normalizedType !== "PERDIDO" && normalizedType !== "PERDA") {
+    logger.info(`[dispatchLostItemWebhook] Item do tipo '${item?.type}' não é PERDIDO/PERDA. Ignorado para #novas-perdas.`);
     return { success: false, error: "TYPE_NOT_PERDIDO" };
   }
 

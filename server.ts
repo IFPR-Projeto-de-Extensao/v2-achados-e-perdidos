@@ -1514,7 +1514,9 @@ async function sendNovoAchadoToDiscord(item: {
 }): Promise<boolean> {
   console.log("[NOVO_ACHADO_DISCORD] função chamada");
 
-  if (item.type !== "ENCONTRADO") {
+  const normalizedType = String(item?.type || "").toUpperCase().trim();
+  if (normalizedType !== "ENCONTRADO" && normalizedType !== "ACHADO") {
+    console.log(`[NOVO_ACHADO_DISCORD] Item do tipo "${item?.type}" ignorado para o canal #novos-achados.`);
     return false;
   }
 
@@ -1644,8 +1646,12 @@ app.post("/api/items/notify-novos-achados", generalRateLimiter, async (req, res)
       return res.status(400).json({ success: false, error: "Dados do item ausentes ou incompletos." });
     }
 
-    if (item.type !== "ENCONTRADO") {
-      return res.json({ success: true, message: "Item não é do tipo ENCONTRADO. Ignorado para o canal #novos-achados." });
+    const normalizedType = String(item?.type || "").toUpperCase().trim();
+    if (normalizedType !== "ENCONTRADO" && normalizedType !== "ACHADO") {
+      return res.json({
+        success: true,
+        message: `Item com tipo "${item?.type}" não é ENCONTRADO/ACHADO. Ignorado para o canal #novos-achados.`,
+      });
     }
 
     // Envio assíncrono e resiliente
@@ -1701,7 +1707,9 @@ async function sendNovaPerdaToDiscord(item: {
 }): Promise<boolean> {
   console.log("[NOVA_PERDA_DISCORD] função chamada");
 
-  if (item.type !== "PERDIDO") {
+  const normalizedType = String(item?.type || "").toUpperCase().trim();
+  if (normalizedType !== "PERDIDO" && normalizedType !== "PERDA") {
+    console.log(`[NOVA_PERDA_DISCORD] Item do tipo "${item?.type}" ignorado para o canal #novas-perdas.`);
     return false;
   }
 
@@ -1831,8 +1839,12 @@ app.post("/api/items/notify-novas-perdas", generalRateLimiter, async (req, res) 
       return res.status(400).json({ success: false, error: "Dados do item ausentes ou incompletos." });
     }
 
-    if (item.type !== "PERDIDO") {
-      return res.json({ success: true, message: "Item não é do tipo PERDIDO. Ignorado para o canal #novas-perdas." });
+    const normalizedType = String(item?.type || "").toUpperCase().trim();
+    if (normalizedType !== "PERDIDO" && normalizedType !== "PERDA") {
+      return res.json({
+        success: true,
+        message: `Item com tipo "${item?.type}" não é PERDIDO/PERDA. Ignorado para o canal #novas-perdas.`,
+      });
     }
 
     // Envio assíncrono e resiliente

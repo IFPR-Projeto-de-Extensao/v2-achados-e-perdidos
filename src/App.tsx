@@ -7,6 +7,7 @@ import { ToastContainer } from "./components/ToastContainer";
 import { PWAInstallBanner } from "./components/PWAInstallBanner";
 import { MobileBottomNav } from "./components/MobileBottomNav";
 import { UploadStatusIndicator } from "./components/UploadStatusIndicator";
+import { QuickSupportButton } from "./components/QuickSupportButton";
 import { trackPageView } from "./lib/analytics";
 import { traceFirebasePerformance } from "./lib/firebase";
 import { savePerformanceMetricLog } from "./lib/offlineDb";
@@ -258,6 +259,9 @@ const MainContent: React.FC = () => {
 
       {/* PWA Background Sync & Real-time Upload Status Indicator */}
       <UploadStatusIndicator />
+
+      {/* Quick Support / Feedback Button with Discord Webhook Integration */}
+      <QuickSupportButton />
 
       {/* Mobile Bottom Navigation for PWA & Smartphones */}
       <MobileBottomNav />

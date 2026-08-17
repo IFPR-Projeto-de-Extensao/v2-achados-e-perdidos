@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useApp } from "../context/AppContext";
 import { ItemCard } from "./ItemCard";
+import { ExportFoundItemsReportModal } from "./ExportFoundItemsReportModal";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
 import { formatDate, vibrateClick, vibrateSuccess, safeToLower, safeIncludes, sanitizeQuery, isItemNew } from "../lib/utils";
@@ -101,6 +102,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
   // Bulk operations selection state
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [isSelectableMode, setIsSelectableMode] = useState<boolean>(false);
+  const [isExportReportModalOpen, setIsExportReportModalOpen] = useState<boolean>(false);
 
   const isAdminOrServer = currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR";
 
@@ -881,14 +883,27 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
             Exibindo <strong>{filteredItems.length}</strong> de {items.length} objetos no catálogo
           </span>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 flex-wrap gap-y-2">
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                setIsExportReportModalOpen(true);
+              }}
+              aria-label="Exportar Relatório Oficial de Itens Encontrados em PDF para Prestação de Contas"
+              className="px-3.5 py-1.5 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Exportar Relatório PDF</span>
+            </button>
+
             <button
               type="button"
               onClick={() => {
                 setIsSelectableMode(!isSelectableMode);
                 if (isSelectableMode) setSelectedItemIds([]);
               }}
-              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center space-x-1.5 transition-all border ${
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center space-x-1.5 transition-all border cursor-pointer ${
                 isSelectableMode
                   ? "bg-[#00843D] text-white border-[#00843D] shadow-sm"
                   : "bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100"
@@ -902,7 +917,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
               <button
                 type="button"
                 onClick={handleSelectAllFiltered}
-                className="px-3 py-1.5 rounded-xl font-bold text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 border border-neutral-200 dark:border-neutral-700 transition-colors"
+                className="px-3 py-1.5 rounded-xl font-bold text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 border border-neutral-200 dark:border-neutral-700 transition-colors cursor-pointer"
               >
                 {selectedItemIds.length === filteredItems.length && filteredItems.length > 0
                   ? "Desmarcar Todos"
@@ -1183,6 +1198,12 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
           </div>
         </div>
       )}
+
+      {/* Export Found Items Official Accountability PDF Report Modal */}
+      <ExportFoundItemsReportModal
+        isOpen={isExportReportModalOpen}
+        onClose={() => setIsExportReportModalOpen(false)}
+      />
     </div>
   );
 };

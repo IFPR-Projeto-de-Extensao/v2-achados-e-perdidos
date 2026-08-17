@@ -6,6 +6,8 @@ import { formatDate, formatDateTime, triggerVibration, vibrateClick, vibrateSucc
 import { UserRole, ActivityLog, BackupScheduleConfig } from "../types";
 import { AppUptimeMonitor } from "./AppUptimeMonitor";
 import { MonthlyItemsD3Chart } from "./MonthlyItemsD3Chart";
+import { DocumentManagerView } from "./DocumentManagerView";
+import { ExportFoundItemsReportModal } from "./ExportFoundItemsReportModal";
 import { db, traceFirebasePerformance } from "../lib/firebase";
 import { collection, query, limit, getDocs } from "firebase/firestore";
 import {
@@ -150,7 +152,7 @@ export const DashboardView: React.FC = () => {
   const [tableCategory, setTableCategory] = useState("TODAS");
 
   // Admin Sub-Tab State
-  const [adminSubTab, setAdminSubTab] = useState<"users" | "audit" | "health" | "approvals" | "backups">("users");
+  const [adminSubTab, setAdminSubTab] = useState<"users" | "audit" | "health" | "approvals" | "backups" | "documents">("users");
 
   const [serverMetrics, setServerMetrics] = useState<{
     totalServerRequests?: number;
@@ -237,6 +239,7 @@ export const DashboardView: React.FC = () => {
 
   // Backup Manual Triggering state
   const [isExecutingBackup, setIsExecutingBackup] = useState(false);
+  const [isExportFoundModalOpen, setIsExportFoundModalOpen] = useState(false);
 
   const handleManualBackup = async () => {
     setIsExecutingBackup(true);
@@ -1024,13 +1027,26 @@ export const DashboardView: React.FC = () => {
 
               <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
                 <button
+                  onClick={() => {
+                    vibrateClick();
+                    setIsExportFoundModalOpen(true);
+                  }}
+                  role="button"
+                  aria-label="Abrir modal para emitir Relatório de Prestação de Contas de Itens Encontrados em PDF"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center space-x-2 cursor-pointer"
+                >
+                  <FileText className="w-4 h-4 text-white" />
+                  <span>Prestação de Contas SEBAC (PDF)</span>
+                </button>
+
+                <button
                   onClick={handleExportPendingItemsPDF}
                   role="button"
                   aria-label="Exportar Relatório em PDF contendo a listagem de objetos pendentes"
                   className="px-4 py-2 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white font-bold text-xs shadow-xs transition-colors flex items-center space-x-2 cursor-pointer"
                 >
                   <FileText className="w-4 h-4 text-white" />
-                  <span>Exportar Relatório (PDF)</span>
+                  <span>Exportar Pendentes (PDF)</span>
                 </button>
 
                 <button
@@ -1436,6 +1452,18 @@ export const DashboardView: React.FC = () => {
                   >
                     <HardDrive className="w-4 h-4" />
                     <span>Backups & Auditoria</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAdminSubTab("documents")}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
+                      adminSubTab === "documents"
+                        ? "bg-emerald-600 text-white shadow-md"
+                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                    }`}
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>Documentos PDF</span>
                   </button>
                 </div>
 
@@ -2759,6 +2787,13 @@ export const DashboardView: React.FC = () => {
               </div>
             </div>
           )}
+
+          {/* TAB 5: GERADOR DE DOCUMENTOS PDF EDITÁVEIS (ADMIN ONLY) */}
+          {adminSubTab === "documents" && (
+            <div className="space-y-6">
+              <DocumentManagerView />
+            </div>
+          )}
         </>
       )}
     </div>
@@ -3288,6 +3323,12 @@ export const DashboardView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Export Official Found Items Accountability PDF Report Modal */}
+      <ExportFoundItemsReportModal
+        isOpen={isExportFoundModalOpen}
+        onClose={() => setIsExportFoundModalOpen(false)}
+      />
     </div>
   );
 };

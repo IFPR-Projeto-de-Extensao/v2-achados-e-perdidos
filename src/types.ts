@@ -307,3 +307,89 @@ export interface SupportFeedbackTicket {
   userAgent?: string;
   protocol: string;
 }
+
+// =========================================================================
+// MÓDULO DE DOCUMENTOS & MODELOS PDF EDITÁVEIS (PAINEL ADMINISTRATIVO)
+// =========================================================================
+
+export type DocumentFieldType = "text" | "textarea" | "date" | "number" | "select";
+
+export interface DocumentField {
+  id: string;
+  name: string; // e.g. "nome_organizacao", "responsavel", "contato", etc.
+  label: string; // Label no formulário
+  type: DocumentFieldType;
+  defaultValue?: string;
+  placeholder?: string;
+  required: boolean;
+  section?: string; // Agrupamento visual (ex: "1. Dados do Parceiro", "2. Dados da Equipe")
+  options?: string[]; // Opções para campo do tipo select
+}
+
+export type DocumentSectionType =
+  | "heading"
+  | "subheading"
+  | "paragraph"
+  | "numbered_section"
+  | "declarations_list"
+  | "signatures"
+  | "custom";
+
+export interface DocumentSection {
+  id: string;
+  title: string;
+  content: string; // Suporta marcações dinâmicas como {{nome_organizacao}}
+  type: DocumentSectionType;
+  fontSize?: number; // em pontos (pt)
+  isBold?: boolean;
+  isItalic?: boolean;
+  align?: "left" | "center" | "right" | "justify";
+  spacingBottom?: number; // em mm
+}
+
+export interface DocumentSignature {
+  id: string;
+  title: string; // ex: "Representante do Parceiro", "Representante da Equipe", "Professor Orientador"
+  nameTag?: string; // ex: "{{responsavel}}", "{{representante_equipe}}"
+  roleTag?: string; // ex: "{{cargo_responsavel}}", "Líder do Projeto de Extensão"
+  cpfOrDocTag?: string; // ex: "CPF: {{cpf_responsavel}}"
+}
+
+export interface DocumentTemplate {
+  id: string;
+  title: string; // ex: "Termo de Aceite do Parceiro de Extensão"
+  code: string; // ex: "EXT-ACEITE-01"
+  category: "EXTENSAO" | "ACHADOS_PERDIDOS" | "ESTAGIO" | "INSTITUCIONAL" | "OUTRO";
+  description: string;
+  status: "ATIVO" | "INATIVO";
+  version: number;
+  headerText: string;
+  institutionLogoUrl?: string;
+  includeLogo: boolean;
+  includeDocNumber: boolean;
+  includeHeader: boolean;
+  includeFooter: boolean;
+  footerText: string;
+  sections: DocumentSection[];
+  fields: DocumentField[];
+  signatures: DocumentSignature[];
+  createdAt: string;
+  updatedAt: string;
+  createdByName?: string;
+  createdByEmail?: string;
+}
+
+export interface GeneratedDocumentRecord {
+  id: string;
+  templateId: string;
+  templateTitle: string;
+  documentNumber: string;
+  recipientOrOrg: string;
+  fieldsData: Record<string, string>;
+  generatedByUserId: string;
+  generatedByName: string;
+  generatedByEmail?: string;
+  generatedAt: string;
+  fileSizeBytes?: number;
+}
+

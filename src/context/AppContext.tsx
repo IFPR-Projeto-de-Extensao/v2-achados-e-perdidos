@@ -14,7 +14,10 @@ import {
   ItemHistoryLog,
   UploadTaskStatus,
   UploadStatusType,
+  DocumentTemplate,
+  GeneratedDocumentRecord,
 } from "../types";
+import { DEFAULT_DOCUMENT_TEMPLATES } from "../lib/defaultDocumentTemplates";
 import { INITIAL_ITEMS, MOCK_USERS, MOCK_NOTIFICATIONS, MOCK_CLAIMS, MOCK_COMMENTS, MOCK_ACTIVITY_LOGS } from "../data/mockData";
 import { safeFetchJson, clientMatchSimilarity } from "../lib/apiHelper";
 import { compressImage } from "../lib/imageCompression";
@@ -203,6 +206,13 @@ interface AppContextType {
   updateUploadTask: (taskId: string, updates: Partial<UploadTaskStatus>) => void;
   removeUploadTask: (taskId: string) => void;
   retryUploadTask: (taskId: string) => Promise<void>;
+  documentTemplates: DocumentTemplate[];
+  generatedDocuments: GeneratedDocumentRecord[];
+  saveDocumentTemplate: (template: DocumentTemplate) => Promise<void>;
+  deleteDocumentTemplate: (templateId: string) => Promise<void>;
+  duplicateDocumentTemplate: (templateId: string) => Promise<DocumentTemplate>;
+  toggleDocumentTemplateStatus: (templateId: string) => Promise<void>;
+  logGeneratedDocument: (record: Omit<GeneratedDocumentRecord, "id" | "generatedAt" | "generatedByUserId" | "generatedByName">) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -564,6 +574,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Activity Logs state (Admin Transparency Log)
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+
+  // Document Templates & Generated Documents State (Módulo de Documentos PDF Editáveis)
+  const [documentTemplates, setDocumentTemplates] = useState<DocumentTemplate[]>(() => {
+    try {
+      const saved = localStorage.getItem("ifpr_document_templates_cache");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (_) {}
+    return DEFAULT_DOCUMENT_TEMPLATES;
+  });
+
+  const [generatedDocuments, setGeneratedDocuments] = useState<GeneratedDocumentRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem("ifpr_generated_documents_cache");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (_) {}
+    return [];
+  });
 
   // Internationalization (i18n) State
   const [language, setLanguageState] = useState<SupportedLanguage>(() => {
@@ -1702,6 +1735,177 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Sync Document Templates from Firestore (Admin Only)
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "ADMIN") return;
+    const unsubscribe = onSnapshot(
+      collection(db, "document_templates"),
+      (snapshot) => {
+        if (snapshot.empty) {
+          setDocumentTemplates(DEFAULT_DOCUMENT_TEMPLATES);
+        } else {
+          const loaded: DocumentTemplate[] = snapshot.docs.map((d) => d.data() as DocumentTemplate);
+          loaded.sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime());
+          setDocumentTemplates(loaded);
+          try {
+            localStorage.setItem("ifpr_document_templates_cache", JSON.stringify(loaded));
+          } catch (_) {}
+        }
+      },
+      (error) => {
+        console.warn("Aviso ao sincronizar document_templates:", error);
+      }
+    );
+    return () => unsubscribe();
+  }, [currentUser?.role]);
+
+  // Sync Generated Documents from Firestore (Admin Only)
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "ADMIN") return;
+    const unsubscribe = onSnapshot(
+      collection(db, "generated_documents"),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const loaded: GeneratedDocumentRecord[] = snapshot.docs.map((d) => d.data() as GeneratedDocumentRecord);
+          loaded.sort((a, b) => new Date(b.generatedAt).getTime() - new Date(a.generatedAt).getTime());
+          setGeneratedDocuments(loaded);
+          try {
+            localStorage.setItem("ifpr_generated_documents_cache", JSON.stringify(loaded));
+          } catch (_) {}
+        }
+      },
+      (error) => {
+        console.warn("Aviso ao sincronizar generated_documents:", error);
+      }
+    );
+    return () => unsubscribe();
+  }, [currentUser?.role]);
+
+  const saveDocumentTemplate = async (template: DocumentTemplate) => {
+    const updatedTemplate: DocumentTemplate = {
+      ...template,
+      updatedAt: new Date().toISOString(),
+      createdByName: template.createdByName || currentUser.name,
+      createdByEmail: template.createdByEmail || currentUser.email,
+    };
+
+    setDocumentTemplates((prev) => {
+      const idx = prev.findIndex((t) => t.id === updatedTemplate.id);
+      const next = idx >= 0 ? prev.map((t) => (t.id === updatedTemplate.id ? updatedTemplate : t)) : [updatedTemplate, ...prev];
+      try {
+        localStorage.setItem("ifpr_document_templates_cache", JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
+
+    try {
+      await setDoc(doc(db, "document_templates", updatedTemplate.id), updatedTemplate);
+      await logAdminAction(
+        "SALVAR_MODELO_DOCUMENTO",
+        `Modelo de documento '${updatedTemplate.title}' (${updatedTemplate.code}) salvo/atualizado.`
+      );
+      addToast(`Modelo '${updatedTemplate.title}' salvo com sucesso!`, "success");
+    } catch (e) {
+      console.warn("Aviso ao salvar modelo no Firestore:", e);
+      addToast(`Modelo '${updatedTemplate.title}' salvo localmente!`, "info");
+    }
+  };
+
+  const deleteDocumentTemplate = async (templateId: string) => {
+    const target = documentTemplates.find((t) => t.id === templateId);
+    setDocumentTemplates((prev) => {
+      const next = prev.filter((t) => t.id !== templateId);
+      try {
+        localStorage.setItem("ifpr_document_templates_cache", JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
+
+    try {
+      await deleteDoc(doc(db, "document_templates", templateId));
+      if (target) {
+        await logAdminAction(
+          "EXCLUIR_MODELO_DOCUMENTO",
+          `Modelo de documento '${target.title}' (${target.code}) excluído.`
+        );
+      }
+      addToast("Modelo excluído com sucesso.", "info");
+    } catch (e) {
+      console.warn("Aviso ao excluir modelo no Firestore:", e);
+      addToast("Modelo removido localmente.", "info");
+    }
+  };
+
+  const duplicateDocumentTemplate = async (templateId: string): Promise<DocumentTemplate> => {
+    const original =
+      documentTemplates.find((t) => t.id === templateId) ||
+      DEFAULT_DOCUMENT_TEMPLATES.find((t) => t.id === templateId);
+    if (!original) throw new Error("Modelo não encontrado.");
+
+    const newId = `tpl_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const duplicated: DocumentTemplate = {
+      ...original,
+      id: newId,
+      title: `${original.title} (Cópia)`,
+      code: `${original.code}-COP`,
+      version: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdByName: currentUser.name,
+      createdByEmail: currentUser.email,
+    };
+
+    await saveDocumentTemplate(duplicated);
+    addToast(`Modelo duplicado: '${duplicated.title}'`, "success");
+    return duplicated;
+  };
+
+  const toggleDocumentTemplateStatus = async (templateId: string) => {
+    const target = documentTemplates.find((t) => t.id === templateId);
+    if (!target) return;
+
+    const newStatus = target.status === "ATIVO" ? "INATIVO" : "ATIVO";
+    const updated: DocumentTemplate = {
+      ...target,
+      status: newStatus,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await saveDocumentTemplate(updated);
+    addToast(`Modelo alterado para ${newStatus === "ATIVO" ? "ATIVO" : "INATIVO"}.`, "info");
+  };
+
+  const logGeneratedDocument = async (
+    record: Omit<GeneratedDocumentRecord, "id" | "generatedAt" | "generatedByUserId" | "generatedByName">
+  ) => {
+    const newRecord: GeneratedDocumentRecord = {
+      ...record,
+      id: `doc_gen_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      generatedAt: new Date().toISOString(),
+      generatedByUserId: currentUser.id,
+      generatedByName: currentUser.name,
+      generatedByEmail: currentUser.email,
+    };
+
+    setGeneratedDocuments((prev) => {
+      const next = [newRecord, ...prev];
+      try {
+        localStorage.setItem("ifpr_generated_documents_cache", JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
+
+    try {
+      await setDoc(doc(db, "generated_documents", newRecord.id), newRecord);
+      await logAdminAction(
+        "GERAR_DOCUMENTO_PDF",
+        `Documento '${newRecord.templateTitle}' emitido (Nº ${newRecord.documentNumber}) para '${newRecord.recipientOrOrg}'.`
+      );
+    } catch (e) {
+      console.warn("Aviso ao registrar documento gerado no Firestore:", e);
+    }
+  };
+
   const loginWithGoogle = async () => {
     try {
       let res;
@@ -2740,6 +2944,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateUploadTask,
         removeUploadTask,
         retryUploadTask,
+        documentTemplates,
+        generatedDocuments,
+        saveDocumentTemplate,
+        deleteDocumentTemplate,
+        duplicateDocumentTemplate,
+        toggleDocumentTemplateStatus,
+        logGeneratedDocument,
       }}
     >
       {children}

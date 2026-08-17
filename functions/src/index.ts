@@ -444,10 +444,11 @@ export const notifyNewFound = onRequest({ cors: true }, async (req, res) => {
       return;
     }
 
-    if (item.type && item.type !== "ENCONTRADO") {
+    const normalizedType = String(item.type || "").toUpperCase().trim();
+    if (normalizedType !== "ENCONTRADO" && normalizedType !== "ACHADO") {
       res.status(200).json({
         success: true,
-        message: "Item não é do tipo ENCONTRADO. Ignorado para o canal #novos-achados.",
+        message: "Item não é do tipo ENCONTRADO/ACHADO. Ignorado para o canal #novos-achados.",
       });
       return;
     }
@@ -485,10 +486,11 @@ export const notifyNovaPerda = onRequest({ cors: true }, async (req, res) => {
       return;
     }
 
-    if (item.type && item.type !== "PERDIDO") {
+    const normalizedType = String(item.type || "").toUpperCase().trim();
+    if (normalizedType !== "PERDIDO" && normalizedType !== "PERDA") {
       res.status(200).json({
         success: true,
-        message: "Item não é do tipo PERDIDO. Ignorado para o canal #novas-perdas.",
+        message: "Item não é do tipo PERDIDO/PERDA. Ignorado para o canal #novas-perdas.",
       });
       return;
     }
@@ -513,8 +515,64 @@ export const notifyNovaPerda = onRequest({ cors: true }, async (req, res) => {
 // ============================================================================
 
 /**
+ * Unified Cloud Function Firestore Trigger: onItemCreated
+ * Centralized trigger on 'items/{itemId}' with strict, mutually-exclusive type checking.
+ * Ensures that only the corresponding Discord webhook is dispatched:
+ *  - 'ENCONTRADO' or 'ACHADO' -> '#novos-achados'
+ *  - 'PERDIDO' or 'PERDA'       -> '#novas-perdas'
+ *  - Any other or undefined    -> Safely ignored with explicit warning log
+ */
+export const onItemCreated = onDocumentCreated("items/{itemId}", async (event) => {
+  const data = event.data?.data() as FoundItemData | undefined;
+  const itemId = event.params.itemId;
+
+  if (!data) {
+    logger.warn(`[onItemCreated] Documento vazio em 'items/${itemId}'. Ignorado.`);
+    return;
+  }
+
+  await executeFirestoreTriggerSafely("onItemCreated", `items/${itemId}`, async () => {
+    const rawType = String(data.type || "").toUpperCase().trim();
+
+    if (rawType === "ENCONTRADO" || rawType === "ACHADO") {
+      logger.info(
+        `[onItemCreated] Roteando item #${itemId} ("${data.title}") com tipo "${rawType}" para #novos-achados.`
+      );
+      await dispatchFoundItemWebhook({
+        ...data,
+        id: data.id || itemId,
+        type: "ENCONTRADO",
+      });
+      return;
+    }
+
+    if (rawType === "PERDIDO" || rawType === "PERDA") {
+      logger.info(
+        `[onItemCreated] Roteando item #${itemId} ("${data.title}") com tipo "${rawType}" para #novas-perdas.`
+      );
+      await dispatchLostItemWebhook({
+        ...data,
+        id: data.id || itemId,
+        type: "PERDIDO",
+      });
+      return;
+    }
+
+    logger.warn(
+      `[onItemCreated] Item #${itemId} possui tipo não reconhecido ("${data.type}"). Nenhum webhook foi despachado.`
+    );
+  });
+});
+
+/**
+ * Backward compatibility aliases for onItemCreated
+ */
+export const onNovoAchadoCreated = onItemCreated;
+export const onNovaPerdaCreated = onItemCreated;
+
+/**
  * Cloud Function Firestore Trigger: onNewFoundItemCreated
- * Triggers automatically whenever a new document is created in 'found_items'
+ * Triggers automatically whenever a new document is created in the legacy 'found_items' collection
  */
 export const onNewFoundItemCreated = onDocumentCreated("found_items/{itemId}", async (event) => {
   const data = event.data?.data() as FoundItemData | undefined;
@@ -540,27 +598,8 @@ export const onNewFoundItemCreated = onDocumentCreated("found_items/{itemId}", a
 });
 
 /**
- * Cloud Function Firestore Trigger: onNovoAchadoCreated
- * Listens on 'items' collection with type ENCONTRADO
- */
-export const onNovoAchadoCreated = onDocumentCreated("items/{itemId}", async (event) => {
-  const data = event.data?.data() as FoundItemData | undefined;
-  const itemId = event.params.itemId;
-
-  if (!data || data.type !== "ENCONTRADO") return;
-
-  await executeFirestoreTriggerSafely("onNovoAchadoCreated", `items/${itemId}`, async () => {
-    logger.info(`[onNovoAchadoCreated] Novo item ENCONTRADO detectado em 'items/${itemId}': "${data.title}"`);
-    await dispatchFoundItemWebhook({
-      ...data,
-      id: data.id || itemId,
-    });
-  });
-});
-
-/**
  * Cloud Function Firestore Trigger: onNewLostItemCreated
- * Triggers automatically whenever a new document is created in 'lost_items'
+ * Triggers automatically whenever a new document is created in the legacy 'lost_items' collection
  */
 export const onNewLostItemCreated = onDocumentCreated("lost_items/{itemId}", async (event) => {
   const data = event.data?.data() as FoundItemData | undefined;
@@ -586,27 +625,8 @@ export const onNewLostItemCreated = onDocumentCreated("lost_items/{itemId}", asy
 });
 
 /**
- * Cloud Function Firestore Trigger: onNovaPerdaCreated
- * Listens on 'items' collection with type PERDIDO
- */
-export const onNovaPerdaCreated = onDocumentCreated("items/{itemId}", async (event) => {
-  const data = event.data?.data() as FoundItemData | undefined;
-  const itemId = event.params.itemId;
-
-  if (!data || data.type !== "PERDIDO") return;
-
-  await executeFirestoreTriggerSafely("onNovaPerdaCreated", `items/${itemId}`, async () => {
-    logger.info(`[onNovaPerdaCreated] Novo item PERDIDO detectado em 'items/${itemId}': "${data.title}"`);
-    await dispatchLostItemWebhook({
-      ...data,
-      id: data.id || itemId,
-    });
-  });
-});
-
-/**
  * Cloud Function Firestore Trigger: notifyNewLoss
- * Triggers automatically whenever a new document is created in 'perdas'
+ * Triggers automatically whenever a new document is created in the legacy 'perdas' collection
  */
 export const notifyNewLoss = onDocumentCreated("perdas/{lossId}", async (event) => {
   const data = event.data?.data() as FoundItemData | undefined;

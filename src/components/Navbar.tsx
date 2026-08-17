@@ -3,6 +3,7 @@ import { useApp } from "../context/AppContext";
 import { triggerVibration, vibrateClick, vibrateSuccess } from "../lib/utils";
 import { usePWA } from "../hooks/usePWA";
 import { ThemeToggle } from "./ThemeToggle";
+import { ContactSupportModal } from "./ContactSupportModal";
 import {
   Search,
   PlusCircle,
@@ -29,6 +30,7 @@ import {
   Wifi,
   RefreshCw,
   CloudOff,
+  LifeBuoy,
 } from "lucide-react";
 
 export const Navbar: React.FC = () => {
@@ -62,6 +64,7 @@ export const Navbar: React.FC = () => {
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
   const userNotifications = notifications.filter(
     (n) =>
@@ -255,6 +258,21 @@ export const Navbar: React.FC = () => {
 
           {/* Right Action Icons & Profile Switcher */}
           <div className="flex items-center space-x-2 sm:space-x-3">
+            {/* Quick Support / Dúvidas Discord Shortcut Button */}
+            <button
+              id="navbar-quick-support-btn"
+              onClick={() => {
+                vibrateClick();
+                setIsSupportModalOpen(true);
+              }}
+              role="button"
+              aria-label="Tirar Dúvidas ou Enviar Suporte via Discord"
+              title="Suporte Rápido & Tirar Dúvidas (Discord)"
+              className="p-2 rounded-lg text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors relative"
+            >
+              <LifeBuoy className="w-5 h-5" />
+            </button>
+
             {/* Quick QR Code Scanner Shortcut */}
             <button
               onClick={handleQrScannerClick}
@@ -563,6 +581,20 @@ export const Navbar: React.FC = () => {
           )}
 
           <button
+            onClick={() => {
+              vibrateClick();
+              setIsSupportModalOpen(true);
+              setMobileMenuOpen(false);
+            }}
+            role="button"
+            aria-label="Tirar Dúvidas ou Enviar Suporte via Discord"
+            className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-colors"
+          >
+            <LifeBuoy className="w-5 h-5" />
+            <span>Tirar Dúvidas / Suporte Rápido</span>
+          </button>
+
+          <button
             onClick={() => handleNavClick("profile")}
             aria-label={`Meu Perfil (${currentUser.role})`}
             className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
@@ -606,6 +638,12 @@ export const Navbar: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* Quick Support Modal for Discord Feedback */}
+      <ContactSupportModal
+        isOpen={isSupportModalOpen}
+        onClose={() => setIsSupportModalOpen(false)}
+      />
     </header>
   );
 };
