@@ -77,6 +77,7 @@ import {
   sanitizeFirestoreData,
 } from "../lib/shared-constants";
 import { SupportedLanguage, TranslationDictionary, translations } from "../lib/i18n";
+import { parseAuthError, handleAuthError } from "../lib/authErrorHandler";
 import {
   requestFCMPermissionAndToken,
   displayWebPushNotification,
@@ -88,7 +89,7 @@ import {
 
 interface Toast {
   id: string;
-  type: "success" | "error" | "info";
+  type: "success" | "error" | "info" | "warning";
   text: string;
 }
 
@@ -190,7 +191,7 @@ interface AppContextType {
   aiMatchAlert: { newItem: LostFoundItem; matches: AIMatchResult[] } | null;
   setAiMatchAlert: (val: { newItem: LostFoundItem; matches: AIMatchResult[] } | null) => void;
   toasts: Toast[];
-  addToast: (text: string, type?: "success" | "error" | "info") => void;
+  addToast: (text: string, type?: "success" | "error" | "info" | "warning") => void;
   registerTypeSelection: "PERDIDO" | "ENCONTRADO";
   setRegisterTypeSelection: (type: "PERDIDO" | "ENCONTRADO") => void;
   systemLatencyMs: number | null;
@@ -1312,7 +1313,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
 
-  const addToast = (text: string, type: "success" | "error" | "info" = "info") => {
+  const addToast = (text: string, type: "success" | "error" | "info" | "warning" = "info") => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts((prev) => [...prev, { id, text, type }]);
     setTimeout(() => {
@@ -1915,7 +1916,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (popupError?.code === "auth/unauthorized-domain") {
           throw popupError;
         }
-        if (popupError.code === "auth/popup-blocked" || popupError.code === "auth/popup-closed-by-user") {
+        if (popupError?.code === "auth/popup-blocked") {
           await signInWithRedirect(auth, googleProvider);
           return;
         }
@@ -1932,12 +1933,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast(`Bem-vindo, ${verifiedUser.name}! Autenticado com a Conta Google com sucesso.`, "success");
     } catch (e: any) {
       console.warn("Aviso no login via Google:", e);
-      if (e?.code === "auth/unauthorized-domain") {
-        const hostname = typeof window !== "undefined" ? window.location.hostname : "seu domínio";
-        addToast(`Domínio '${hostname}' não autorizado no Firebase Console. Adicione-o em Authentication > Configurações > Domínios Autorizados.`, "error");
-      } else {
-        addToast("A autenticação do Google não pôde ser concluída. Verifique seu navegador.", "error");
-      }
+      handleAuthError(e, { addToast, showToastForUserCancellation: false });
       throw e;
     }
   };
@@ -1945,7 +1941,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const loginWithEmailPassword = async (email: string, pass: string) => {
     const cleanEmail = safeToLower(email);
     if (!cleanEmail || !pass) {
-      addToast("Preencha e-mail e senha para entrar.", "error");
+      addToast("Preencha e-mail e senha para entrar.", "warning");
       throw new Error("Preencha e-mail e senha.");
     }
 
@@ -1972,14 +1968,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast(`Bem-vindo de volta, ${loggedUser.name}! Login efetuado com sucesso.`, "success");
     } catch (e: any) {
       console.warn("Erro no login por e-mail/senha:", e);
-      let errMsg = "Falha no login. E-mail ou senha incorretos.";
-      if (e.code === "auth/user-not-found" || e.code === "auth/invalid-credential" || e.code === "auth/wrong-password") {
-        errMsg = "E-mail ou senha incorretos. Se ainda não tem uma conta, clique em 'Cadastrar'.";
-      } else if (e.code === "auth/invalid-email") {
-        errMsg = "Formato de e-mail inválido.";
-      }
-      addToast(errMsg, "error");
-      throw new Error(errMsg);
+      const parsed = handleAuthError(e, { addToast });
+      throw new Error(parsed.userMessage);
     }
   };
 
@@ -2019,19 +2009,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast(`Cadastro concluído com sucesso! Bem-vindo(a), ${newUserObj.name}.`, "success");
     } catch (e: any) {
       console.warn("Erro no cadastro no Firebase Auth:", e);
-      if (e.code === "auth/email-already-in-use") {
-        const msg = "Este e-mail já está cadastrado. Vá até a aba 'Entrar' e faça login.";
-        addToast(msg, "error");
-        throw new Error(msg);
-      }
-      if (e.code === "auth/weak-password") {
-        const msg = "A senha deve ter pelo menos 6 caracteres.";
-        addToast(msg, "error");
-        throw new Error(msg);
-      }
-      const msg = e.message || "Erro ao realizar cadastro.";
-      addToast(msg, "error");
-      throw new Error(msg);
+      const parsed = handleAuthError(e, { addToast });
+      throw new Error(parsed.userMessage);
     }
   };
 

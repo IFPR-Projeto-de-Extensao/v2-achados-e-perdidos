@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { X, Mail, Lock, User as UserIcon, Shield, GraduationCap, Building2, Phone, FileText, Sparkles, LogIn, UserPlus, LogOut } from "lucide-react";
+import { X, Mail, Lock, User as UserIcon, Shield, GraduationCap, Building2, Phone, FileText, Sparkles, LogIn, UserPlus, LogOut, AlertTriangle, Check, Copy } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { UserRole } from "../types";
 import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning } from "../lib/utils";
+import { parseAuthError, handleAuthError } from "../lib/authErrorHandler";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -10,10 +11,20 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
-  const { loginWithGoogle, loginWithEmailPassword, registerWithEmailPassword, logout, currentUser, firebaseUser } = useApp();
+  // Top-level React Hooks (strictly unconditionally mounted at the root)
+  const {
+    loginWithGoogle,
+    loginWithEmailPassword,
+    registerWithEmailPassword,
+    logout,
+    currentUser,
+    firebaseUser,
+    addToast,
+  } = useApp();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [copiedDomain, setCopiedDomain] = useState(false);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -36,17 +47,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     setErrorMsg("");
     if (!loginEmail || !loginPassword) {
       setErrorMsg("Preencha e-mail e senha para entrar.");
+      addToast("Preencha e-mail e senha para entrar.", "warning");
       return;
     }
     setLoading(true);
     try {
       await loginWithEmailPassword(loginEmail, loginPassword);
       vibrateSuccess();
+      addToast("Login realizado com sucesso!", "success");
       onClose();
     } catch (err: any) {
-      console.error(err);
+      console.error("[Email Auth Error]", err);
       vibrateWarning();
-      setErrorMsg("Erro ao entrar: " + (err.message || "Verifique suas credenciais."));
+      const parsed = parseAuthError(err);
+      setErrorMsg(parsed.userMessage);
+      addToast(parsed.userMessage, "error");
     } finally {
       setLoading(false);
     }
@@ -58,6 +73,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     setErrorMsg("");
     if (!regName || !regEmail || !regPassword) {
       setErrorMsg("Nome, e-mail e senha são obrigatórios.");
+      addToast("Preencha todos os campos obrigatórios.", "warning");
       return;
     }
     setLoading(true);
@@ -72,11 +88,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(regName)}`,
       });
       vibrateSuccess();
+      addToast("Cadastro concluído com sucesso!", "success");
       onClose();
     } catch (err: any) {
-      console.error(err);
+      console.error("[Register Error]", err);
       vibrateWarning();
-      setErrorMsg("Erro no cadastro: " + (err.message || "Tente novamente."));
+      const parsed = parseAuthError(err);
+      setErrorMsg(parsed.userMessage);
+      addToast(parsed.userMessage, "error");
     } finally {
       setLoading(false);
     }
@@ -89,18 +108,30 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     try {
       await loginWithGoogle();
       vibrateSuccess();
+      addToast("Autenticação com Google realizada com sucesso!", "success");
       onClose();
     } catch (err: any) {
-      console.error(err);
+      console.error("[Google Auth Error]", err);
       vibrateWarning();
-      if (err?.code === "auth/unauthorized-domain") {
-        setErrorMsg(`Domínio '${window.location.hostname}' não está autorizado no Firebase Console. Você pode utilizar o Acesso de Demonstração ou entrar com seu e-mail do Google abaixo.`);
-      } else {
-        setErrorMsg("Erro ao entrar com Google: " + (err.message || "Tente novamente."));
-      }
+      const parsed = handleAuthError(err, { addToast, showToastForUserCancellation: false });
+      setErrorMsg(parsed.userMessage);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCopyDomain = () => {
+    const domainToCopy = typeof window !== "undefined" && window.location.hostname
+      ? window.location.hostname
+      : "localizamais.vercel.app";
+
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(domainToCopy).then(() => {
+        setCopiedDomain(true);
+        setTimeout(() => setCopiedDomain(false), 3000);
+      }).catch(() => {});
+    }
+    addToast(`Domínio '${domainToCopy}' copiado com sucesso!`, "success");
   };
 
   return (
@@ -200,24 +231,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
           {errorMsg && (
             <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-semibold space-y-2">
-              <div>{errorMsg}</div>
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{errorMsg}</span>
+              </div>
               {errorMsg.includes("não está autorizado") && (
                 <div className="p-3 bg-white dark:bg-neutral-800 rounded-xl border border-red-500/30 text-[11px] text-neutral-800 dark:text-neutral-200 space-y-1.5 font-normal">
                   <div className="font-bold text-red-600 dark:text-red-400">Como autorizar este domínio no Firebase Console:</div>
                   <ol className="list-decimal pl-4 space-y-1 text-neutral-600 dark:text-neutral-300">
                     <li>Acesse o <strong>Firebase Console</strong> do seu projeto.</li>
                     <li>Vá em <strong>Authentication</strong> &gt; aba <strong>Configurações (Settings)</strong> &gt; <strong>Domínios autorizados</strong>.</li>
-                    <li>Clique em <strong>Adicionar domínio</strong> e cole: <code className="bg-neutral-100 dark:bg-neutral-900 px-1.5 py-0.5 rounded font-mono font-bold text-red-600 dark:text-red-400">{window.location.hostname}</code></li>
+                    <li>Clique em <strong>Adicionar domínio</strong> e cole o domínio abaixo:</li>
                   </ol>
                   <button
                     type="button"
-                    onClick={() => {
-                      navigator.clipboard.writeText(window.location.hostname);
-                      useApp().addToast(`Domínio ${window.location.hostname} copiado para a área de transferência!`, "success");
-                    }}
-                    className="w-full py-1.5 px-3 rounded-lg bg-[#00843D] text-white text-[11px] font-bold text-center hover:bg-[#006e33] transition-colors mt-1"
+                    onClick={handleCopyDomain}
+                    className="w-full py-2 px-3 rounded-lg bg-[#00843D] text-white text-[11px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#006e33] transition-colors mt-2"
                   >
-                    📋 Copiar Domínio ({window.location.hostname})
+                    {copiedDomain ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>
+                      {copiedDomain ? "Copiado com Sucesso!" : `Copiar Domínio (${typeof window !== "undefined" && window.location.hostname ? window.location.hostname : "localizamais.vercel.app"})`}
+                    </span>
                   </button>
                 </div>
               )}

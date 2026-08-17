@@ -41,10 +41,9 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
   const [includeSignatures, setIncludeSignatures] = useState<boolean>(true);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
 
-  if (!isOpen) return null;
-
-  // Compute matched items for real-time preview count
+  // Compute matched items for real-time preview count (Hooks must be unconditional)
   const filteredFoundItems = useMemo(() => {
+    if (!isOpen) return [];
     const now = new Date();
     return items.filter((i) => {
       const isFound = i.type === "ENCONTRADO" || (i.status === "DEVOLVIDO" && i.type !== "PERDIDO");
@@ -84,7 +83,9 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
 
       return true;
     });
-  }, [items, periodPreset, startDate, endDate, categoryFilter, locationFilter, statusFilter]);
+  }, [items, periodPreset, startDate, endDate, categoryFilter, locationFilter, statusFilter, isOpen]);
+
+  if (!isOpen) return null;
 
   const custodyCount = filteredFoundItems.filter(
     (i) => i.status === "ENCONTRADO" || i.status === "EM_ANALISE" || i.status === "PROPRIETARIO_IDENTIFICADO"

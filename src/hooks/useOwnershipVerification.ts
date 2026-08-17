@@ -4,5 +4,6 @@ import { LostFoundItem } from "../types";
 export type OwnershipVerificationState = PossessionVerificationState;
 
 export function useOwnershipVerification(item: LostFoundItem): OwnershipVerificationState {
-  return usePossessionVerification(item);
+  const state = usePossessionVerification(item);
+  return state;
 }
