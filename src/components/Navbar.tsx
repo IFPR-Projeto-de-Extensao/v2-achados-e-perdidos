@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
 import { triggerVibration, vibrateClick, vibrateSuccess } from "../lib/utils";
+import { filterNotificationsForUser } from "../lib/notificationHelper";
 import { usePWA } from "../hooks/usePWA";
 import { ThemeToggle } from "./ThemeToggle";
 import { ContactSupportModal } from "./ContactSupportModal";
@@ -66,12 +67,10 @@ export const Navbar: React.FC = () => {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
-  const userNotifications = notifications.filter(
-    (n) =>
-      currentUser.role === "ADMIN" ||
-      n.userId === currentUser.id ||
-      n.userId === "all" ||
-      n.userId === "todos_alunos"
+  const userNotifications = filterNotificationsForUser(
+    notifications,
+    currentUser,
+    firebaseUser?.uid
   );
 
   const unreadCount = userNotifications.filter((n) => !n.read).length;

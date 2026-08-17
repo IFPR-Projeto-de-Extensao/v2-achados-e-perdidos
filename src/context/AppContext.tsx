@@ -78,6 +78,7 @@ import {
 } from "../lib/shared-constants";
 import { SupportedLanguage, TranslationDictionary, translations } from "../lib/i18n";
 import { parseAuthError, handleAuthError } from "../lib/authErrorHandler";
+import { isNotificationForUser, filterNotificationsForUser } from "../lib/notificationHelper";
 import {
   requestFCMPermissionAndToken,
   displayWebPushNotification,
@@ -1606,33 +1607,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync Notifications from Firestore
   useEffect(() => {
+    // Determine query scope: Admins can view all notifications for oversight;
+    // non-admin users only listen to notifications addressed to their UID or broadcast targets.
+    const isAdminUser = currentUser?.role === "ADMIN";
+    const currentUid = currentUser?.id && currentUser.id !== DEFAULT_GUEST_USER.id ? currentUser.id : null;
+    const fbUid = firebaseUser?.uid || null;
+
+    let notifsQuery;
+    if (isAdminUser) {
+      notifsQuery = collection(db, "notifications");
+    } else {
+      const allowedTargets = Array.from(
+        new Set([currentUid, fbUid, "all", "todos_alunos", "todos", "global"].filter(Boolean))
+      ) as string[];
+      notifsQuery = query(collection(db, "notifications"), where("userId", "in", allowedTargets));
+    }
+
     const unsubscribe = onSnapshot(
-      collection(db, "notifications"),
+      notifsQuery,
       async (snapshot) => {
         if (snapshot.empty) {
           setNotifications([]);
         } else {
-          const loadedNotifs: NotificationItem[] = snapshot.docs.map((d) => d.data() as NotificationItem);
+          const rawNotifs: NotificationItem[] = snapshot.docs.map((d) => d.data() as NotificationItem);
+          const loadedNotifs = filterNotificationsForUser(rawNotifs, currentUser, firebaseUser?.uid);
           loadedNotifs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
           
-          // Real-time Push Alert for newly received MATCH notifications for the active user
-          if (initialNotifsLoadedRef.current && currentUser?.id) {
+          // Real-time Push Alert for newly received notifications for the active user
+          if (initialNotifsLoadedRef.current && (currentUser?.id || firebaseUser?.uid)) {
             snapshot.docChanges().forEach((change) => {
               if (change.type === "added") {
                 const notif = change.doc.data() as NotificationItem;
                 if (
-                  notif.userId === currentUser.id &&
-                  notif.type === "MATCH" &&
+                  isNotificationForUser(notif, currentUser, firebaseUser?.uid) &&
                   !notif.read &&
                   !seenNotifsRef.current.has(notif.id)
                 ) {
                   seenNotifsRef.current.add(notif.id);
                   playNotificationChime();
                   displayWebPushNotification(
-                    notif.title || "IFPR Achados • Objeto Similar!",
+                    notif.title || "IFPR Achados & Perdidos",
                     notif.message,
                     {
-                      url: `/?item=${notif.relatedItemId || ""}`,
+                      url: notif.relatedItemId ? `/?item=${notif.relatedItemId}` : "/",
                       itemId: notif.relatedItemId,
                     }
                   );
@@ -1653,7 +1670,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.role, firebaseUser?.uid]);
 
   // Sync Comments from Firestore
   useEffect(() => {
@@ -2808,6 +2825,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const markNotificationRead = async (id: string) => {
     try {
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+      );
       await updateDoc(doc(db, "notifications", id), sanitizeFirestoreData({ read: true }));
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `notifications/${id}`);
@@ -2816,10 +2836,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const clearAllNotifications = async () => {
     try {
-      for (const n of notifications) {
-        if (!n.read) {
-          await updateDoc(doc(db, "notifications", n.id), sanitizeFirestoreData({ read: true }));
-        }
+      const userNotifs = notifications.filter(
+        (n) => isNotificationForUser(n, currentUser, firebaseUser?.uid) && !n.read
+      );
+      setNotifications((prev) =>
+        prev.map((n) =>
+          isNotificationForUser(n, currentUser, firebaseUser?.uid) ? { ...n, read: true } : n
+        )
+      );
+      for (const n of userNotifs) {
+        await updateDoc(doc(db, "notifications", n.id), sanitizeFirestoreData({ read: true }));
       }
       addToast("Notificações marcadas como lidas.", "info");
     } catch (e) {

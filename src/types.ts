@@ -141,6 +141,7 @@ export interface NotificationItem {
   read: boolean;
   type: "MATCH" | "CLAIM_UPDATE" | "SYSTEM" | "STATUS_CHANGE";
   relatedItemId?: string;
+  isGlobal?: boolean;
 }
 
 export type BadgeTier = "BRONZE" | "PRATA" | "OURO" | "DIAMANTE";

@@ -152,18 +152,41 @@ service cloud.firestore {
     // 4. Notifications Collection (Notificações do Usuário)
     // ==========================================
     match /notifications/{notificationId} {
-      // Users can ONLY read notifications destined to them; Admins can read
-      allow get: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
-      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      // Users can ONLY read notifications destined to them or global notifications; Admins can read all
+      allow get: if isSignedIn() && (
+        existing().userId == request.auth.uid || 
+        isAdmin() || 
+        existing().userId == 'all' || 
+        existing().userId == 'todos_alunos' || 
+        existing().userId == 'todos' ||
+        existing().isGlobal == true
+      );
+      allow list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || 
+        isAdmin() || 
+        resource.data.userId == 'all' || 
+        resource.data.userId == 'todos_alunos' || 
+        resource.data.userId == 'todos' ||
+        resource.data.isGlobal == true
+      );
 
-      // Create: Admin, Servidor or system generating notification for owner
+      // Create: Admin, Servidor, or authenticated user generating notification
       allow create: if isSignedIn();
 
-      // Update: User can mark their own notification as read
-      allow update: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      // Update: User can mark their own notification as read (or admin)
+      allow update: if isSignedIn() && (
+        existing().userId == request.auth.uid || 
+        isAdmin() ||
+        existing().userId == 'all' ||
+        existing().userId == 'todos_alunos' ||
+        existing().userId == 'todos'
+      );
 
       // Delete: User or Admin
-      allow delete: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && (
+        existing().userId == request.auth.uid || 
+        isAdmin()
+      );
     }
 
     // ==========================================
