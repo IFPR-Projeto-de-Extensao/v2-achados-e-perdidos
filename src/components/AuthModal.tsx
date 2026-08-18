@@ -20,6 +20,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     currentUser,
     firebaseUser,
     addToast,
+    setActiveTab,
   } = useApp();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [loading, setLoading] = useState(false);
@@ -509,6 +510,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Privacy Policy Disclaimer */}
+              <div className="p-3 rounded-xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700/80 text-[11px] text-neutral-600 dark:text-neutral-400 space-y-1">
+                <p>
+                  Ao cadastrar sua conta, você declara estar ciente da{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      vibrateClick();
+                      onClose();
+                      if (typeof window !== "undefined") {
+                        window.history.pushState({ tab: "privacy_policy" }, "", "/politica-de-privacidade");
+                      }
+                      setActiveTab("privacy_policy");
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    className="text-[#00843D] dark:text-green-400 font-bold underline hover:text-[#006830] inline cursor-pointer"
+                  >
+                    Política de Privacidade
+                  </button>{" "}
+                  do Localiza+ e do tratamento de dados conforme a LGPD (Lei nº 13.709/2018).
+                </p>
               </div>
 
               <button

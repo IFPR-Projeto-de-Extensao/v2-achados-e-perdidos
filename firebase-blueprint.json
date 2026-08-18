@@ -147,6 +147,20 @@
         "generatedAt": { "type": "string" }
       },
       "required": ["id", "templateId", "documentNumber", "generatedByUserId", "generatedAt"]
+    },
+    "ProjectSettings": {
+      "title": "ProjectSettings",
+      "description": "Permanent InovaIF team, student members, professor, and campus institutional data for official documents",
+      "type": "object",
+      "properties": {
+        "teamName": { "type": "string", "maxLength": 100 },
+        "members": { "type": "array" },
+        "professor": { "type": "object" },
+        "institution": { "type": "object" },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["teamName", "members", "professor", "institution"]
     }
   },
   "firestore": {
@@ -207,6 +221,10 @@
     "/lost_items/{itemId}": {
       "schema": { "$ref": "#/entities/LostFoundItem" },
       "description": "Lost items collection triggering onNewLostItemCreated Discord alerts"
+    },
+    "/project_settings/{settingsId}": {
+      "schema": { "$ref": "#/entities/ProjectSettings" },
+      "description": "Permanent project metadata, InovaIF team members, professor, and campus info"
     }
   }
 }

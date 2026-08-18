@@ -16,8 +16,10 @@ import {
   UploadStatusType,
   DocumentTemplate,
   GeneratedDocumentRecord,
+  ProjectSettings,
 } from "../types";
 import { DEFAULT_DOCUMENT_TEMPLATES } from "../lib/defaultDocumentTemplates";
+import { DEFAULT_PROJECT_SETTINGS } from "../lib/projectSettingsConstants";
 import { INITIAL_ITEMS, MOCK_NOTIFICATIONS, MOCK_CLAIMS, MOCK_COMMENTS, MOCK_ACTIVITY_LOGS } from "../data/mockData";
 import { safeFetchJson, clientMatchSimilarity } from "../lib/apiHelper";
 import { compressImage } from "../lib/imageCompression";
@@ -75,6 +77,7 @@ import {
   DEFAULT_GUEST_USER,
   sanitizeUserList,
   sanitizeFirestoreData,
+  type AppTabType,
 } from "../lib/shared-constants";
 import { SupportedLanguage, TranslationDictionary, translations } from "../lib/i18n";
 import { parseAuthError, handleAuthError } from "../lib/authErrorHandler";
@@ -152,8 +155,8 @@ interface AppContextType {
   masterWipeFirestore: () => Promise<void>;
   activityLogs: ActivityLog[];
   logAdminAction: (action: ActivityLog["action"], details: string) => Promise<void>;
-  activeTab: "home" | "lost" | "found" | "register" | "dashboard" | "profile" | "image_analyzer";
-  setActiveTab: (tab: "home" | "lost" | "found" | "register" | "dashboard" | "profile" | "image_analyzer") => void;
+  activeTab: AppTabType;
+  setActiveTab: (tab: AppTabType) => void;
   prefilledItemFromAI: Partial<LostFoundItem> | null;
   setPrefilledItemFromAI: (data: Partial<LostFoundItem> | null) => void;
   selectedItemForDetail: LostFoundItem | null;
@@ -210,11 +213,14 @@ interface AppContextType {
   retryUploadTask: (taskId: string) => Promise<void>;
   documentTemplates: DocumentTemplate[];
   generatedDocuments: GeneratedDocumentRecord[];
+  projectSettings: ProjectSettings;
   saveDocumentTemplate: (template: DocumentTemplate) => Promise<void>;
   deleteDocumentTemplate: (templateId: string) => Promise<void>;
   duplicateDocumentTemplate: (templateId: string) => Promise<DocumentTemplate>;
   toggleDocumentTemplateStatus: (templateId: string) => Promise<void>;
   logGeneratedDocument: (record: Omit<GeneratedDocumentRecord, "id" | "generatedAt" | "generatedByUserId" | "generatedByName">) => Promise<void>;
+  saveProjectSettings: (settings: ProjectSettings) => Promise<void>;
+  resetProjectSettingsToDefault: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -601,6 +607,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch (_) {}
     return [];
+  });
+
+  // Project Settings (Dados Permanentes do Projeto InovaIF, Equipe, Docente e Campus)
+  const [projectSettings, setProjectSettings] = useState<ProjectSettings>(() => {
+    try {
+      const saved = localStorage.getItem("ifpr_project_settings_cache");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === "object" && parsed.teamName) return parsed;
+      }
+    } catch (_) {}
+    return DEFAULT_PROJECT_SETTINGS;
   });
 
   // Internationalization (i18n) State
@@ -1299,9 +1317,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Active view tab
-  const [activeTab, setActiveTab] = useState<
-    "home" | "lost" | "found" | "register" | "dashboard" | "profile" | "image_analyzer"
-  >("home");
+  const [activeTab, setActiveTab] = useState<AppTabType>("home");
 
   const [prefilledItemFromAI, setPrefilledItemFromAI] = useState<Partial<LostFoundItem> | null>(null);
 
@@ -1805,6 +1821,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     return () => unsubscribe();
   }, [currentUser?.role]);
+
+  // Sync Project Settings from Firestore (Real-time updates)
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      doc(db, "project_settings", "inovaif"),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data() as ProjectSettings;
+          setProjectSettings(data);
+          try {
+            localStorage.setItem("ifpr_project_settings_cache", JSON.stringify(data));
+          } catch (_) {}
+        } else {
+          setProjectSettings(DEFAULT_PROJECT_SETTINGS);
+        }
+      },
+      (error) => {
+        console.warn("Aviso ao sincronizar project_settings:", error);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const saveProjectSettings = async (settings: ProjectSettings) => {
+    const updated: ProjectSettings = {
+      ...settings,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser.name,
+      updatedByEmail: currentUser.email,
+    };
+
+    setProjectSettings(updated);
+    try {
+      localStorage.setItem("ifpr_project_settings_cache", JSON.stringify(updated));
+    } catch (_) {}
+
+    try {
+      await setDoc(doc(db, "project_settings", "inovaif"), sanitizeFirestoreData(updated), { merge: true });
+      await logAdminAction(
+        "SALVAR_DADOS_PROJETO",
+        `Atualizou os dados permanentes do Projeto InovaIF, Equipe (${updated.members?.length || 0} integrantes), Professor e Campus.`
+      );
+      addToast("Dados do projeto salvos e sincronizados com sucesso!", "success");
+    } catch (e) {
+      console.warn("Aviso ao salvar dados do projeto no Firestore:", e);
+      addToast("Dados do projeto salvos localmente!", "info");
+    }
+  };
+
+  const resetProjectSettingsToDefault = async () => {
+    await saveProjectSettings(DEFAULT_PROJECT_SETTINGS);
+    addToast("Configurações do projeto restauradas para os dados padrão do InovaIF.", "info");
+  };
 
   // Sync Generated Documents from Firestore (Admin Only)
   useEffect(() => {
@@ -2981,11 +3050,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         retryUploadTask,
         documentTemplates,
         generatedDocuments,
+        projectSettings,
         saveDocumentTemplate,
         deleteDocumentTemplate,
         duplicateDocumentTemplate,
         toggleDocumentTemplateStatus,
         logGeneratedDocument,
+        saveProjectSettings,
+        resetProjectSettingsToDefault,
       }}
     >
       {children}

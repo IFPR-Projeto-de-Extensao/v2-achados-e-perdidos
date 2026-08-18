@@ -9,6 +9,7 @@ import {
 } from "../../types";
 import { useApp } from "../../context/AppContext";
 import { DocumentPreviewModal } from "./DocumentPreviewModal";
+import { PROJECT_AVAILABLE_TAGS } from "../../lib/projectSettingsConstants";
 import {
   ArrowLeft,
   Save,
@@ -549,15 +550,29 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
                     <label className="text-xs text-slate-400">Conteúdo do Texto (Suporta tags dinâmicas)</label>
-                    <div className="flex items-center space-x-1">
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="text-[10px] text-slate-500 font-semibold mr-1">Inserir:</span>
+                      {/* Project quick tags */}
+                      {["nome_equipe", "integrantes_com_matricula", "professor_responsavel", "instituicao", "endereco_completo"].map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => insertTagIntoSection(section.id, tag)}
+                          className="text-[10px] px-1.5 py-0.5 bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 rounded border border-emerald-700/50 transition-colors"
+                          title={`Inserir tag do projeto {{${tag}}}`}
+                        >
+                          + {tag}
+                        </button>
+                      ))}
+                      {/* Custom fields tags */}
                       {template.fields.slice(0, 3).map((f) => (
                         <button
                           key={f.id}
                           type="button"
                           onClick={() => insertTagIntoSection(section.id, f.name)}
-                          className="text-[10px] px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded border border-slate-700 transition-colors"
+                          className="text-[10px] px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-blue-400 rounded border border-slate-700 transition-colors"
                           title={`Inserir {{${f.name}}}`}
                         >
                           + {f.name}

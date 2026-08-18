@@ -298,6 +298,14 @@ service cloud.firestore {
       allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
+
+    // ==========================================
+    // 15. Project Settings Collection (Admin Only Read & Write)
+    // ==========================================
+    match /project_settings/{settingsId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
   }
 }
 

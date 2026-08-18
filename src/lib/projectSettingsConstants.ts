@@ -107,18 +107,33 @@ export function getProjectSettingsTags(settings?: ProjectSettings | null): Recor
     ? `Prof. ${current.professor.title} ${current.professor.name}`
     : `Prof. ${current.professor?.name || ""}`;
 
+  const firstMember = current.members?.[0];
+  const leaderName = firstMember?.name?.trim() || "";
+
+  const currentDateExtenso = new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(new Date());
+
+  const currentYear = String(new Date().getFullYear());
+  const currentSemester = new Date().getMonth() >= 6 ? "2" : "1";
+
   return {
     // Equipe & Integrantes
     nome_equipe: current.teamName || "InovaIF",
     integrantes: memberNamesOnly,
     integrantes_com_matricula: membersWithRegistration,
     integrantes_lista: membersFormattedLines,
+    representante_equipe: leaderName,
+    lider_equipe: leaderName,
 
     // Professor Orientador
     professor_responsavel: current.professor?.name || "",
     formacao_professor: current.professor?.title || "",
     cargo_professor: current.professor?.role || "",
     docente_completo: `${profCompleteTitle} (${current.professor?.role || ""})`.trim(),
+    coordenador: current.professor?.name || "",
 
     // Instituição e Campus
     instituicao: current.institution?.name || "Instituto Federal do Paraná",
@@ -128,13 +143,23 @@ export function getProjectSettingsTags(settings?: ProjectSettings | null): Recor
     estado: current.institution?.state || "PR",
     cep: current.institution?.zipCode || "86873-400",
     endereco_completo: fullAddress,
+
+    // Curso & Período
+    curso: "Bacharelado em Sistemas de Informação",
+    periodo_letivo: `${currentSemester}º Semestre / ${currentYear}`,
+
+    // Datas formatadas
+    data: currentDateExtenso,
+    data_extenso: currentDateExtenso,
+    ano: currentYear,
+    cidade_data: `${current.institution?.city || "Ivaiporã"} - ${current.institution?.state || "PR"}, ${currentDateExtenso}`,
   };
 }
 
 export interface ProjectTagInfo {
   tag: string;
   label: string;
-  category: "Equipe" | "Integrantes" | "Professor" | "Instituição";
+  category: "Equipe" | "Integrantes" | "Professor" | "Instituição" | "Geral";
   description: string;
   example: (settings: ProjectSettings) => string;
 }
@@ -146,6 +171,13 @@ export const PROJECT_AVAILABLE_TAGS: ProjectTagInfo[] = [
     category: "Equipe",
     description: "Nome oficial da equipe desenvolvedora",
     example: (s) => s.teamName || "InovaIF",
+  },
+  {
+    tag: "representante_equipe",
+    label: "Representante da Equipe (Líder)",
+    category: "Equipe",
+    description: "Nome do estudante representante da equipe",
+    example: (s) => s.members?.[0]?.name || "",
   },
   {
     tag: "integrantes",
@@ -240,5 +272,22 @@ export const PROJECT_AVAILABLE_TAGS: ProjectTagInfo[] = [
     description: "Endereço unificado com rua, bairro, cidade, UF e CEP",
     example: (s) =>
       `${s.institution?.address}, ${s.institution?.city} - ${s.institution?.state}, CEP: ${s.institution?.zipCode}`,
+  },
+  {
+    tag: "periodo_letivo",
+    label: "Período Letivo",
+    category: "Geral",
+    description: "Semestre e ano corrente do calendário acadêmico",
+    example: () => `2º Semestre / ${new Date().getFullYear()}`,
+  },
+  {
+    tag: "data",
+    label: "Data por Extenso",
+    category: "Geral",
+    description: "Data atual formatada em português",
+    example: () =>
+      new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).format(
+        new Date()
+      ),
   },
 ];

@@ -21,6 +21,7 @@ export const APP_VALID_TABS = [
   "dashboard",
   "profile",
   "image_analyzer",
+  "privacy_policy",
 ] as const;
 
 export type AppTabType = typeof APP_VALID_TABS[number];

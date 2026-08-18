@@ -4,6 +4,7 @@ import { useApp } from "../../context/AppContext";
 import { DocumentPreviewModal } from "./DocumentPreviewModal";
 import { DocumentFillForm } from "./DocumentFillForm";
 import { DocumentTemplateEditor } from "./DocumentTemplateEditor";
+import { ProjectConfigView } from "./ProjectConfigView";
 import { downloadDocumentPdf } from "../../lib/documentPdfGenerator";
 import {
   FileText,
@@ -28,6 +29,8 @@ import {
   Send,
   ToggleLeft,
   ToggleRight,
+  ArrowLeft,
+  Users,
 } from "lucide-react";
 
 export const DocumentsAdminModule: React.FC = () => {
@@ -42,7 +45,7 @@ export const DocumentsAdminModule: React.FC = () => {
   } = useApp();
 
   // Module Screen State
-  const [viewMode, setViewMode] = useState<"gallery" | "history" | "fill" | "edit" | "create">("gallery");
+  const [viewMode, setViewMode] = useState<"gallery" | "history" | "project_settings" | "fill" | "edit" | "create">("gallery");
   const [selectedTemplate, setSelectedTemplate] = useState<DocumentTemplate | null>(null);
 
   // Preview Modal
@@ -159,13 +162,39 @@ export const DocumentsAdminModule: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setViewMode("gallery")}
+              className={`px-3.5 py-2 text-xs font-semibold rounded-xl border transition-colors flex items-center space-x-1.5 ${
+                viewMode === "gallery"
+                  ? "bg-slate-800 text-emerald-400 border-emerald-500/30 shadow-xs"
+                  : "bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700"
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>Modelos</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode("project_settings")}
+              className={`px-3.5 py-2 text-xs font-semibold rounded-xl border transition-colors flex items-center space-x-1.5 ${
+                viewMode === "project_settings"
+                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-xs"
+                  : "bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700"
+              }`}
+            >
+              <Sparkles className="w-4 h-4 text-emerald-400" />
+              <span>Dados do Projeto</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setViewMode("history")}
               className={`px-3.5 py-2 text-xs font-semibold rounded-xl border transition-colors flex items-center space-x-1.5 ${
                 viewMode === "history"
-                  ? "bg-slate-800 text-emerald-400 border-emerald-500/30"
+                  ? "bg-slate-800 text-emerald-400 border-emerald-500/30 shadow-xs"
                   : "bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700"
               }`}
             >
@@ -210,8 +239,22 @@ export const DocumentsAdminModule: React.FC = () => {
         </div>
       </div>
 
-      {/* VIEW: EMISSION HISTORY */}
-      {viewMode === "history" ? (
+      {/* VIEW: PROJECT SETTINGS */}
+      {viewMode === "project_settings" ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setViewMode("gallery")}
+              className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 flex items-center space-x-1"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Voltar para Galeria de Modelos</span>
+            </button>
+          </div>
+          <ProjectConfigView />
+        </div>
+      ) : viewMode === "history" ? (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <button

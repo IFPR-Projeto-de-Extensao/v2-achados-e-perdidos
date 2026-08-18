@@ -33,13 +33,13 @@ interface DocumentFillFormProps {
 }
 
 export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({ template, onBack }) => {
-  const { logGeneratedDocument, addToast } = useApp();
+  const { logGeneratedDocument, addToast, projectSettings } = useApp();
   const livePreviewRef = useRef<HTMLDivElement>(null);
 
-  // Extrair automaticamente todos os campos dinâmicos do modelo
+  // Extrair automaticamente todos os campos dinâmicos do modelo com defaults do projeto
   const consolidatedFields = useMemo(() => {
-    return buildDynamicFormFields(template);
-  }, [template]);
+    return buildDynamicFormFields(template, projectSettings);
+  }, [template, projectSettings]);
 
   const detectedTags = useMemo(() => {
     return extractDynamicTags(template);
@@ -87,7 +87,7 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({ template, on
       reset[field.name] = field.defaultValue || "";
     });
     setFormData(reset);
-    addToast("Valores restaurados para o padrão do modelo.", "info");
+    addToast("Valores restaurados para o padrão do modelo e dados do projeto.", "info");
   };
 
   const handleGeneratePdf = async () => {
@@ -109,6 +109,7 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({ template, on
 
       const { doc, filename } = generateDocumentPdf(template, formData, {
         documentNumber,
+        projectSettings,
       });
 
       // Baixar arquivo
@@ -371,7 +372,7 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({ template, on
               </div>
 
               {template.sections?.map((sec, idx) => {
-                const previewText = replaceDynamicTags(sec.content, formData);
+                const previewText = replaceDynamicTags(sec.content, formData, projectSettings);
                 if (sec.type === "numbered_section" || sec.type === "declarations_list") {
                   return (
                     <div key={idx} className="bg-slate-50 border border-slate-200 rounded p-2 text-[9px]">
@@ -396,8 +397,8 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({ template, on
               {template.signatures && template.signatures.length > 0 && (
                 <div className="pt-4 border-t border-slate-200 space-y-3">
                   {template.signatures.map((sig, idx) => {
-                    const name = replaceDynamicTags(sig.nameTag || "", formData) || "_____________________";
-                    const role = replaceDynamicTags(sig.roleTag || "", formData) || sig.title;
+                    const name = replaceDynamicTags(sig.nameTag || "", formData, projectSettings) || "_____________________";
+                    const role = replaceDynamicTags(sig.roleTag || "", formData, projectSettings) || sig.title;
                     return (
                       <div key={idx} className="text-center">
                         <div className="w-32 border-b border-slate-400 mx-auto mb-1"></div>
@@ -421,6 +422,7 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({ template, on
       <DocumentPreviewModal
         template={template}
         fieldValues={formData}
+        projectSettings={projectSettings}
         isOpen={isPreviewModalOpen}
         onClose={() => setIsPreviewModalOpen(false)}
       />

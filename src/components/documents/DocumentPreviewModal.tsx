@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
-import { DocumentTemplate } from "../../types";
+import { DocumentTemplate, ProjectSettings } from "../../types";
+import { useApp } from "../../context/AppContext";
 import {
   replaceDynamicTags,
   downloadDocumentPdf,
@@ -24,6 +25,7 @@ import {
 interface DocumentPreviewModalProps {
   template: DocumentTemplate;
   fieldValues?: Record<string, string>;
+  projectSettings?: ProjectSettings;
   isOpen: boolean;
   onClose: () => void;
   onProceedToFill?: () => void;
@@ -32,10 +34,14 @@ interface DocumentPreviewModalProps {
 export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   template,
   fieldValues = {},
+  projectSettings: propProjectSettings,
   isOpen,
   onClose,
   onProceedToFill,
 }) => {
+  const { projectSettings: contextProjectSettings } = useApp();
+  const projectSettings = propProjectSettings || contextProjectSettings;
+
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isExportingCanvas, setIsExportingCanvas] = useState<boolean>(false);
   const paperRef = useRef<HTMLDivElement>(null);
@@ -53,7 +59,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   }
 
   const handleDownload = () => {
-    downloadDocumentPdf(template, resolvedValues);
+    downloadDocumentPdf(template, resolvedValues, { projectSettings });
   };
 
   const handleDownloadVisualPdf = async () => {
@@ -220,7 +226,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             <div className="space-y-4 my-6 text-[11px] sm:text-xs text-slate-800 leading-relaxed">
               {template.sections &&
                 template.sections.map((section, idx) => {
-                  const contentFormatted = replaceDynamicTags(section.content, resolvedValues);
+                  const contentFormatted = replaceDynamicTags(section.content, resolvedValues, projectSettings);
 
                   if (section.type === "heading") {
                     return (
@@ -277,9 +283,9 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                   }`}
                 >
                   {template.signatures.map((sig, idx) => {
-                    const name = replaceDynamicTags(sig.nameTag || "", resolvedValues) || "___________________________";
-                    const role = replaceDynamicTags(sig.roleTag || "", resolvedValues) || sig.title;
-                    const docInfo = replaceDynamicTags(sig.cpfOrDocTag || "", resolvedValues);
+                    const name = replaceDynamicTags(sig.nameTag || "", resolvedValues, projectSettings) || "___________________________";
+                    const role = replaceDynamicTags(sig.roleTag || "", resolvedValues, projectSettings) || sig.title;
+                    const docInfo = replaceDynamicTags(sig.cpfOrDocTag || "", resolvedValues, projectSettings);
 
                     const isThirdCentered = template.signatures.length === 3 && idx === 2;
 

@@ -7,6 +7,7 @@ import { UserRole, ActivityLog, BackupScheduleConfig } from "../types";
 import { AppUptimeMonitor } from "./AppUptimeMonitor";
 import { MonthlyItemsD3Chart } from "./MonthlyItemsD3Chart";
 import { DocumentManagerView } from "./DocumentManagerView";
+import { ProjectConfigView } from "./documents/ProjectConfigView";
 import { ExportFoundItemsReportModal } from "./ExportFoundItemsReportModal";
 import { db, traceFirebasePerformance } from "../lib/firebase";
 import { collection, query, limit, getDocs } from "firebase/firestore";
@@ -62,6 +63,7 @@ import {
   XCircle,
   Cpu,
   HardDrive,
+  Sparkles,
   Mail,
   Send,
   Bell,
@@ -152,7 +154,7 @@ export const DashboardView: React.FC = () => {
   const [tableCategory, setTableCategory] = useState("TODAS");
 
   // Admin Sub-Tab State
-  const [adminSubTab, setAdminSubTab] = useState<"users" | "audit" | "health" | "approvals" | "backups" | "documents">("users");
+  const [adminSubTab, setAdminSubTab] = useState<"users" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings">("users");
 
   const [serverMetrics, setServerMetrics] = useState<{
     totalServerRequests?: number;
@@ -1464,6 +1466,18 @@ export const DashboardView: React.FC = () => {
                   >
                     <FileText className="w-4 h-4" />
                     <span>Documentos PDF</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAdminSubTab("project_settings")}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
+                      adminSubTab === "project_settings"
+                        ? "bg-teal-600 text-white shadow-md"
+                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>Dados do Projeto</span>
                   </button>
                 </div>
 
@@ -2792,6 +2806,13 @@ export const DashboardView: React.FC = () => {
           {adminSubTab === "documents" && (
             <div className="space-y-6">
               <DocumentManagerView />
+            </div>
+          )}
+
+          {/* TAB 6: DADOS DO PROJETO INOVAIF & INSTITUCIONAIS (ADMIN ONLY) */}
+          {adminSubTab === "project_settings" && (
+            <div className="space-y-6">
+              <ProjectConfigView />
             </div>
           )}
         </>

@@ -79,9 +79,11 @@ export function buildDynamicFormFields(
 
     if (existingMap.has(tagName)) {
       const existing = existingMap.get(tagName)!;
+      const finalDefault =
+        (projectVal !== undefined && projectVal !== "" ? projectVal : existing.defaultValue) || "";
       return {
         ...existing,
-        defaultValue: existing.defaultValue || (projectVal !== undefined ? projectVal : ""),
+        defaultValue: finalDefault,
       };
     }
 

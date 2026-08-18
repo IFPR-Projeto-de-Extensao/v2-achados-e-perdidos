@@ -7,13 +7,23 @@ import { usePWA } from "../hooks/usePWA";
 import { ContactSupportModal } from "./ContactSupportModal";
 
 export const Footer: React.FC = () => {
-  const { language, setLanguage, t } = useApp();
+  const { language, setLanguage, t, setActiveTab } = useApp();
   const { isInstalled, promptInstall } = usePWA();
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
 
   const handleLanguageChange = (lang: SupportedLanguage) => {
     vibrateClick();
     setLanguage(lang);
+  };
+
+  const handleOpenPrivacyPolicy = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    vibrateClick();
+    if (typeof window !== "undefined") {
+      window.history.pushState({ tab: "privacy_policy" }, "", "/politica-de-privacidade");
+    }
+    setActiveTab("privacy_policy");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
@@ -167,6 +177,16 @@ export const Footer: React.FC = () => {
                   {language === "pt" ? "Como funciona a entrega por QR Code" : "How QR Code Drop-off Works"}
                 </a>
               </li>
+              <li>
+                <a
+                  href="/politica-de-privacidade"
+                  onClick={handleOpenPrivacyPolicy}
+                  className="text-[#00843D] dark:text-green-400 font-semibold hover:underline flex items-center space-x-1"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>{language === "pt" ? "Política de Privacidade" : "Privacy Policy"}</span>
+                </a>
+              </li>
             </ul>
           </div>
 
@@ -214,11 +234,20 @@ export const Footer: React.FC = () => {
           </div>
         </div>
 
-        {/* Bottom copyright */}
-        <div className="pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-neutral-500 dark:text-neutral-500 gap-4">
-          <p>
-            © {new Date().getFullYear()} {t("footerRights", "Instituto Federal do Paraná (IFPR) - Campus Ivaiporã. Todos os direitos reservados.")}
-          </p>
+        {/* Bottom copyright and legal */}
+        <div className="pt-6 border-t border-neutral-100 dark:border-neutral-800/80 flex flex-col sm:flex-row items-center justify-between text-xs text-neutral-500 dark:text-neutral-400 gap-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <p>
+              © {new Date().getFullYear()} {t("footerRights", "Instituto Federal do Paraná (IFPR) - Campus Ivaiporã. Todos os direitos reservados.")}
+            </p>
+            <a
+              href="/politica-de-privacidade"
+              onClick={handleOpenPrivacyPolicy}
+              className="text-[#00843D] dark:text-green-400 hover:underline font-semibold"
+            >
+              Política de Privacidade
+            </a>
+          </div>
           <div className="flex items-center space-x-1">
             <span>{language === "pt" ? "Desenvolvido com" : "Built with"}</span>
             <Heart className="w-3.5 h-3.5 text-[#C8102E] fill-current" />

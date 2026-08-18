@@ -21,6 +21,7 @@ const RegisterItemView = lazy(() => import("./components/RegisterItemView").then
 const DashboardView = lazy(() => import("./components/DashboardView").then((m) => ({ default: m.DashboardView })));
 const ProfileView = lazy(() => import("./components/ProfileView").then((m) => ({ default: m.ProfileView })));
 const ImageAnalyzerView = lazy(() => import("./components/ImageAnalyzerView").then((m) => ({ default: m.ImageAnalyzerView })));
+const PrivacyPolicyView = lazy(() => import("./components/PrivacyPolicyView").then((m) => ({ default: m.PrivacyPolicyView })));
 const ItemDetailModal = lazy(() => import("./components/ItemDetailModal").then((m) => ({ default: m.ItemDetailModal })));
 const QRCodeScannerModal = lazy(() => import("./components/QRCodeScannerModal").then((m) => ({ default: m.QRCodeScannerModal })));
 const AIMatchModal = lazy(() => import("./components/AIMatchModal").then((m) => ({ default: m.AIMatchModal })));
@@ -122,22 +123,61 @@ const MainContent: React.FC = () => {
       }
     }, 60);
 
-    // Check PWA launch shortcuts from URL query params (?tab=... or ?action=scan)
+    // Check PWA launch shortcuts from URL query params (?tab=... or ?action=scan) or pathname
     if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get("tab");
-      const actionParam = params.get("action");
+      const pathname = window.location.pathname.toLowerCase();
+      if (pathname === "/politica-de-privacidade" || pathname === "/politica-de-privacidade/") {
+        setActiveTab("privacy_policy");
+      } else {
+        const params = new URLSearchParams(window.location.search);
+        const tabParam = params.get("tab");
+        const actionParam = params.get("action");
 
-      if (tabParam && (APP_VALID_TABS as readonly string[]).includes(tabParam)) {
-        setActiveTab(tabParam as AppTabType);
+        if (tabParam && (APP_VALID_TABS as readonly string[]).includes(tabParam)) {
+          setActiveTab(tabParam as AppTabType);
+        }
+        if (actionParam === "scan") {
+          setQrScannerOpen(true);
+        }
       }
-      if (actionParam === "scan") {
-        setQrScannerOpen(true);
-      }
+
+      const handlePopState = () => {
+        const currentPath = window.location.pathname.toLowerCase();
+        if (currentPath === "/politica-de-privacidade" || currentPath === "/politica-de-privacidade/") {
+          setActiveTab("privacy_policy");
+        } else {
+          const p = new URLSearchParams(window.location.search);
+          const t = p.get("tab");
+          if (t && (APP_VALID_TABS as readonly string[]).includes(t)) {
+            setActiveTab(t as AppTabType);
+          } else {
+            setActiveTab("home");
+          }
+        }
+      };
+
+      window.addEventListener("popstate", handlePopState);
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener("popstate", handlePopState);
+      };
     }
 
     return () => clearTimeout(timer);
   }, [setActiveTab, setQrScannerOpen]);
+
+  // Sync window path history when navigating tabs
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const currentPath = window.location.pathname.toLowerCase();
+    if (activeTab === "privacy_policy") {
+      if (currentPath !== "/politica-de-privacidade") {
+        window.history.pushState({ tab: "privacy_policy" }, "", "/politica-de-privacidade");
+      }
+    } else if (currentPath === "/politica-de-privacidade") {
+      window.history.pushState({ tab: activeTab }, "", "/");
+    }
+  }, [activeTab]);
 
   // RNF01 & RNF02: Firebase Performance Monitoring tracking component render time & tab latency
   useEffect(() => {
@@ -226,6 +266,7 @@ const MainContent: React.FC = () => {
               {activeTab === "dashboard" && <DashboardView />}
               {activeTab === "profile" && <ProfileView />}
               {activeTab === "image_analyzer" && <ImageAnalyzerView />}
+              {activeTab === "privacy_policy" && <PrivacyPolicyView />}
             </motion.div>
           </AnimatePresence>
         </Suspense>
