@@ -18,7 +18,7 @@ import {
   GeneratedDocumentRecord,
 } from "../types";
 import { DEFAULT_DOCUMENT_TEMPLATES } from "../lib/defaultDocumentTemplates";
-import { INITIAL_ITEMS, MOCK_USERS, MOCK_NOTIFICATIONS, MOCK_CLAIMS, MOCK_COMMENTS, MOCK_ACTIVITY_LOGS } from "../data/mockData";
+import { INITIAL_ITEMS, MOCK_NOTIFICATIONS, MOCK_CLAIMS, MOCK_COMMENTS, MOCK_ACTIVITY_LOGS } from "../data/mockData";
 import { safeFetchJson, clientMatchSimilarity } from "../lib/apiHelper";
 import { compressImage } from "../lib/imageCompression";
 import {
@@ -525,13 +525,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return sanitizeUserList(parsed);
+          const valid = parsed.filter((u: User) => u && u.id && !u.id.startsWith("u-") && u.id !== "guest_visitor");
+          if (valid.length > 0) {
+            return sanitizeUserList(valid);
+          }
         }
       }
     } catch (e) {
       console.warn("Erro ao carregar usuários salvos do localStorage:", e);
     }
-    return sanitizeUserList(MOCK_USERS);
+    return [];
   });
 
   // Keep non-sensitive user metadata synced for offline cache if authenticated
@@ -1095,7 +1098,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const mockClaimIds = ["claim-1"];
       const mockNotifIds = ["n1", "n2"];
       const mockCommentIds = ["comment-1", "comment-2", "comment-3"];
-      const mockUserIds = ["u1", "u2", "u3", "u4", "u5"];
+      const mockUserIds = ["u1", "u2", "u3", "u4", "u5", "u-paulocauan"];
 
       for (const id of mockItemIds) {
         try { await deleteDoc(doc(db, "items", id)); } catch (_) {}
@@ -1355,24 +1358,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Helper to verify and sync user document in Firestore using email as unique key
+  // Helper to verify and sync user document in Firestore using uid as primary document key
   const verifyUserInFirestore = async (
     fbUser: FirebaseUser,
     extraData?: { name?: string; role?: UserRole; avatarUrl?: string }
   ): Promise<User> => {
     const userEmail = safeToLower(fbUser.email);
+    const isRoot = userEmail === "paulocauan39@gmail.com";
+    const uidRef = doc(db, "users", fbUser.uid);
 
     // 1. Direct check in 'users' collection by fbUser.uid
-    const uidRef = doc(db, "users", fbUser.uid);
     try {
       const userSnap = await getDoc(uidRef);
       if (userSnap.exists()) {
         const existingData = userSnap.data() as User;
-        const isAdmin = userEmail === "paulocauan39@gmail.com";
         const updatedUser: User = sanitizeFirestoreData({
           ...existingData,
-          role: isAdmin ? "ADMIN" : (existingData.role || "ALUNO"),
-          avatarUrl: fbUser.photoURL || extraData?.avatarUrl || existingData.avatarUrl,
+          id: fbUser.uid,
+          email: userEmail || existingData.email,
+          name: fbUser.displayName || extraData?.name || existingData.name || userEmail.split("@")[0] || "Usuário IFPR",
+          role: isRoot ? "ADMIN" : (existingData.role || "ALUNO"),
+          avatarUrl: fbUser.photoURL || extraData?.avatarUrl || existingData.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
         }) as User;
         await setDoc(uidRef, updatedUser, { merge: true });
         return updatedUser;
@@ -1386,26 +1392,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // 2. Explicitly query 'users' collection using email as a unique key to check existing user emails before adding a new document
+    // 2. Query 'users' collection using email to migrate legacy documents if any
     if (userEmail) {
       try {
         const q = query(collection(db, "users"), where("email", "==", userEmail));
         const querySnap = await getDocs(q);
         if (!querySnap.empty) {
-          const existingData = querySnap.docs[0].data() as User;
-          const isAdmin = userEmail === "paulocauan39@gmail.com";
-          const updatedUser: User = sanitizeFirestoreData({
-            ...existingData,
-            role: isAdmin ? "ADMIN" : (existingData.role || "ALUNO"),
-            avatarUrl: fbUser.photoURL || extraData?.avatarUrl || existingData.avatarUrl,
+          const legacyDoc = querySnap.docs[0];
+          const legacyData = legacyDoc.data() as User;
+          const migratedUser: User = sanitizeFirestoreData({
+            ...legacyData,
+            id: fbUser.uid,
+            email: userEmail,
+            name: fbUser.displayName || extraData?.name || legacyData.name || userEmail.split("@")[0] || "Usuário IFPR",
+            role: isRoot ? "ADMIN" : (legacyData.role || "ALUNO"),
+            avatarUrl: fbUser.photoURL || extraData?.avatarUrl || legacyData.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
           }) as User;
-          await setDoc(doc(db, "users", existingData.id), updatedUser, { merge: true });
-          if (existingData.id !== fbUser.uid) {
+          await setDoc(uidRef, migratedUser, { merge: true });
+          if (legacyDoc.id !== fbUser.uid) {
             try {
-              await setDoc(uidRef, updatedUser, { merge: true });
+              await deleteDoc(doc(db, "users", legacyDoc.id));
             } catch (_) {}
           }
-          return updatedUser;
+          return migratedUser;
         }
       } catch (e: any) {
         if (e?.code === "auth/unauthorized-domain") {
@@ -1417,17 +1426,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // 3. Create new user document in Firestore if email does not exist
-    const isAdmin = userEmail === "paulocauan39@gmail.com";
+    // 3. Create new user document in Firestore if no previous profile exists
     const isServidor = extraData?.role === "SERVIDOR" || userEmail.includes("@ifpr.edu.br");
     const isAcademicEmail = userEmail.endsWith("@estudantes.ifpr.edu.br") || userEmail.endsWith("@estudante.ifpr.edu.br") || userEmail.endsWith("@ifpr.edu.br");
-    const defaultApprovalStatus = (isAcademicEmail && !isAdmin) ? "PENDENTE" : "APROVADO";
+    const defaultApprovalStatus = (isAcademicEmail && !isRoot) ? "PENDENTE" : "APROVADO";
 
     const newUser: User = sanitizeFirestoreData({
       id: fbUser.uid,
       name: fbUser.displayName || extraData?.name || userEmail.split("@")[0] || "Usuário IFPR",
       email: userEmail,
-      role: isAdmin ? "ADMIN" : (extraData?.role || (isServidor ? "SERVIDOR" : "ALUNO")),
+      role: isRoot ? "ADMIN" : (extraData?.role || (isServidor ? "SERVIDOR" : "ALUNO")),
       courseOrDept: isServidor ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã",
       registrationNumber: `2026${Math.floor(10000 + Math.random() * 90000)}`,
       approvalStatus: defaultApprovalStatus,
@@ -1498,7 +1506,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         role: isRoot ? "ADMIN" : (isServidor ? "SERVIDOR" : "ALUNO"),
         courseOrDept: isServidor ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã",
         registrationNumber: `2026${fbUser.uid.substring(0, 5)}`,
-        approvalStatus: isRoot ? "APROVADO" : "APROVADO",
+        approvalStatus: "APROVADO",
         avatarUrl: fbUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
       };
       setCurrentUser(initialAuthUser);
@@ -1516,17 +1524,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           userRef,
           (userSnap) => {
             if (userSnap.exists()) {
-              const userData = userSnap.data() as User;
+              const userData = { id: userSnap.id, ...(userSnap.data() as User) };
               setCurrentUser(userData);
-              const userEmailLower = safeToLower(userData.email);
-              setAllUsers((prev) =>
-                sanitizeUserList([
-                  userData,
-                  ...prev.map((u) =>
-                    u.id === userData.id || (safeToLower(u.email) === userEmailLower && Boolean(userEmailLower)) ? userData : u
-                  ),
-                ])
-              );
             }
           },
           (e) => {
@@ -1548,10 +1547,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     const unsubscribe = onSnapshot(
       collection(db, "users"),
-      async (snapshot) => {
-        if (!snapshot.empty) {
-          const loadedUsers: User[] = snapshot.docs.map((d) => d.data() as User);
-          setAllUsers((prev) => sanitizeUserList([...loadedUsers, ...prev, ...MOCK_USERS]));
+      (snapshot) => {
+        if (snapshot.empty) {
+          setAllUsers([]);
+        } else {
+          // Strictly map Firestore documents by unique doc.id
+          const usersMap = new Map<string, User>();
+          snapshot.docs.forEach((d) => {
+            const data = d.data() as User;
+            const uid = d.id;
+            const email = safeToLower(data.email);
+            if (!uid) return;
+            // Ignore legacy mock doc u-paulocauan if another document exists or if fake
+            if (uid.startsWith("u-") && email === "paulocauan39@gmail.com") {
+              return;
+            }
+            const userObj: User = {
+              ...data,
+              id: uid,
+              email: email || data.email,
+              role: (email === "paulocauan39@gmail.com" ? "ADMIN" : (data.role || "ALUNO")),
+            };
+            if (email && usersMap.has(email)) {
+              const existing = usersMap.get(email)!;
+              if (existing.id.startsWith("usr_") || existing.id.startsWith("u-")) {
+                usersMap.set(email, userObj);
+              }
+            } else if (email) {
+              usersMap.set(email, userObj);
+            } else {
+              usersMap.set(uid, userObj);
+            }
+          });
+          const loadedUsers = Array.from(usersMap.values());
+          setAllUsers(loadedUsers);
         }
       },
       (error) => {
@@ -2056,6 +2085,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateUserRole = async (targetUserId: string, newRole: UserRole) => {
+    if (!targetUserId) {
+      addToast("ID de usuário inválido.", "error");
+      return;
+    }
+
     if (currentUser.role !== "ADMIN") {
       addToast("Apenas o Administrador tem autorização para alterar funções de usuários.", "error");
       return;
@@ -2073,20 +2107,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentUser((prev) => ({ ...prev, role: newRole }));
       }
 
-      addToast(`Função do usuário atualizada para ${newRole} no banco de dados!`, "success");
-    } catch (e) {
-      console.warn("Aviso ao alterar permissão no Firestore:", e);
-      setAllUsers((prev) =>
-        prev.map((u) => (u.id === targetUserId ? { ...u, role: newRole } : u))
-      );
-      if (currentUser.id === targetUserId) {
-        setCurrentUser((prev) => ({ ...prev, role: newRole }));
-      }
-      addToast(`Função do usuário atualizada para ${newRole}!`, "success");
+      addToast(`Função do usuário atualizada para ${newRole} com sucesso!`, "success");
+    } catch (e: any) {
+      console.error("Erro ao alterar função do usuário no Firestore:", e);
+      addToast("Erro de permissão ou rede ao salvar permissão no banco de dados.", "error");
+      throw e;
     }
   };
 
   const deleteUser = async (targetUserId: string) => {
+    if (!targetUserId) return;
     if (currentUser.role !== "ADMIN") {
       addToast("Apenas o Administrador pode remover usuários do sistema.", "error");
       return;
@@ -2101,10 +2131,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await deleteDoc(doc(db, "users", targetUserId));
       setAllUsers((prev) => prev.filter((u) => u.id !== targetUserId));
       addToast("Usuário removido com sucesso do sistema!", "success");
-    } catch (e) {
-      console.warn("Aviso ao remover usuário do Firestore:", e);
-      setAllUsers((prev) => prev.filter((u) => u.id !== targetUserId));
-      addToast("Usuário removido com sucesso!", "success");
+    } catch (e: any) {
+      console.error("Erro ao remover usuário do Firestore:", e);
+      addToast("Erro ao remover usuário do banco de dados.", "error");
+      throw e;
     }
   };
 
@@ -2113,7 +2143,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast("Apenas Administradores do IFPR podem alternar perfis e permissões.", "error");
       return;
     }
-    const found = allUsers.find((u) => u.role === role) || MOCK_USERS.find((u) => u.role === role);
+    const found = allUsers.find((u) => u.role === role);
     if (found) {
       setCurrentUser(found);
       addToast(`Sessão alterada para ${found.name} (${found.role})`, "info");

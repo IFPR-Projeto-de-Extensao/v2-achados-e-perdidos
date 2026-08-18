@@ -1,18 +1,6 @@
 import { LostFoundItem, User, NotificationItem, ItemClaim, ItemComment, ActivityLog } from "../types";
 
-export const MOCK_USERS: User[] = [
-  {
-    id: "u-paulocauan",
-    name: "Paulo Cauan",
-    email: "paulocauan39@gmail.com",
-    role: "ADMIN",
-    courseOrDept: "Administração Geral & TI - Campus Ivaiporã",
-    registrationNumber: "2026998811",
-    avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
-    phone: "(43) 99999-8888",
-    approvalStatus: "APROVADO",
-  },
-];
+export const MOCK_USERS: User[] = [];
 
 export const IFPR_LOCATIONS = [
   "Bloco Didático - Salas 01 a 12",

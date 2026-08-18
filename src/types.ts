@@ -394,3 +394,41 @@ export interface GeneratedDocumentRecord {
   fileSizeBytes?: number;
 }
 
+// =========================================================================
+// DADOS DO PROJETO & INFORMAÇÕES PERMANENTES (CONFIGURAÇÕES DO SISTEMA)
+// =========================================================================
+
+export interface ProjectTeamMember {
+  id: string;
+  name: string;
+  registrationNumber: string; // Matrícula
+  role?: string; // Função no projeto
+  order?: number;
+}
+
+export interface ProjectProfessorInfo {
+  name: string; // Nome do professor responsável
+  title: string; // Titulação acadêmica (ex: Mestre, Doutor, Especialista)
+  role: string; // Cargo / Função (ex: Coordenador do Curso de Sistemas de Informação)
+}
+
+export interface ProjectInstitutionInfo {
+  name: string; // Nome da instituição (ex: Instituto Federal do Paraná)
+  campus: string; // Campus (ex: Campus Ivaiporã)
+  address: string; // Endereço (ex: Rua Max Arthur Greipel, nº 505 - Parque Industrial)
+  city: string; // Cidade (ex: Ivaiporã)
+  state: string; // UF (ex: PR)
+  zipCode: string; // CEP (ex: 86873-400)
+}
+
+export interface ProjectSettings {
+  teamName: string; // Nome da equipe (ex: InovaIF)
+  members: ProjectTeamMember[];
+  professor: ProjectProfessorInfo;
+  institution: ProjectInstitutionInfo;
+  updatedAt?: string;
+  updatedBy?: string;
+  updatedByEmail?: string;
+}
+
+

@@ -1,23 +1,33 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { DocumentTemplate } from "../types";
+import { DocumentTemplate, ProjectSettings } from "../types";
+import { getProjectSettingsTags } from "./projectSettingsConstants";
 
 export interface GeneratePdfOptions {
   documentNumber?: string;
   watermarkDraft?: boolean;
+  projectSettings?: ProjectSettings | null;
 }
 
 /**
- * Substitui todas as tags dinâmicas {{tag_name}} pelos valores informados no formulário.
+ * Substitui todas as tags dinâmicas {{tag_name}} pelos valores informados no formulário e dados do projeto.
  */
 export function replaceDynamicTags(
   text: string,
-  fieldValues: Record<string, string>
+  fieldValues: Record<string, string> = {},
+  projectSettings?: ProjectSettings | null
 ): string {
   if (!text) return "";
   let result = text;
-  Object.keys(fieldValues).forEach((key) => {
-    const val = fieldValues[key] !== undefined && fieldValues[key] !== null ? String(fieldValues[key]) : "";
+
+  // Obter tags padrão do projeto InovaIF / Instituição
+  const projectTags = getProjectSettingsTags(projectSettings);
+
+  // Fundir variáveis (os valores informados explicitamente no formulário têm precedência)
+  const merged: Record<string, string> = { ...projectTags, ...fieldValues };
+
+  Object.keys(merged).forEach((key) => {
+    const val = merged[key] !== undefined && merged[key] !== null ? String(merged[key]) : "";
     const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "gi");
     result = result.replace(regex, val);
   });
@@ -34,6 +44,7 @@ export function generateDocumentPdf(
   fieldValues: Record<string, string>,
   options?: GeneratePdfOptions
 ): { doc: jsPDF; blob: Blob; blobUrl: string; filename: string } {
+  const projectSettings = options?.projectSettings;
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -66,8 +77,13 @@ export function generateDocumentPdf(
     if (isFirstPage && template.includeHeader) {
       currentY = 17;
       
-      // Cabeçalho institucional texto
-      const headerLines = (template.headerText || "INSTITUTO FEDERAL DO PARANÁ — CAMPUS IVAIPORÃ").split("\n");
+      // Cabeçalho institucional texto com tags dinâmicas substituídas
+      const resolvedHeaderText = replaceDynamicTags(
+        template.headerText || "REPÚBLICA FEDERATIVA DO BRASIL\nMINISTÉRIO DA EDUCAÇÃO\n{{instituicao}} — {{campus}}",
+        fieldValues,
+        projectSettings
+      );
+      const headerLines = resolvedHeaderText.split("\n");
       
       doc.setFont("helvetica", "bold");
       doc.setFontSize(8.5);
@@ -148,7 +164,7 @@ export function generateDocumentPdf(
 
   // Renderizar Seções
   (template.sections || []).forEach((section) => {
-    const rawContent = replaceDynamicTags(section.content, fieldValues);
+    const rawContent = replaceDynamicTags(section.content, fieldValues, projectSettings);
     const fontSize = section.fontSize || 10;
     const fontStyle = section.isBold ? "bold" : section.isItalic ? "italic" : "normal";
     const align = section.align || "left";
@@ -256,13 +272,13 @@ export function generateDocumentPdf(
       const sig1 = template.signatures[0];
       const sig2 = template.signatures[1];
 
-      const sig1Name = replaceDynamicTags(sig1.nameTag || "", fieldValues) || "_____________________";
-      const sig1Role = replaceDynamicTags(sig1.roleTag || "", fieldValues) || sig1.title;
-      const sig1Doc = replaceDynamicTags(sig1.cpfOrDocTag || "", fieldValues);
+      const sig1Name = replaceDynamicTags(sig1.nameTag || "", fieldValues, projectSettings) || "_____________________";
+      const sig1Role = replaceDynamicTags(sig1.roleTag || "", fieldValues, projectSettings) || sig1.title;
+      const sig1Doc = replaceDynamicTags(sig1.cpfOrDocTag || "", fieldValues, projectSettings);
 
-      const sig2Name = replaceDynamicTags(sig2.nameTag || "", fieldValues) || "_____________________";
-      const sig2Role = replaceDynamicTags(sig2.roleTag || "", fieldValues) || sig2.title;
-      const sig2Doc = replaceDynamicTags(sig2.cpfOrDocTag || "", fieldValues);
+      const sig2Name = replaceDynamicTags(sig2.nameTag || "", fieldValues, projectSettings) || "_____________________";
+      const sig2Role = replaceDynamicTags(sig2.roleTag || "", fieldValues, projectSettings) || sig2.title;
+      const sig2Doc = replaceDynamicTags(sig2.cpfOrDocTag || "", fieldValues, projectSettings);
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(8.5);
@@ -295,13 +311,13 @@ export function generateDocumentPdf(
       const sig1 = template.signatures[0];
       const sig2 = template.signatures[1];
 
-      const sig1Name = replaceDynamicTags(sig1.nameTag || "", fieldValues) || "_____________________";
-      const sig1Role = replaceDynamicTags(sig1.roleTag || "", fieldValues) || sig1.title;
-      const sig1Doc = replaceDynamicTags(sig1.cpfOrDocTag || "", fieldValues);
+      const sig1Name = replaceDynamicTags(sig1.nameTag || "", fieldValues, projectSettings) || "_____________________";
+      const sig1Role = replaceDynamicTags(sig1.roleTag || "", fieldValues, projectSettings) || sig1.title;
+      const sig1Doc = replaceDynamicTags(sig1.cpfOrDocTag || "", fieldValues, projectSettings);
 
-      const sig2Name = replaceDynamicTags(sig2.nameTag || "", fieldValues) || "_____________________";
-      const sig2Role = replaceDynamicTags(sig2.roleTag || "", fieldValues) || sig2.title;
-      const sig2Doc = replaceDynamicTags(sig2.cpfOrDocTag || "", fieldValues);
+      const sig2Name = replaceDynamicTags(sig2.nameTag || "", fieldValues, projectSettings) || "_____________________";
+      const sig2Role = replaceDynamicTags(sig2.roleTag || "", fieldValues, projectSettings) || sig2.title;
+      const sig2Doc = replaceDynamicTags(sig2.cpfOrDocTag || "", fieldValues, projectSettings);
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(8.5);
@@ -330,9 +346,9 @@ export function generateDocumentPdf(
         doc.setDrawColor(100, 116, 139);
         doc.line(cx - sig3Width / 2, currentY + 10, cx + sig3Width / 2, currentY + 10);
 
-        const sig3Name = replaceDynamicTags(sig3.nameTag || "", fieldValues) || "_____________________";
-        const sig3Role = replaceDynamicTags(sig3.roleTag || "", fieldValues) || sig3.title;
-        const sig3Doc = replaceDynamicTags(sig3.cpfOrDocTag || "", fieldValues);
+        const sig3Name = replaceDynamicTags(sig3.nameTag || "", fieldValues, projectSettings) || "_____________________";
+        const sig3Role = replaceDynamicTags(sig3.roleTag || "", fieldValues, projectSettings) || sig3.title;
+        const sig3Doc = replaceDynamicTags(sig3.cpfOrDocTag || "", fieldValues, projectSettings);
 
         doc.setFont("helvetica", "bold");
         doc.setFontSize(8.5);
@@ -365,7 +381,11 @@ export function generateDocumentPdf(
     doc.setFontSize(7);
     doc.setTextColor(148, 163, 184);
     
-    const footerLeft = template.footerText || "Instituto Federal do Paraná — Campus Ivaiporã";
+    const footerLeft = replaceDynamicTags(
+      template.footerText || "Instituto Federal do Paraná — Campus Ivaiporã",
+      fieldValues,
+      projectSettings
+    );
     doc.text(footerLeft, marginLeft, pageHeight - 9);
 
     // Paginação à direita

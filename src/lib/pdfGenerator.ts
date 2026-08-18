@@ -1,13 +1,15 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { DocumentTemplate, DocumentField } from "../types";
+import { DocumentTemplate, DocumentField, ProjectSettings } from "../types";
 import { generateDocumentPdf as generateVectorPdf, replaceDynamicTags } from "./documentPdfGenerator";
+import { getProjectSettingsTags } from "./projectSettingsConstants";
 
 export interface PdfGenerationOptions {
   filename?: string;
   quality?: number;
   scale?: number;
   marginMm?: number;
+  projectSettings?: ProjectSettings | null;
 }
 
 /**
@@ -58,10 +60,14 @@ export function extractDynamicTags(template: DocumentTemplate): string[] {
 /**
  * Gera a lista consolidada de campos de formulário dinâmico a partir das tags extraídas.
  * Se o campo já estiver configurado no modelo, preserva suas propriedades (label, type, required).
- * Se for uma nova tag encontrada no texto, gera automaticamente um campo amigável.
+ * Se for uma nova tag encontrada no texto, gera automaticamente um campo amigável com valores do projeto preenchidos.
  */
-export function buildDynamicFormFields(template: DocumentTemplate): DocumentField[] {
+export function buildDynamicFormFields(
+  template: DocumentTemplate,
+  projectSettings?: ProjectSettings | null
+): DocumentField[] {
   const extractedTags = extractDynamicTags(template);
+  const projectTags = getProjectSettingsTags(projectSettings);
   const existingMap = new Map<string, DocumentField>();
 
   (template.fields || []).forEach((f) => {
@@ -69,8 +75,14 @@ export function buildDynamicFormFields(template: DocumentTemplate): DocumentFiel
   });
 
   return extractedTags.map((tagName, index) => {
+    const projectVal = projectTags[tagName];
+
     if (existingMap.has(tagName)) {
-      return existingMap.get(tagName)!;
+      const existing = existingMap.get(tagName)!;
+      return {
+        ...existing,
+        defaultValue: existing.defaultValue || (projectVal !== undefined ? projectVal : ""),
+      };
     }
 
     // Formatar rótulo amigável a partir do nome_da_tag
@@ -83,23 +95,27 @@ export function buildDynamicFormFields(template: DocumentTemplate): DocumentFiel
       tagName.toLowerCase().includes("descricao") ||
       tagName.toLowerCase().includes("motivo") ||
       tagName.toLowerCase().includes("observacao") ||
-      tagName.toLowerCase().includes("conteudo");
+      tagName.toLowerCase().includes("conteudo") ||
+      tagName.toLowerCase().includes("integrantes");
 
     return {
       id: `auto_fld_${index}_${tagName}`,
       name: tagName,
       label: friendlyLabel,
       type: isLongText ? "textarea" : isDate ? "date" : "text",
-      defaultValue: isDate
-        ? new Intl.DateTimeFormat("pt-BR", {
-            day: "2-digit",
-            month: "long",
-            year: "numeric",
-          }).format(new Date())
-        : "",
+      defaultValue:
+        projectVal !== undefined
+          ? projectVal
+          : isDate
+          ? new Intl.DateTimeFormat("pt-BR", {
+              day: "2-digit",
+              month: "long",
+              year: "numeric",
+            }).format(new Date())
+          : "",
       placeholder: `Informe ${friendlyLabel.toLowerCase()}`,
       required: true,
-      section: "Campos do Documento",
+      section: projectVal !== undefined ? "Dados do Projeto (InovaIF)" : "Campos do Documento",
     };
   });
 }

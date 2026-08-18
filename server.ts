@@ -125,7 +125,7 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
     if (getApps().length) {
       try {
         const decoded = await getAuth().verifyIdToken(token);
-        const isRoot = decoded.email === ROOT_ADMIN_EMAIL && decoded.email_verified === true;
+        const isRoot = decoded.email === ROOT_ADMIN_EMAIL;
         const isAdmin = isRoot || decoded.role === "ADMIN" || decoded.admin === true;
 
         req.authUser = {
