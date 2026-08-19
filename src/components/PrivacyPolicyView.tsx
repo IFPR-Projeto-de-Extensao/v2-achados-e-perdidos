@@ -271,6 +271,24 @@ export const PrivacyPolicyView: React.FC = () => {
                 paulocauan39@gmail.com
               </a>
             </div>
+
+            <div className="pt-2 border-t border-emerald-200/50 dark:border-emerald-900/30">
+              <a
+                href="/termos-de-uso"
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (typeof window !== "undefined") {
+                    window.history.pushState({ tab: "terms_of_use" }, "", "/termos-de-uso");
+                  }
+                  setActiveTab("terms_of_use");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className="text-[11px] text-[#00843D] dark:text-green-400 font-bold hover:underline flex items-center justify-between"
+              >
+                <span>Ver Termos de Uso</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </div>
         </aside>
 
@@ -958,8 +976,24 @@ export const PrivacyPolicyView: React.FC = () => {
             <p>
               Esta Política de Privacidade é regida e interpretada de acordo com as leis da República Federativa do Brasil, em especial a Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018), o Marco Civil da Internet (Lei nº 12.965/2014) e as normas regulamentares do Instituto Federal do Paraná.
             </p>
-            <div className="pt-4 flex items-center justify-between border-t border-neutral-100 dark:border-neutral-800 text-xs text-neutral-500 dark:text-neutral-400">
-              <span>Localiza+ • IFPR Campus Ivaiporã</span>
+            <div className="pt-4 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 dark:border-neutral-800 text-xs text-neutral-500 dark:text-neutral-400">
+              <div className="flex items-center space-x-3">
+                <span>Localiza+ • IFPR Campus Ivaiporã</span>
+                <a
+                  href="/termos-de-uso"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (typeof window !== "undefined") {
+                      window.history.pushState({ tab: "terms_of_use" }, "", "/termos-de-uso");
+                    }
+                    setActiveTab("terms_of_use");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  className="text-[#00843D] dark:text-green-400 font-bold hover:underline"
+                >
+                  Ver Termos de Uso
+                </a>
+              </div>
               <button
                 onClick={handleBackToSystem}
                 className="text-[#00843D] dark:text-green-400 font-bold hover:underline flex items-center space-x-1"

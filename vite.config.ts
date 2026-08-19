@@ -134,7 +134,7 @@ export default defineConfig({
     sourcemap: true,
     outDir: 'dist',
     emptyOutDir: true,
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 1200,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -142,8 +142,24 @@ export default defineConfig({
             if (id.includes('firebase')) {
               return 'vendor-firebase';
             }
-            if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('canvg') || id.includes('dompurify')) {
+            if (
+              id.includes('jspdf') ||
+              id.includes('jspdf-autotable') ||
+              id.includes('html2canvas') ||
+              id.includes('canvg') ||
+              id.includes('dompurify') ||
+              id.includes('fflate')
+            ) {
               return 'vendor-export';
+            }
+            if (id.includes('recharts') || id.includes('d3') || id.includes('victory-vendor')) {
+              return 'vendor-charts';
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+            if (id.includes('motion')) {
+              return 'vendor-motion';
             }
           }
           return undefined;

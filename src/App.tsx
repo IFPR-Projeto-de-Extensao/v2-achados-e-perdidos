@@ -22,6 +22,7 @@ const DashboardView = lazy(() => import("./components/DashboardView").then((m) =
 const ProfileView = lazy(() => import("./components/ProfileView").then((m) => ({ default: m.ProfileView })));
 const ImageAnalyzerView = lazy(() => import("./components/ImageAnalyzerView").then((m) => ({ default: m.ImageAnalyzerView })));
 const PrivacyPolicyView = lazy(() => import("./components/PrivacyPolicyView").then((m) => ({ default: m.PrivacyPolicyView })));
+const TermsOfUseView = lazy(() => import("./components/TermsOfUseView").then((m) => ({ default: m.TermsOfUseView })));
 const ItemDetailModal = lazy(() => import("./components/ItemDetailModal").then((m) => ({ default: m.ItemDetailModal })));
 const QRCodeScannerModal = lazy(() => import("./components/QRCodeScannerModal").then((m) => ({ default: m.QRCodeScannerModal })));
 const AIMatchModal = lazy(() => import("./components/AIMatchModal").then((m) => ({ default: m.AIMatchModal })));
@@ -128,6 +129,8 @@ const MainContent: React.FC = () => {
       const pathname = window.location.pathname.toLowerCase();
       if (pathname === "/politica-de-privacidade" || pathname === "/politica-de-privacidade/") {
         setActiveTab("privacy_policy");
+      } else if (pathname === "/termos-de-uso" || pathname === "/termos-de-uso/") {
+        setActiveTab("terms_of_use");
       } else {
         const params = new URLSearchParams(window.location.search);
         const tabParam = params.get("tab");
@@ -145,6 +148,8 @@ const MainContent: React.FC = () => {
         const currentPath = window.location.pathname.toLowerCase();
         if (currentPath === "/politica-de-privacidade" || currentPath === "/politica-de-privacidade/") {
           setActiveTab("privacy_policy");
+        } else if (currentPath === "/termos-de-uso" || currentPath === "/termos-de-uso/") {
+          setActiveTab("terms_of_use");
         } else {
           const p = new URLSearchParams(window.location.search);
           const t = p.get("tab");
@@ -174,7 +179,11 @@ const MainContent: React.FC = () => {
       if (currentPath !== "/politica-de-privacidade") {
         window.history.pushState({ tab: "privacy_policy" }, "", "/politica-de-privacidade");
       }
-    } else if (currentPath === "/politica-de-privacidade") {
+    } else if (activeTab === "terms_of_use") {
+      if (currentPath !== "/termos-de-uso") {
+        window.history.pushState({ tab: "terms_of_use" }, "", "/termos-de-uso");
+      }
+    } else if (currentPath === "/politica-de-privacidade" || currentPath === "/termos-de-uso") {
       window.history.pushState({ tab: activeTab }, "", "/");
     }
   }, [activeTab]);
@@ -267,6 +276,7 @@ const MainContent: React.FC = () => {
               {activeTab === "profile" && <ProfileView />}
               {activeTab === "image_analyzer" && <ImageAnalyzerView />}
               {activeTab === "privacy_policy" && <PrivacyPolicyView />}
+              {activeTab === "terms_of_use" && <TermsOfUseView />}
             </motion.div>
           </AnimatePresence>
         </Suspense>

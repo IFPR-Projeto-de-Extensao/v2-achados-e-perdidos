@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { ShieldCheck, MapPin, Phone, Mail, Globe, Heart, Languages, Check, Download, Smartphone, MessageSquarePlus, LifeBuoy } from "lucide-react";
+import { ShieldCheck, MapPin, Phone, Mail, Globe, Heart, Languages, Check, Download, Smartphone, MessageSquarePlus, LifeBuoy, FileText } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { SupportedLanguage } from "../lib/i18n";
 import { vibrateClick } from "../lib/utils";
@@ -23,6 +23,16 @@ export const Footer: React.FC = () => {
       window.history.pushState({ tab: "privacy_policy" }, "", "/politica-de-privacidade");
     }
     setActiveTab("privacy_policy");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleOpenTermsOfUse = (e?: React.MouseEvent) => {
+    if (e) e.preventDefault();
+    vibrateClick();
+    if (typeof window !== "undefined") {
+      window.history.pushState({ tab: "terms_of_use" }, "", "/termos-de-uso");
+    }
+    setActiveTab("terms_of_use");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -187,6 +197,16 @@ export const Footer: React.FC = () => {
                   <span>{language === "pt" ? "Política de Privacidade" : "Privacy Policy"}</span>
                 </a>
               </li>
+              <li>
+                <a
+                  href="/termos-de-uso"
+                  onClick={handleOpenTermsOfUse}
+                  className="text-neutral-600 dark:text-neutral-400 hover:text-[#00843D] dark:hover:text-green-400 transition-colors flex items-center space-x-1"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>{language === "pt" ? "Termos de Uso" : "Terms of Use"}</span>
+                </a>
+              </li>
             </ul>
           </div>
 
@@ -240,6 +260,14 @@ export const Footer: React.FC = () => {
             <p>
               © {new Date().getFullYear()} {t("footerRights", "Instituto Federal do Paraná (IFPR) - Campus Ivaiporã. Todos os direitos reservados.")}
             </p>
+            <a
+              href="/termos-de-uso"
+              onClick={handleOpenTermsOfUse}
+              className="text-[#00843D] dark:text-green-400 hover:underline font-semibold"
+            >
+              Termos de Uso
+            </a>
+            <span className="text-neutral-300 dark:text-neutral-700 hidden sm:inline">•</span>
             <a
               href="/politica-de-privacidade"
               onClick={handleOpenPrivacyPolicy}

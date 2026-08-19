@@ -1822,8 +1822,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, [currentUser?.role]);
 
-  // Sync Project Settings from Firestore (Real-time updates)
+  // Sync Project Settings from Firestore (Real-time updates - Admin Only)
   useEffect(() => {
+    if (!currentUser || currentUser.role !== "ADMIN") return;
     const unsubscribe = onSnapshot(
       doc(db, "project_settings", "inovaif"),
       (docSnap) => {
@@ -1842,7 +1843,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [currentUser?.role]);
 
   const saveProjectSettings = async (settings: ProjectSettings) => {
     const updated: ProjectSettings = {
