@@ -4,6 +4,9 @@ import { DocumentTemplate, DocumentField, ProjectSettings } from "../types";
 import { generateDocumentPdf as generateVectorPdf, replaceDynamicTags } from "./documentPdfGenerator";
 import { getProjectSettingsTags } from "./projectSettingsConstants";
 
+import { PRIVACY_POLICY_DATA, TERMS_OF_USE_DATA } from "../data/legalDocumentsData";
+import { generateLegalDocumentPdf, GenerateLegalPdfResult } from "./legalDocumentPdfGenerator";
+
 export interface PdfGenerationOptions {
   filename?: string;
   quality?: number;
@@ -201,3 +204,19 @@ export async function downloadDocumentFromElement(
 
 // Re-exportações úteis
 export { generateVectorPdf, replaceDynamicTags };
+export { generateLegalDocumentPdf };
+export type { GenerateLegalPdfResult };
+
+/**
+ * Função utilitária especializada para gerar o PDF da Política de Privacidade
+ */
+export function generatePrivacyPolicyPdf(): GenerateLegalPdfResult {
+  return generateLegalDocumentPdf(PRIVACY_POLICY_DATA);
+}
+
+/**
+ * Função utilitária especializada para gerar o PDF dos Termos de Uso
+ */
+export function generateTermsOfUsePdf(): GenerateLegalPdfResult {
+  return generateLegalDocumentPdf(TERMS_OF_USE_DATA);
+}
