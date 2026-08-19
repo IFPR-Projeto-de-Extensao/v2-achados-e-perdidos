@@ -31,6 +31,8 @@ import {
   FolderLock,
   UserCheck,
 } from "lucide-react";
+import { PRIVACY_POLICY_DATA } from "../data/legalDocumentsData";
+import { LegalDocumentDownloadButton } from "./legal/LegalDocumentDownloadButton";
 
 export const PrivacyPolicyView: React.FC = () => {
   const { setActiveTab } = useApp();
@@ -151,9 +153,14 @@ export const PrivacyPolicyView: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <LegalDocumentDownloadButton
+              documentData={PRIVACY_POLICY_DATA}
+              variant="header"
+            />
+
             <button
               onClick={handleBackToSystem}
-              className="px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/60 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-bold transition-all flex items-center space-x-1.5 shadow-2xs cursor-pointer"
+              className="px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/60 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-bold transition-all flex items-center space-x-1.5 shadow-2xs cursor-pointer min-h-[44px]"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Voltar ao Sistema</span>
@@ -161,11 +168,11 @@ export const PrivacyPolicyView: React.FC = () => {
 
             <button
               onClick={handlePrint}
-              title="Imprimir documento ou salvar como PDF"
-              className="px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-700 text-xs font-bold transition-all flex items-center space-x-1.5 shadow-2xs cursor-pointer"
+              title="Imprimir documento"
+              className="px-3.5 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-700 text-xs font-bold transition-all flex items-center space-x-1.5 shadow-2xs cursor-pointer min-h-[44px]"
             >
               <Printer className="w-4 h-4" />
-              <span className="hidden sm:inline">Imprimir / Salvar PDF</span>
+              <span className="hidden sm:inline">Imprimir</span>
             </button>
           </div>
         </div>
@@ -976,9 +983,14 @@ export const PrivacyPolicyView: React.FC = () => {
             <p>
               Esta Política de Privacidade é regida e interpretada de acordo com as leis da República Federativa do Brasil, em especial a Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018), o Marco Civil da Internet (Lei nº 12.965/2014) e as normas regulamentares do Instituto Federal do Paraná.
             </p>
-            <div className="pt-4 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-100 dark:border-neutral-800 text-xs text-neutral-500 dark:text-neutral-400">
-              <div className="flex items-center space-x-3">
-                <span>Localiza+ • IFPR Campus Ivaiporã</span>
+            <div className="pt-6 border-t border-neutral-100 dark:border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <LegalDocumentDownloadButton
+                documentData={PRIVACY_POLICY_DATA}
+                variant="primary"
+                className="w-full sm:w-auto"
+              />
+
+              <div className="flex flex-wrap items-center gap-3">
                 <a
                   href="/termos-de-uso"
                   onClick={(e) => {
@@ -989,18 +1001,25 @@ export const PrivacyPolicyView: React.FC = () => {
                     setActiveTab("terms_of_use");
                     window.scrollTo({ top: 0, behavior: "smooth" });
                   }}
-                  className="text-[#00843D] dark:text-green-400 font-bold hover:underline"
+                  className="px-4 py-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 text-xs font-bold transition-colors"
                 >
                   Ver Termos de Uso
                 </a>
+                <button
+                  onClick={handleBackToSystem}
+                  className="px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-xs font-bold transition-colors flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Voltar ao Sistema</span>
+                </button>
               </div>
-              <button
-                onClick={handleBackToSystem}
-                className="text-[#00843D] dark:text-green-400 font-bold hover:underline flex items-center space-x-1"
-              >
-                <span>Voltar ao início do sistema</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
+            </div>
+
+            <div className="pt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-500 dark:text-neutral-400">
+              <div className="flex items-center space-x-3">
+                <span>Localiza+ • IFPR Campus Ivaiporã</span>
+                <span className="font-mono">Versão 2.4 (2026)</span>
+              </div>
             </div>
           </section>
         </article>

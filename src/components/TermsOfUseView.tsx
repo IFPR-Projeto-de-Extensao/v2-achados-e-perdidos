@@ -29,6 +29,8 @@ import {
   HelpCircle as QuestionIcon,
   BookOpen,
 } from "lucide-react";
+import { TERMS_OF_USE_DATA } from "../data/legalDocumentsData";
+import { LegalDocumentDownloadButton } from "./legal/LegalDocumentDownloadButton";
 
 export const TermsOfUseView: React.FC = () => {
   const { setActiveTab } = useApp();
@@ -150,19 +152,24 @@ export const TermsOfUseView: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 shrink-0">
+            <LegalDocumentDownloadButton
+              documentData={TERMS_OF_USE_DATA}
+              variant="header"
+            />
             <button
               onClick={handleBackToSystem}
-              className="px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-xs font-bold transition-all flex items-center space-x-2 shadow-xs cursor-pointer"
+              className="px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-xs font-bold transition-all flex items-center space-x-2 shadow-xs cursor-pointer min-h-[44px]"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Voltar ao Sistema</span>
             </button>
             <button
               onClick={handlePrint}
-              className="px-4 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006e32] text-white text-xs font-bold transition-all flex items-center space-x-2 shadow-xs cursor-pointer"
+              title="Imprimir documento"
+              className="px-3.5 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-700 text-xs font-bold transition-all flex items-center space-x-1.5 shadow-xs cursor-pointer min-h-[44px]"
             >
               <Printer className="w-4 h-4" />
-              <span>Imprimir / PDF</span>
+              <span className="hidden sm:inline">Imprimir</span>
             </button>
           </div>
         </div>
@@ -724,15 +731,13 @@ export const TermsOfUseView: React.FC = () => {
 
           {/* Bottom Back / Action Row */}
           <div className="pt-8 border-t border-neutral-100 dark:border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <button
-              onClick={handleBackToSystem}
-              className="w-full sm:w-auto px-5 py-3 rounded-2xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all flex items-center justify-center space-x-2 cursor-pointer shadow-xs"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Retornar à Página Inicial do Sistema</span>
-            </button>
+            <LegalDocumentDownloadButton
+              documentData={TERMS_OF_USE_DATA}
+              variant="primary"
+              className="w-full sm:w-auto"
+            />
 
-            <div className="flex items-center space-x-2">
+            <div className="flex flex-wrap items-center gap-2.5">
               <a
                 href="/politica-de-privacidade"
                 onClick={handleOpenPrivacyPolicy}
@@ -741,11 +746,11 @@ export const TermsOfUseView: React.FC = () => {
                 Política de Privacidade
               </a>
               <button
-                onClick={handlePrint}
-                className="px-4 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006e32] text-white text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs"
+                onClick={handleBackToSystem}
+                className="px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs"
               >
-                <Printer className="w-4 h-4" />
-                <span>Imprimir Documento</span>
+                <ArrowLeft className="w-4 h-4" />
+                <span>Voltar ao Início</span>
               </button>
             </div>
           </div>
