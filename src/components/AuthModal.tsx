@@ -285,10 +285,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>Continuar com Google (Gmail Integrado)</span>
+              <span>Continuar com a Conta Google</span>
             </button>
             <p className="text-[10px] text-center text-neutral-500 dark:text-neutral-400">
-              Permite autenticar e enviar notificações oficiais diretamente pelo seu Gmail.
+              Autenticação rápida e segura com sua Conta Google.
             </p>
           </div>
 

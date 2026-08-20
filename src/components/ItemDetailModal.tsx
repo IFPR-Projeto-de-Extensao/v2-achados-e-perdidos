@@ -46,9 +46,10 @@ interface ItemDetailModalProps {
 export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose }) => {
   const {
     currentUser,
+    allUsers,
     submitClaim,
     updateItemStatus,
-    sendEmailViaGmail,
+    sendNotificationToUser,
     addToast,
     comments,
     addCommentToItem,
@@ -91,7 +92,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const [newCommentText, setNewCommentText] = useState("");
   const [isPostingComment, setIsPostingComment] = useState(false);
 
-  // Gmail send state
+  // Institutional notification modal state
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState(item?.contactInfo || "localizamais6@gmail.com");
   const [emailSubject, setEmailSubject] = useState(`[IFPR Achados & Perdidos] Consulta: ${item?.title || "Item"}`);
@@ -860,30 +861,25 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
   const handleSendEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!recipientEmail || !emailSubject || !emailBody) {
-      addToast("Preencha todos os campos do e-mail.", "error");
+    if (!emailSubject || !emailBody) {
+      addToast("Preencha o assunto e a mensagem.", "error");
       return;
     }
     setIsSendingEmail(true);
     try {
-      await sendEmailViaGmail(
-        recipientEmail,
+      const targetUser = allUsers.find((u) => u.email === recipientEmail);
+      const targetUserId = targetUser?.id || item.registeredByUserId || "all";
+      await sendNotificationToUser(
+        targetUserId,
         emailSubject,
-        `<div style="font-family: sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; padding: 24px;">
-          <div style="background-color: #00843D; color: white; padding: 12px 20px; border-radius: 8px; font-weight: bold; font-size: 16px;">
-            IFPR Campus Ivaiporã • Achados & Perdidos
-          </div>
-          <h3 style="color: #00843D; margin-top: 20px;">${emailSubject}</h3>
-          <p style="white-space: pre-wrap; color: #444;">${emailBody}</p>
-          <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #eee; font-size: 12px; color: #888;">
-            Item ID: <strong>${item.id}</strong> | Local: <strong>${item.location}</strong><br/>
-            Enviado via Integração Oficial do Gmail do IFPR.
-          </div>
-        </div>`
+        `Mensagem referente ao item "${item.title}": ${emailBody}`,
+        item.id
       );
       setEmailModalOpen(false);
+      setEmailBody("");
     } catch (err: any) {
-      console.error(err);
+      console.error("Erro ao registrar notificação:", err);
+      addToast("Erro ao processar notificação institucional.", "error");
     } finally {
       setIsSendingEmail(false);
     }
@@ -1378,13 +1374,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 </button>
               )}
 
-              {/* Gmail Notification / Contact Button */}
+              {/* Institutional Notification / Contact Button */}
               <button
                 onClick={() => setEmailModalOpen(true)}
-                className="w-full py-2.5 px-4 rounded-xl border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl border border-[#00843D]/30 bg-[#00843D]/10 hover:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer"
               >
-                <Send className="w-4 h-4 text-red-500" />
-                <span>Enviar Notificação / Dúvida via Gmail</span>
+                <Send className="w-4 h-4 text-[#00843D]" />
+                <span>Enviar Notificação / Mensagem sobre o Objeto</span>
               </button>
 
               {/* Generate Official Printable Item Summary / Campus Report PDF Button */}
@@ -1542,13 +1538,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
         </div>
       )}
 
-      {/* Gmail Modal */}
+      {/* Notification / Message Modal */}
       {emailModalOpen && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
           <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-lg w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
               <h3 className="font-bold text-base text-neutral-900 dark:text-white flex items-center gap-2">
-                <Send className="w-5 h-5 text-red-500" /> Enviar Notificação via Gmail
+                <Send className="w-5 h-5 text-[#00843D]" /> Enviar Notificação Institucional
               </h3>
               <button
                 onClick={() => setEmailModalOpen(false)}
@@ -1559,20 +1555,20 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             </div>
 
             <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
-              Utilize a API do Gmail para enviar uma mensagem sobre o objeto <strong>"{item.title}"</strong> diretamente para o destinatário informado.
+              Envie uma notificação institucional sobre o objeto <strong>"{item.title}"</strong>. A mensagem será registrada no sistema e entregue ao destinatário no Localiza+.
             </p>
 
             <form onSubmit={handleSendEmailSubmit} className="space-y-3.5">
               <div>
                 <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
-                  Destinatário (E-mail) *
+                  Destinatário (E-mail / Contato) *
                 </label>
                 <input
                   type="email"
                   required
                   value={recipientEmail}
                   onChange={(e) => setRecipientEmail(e.target.value)}
-                  placeholder="exemplo@gmail.com"
+                  placeholder="exemplo@ifpr.edu.br"
                   className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
@@ -1586,6 +1582,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   required
                   value={emailSubject}
                   onChange={(e) => setEmailSubject(e.target.value)}
+                  placeholder="Ex: Informação sobre objeto encontrado"
                   className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
@@ -1599,6 +1596,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   rows={4}
                   value={emailBody}
                   onChange={(e) => setEmailBody(e.target.value)}
+                  placeholder="Escreva os detalhes ou esclarecimentos necessários..."
                   className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
@@ -1614,10 +1612,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <button
                   type="submit"
                   disabled={isSendingEmail}
-                  className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs shadow-md flex items-center space-x-1.5"
+                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>{isSendingEmail ? "Enviando..." : "Enviar via Gmail"}</span>
+                  <span>{isSendingEmail ? "Enviando..." : "Enviar Notificação"}</span>
                 </button>
               </div>
             </form>

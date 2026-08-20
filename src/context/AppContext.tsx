@@ -54,7 +54,6 @@ import {
   handleFirestoreError,
   OperationType,
 } from "../lib/firebase";
-import { sendGmailEmail } from "../lib/gmail";
 import {
   saveItemsToIndexedDB,
   getItemsFromIndexedDB,
@@ -112,8 +111,6 @@ interface AppContextType {
   deleteUser: (targetUserId: string) => Promise<void>;
   switchUserRole: (role: UserRole) => void;
   loginWithGoogle: () => Promise<void>;
-  googleAccessToken: string | null;
-  sendEmailViaGmail: (to: string, subject: string, bodyHtml: string) => Promise<void>;
   loginWithEmailPassword: (email: string, pass: string) => Promise<void>;
   registerWithEmailPassword: (
     email: string,
@@ -1331,47 +1328,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [registerTypeSelection, setRegisterTypeSelection] = useState<"PERDIDO" | "ENCONTRADO">("PERDIDO");
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
-
   const addToast = (text: string, type: "success" | "error" | "info" | "warning" = "info") => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts((prev) => [...prev, { id, text, type }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, 4000);
-  };
-
-  // Send Email via Gmail API
-  const sendEmailViaGmail = async (to: string, subject: string, bodyHtml: string) => {
-    let token = googleAccessToken;
-    if (!token) {
-      try {
-        const res = await signInWithPopup(auth, googleProvider);
-        const cred = GoogleAuthProvider.credentialFromResult(res);
-        if (cred?.accessToken) {
-          token = cred.accessToken;
-          setGoogleAccessToken(token);
-        }
-      } catch (err: any) {
-        if (err.code === "auth/unauthorized-domain" || err.message?.includes("unauthorized-domain")) {
-          addToast(`Notificação registrada e enviada via serviço de e-mail institucional do IFPR para ${to}!`, "success");
-          return;
-        }
-        addToast("É necessário autorizar a conexão com o Google para enviar e-mails via Gmail.", "error");
-        throw err;
-      }
-    }
-    if (!token) {
-      addToast(`Notificação registrada e enviada via serviço de e-mail institucional do IFPR para ${to}!`, "success");
-      return;
-    }
-    try {
-      await sendGmailEmail({ to, subject, bodyHtml, accessToken: token });
-      addToast(`E-mail enviado via Gmail para ${to} com sucesso!`, "success");
-    } catch (sendErr: any) {
-      console.warn("Aviso ao enviar pelo Gmail API:", sendErr);
-      addToast(`Notificação registrada e enviada via serviço de e-mail do IFPR para ${to}!`, "success");
-    }
   };
 
   // Helper to verify and sync user document in Firestore using uid as primary document key
@@ -1478,10 +1440,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     getRedirectResult(auth)
       .then(async (result) => {
         if (result?.user) {
-          const cred = GoogleAuthProvider.credentialFromResult(result);
-          if (cred?.accessToken) {
-            setGoogleAccessToken(cred.accessToken);
-          }
           const verifiedUser = await verifyAndSyncUserDoc(result.user);
           setCurrentUser(verifiedUser);
           addToast(`Bem-vindo(a), ${verifiedUser.name}! Autenticado via Google.`, "success");
@@ -2039,11 +1997,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         throw popupError;
       }
 
-      const cred = GoogleAuthProvider.credentialFromResult(res);
-      if (cred?.accessToken) {
-        setGoogleAccessToken(cred.accessToken);
-      }
-
       const verifiedUser = await verifyUserInFirestore(res.user);
       setCurrentUser(verifiedUser);
       addToast(`Bem-vindo, ${verifiedUser.name}! Autenticado com a Conta Google com sucesso.`, "success");
@@ -2146,7 +2099,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.warn("Aviso ao sair do Firebase Auth:", e);
     }
-    setGoogleAccessToken(null);
     try {
       localStorage.removeItem(LOCAL_STORAGE_CURRENT_USER_KEY);
     } catch (_) {}
@@ -2970,8 +2922,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteUser,
         switchUserRole,
         loginWithGoogle,
-        googleAccessToken,
-        sendEmailViaGmail,
         loginWithEmailPassword,
         registerWithEmailPassword,
         updateUserProfileData,

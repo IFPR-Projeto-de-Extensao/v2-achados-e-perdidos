@@ -78,9 +78,6 @@ export function getFirebaseDb(): Firestore {
 export function getGoogleAuthProvider(): GoogleAuthProvider {
   if (!googleProviderInstance) {
     googleProviderInstance = new GoogleAuthProvider();
-    googleProviderInstance.addScope("https://mail.google.com/");
-    googleProviderInstance.addScope("https://www.googleapis.com/auth/gmail.send");
-    googleProviderInstance.addScope("https://www.googleapis.com/auth/gmail.readonly");
   }
   return googleProviderInstance;
 }
