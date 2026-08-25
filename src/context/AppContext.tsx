@@ -2278,16 +2278,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
+    const effectiveUserId = auth.currentUser?.uid || currentUser?.id || "guest-campus";
+    const effectiveUserName = currentUser?.name || auth.currentUser?.displayName || "Usuário IFPR";
+    const effectiveUserRole: UserRole = currentUser?.role || (auth.currentUser?.email === "paulocauan39@gmail.com" ? "ADMIN" : "ALUNO");
+
     const initialHistory: ItemHistoryLog[] = [
       {
         id: `hist-${Date.now()}-1`,
         action: "Ocorrência cadastrada",
-        actorId: currentUser.id,
-        actorName: currentUser.name,
-        actorRole: currentUser.role,
-        userId: currentUser.id,
-        userName: currentUser.name,
-        userRole: currentUser.role,
+        actorId: effectiveUserId,
+        actorName: effectiveUserName,
+        actorRole: effectiveUserRole,
+        userId: effectiveUserId,
+        userName: effectiveUserName,
+        userRole: effectiveUserRole,
         timestamp: new Date().toISOString(),
         details: `Ocorrência registrada no sistema do IFPR Campus Ivaiporã como ${itemData.type}.`,
       },
@@ -2299,9 +2303,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: newItemId,
       createdAt: new Date().toISOString(),
       qrCodeId,
-      registeredByUserId: currentUser.id,
-      registeredByName: currentUser.name,
-      registeredByRole: currentUser.role,
+      registeredByUserId: effectiveUserId,
+      registeredByName: effectiveUserName,
+      registeredByRole: effectiveUserRole,
       status: itemData.type === "PERDIDO" ? "PERDIDO" : "ENCONTRADO",
       history: initialHistory,
       storageDeadlineDays: 90,

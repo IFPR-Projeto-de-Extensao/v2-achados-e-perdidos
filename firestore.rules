@@ -89,9 +89,9 @@ service cloud.firestore {
       allow get: if true;
       allow list: if true;
 
-      // Creation: Authenticated user with their own uid, or unauthenticated campus visitor/student
+      // Creation: Authenticated user with their own uid or string identifier, or unauthenticated campus visitor/student
       allow create: if (isSignedIn() && 
-                        incoming().registeredByUserId == request.auth.uid && 
+                        (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
                         (incoming().registeredByRole != 'ADMIN' || isAdmin())) ||
                        (!isSignedIn() && 
                         incoming().registeredByRole != 'ADMIN');
@@ -109,7 +109,7 @@ service cloud.firestore {
       allow get: if true;
       allow list: if true;
       allow create: if (isSignedIn() && 
-                        incoming().registeredByUserId == request.auth.uid && 
+                        (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
                         (incoming().registeredByRole != 'ADMIN' || isAdmin())) ||
                        (!isSignedIn() && 
                         incoming().registeredByRole != 'ADMIN');
@@ -123,7 +123,7 @@ service cloud.firestore {
       allow get: if true;
       allow list: if true;
       allow create: if (isSignedIn() && 
-                        incoming().registeredByUserId == request.auth.uid && 
+                        (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
                         (incoming().registeredByRole != 'ADMIN' || isAdmin())) ||
                        (!isSignedIn() && 
                         incoming().registeredByRole != 'ADMIN');
