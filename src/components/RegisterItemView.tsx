@@ -1250,3 +1250,5 @@ export const RegisterItemView: React.FC = () => {
     </div>
   );
 };
+
+export default RegisterItemView;

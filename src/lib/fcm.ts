@@ -3,6 +3,7 @@
 // IFPR Campus Ivaiporã • Sistema de Achados e Perdidos
 // ==============================================================================
 
+import { getApp } from "firebase/app";
 import { getMessaging, getToken, onMessage, isSupported as isMessagingSupported, Messaging } from "firebase/messaging";
 import { doc, setDoc, getDoc, collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { db, auth, handleFirestoreError, OperationType } from "./firebase";
@@ -90,7 +91,6 @@ export async function getFCMInstance(): Promise<Messaging | null> {
   try {
     const supported = await isMessagingSupported();
     if (supported) {
-      const { getApp } = await import("firebase/app");
       messagingInstance = getMessaging(getApp());
     }
   } catch (err) {

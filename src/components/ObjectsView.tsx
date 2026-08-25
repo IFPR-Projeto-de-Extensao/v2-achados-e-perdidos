@@ -1207,3 +1207,5 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
     </div>
   );
 };
+
+export default ObjectsView;

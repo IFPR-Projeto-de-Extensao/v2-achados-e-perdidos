@@ -12,3 +12,5 @@ export const PrivacyPolicyView: React.FC = () => {
     />
   );
 };
+
+export default PrivacyPolicyView;

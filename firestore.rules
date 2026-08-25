@@ -89,10 +89,12 @@ service cloud.firestore {
       allow get: if true;
       allow list: if true;
 
-      // Creation: Authenticated user only, with their own user id
-      allow create: if isSignedIn() && 
-                       incoming().registeredByUserId == request.auth.uid &&
-                       (incoming().registeredByRole != 'ADMIN' || isAdmin());
+      // Creation: Authenticated user with their own uid, or unauthenticated campus visitor/student
+      allow create: if (isSignedIn() && 
+                        incoming().registeredByUserId == request.auth.uid && 
+                        (incoming().registeredByRole != 'ADMIN' || isAdmin())) ||
+                       (!isSignedIn() && 
+                        incoming().registeredByRole != 'ADMIN');
 
       // Update: Admin, Servidor, or the item owner can update
       allow update: if isAdmin() ||
@@ -106,9 +108,11 @@ service cloud.firestore {
     match /found_items/{itemId} {
       allow get: if true;
       allow list: if true;
-      allow create: if isSignedIn() && 
-                       incoming().registeredByUserId == request.auth.uid &&
-                       (incoming().registeredByRole != 'ADMIN' || isAdmin());
+      allow create: if (isSignedIn() && 
+                        incoming().registeredByUserId == request.auth.uid && 
+                        (incoming().registeredByRole != 'ADMIN' || isAdmin())) ||
+                       (!isSignedIn() && 
+                        incoming().registeredByRole != 'ADMIN');
       allow update: if isAdmin() ||
                        (isSignedIn() && existing().registeredByUserId == request.auth.uid) ||
                        isServidor();
@@ -118,9 +122,11 @@ service cloud.firestore {
     match /lost_items/{itemId} {
       allow get: if true;
       allow list: if true;
-      allow create: if isSignedIn() && 
-                       incoming().registeredByUserId == request.auth.uid &&
-                       (incoming().registeredByRole != 'ADMIN' || isAdmin());
+      allow create: if (isSignedIn() && 
+                        incoming().registeredByUserId == request.auth.uid && 
+                        (incoming().registeredByRole != 'ADMIN' || isAdmin())) ||
+                       (!isSignedIn() && 
+                        incoming().registeredByRole != 'ADMIN');
       allow update: if isAdmin() ||
                        (isSignedIn() && existing().registeredByUserId == request.auth.uid) ||
                        isServidor();

@@ -736,3 +736,5 @@ export const ImageAnalyzerView: React.FC = () => {
     </div>
   );
 };
+
+export default ImageAnalyzerView;

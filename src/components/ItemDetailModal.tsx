@@ -1895,3 +1895,5 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     </div>
   );
 };
+
+export default ItemDetailModal;

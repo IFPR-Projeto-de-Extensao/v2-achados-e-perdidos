@@ -3353,3 +3353,5 @@ export const DashboardView: React.FC = () => {
     </div>
   );
 };
+
+export default DashboardView;

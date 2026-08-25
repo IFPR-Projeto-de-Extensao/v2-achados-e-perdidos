@@ -124,41 +124,45 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
     };
 
     try {
-      // 1. Send to server endpoint to trigger direct email notification
-      await safeFetchJson(
-        "/api/support/send-feedback",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: name.trim(),
-            email: email.trim(),
-            category,
-            subject: subject.trim(),
-            message: message.trim(),
-            priority,
-            clientDiagnostics: diagnostics,
-          }),
-        },
-        () => ({ success: true, protocol })
-      );
+      // 1. Send to server endpoint to trigger direct email notification & Discord dispatch
+      const res = await fetch("/api/support/send-feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          email: email.trim(),
+          category,
+          subject: subject.trim(),
+          message: message.trim(),
+          priority,
+          clientDiagnostics: diagnostics,
+        }),
+      });
 
-      // 2. Persist in Firestore support_tickets collection
+      const resData = await res.json().catch(() => null);
+
+      if (!res.ok || (resData && resData.success === false)) {
+        throw new Error(resData?.error || "Erro ao processar envio no servidor de suporte.");
+      }
+
+      const confirmedProtocol = resData?.protocol || protocol;
+
+      // 2. Persist in Firestore support_tickets collection (non-blocking for resilient UX)
       if (db) {
         try {
           const ticketRef = doc(db, "support_tickets", ticketData.id);
-          await setDoc(ticketRef, sanitizeFirestoreData(ticketData));
+          await setDoc(ticketRef, sanitizeFirestoreData({ ...ticketData, protocol: confirmedProtocol }));
         } catch (dbErr) {
-          handleFirestoreError(dbErr, OperationType.WRITE, `support_tickets/${ticketData.id}`);
+          console.warn("[Support Tickets Firestore Notice] Gravação secundária no Firestore:", dbErr);
         }
       }
 
       vibrateSuccess();
-      setSubmittedProtocol(protocol);
+      setSubmittedProtocol(confirmedProtocol);
       addToast(
         language === "pt"
-          ? "Feedback enviado com sucesso para localizamais6@gmail.com!"
-          : "Feedback sent successfully to localizamais6@gmail.com!",
+          ? "Feedback enviado com sucesso para a equipe do Campus Ivaiporã!"
+          : "Feedback sent successfully to Campus Ivaiporã team!",
         "success"
       );
     } catch (err: any) {

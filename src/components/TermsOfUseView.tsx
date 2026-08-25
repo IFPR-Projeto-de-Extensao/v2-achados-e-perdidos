@@ -12,3 +12,5 @@ export const TermsOfUseView: React.FC = () => {
     />
   );
 };
+
+export default TermsOfUseView;

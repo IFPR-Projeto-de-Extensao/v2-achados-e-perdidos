@@ -116,3 +116,5 @@ export const AIMatchModal: React.FC = () => {
     </div>
   );
 };
+
+export default AIMatchModal;

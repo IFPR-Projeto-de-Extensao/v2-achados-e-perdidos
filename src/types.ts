@@ -360,7 +360,7 @@ export interface DocumentTemplate {
   id: string;
   title: string; // ex: "Termo de Aceite do Parceiro de Extensão"
   code: string; // ex: "EXT-ACEITE-01"
-  category: "EXTENSAO" | "ACHADOS_PERDIDOS" | "ESTAGIO" | "INSTITUCIONAL" | "OUTRO";
+  category: "EXTENSAO" | "ACHADOS_PERDIDOS" | "ESTAGIO" | "INSTITUCIONAL" | "RESPONSABILIDADE" | "DECLARACOES" | "RELATORIOS" | "OUTRO";
   description: string;
   status: "ATIVO" | "INATIVO";
   version: number;
@@ -392,6 +392,7 @@ export interface GeneratedDocumentRecord {
   generatedByEmail?: string;
   generatedAt: string;
   fileSizeBytes?: number;
+  status?: "EMITIDO" | "RASCUNHO" | "ARQUIVADO";
 }
 
 // =========================================================================

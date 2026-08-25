@@ -216,6 +216,7 @@ interface AppContextType {
   duplicateDocumentTemplate: (templateId: string) => Promise<DocumentTemplate>;
   toggleDocumentTemplateStatus: (templateId: string) => Promise<void>;
   logGeneratedDocument: (record: Omit<GeneratedDocumentRecord, "id" | "generatedAt" | "generatedByUserId" | "generatedByName">) => Promise<void>;
+  deleteGeneratedDocument: (docId: string) => Promise<void>;
   saveProjectSettings: (settings: ProjectSettings) => Promise<void>;
   resetProjectSettingsToDefault: () => Promise<void>;
 }
@@ -589,7 +590,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const saved = localStorage.getItem("ifpr_document_templates_cache");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const cachedIds = new Set(parsed.map((t: DocumentTemplate) => t.id));
+          const missingDefaults = DEFAULT_DOCUMENT_TEMPLATES.filter((def) => !cachedIds.has(def.id));
+          return [...parsed, ...missingDefaults];
+        }
       }
     } catch (_) {}
     return DEFAULT_DOCUMENT_TEMPLATES;
@@ -1739,6 +1744,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const logAdminAction = async (action: ActivityLog["action"], details: string) => {
+    if (!currentUser || (currentUser.role !== "ADMIN" && currentUser.role !== "SERVIDOR")) return;
     const newLog: ActivityLog = {
       id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       adminId: currentUser.id,
@@ -1764,12 +1770,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (snapshot) => {
         if (snapshot.empty) {
           setDocumentTemplates(DEFAULT_DOCUMENT_TEMPLATES);
+          // Persistir os 6 modelos padrão diretamente no Firestore
+          DEFAULT_DOCUMENT_TEMPLATES.forEach(async (tpl) => {
+            try {
+              await setDoc(doc(db, "document_templates", tpl.id), tpl);
+            } catch (e) {
+              console.warn("Aviso ao semear template no Firestore:", e);
+            }
+          });
+          try {
+            localStorage.setItem("ifpr_document_templates_cache", JSON.stringify(DEFAULT_DOCUMENT_TEMPLATES));
+          } catch (_) {}
         } else {
           const loaded: DocumentTemplate[] = snapshot.docs.map((d) => d.data() as DocumentTemplate);
-          loaded.sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime());
-          setDocumentTemplates(loaded);
+          const loadedIds = new Set(loaded.map((t) => t.id));
+          const missingDefaults = DEFAULT_DOCUMENT_TEMPLATES.filter((def) => !loadedIds.has(def.id));
+
+          if (missingDefaults.length > 0) {
+            missingDefaults.forEach(async (tpl) => {
+              try {
+                await setDoc(doc(db, "document_templates", tpl.id), tpl);
+              } catch (e) {
+                console.warn("Aviso ao persistir modelo padrão faltante no Firestore:", e);
+              }
+            });
+          }
+
+          const combined = [...loaded, ...missingDefaults];
+          combined.sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime());
+          setDocumentTemplates(combined);
           try {
-            localStorage.setItem("ifpr_document_templates_cache", JSON.stringify(loaded));
+            localStorage.setItem("ifpr_document_templates_cache", JSON.stringify(combined));
           } catch (_) {}
         }
       },
@@ -1978,6 +2009,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     } catch (e) {
       console.warn("Aviso ao registrar documento gerado no Firestore:", e);
+    }
+  };
+
+  const deleteGeneratedDocument = async (docId: string) => {
+    const target = generatedDocuments.find((d) => d.id === docId);
+    setGeneratedDocuments((prev) => {
+      const next = prev.filter((d) => d.id !== docId);
+      try {
+        localStorage.setItem("ifpr_generated_documents_cache", JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
+
+    try {
+      await deleteDoc(doc(db, "generated_documents", docId));
+      if (target) {
+        await logAdminAction(
+          "EXCLUIR_DOCUMENTO_GERADO",
+          `Documento emitido '${target.templateTitle}' (${target.documentNumber}) excluído do histórico.`
+        );
+      }
+      addToast("Documento removido do histórico com sucesso.", "info");
+    } catch (e) {
+      console.warn("Aviso ao excluir documento gerado no Firestore:", e);
+      addToast("Documento removido do histórico local.", "info");
     }
   };
 
@@ -2301,10 +2357,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await setDoc(doc(db, "items", newItem.id), sanitizeFirestoreData(newItem));
-      await logAdminAction(
-        "CADASTRO_OCORRENCIA",
-        `Cadastrou a ocorrência #${newItem.id} "${newItem.title}" (${newItem.type}) - Local: ${newItem.location}`
-      );
+      setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
+      if (currentUser?.role === "ADMIN" || currentUser?.role === "SERVIDOR") {
+        await logAdminAction(
+          "CADASTRO_OCORRENCIA",
+          `Cadastrou a ocorrência #${newItem.id} "${newItem.title}" (${newItem.type}) - Local: ${newItem.location}`
+        );
+      }
       updateUploadTask(taskId, {
         progress: 100,
         status: "COMPLETED",
@@ -3007,6 +3066,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         duplicateDocumentTemplate,
         toggleDocumentTemplateStatus,
         logGeneratedDocument,
+        deleteGeneratedDocument,
         saveProjectSettings,
         resetProjectSettingsToDefault,
       }}

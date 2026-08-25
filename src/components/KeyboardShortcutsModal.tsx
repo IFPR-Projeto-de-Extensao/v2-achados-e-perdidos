@@ -94,3 +94,5 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
     </div>
   );
 };
+
+export default KeyboardShortcutsModal;

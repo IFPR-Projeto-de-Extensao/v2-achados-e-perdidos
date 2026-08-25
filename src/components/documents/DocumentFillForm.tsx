@@ -29,10 +29,17 @@ import {
 
 interface DocumentFillFormProps {
   template: DocumentTemplate;
+  initialValues?: Record<string, string>;
+  initialDocumentNumber?: string;
   onBack: () => void;
 }
 
-export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({ template, onBack }) => {
+export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
+  template,
+  initialValues,
+  initialDocumentNumber,
+  onBack,
+}) => {
   const { logGeneratedDocument, addToast, projectSettings } = useApp();
   const livePreviewRef = useRef<HTMLDivElement>(null);
 
@@ -45,16 +52,20 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({ template, on
     return extractDynamicTags(template);
   }, [template]);
 
-  // Initial state derived from consolidated fields defaults
+  // Initial state derived from consolidated fields defaults, merged with initialValues if provided
   const [formData, setFormData] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     consolidatedFields.forEach((field) => {
       initial[field.name] = field.defaultValue || "";
     });
+    if (initialValues && typeof initialValues === "object") {
+      Object.assign(initial, initialValues);
+    }
     return initial;
   });
 
   const [documentNumber, setDocumentNumber] = useState<string>(() => {
+    if (initialDocumentNumber) return initialDocumentNumber;
     return `DOC-${template.code || "IFPR"}-${new Date().getFullYear()}/${String(
       Math.floor(1000 + Math.random() * 9000)
     )}`;

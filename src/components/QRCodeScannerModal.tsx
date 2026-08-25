@@ -341,3 +341,5 @@ export const QRCodeScannerModal: React.FC = () => {
     </div>
   );
 };
+
+export default QRCodeScannerModal;

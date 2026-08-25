@@ -120,25 +120,31 @@ export function getProjectSettingsTags(settings?: ProjectSettings | null): Recor
   const currentSemester = new Date().getMonth() >= 6 ? "2" : "1";
 
   return {
+    // Projeto
+    nome_projeto: "Localiza+",
+    projeto: "Localiza+",
+    nome_projeto_extensao: "Localiza+ : Sistema Institucional de Achados, Perdidos e Atendimento Comunitário",
+
     // Equipe & Integrantes
     nome_equipe: current.teamName || "InovaIF",
+    equipe: current.teamName || "InovaIF",
     integrantes: memberNamesOnly,
     integrantes_com_matricula: membersWithRegistration,
     integrantes_lista: membersFormattedLines,
     representante_equipe: leaderName,
     lider_equipe: leaderName,
 
-    // Professor Orientador
-    professor_responsavel: current.professor?.name || "",
-    formacao_professor: current.professor?.title || "",
-    cargo_professor: current.professor?.role || "",
+    // Professor Orientador / Coordenador
+    professor_responsavel: current.professor?.name || "Ronan Anacleto Lopes",
+    formacao_professor: current.professor?.title || "Mestre",
+    cargo_professor: current.professor?.role || "Coordenador do Curso de Sistemas de Informação",
     docente_completo: `${profCompleteTitle} (${current.professor?.role || ""})`.trim(),
-    coordenador: current.professor?.name || "",
+    coordenador: current.professor?.name || "Ronan Anacleto Lopes",
 
     // Instituição e Campus
     instituicao: current.institution?.name || "Instituto Federal do Paraná",
     campus: current.institution?.campus || "Campus Ivaiporã",
-    endereco_instituicao: current.institution?.address || "",
+    endereco_instituicao: current.institution?.address || "Rua Max Arthur Greipel, nº 505 - Parque Industrial",
     cidade: current.institution?.city || "Ivaiporã",
     estado: current.institution?.state || "PR",
     cep: current.institution?.zipCode || "86873-400",
