@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { Navbar } from "./components/Navbar";
 import { Footer } from "./components/Footer";
@@ -24,6 +24,7 @@ import { initSecondaryServices } from "./lib/secondaryServices";
 import { trackPageView } from "./lib/analytics";
 import { traceFirebasePerformance } from "./lib/firebase";
 import { savePerformanceMetricLog } from "./lib/offlineDb";
+import { parseQrCodeOrUrl, findItemInList, fetchItemFromFirestore } from "./lib/qrCodeUtils";
 import { APP_VALID_TABS, DEFAULT_MAINTENANCE_MESSAGE, type AppTabType } from "./lib/shared-constants";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 
@@ -41,10 +42,13 @@ const MainContent: React.FC = () => {
     maintenanceMode,
     maintenanceCustomMessage,
     currentUser,
+    items,
+    addToast,
   } = useApp();
 
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
   const shouldReduceMotion = useReducedMotion();
+  const lastResolvedItemIdRef = useRef<string | null>(null);
 
   // Global Keyboard Shortcuts for rapid navigation and power-user accessibility
   useEffect(() => {
@@ -104,6 +108,50 @@ const MainContent: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [setActiveTab, setQrScannerOpen]);
 
+  // Handle URL deep-linking for QR codes and direct item links (e.g. ?itemId=..., ?qr=..., /item/:id)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const resolveItemFromUrl = async () => {
+      const currentHref = window.location.href;
+      const parsed = parseQrCodeOrUrl(currentHref);
+
+      // Check if there is an item requested in URL
+      if (!parsed.itemId && !parsed.qrCodeId) return;
+
+      const targetIdentifier = parsed.itemId || parsed.qrCodeId;
+      if (!targetIdentifier || targetIdentifier === lastResolvedItemIdRef.current) return;
+
+      // 1. Try finding in loaded items state first
+      let matchedItem = findItemInList(parsed, items);
+
+      // 2. If not found in state, fetch directly from Firestore
+      if (!matchedItem) {
+        try {
+          matchedItem = await fetchItemFromFirestore(parsed);
+        } catch (err) {
+          console.warn("[App] Erro ao carregar item via deep-link:", err);
+        }
+      }
+
+      if (matchedItem) {
+        lastResolvedItemIdRef.current = matchedItem.id;
+        setSelectedItemForDetail(matchedItem);
+        
+        // Switch tab to lost/found if specified
+        if (parsed.tab && (APP_VALID_TABS as readonly string[]).includes(parsed.tab)) {
+          setActiveTab(parsed.tab as AppTabType);
+        } else if (matchedItem.type === "PERDIDO") {
+          setActiveTab("lost");
+        } else if (matchedItem.type === "ENCONTRADO") {
+          setActiveTab("found");
+        }
+      }
+    };
+
+    resolveItemFromUrl();
+  }, [items, setSelectedItemForDetail, setActiveTab]);
+
   // Secondary non-blocking services (Analytics, Performance, PWA Uptime) initialized after DOM mount & render
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -143,10 +191,18 @@ const MainContent: React.FC = () => {
         } else {
           const p = new URLSearchParams(window.location.search);
           const t = p.get("tab");
+          const itemParam = p.get("itemId") || p.get("item");
+
           if (t && (APP_VALID_TABS as readonly string[]).includes(t)) {
             setActiveTab(t as AppTabType);
           } else {
             setActiveTab("home");
+          }
+
+          // If back navigation occurred and no itemId is in URL, close modal
+          if (!itemParam) {
+            setSelectedItemForDetail(null);
+            lastResolvedItemIdRef.current = null;
           }
         }
       };
@@ -159,12 +215,13 @@ const MainContent: React.FC = () => {
     }
 
     return () => clearTimeout(timer);
-  }, [setActiveTab, setQrScannerOpen]);
+  }, [setActiveTab, setQrScannerOpen, setSelectedItemForDetail]);
 
-  // Sync window path history when navigating tabs
+  // Sync window path history when navigating tabs and opening/closing item modal
   useEffect(() => {
     if (typeof window === "undefined") return;
     const currentPath = window.location.pathname.toLowerCase();
+    
     if (activeTab === "privacy_policy") {
       if (currentPath !== "/politica-de-privacidade") {
         window.history.pushState({ tab: "privacy_policy" }, "", "/politica-de-privacidade");
@@ -173,10 +230,25 @@ const MainContent: React.FC = () => {
       if (currentPath !== "/termos-de-uso") {
         window.history.pushState({ tab: "terms_of_use" }, "", "/termos-de-uso");
       }
-    } else if (currentPath === "/politica-de-privacidade" || currentPath === "/termos-de-uso") {
-      window.history.pushState({ tab: activeTab }, "", "/");
+    } else {
+      const url = new URL(window.location.href);
+      if (selectedItemForDetail) {
+        url.searchParams.set("itemId", selectedItemForDetail.id);
+        if (selectedItemForDetail.qrCodeId) {
+          url.searchParams.set("qr", selectedItemForDetail.qrCodeId);
+        }
+        url.searchParams.set("tab", selectedItemForDetail.type === "PERDIDO" ? "lost" : "found");
+        window.history.replaceState({ itemId: selectedItemForDetail.id }, "", url.toString());
+      } else {
+        if (url.searchParams.has("itemId") || url.searchParams.has("qr")) {
+          url.searchParams.delete("itemId");
+          url.searchParams.delete("qr");
+          url.searchParams.delete("item");
+          window.history.replaceState({ tab: activeTab }, "", url.toString());
+        }
+      }
     }
-  }, [activeTab]);
+  }, [activeTab, selectedItemForDetail]);
 
   // RNF01 & RNF02: Firebase Performance Monitoring tracking component render time & tab latency
   useEffect(() => {

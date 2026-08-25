@@ -1,6 +1,7 @@
 import React from "react";
 import { LostFoundItem } from "../types";
 import { formatDate } from "../lib/utils";
+import { getItemQrValue } from "../lib/qrCodeUtils";
 import { QRCodeSVG } from "qrcode.react";
 import {
   X,
@@ -158,7 +159,7 @@ export const RestrictedQRViewModal: React.FC<RestrictedQRViewModalProps> = ({
           {/* QR Code Tag Box */}
           <div className="p-4 rounded-2xl bg-[#00843D]/5 dark:bg-[#00843D]/10 border border-[#00843D]/30 flex items-center space-x-4">
             <div className="p-2 bg-white rounded-xl shadow-xs shrink-0 border border-neutral-200">
-              <QRCodeSVG value={item.qrCodeId} size={76} level="H" />
+              <QRCodeSVG value={getItemQrValue(item)} size={76} level="H" />
             </div>
 
             <div className="space-y-1">

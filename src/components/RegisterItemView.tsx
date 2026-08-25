@@ -614,7 +614,7 @@ export const RegisterItemView: React.FC = () => {
       )}
 
       {/* TYPE TOGGLE: PERDIDO vs ENCONTRADO */}
-      <div className="grid grid-cols-2 gap-3 p-1.5 bg-neutral-100 dark:bg-[#1E1E1E] rounded-2xl border border-neutral-200 dark:border-neutral-800">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-1.5 bg-neutral-100 dark:bg-[#1E1E1E] rounded-2xl border border-neutral-200 dark:border-neutral-800 w-full max-w-full">
         <button
           type="button"
           onClick={() => {

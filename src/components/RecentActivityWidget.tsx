@@ -1,6 +1,6 @@
 import React from "react";
 import { LostFoundItem, NotificationItem } from "../types";
-import { isItemNew } from "../lib/utils";
+import { isItemNew, safeParseDate, formatDate } from "../lib/utils";
 import { Activity, Sparkles, CheckCircle2, PackageSearch, Clock, ArrowRight, UserCheck } from "lucide-react";
 
 interface RecentActivityWidgetProps {
@@ -15,9 +15,9 @@ export const RecentActivityWidget: React.FC<RecentActivityWidgetProps> = ({
   onSelectItem,
 }) => {
   // Generate a live feed combining recent items and system notifications
-  const recentFeed = items
+  const recentFeed = (items || [])
     .slice()
-    .sort((a, b) => new Date(b.createdAt || b.date).getTime() - new Date(a.createdAt || a.date).getTime())
+    .sort((a, b) => (safeParseDate(b.createdAt || b.date)?.getTime() || 0) - (safeParseDate(a.createdAt || a.date)?.getTime() || 0))
     .slice(0, 5)
     .map((item) => {
       const isDevolvido = item.status === "DEVOLVIDO";
@@ -33,7 +33,7 @@ export const RecentActivityWidget: React.FC<RecentActivityWidgetProps> = ({
           ? `Perda Registrada: ${item.title}`
           : `Novo Achado: ${item.title}`,
         location: item.location,
-        time: item.date,
+        time: item.date || item.createdAt,
         userName: item.registeredByName || "Usuário do IFPR",
         userRole: item.registeredByRole || "ALUNO",
       };
@@ -106,7 +106,7 @@ export const RecentActivityWidget: React.FC<RecentActivityWidgetProps> = ({
                   )}
                 </div>
                 <span className="text-[10px] text-neutral-400 flex items-center gap-1 shrink-0 font-medium">
-                  <Clock className="w-3 h-3" /> {activity.time}
+                  <Clock className="w-3 h-3" /> {formatDate(activity.time)}
                 </span>
               </div>
 

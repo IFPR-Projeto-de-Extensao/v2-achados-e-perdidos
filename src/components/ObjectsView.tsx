@@ -5,7 +5,7 @@ import { ItemCard } from "./ItemCard";
 import { ExportFoundItemsReportModal } from "./ExportFoundItemsReportModal";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
-import { formatDate, vibrateClick, vibrateSuccess, safeToLower, safeIncludes, sanitizeQuery, isItemNew } from "../lib/utils";
+import { formatDate, vibrateClick, vibrateSuccess, safeToLower, safeIncludes, sanitizeQuery, isItemNew, safeParseDate } from "../lib/utils";
 import {
   Search,
   Filter,
@@ -234,7 +234,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
 
         // Time Period Preset filter
         if (selectedTimePreset !== "TODOS") {
-          const itemTime = new Date(item.date || item.createdAt || new Date()).getTime();
+          const itemTime = safeParseDate(item.date || item.createdAt)?.getTime() || 0;
           const now = new Date();
 
           if (selectedTimePreset === "24H") {
@@ -257,16 +257,20 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
 
         // Custom Date Range Filter
         if (filterStartDate) {
-          const itemDate = new Date(item.date || item.createdAt || new Date());
-          const start = new Date(filterStartDate);
-          start.setHours(0, 0, 0, 0);
-          if (itemDate < start) return false;
+          const itemDate = safeParseDate(item.date || item.createdAt);
+          const start = safeParseDate(filterStartDate);
+          if (start && itemDate) {
+            start.setHours(0, 0, 0, 0);
+            if (itemDate < start) return false;
+          }
         }
         if (filterEndDate) {
-          const itemDate = new Date(item.date || item.createdAt || new Date());
-          const end = new Date(filterEndDate);
-          end.setHours(23, 59, 59, 999);
-          if (itemDate > end) return false;
+          const itemDate = safeParseDate(item.date || item.createdAt);
+          const end = safeParseDate(filterEndDate);
+          if (end && itemDate) {
+            end.setHours(23, 59, 59, 999);
+            if (itemDate > end) return false;
+          }
         }
 
         // Text Search Query
@@ -286,8 +290,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
         return true;
       })
       .sort((a, b) => {
-        const dateA = new Date(a.createdAt).getTime();
-        const dateB = new Date(b.createdAt).getTime();
+        const dateA = safeParseDate(a.createdAt || a.date)?.getTime() || 0;
+        const dateB = safeParseDate(b.createdAt || b.date)?.getTime() || 0;
         return sortBy === "recentes" ? dateB - dateA : dateA - dateB;
       });
   }, [
@@ -1055,8 +1059,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
           <div
             className={
               layoutViewMode === "CARDS"
-                ? "grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-6"
-                : "grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] md:hidden lg:grid gap-6"
+                ? "grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-6 w-full max-w-full"
+                : "grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] md:hidden lg:grid gap-6 w-full max-w-full"
             }
           >
             {filteredItems.map((item) => (

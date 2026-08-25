@@ -1,6 +1,7 @@
 import React from "react";
 import { LostFoundItem } from "../types";
 import { formatDate, isItemNew } from "../lib/utils";
+import { getItemPublicUrl } from "../lib/qrCodeUtils";
 import { MapPin, Calendar, Tag, ArrowRight, ShieldCheck, QrCode, CheckSquare, Square, Printer, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 
@@ -96,7 +97,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
               <p>Achados e Perdidos • Etiqueta de Identificação Física</p>
             </div>
             <div class="qr-box">
-              <img class="qr-code-img" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(item.qrCodeId)}" alt="QR Code" />
+              <img class="qr-code-img" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getItemPublicUrl(item))}" alt="QR Code" />
               <div class="qr-id">${item.qrCodeId}</div>
             </div>
             <table class="info-table">

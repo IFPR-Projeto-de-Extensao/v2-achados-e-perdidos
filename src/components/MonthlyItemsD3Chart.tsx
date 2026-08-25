@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from "react";
 import * as d3 from "d3";
 import { LostFoundItem } from "../types";
 import { TrendingUp, BarChart3, Info } from "lucide-react";
+import { safeParseDate } from "../lib/utils";
 
 interface MonthlyItemsD3ChartProps {
   items: LostFoundItem[];
@@ -37,8 +38,8 @@ export const MonthlyItemsD3Chart: React.FC<MonthlyItemsD3ChartProps> = ({ items,
 
     // Populate with real items
     (items || []).forEach((item) => {
-      const itemDate = new Date(item.date || item.createdAt || new Date());
-      if (isNaN(itemDate.getTime())) return;
+      const itemDate = safeParseDate(item.date || item.createdAt);
+      if (!itemDate) return;
 
       const key = `${itemDate.getFullYear()}-${String(itemDate.getMonth() + 1).padStart(2, "0")}`;
       if (monthMap.has(key)) {

@@ -89,20 +89,21 @@ service cloud.firestore {
       allow get: if true;
       allow list: if true;
 
-      // Creation: Authenticated user with their own uid or string identifier, or unauthenticated campus visitor/student
+      // Creation: Authenticated user with their own uid or string identifier (ACADEMIC, ALUNO, SERVIDOR, ADMIN), or unauthenticated campus visitor/student
       allow create: if (isSignedIn() && 
                         (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
-                        (incoming().registeredByRole != 'ADMIN' || isAdmin())) ||
+                        (incoming().registeredByRole != 'ADMIN' || isAdmin() || isRootAdmin())) ||
                        (!isSignedIn() && 
                         incoming().registeredByRole != 'ADMIN');
 
       // Update: Admin, Servidor, or the item owner can update
       allow update: if isAdmin() ||
-                       (isSignedIn() && existing().registeredByUserId == request.auth.uid) ||
+                       isRootAdmin() ||
+                       (isSignedIn() && (existing().registeredByUserId == request.auth.uid || incoming().registeredByUserId == request.auth.uid)) ||
                        isServidor();
 
       // Delete: Admin or the user who registered the item
-      allow delete: if isAdmin() || (isSignedIn() && existing().registeredByUserId == request.auth.uid);
+      allow delete: if isAdmin() || isRootAdmin() || (isSignedIn() && existing().registeredByUserId == request.auth.uid);
     }
 
     match /found_items/{itemId} {
@@ -110,13 +111,14 @@ service cloud.firestore {
       allow list: if true;
       allow create: if (isSignedIn() && 
                         (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
-                        (incoming().registeredByRole != 'ADMIN' || isAdmin())) ||
+                        (incoming().registeredByRole != 'ADMIN' || isAdmin() || isRootAdmin())) ||
                        (!isSignedIn() && 
                         incoming().registeredByRole != 'ADMIN');
       allow update: if isAdmin() ||
-                       (isSignedIn() && existing().registeredByUserId == request.auth.uid) ||
+                       isRootAdmin() ||
+                       (isSignedIn() && (existing().registeredByUserId == request.auth.uid || incoming().registeredByUserId == request.auth.uid)) ||
                        isServidor();
-      allow delete: if isAdmin() || (isSignedIn() && existing().registeredByUserId == request.auth.uid);
+      allow delete: if isAdmin() || isRootAdmin() || (isSignedIn() && existing().registeredByUserId == request.auth.uid);
     }
 
     match /lost_items/{itemId} {
@@ -124,13 +126,14 @@ service cloud.firestore {
       allow list: if true;
       allow create: if (isSignedIn() && 
                         (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
-                        (incoming().registeredByRole != 'ADMIN' || isAdmin())) ||
+                        (incoming().registeredByRole != 'ADMIN' || isAdmin() || isRootAdmin())) ||
                        (!isSignedIn() && 
                         incoming().registeredByRole != 'ADMIN');
       allow update: if isAdmin() ||
-                       (isSignedIn() && existing().registeredByUserId == request.auth.uid) ||
+                       isRootAdmin() ||
+                       (isSignedIn() && (existing().registeredByUserId == request.auth.uid || incoming().registeredByUserId == request.auth.uid)) ||
                        isServidor();
-      allow delete: if isAdmin() || (isSignedIn() && existing().registeredByUserId == request.auth.uid);
+      allow delete: if isAdmin() || isRootAdmin() || (isSignedIn() && existing().registeredByUserId == request.auth.uid);
     }
 
     // ==========================================

@@ -1,7 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { LostFoundItem } from "../types";
-import { formatDate, formatDateTime } from "./utils";
+import { formatDate, formatDateTime, safeParseDate } from "./utils";
 
 export interface FoundReportOptions {
   periodLabel?: string;
@@ -39,16 +39,20 @@ export function generateFoundItemsReportPdf(
       return false;
     }
     if (options.startDate) {
-      const d = new Date(i.date || i.createdAt);
-      const start = new Date(options.startDate);
-      start.setHours(0, 0, 0, 0);
-      if (d < start) return false;
+      const d = safeParseDate(i.date || i.createdAt);
+      const start = safeParseDate(options.startDate);
+      if (d && start) {
+        start.setHours(0, 0, 0, 0);
+        if (d < start) return false;
+      }
     }
     if (options.endDate) {
-      const d = new Date(i.date || i.createdAt);
-      const end = new Date(options.endDate);
-      end.setHours(23, 59, 59, 999);
-      if (d > end) return false;
+      const d = safeParseDate(i.date || i.createdAt);
+      const end = safeParseDate(options.endDate);
+      if (d && end) {
+        end.setHours(23, 59, 59, 999);
+        if (d > end) return false;
+      }
     }
     return true;
   });

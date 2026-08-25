@@ -553,11 +553,11 @@ export const HomeView: React.FC = () => {
 
         {/* Visual Loading State Skeletons while Gemini is processing */}
         {isSearchingSemantic ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-6 w-full max-w-full">
             {[1, 2, 3].map((skeletonId) => (
               <div
                 key={skeletonId}
-                className="p-5 rounded-3xl bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-4 animate-pulse"
+                className="p-5 rounded-3xl bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-4 animate-pulse min-w-0"
               >
                 <div className="h-44 rounded-2xl bg-neutral-200 dark:bg-neutral-800 w-full relative overflow-hidden">
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-neutral-700/30 to-transparent animate-shimmer" />
@@ -592,11 +592,11 @@ export const HomeView: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-6 w-full max-w-full">
             {displayedItems.map((item) => {
               const semMatch = semanticResults?.find((r) => r.itemId === item.id);
               return (
-                <div key={item.id} className="flex flex-col space-y-2">
+                <div key={item.id} className="flex flex-col space-y-2 min-w-0 w-full">
                   <ItemCard item={item} onSelect={setSelectedItemForDetail} />
                   {semMatch && (
                     <div className="px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-neutral-800 dark:text-neutral-200 text-xs flex items-start space-x-2">

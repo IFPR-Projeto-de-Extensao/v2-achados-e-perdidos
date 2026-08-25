@@ -4,7 +4,8 @@ import autoTable from "jspdf-autotable";
 import { LostFoundItem } from "../types";
 import { useApp } from "../context/AppContext";
 import { usePossessionVerification } from "../hooks/usePossessionVerification";
-import { formatDate, formatDateTime, triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, isItemNew, getItemAgeText } from "../lib/utils";
+import { formatDate, formatSafeDate, formatDateTime, formatSafeDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, isItemNew, getItemAgeText } from "../lib/utils";
+import { getItemPublicUrl, getItemQrValue } from "../lib/qrCodeUtils";
 import { QRCodeSVG } from "qrcode.react";
 import { RestrictedQRViewModal } from "./RestrictedQRViewModal";
 import {
@@ -124,7 +125,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   });
 
   const sortedTimeline = Array.from(timelineLogsMap.values()).sort(
-    (a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    (a: any, b: any) => (safeParseDate(b?.timestamp)?.getTime() || 0) - (safeParseDate(a?.timestamp)?.getTime() || 0)
   );
 
   // Find associated approved claim for PDF receipt details
@@ -830,7 +831,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <p>Achados e Perdidos • Etiqueta de Identificação</p>
             </div>
             <div class="qr-box">
-              <img class="qr-code-img" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(item.qrCodeId)}" alt="QR Code" />
+              <img class="qr-code-img" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getItemPublicUrl(item))}" alt="QR Code" />
               <div class="qr-id">${item.qrCodeId}</div>
             </div>
             <table class="info-table">
@@ -1117,7 +1118,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             <div className="p-4 rounded-2xl bg-[#00843D]/5 dark:bg-[#00843D]/10 border border-[#00843D]/20 space-y-3">
               <div className="flex items-center space-x-4">
                 <div className="p-2 bg-white rounded-xl shadow-xs shrink-0">
-                  <QRCodeSVG id={`qr-code-svg-${item.id}`} value={item.qrCodeId} size={72} level="H" />
+                  <QRCodeSVG id={`qr-code-svg-${item.id}`} value={getItemQrValue(item)} size={72} level="H" />
                 </div>
                 <div>
                   <h5 className="font-bold text-xs text-neutral-900 dark:text-white flex items-center gap-1">

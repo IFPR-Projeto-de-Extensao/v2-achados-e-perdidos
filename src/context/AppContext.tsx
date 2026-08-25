@@ -66,7 +66,7 @@ import {
   clearSyncQueue,
 } from "../lib/indexedDB";
 import { clear30DayUptimeRecords } from "../lib/uptimeManager";
-import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower } from "../lib/utils";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeParseDate } from "../lib/utils";
 import {
   DEFAULT_MAINTENANCE_MESSAGE,
   STORAGE_KEYS,
@@ -507,7 +507,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (snapshot) => {
         if (!snapshot.empty) {
           const logs = snapshot.docs.map((d) => d.data());
-          logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          logs.sort((a, b) => (safeParseDate(b.timestamp)?.getTime() || 0) - (safeParseDate(a.timestamp)?.getTime() || 0));
           setErrorLogsList(logs);
         }
       },
@@ -1578,8 +1578,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setItems([]);
         } else {
           const loadedItems: LostFoundItem[] = snapshot.docs.map((d) => d.data() as LostFoundItem);
-          // Sort by creation date
-          loadedItems.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          // Sort by creation date safely
+          loadedItems.sort((a, b) => (safeParseDate(b.createdAt || b.date)?.getTime() || 0) - (safeParseDate(a.createdAt || a.date)?.getTime() || 0));
           setItems(loadedItems);
         }
       },
@@ -1639,7 +1639,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } else {
           const rawNotifs: NotificationItem[] = snapshot.docs.map((d) => d.data() as NotificationItem);
           const loadedNotifs = filterNotificationsForUser(rawNotifs, currentUser, firebaseUser?.uid);
-          loadedNotifs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          loadedNotifs.sort((a, b) => (safeParseDate(b.timestamp)?.getTime() || 0) - (safeParseDate(a.timestamp)?.getTime() || 0));
           
           // Real-time Push Alert for newly received notifications for the active user
           if (initialNotifsLoadedRef.current && (currentUser?.id || firebaseUser?.uid)) {
@@ -1689,7 +1689,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setComments([]);
         } else {
           const loadedComments: ItemComment[] = snapshot.docs.map((d) => d.data() as ItemComment);
-          loadedComments.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+          loadedComments.sort((a, b) => (safeParseDate(a.createdAt)?.getTime() || 0) - (safeParseDate(b.createdAt)?.getTime() || 0));
           setComments(loadedComments);
         }
       },
