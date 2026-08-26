@@ -3,28 +3,122 @@ import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
-import { getApps, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
+import { getApps, initializeApp, cert, App } from "firebase-admin/app";
+import { getAuth, Auth } from "firebase-admin/auth";
+import { getFirestore, Firestore } from "firebase-admin/firestore";
 import firebaseAppConfig from "./firebase-applet-config.json";
 
 dotenv.config();
 
 const app = express();
 const PORT = 3000;
-const FIREBASE_PROJECT_ID = firebaseAppConfig.projectId || "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
 const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
 
-// Initialize Firebase Admin SDK safely
-if (!getApps().length) {
-  try {
-    initializeApp({
-      projectId: FIREBASE_PROJECT_ID,
-    });
-    console.log("[Firebase Admin] Inicializado com sucesso para o projeto:", FIREBASE_PROJECT_ID);
-  } catch (adminInitErr) {
-    console.warn("[Firebase Admin] Inicialização sem credenciais completas:", adminInitErr);
+// =================================================================
+// Firebase Admin Singleton & Credential Management
+// =================================================================
+
+function formatPrivateKey(rawKey: string | undefined): string | undefined {
+  if (!rawKey) return undefined;
+  // Handle literal escaped \n strings from Vercel / environment configs
+  let formatted = rawKey.replace(/\\n/g, "\n");
+  if (formatted.startsWith('"') && formatted.endsWith('"')) {
+    formatted = formatted.slice(1, -1).replace(/\\n/g, "\n");
   }
+  return formatted.trim();
+}
+
+const FIREBASE_PROJECT_ID =
+  process.env.FIREBASE_PROJECT_ID ||
+  process.env.VITE_FIREBASE_PROJECT_ID ||
+  (firebaseAppConfig as any)?.projectId ||
+  "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
+
+let adminAppInstance: App | null = null;
+let adminAuthInstance: Auth | null = null;
+let adminFirestoreInstance: Firestore | null = null;
+
+export function getFirebaseAdminApp(): App | null {
+  if (adminAppInstance) return adminAppInstance;
+
+  const existingApps = getApps();
+  if (existingApps.length > 0) {
+    adminAppInstance = existingApps[0];
+    return adminAppInstance;
+  }
+
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
+  const privateKey = formatPrivateKey(rawPrivateKey);
+
+  try {
+    if (clientEmail && privateKey) {
+      adminAppInstance = initializeApp({
+        credential: cert({
+          projectId: FIREBASE_PROJECT_ID,
+          clientEmail,
+          privateKey,
+        }),
+        projectId: FIREBASE_PROJECT_ID,
+      });
+      console.log(`[Firebase Admin] Inicializado com Service Account (${clientEmail}) para projeto: ${FIREBASE_PROJECT_ID}`);
+    } else {
+      adminAppInstance = initializeApp({
+        projectId: FIREBASE_PROJECT_ID,
+      });
+      console.log(`[Firebase Admin] Inicializado com Project ID (${FIREBASE_PROJECT_ID}) em modo padrão.`);
+    }
+  } catch (err: any) {
+    console.warn(`[Firebase Admin Notice] Inicialização em modo resiliente:`, err?.message || err);
+    if (getApps().length > 0) {
+      adminAppInstance = getApps()[0];
+    }
+  }
+
+  return adminAppInstance;
+}
+
+export function getAdminAuth(): Auth | null {
+  if (!adminAuthInstance) {
+    const adminApp = getFirebaseAdminApp();
+    if (adminApp) {
+      try {
+        adminAuthInstance = getAuth(adminApp);
+      } catch (err: any) {
+        console.warn("[Firebase Admin Auth Warning] Não foi possível carregar Auth Admin:", err?.message || err);
+      }
+    }
+  }
+  return adminAuthInstance;
+}
+
+export function getAdminFirestore(): Firestore | null {
+  if (!adminFirestoreInstance) {
+    const adminApp = getFirebaseAdminApp();
+    if (adminApp) {
+      const dbId =
+        (firebaseAppConfig as any)?.firestoreDatabaseId ||
+        process.env.FIRESTORE_DATABASE_ID ||
+        "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
+      try {
+        adminFirestoreInstance = getFirestore(adminApp, dbId);
+      } catch {
+        try {
+          adminFirestoreInstance = getFirestore(adminApp);
+        } catch (e2: any) {
+          console.warn("[Firebase Admin Firestore Warning] Não foi possível carregar Firestore Admin:", e2?.message || e2);
+        }
+      }
+    }
+  }
+  return adminFirestoreInstance;
+}
+
+// Eager initialization safely guarded
+try {
+  getFirebaseAdminApp();
+} catch (e) {
+  console.warn("[Firebase Admin Boot Notice]:", e);
 }
 
 app.use(express.json({ limit: "10mb" }));
@@ -133,9 +227,10 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
   if (!token) return next();
 
   try {
-    if (getApps().length) {
+    const adminAuth = getAdminAuth();
+    if (adminAuth) {
       try {
-        const decoded = await getAuth().verifyIdToken(token);
+        const decoded = await adminAuth.verifyIdToken(token);
         const isRoot = decoded.email === ROOT_ADMIN_EMAIL;
         const isAdmin = isRoot || decoded.role === "ADMIN" || decoded.admin === true;
 
@@ -148,7 +243,7 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
         };
         return next();
       } catch (_adminErr) {
-        // Fallback to payload validation if offline or local token
+        // Fallback to payload validation if token verify fails due to network/creds
       }
     }
 
@@ -336,7 +431,7 @@ app.use((_req, _res, next) => {
 });
 
 // API System Configuration Endpoints (Works seamlessly online, in serverless & container environments)
-app.get("/api/system/config", (req: Request, res: Response) => {
+app.get(["/api/system/config", "/system/config"], (req: Request, res: Response) => {
   try {
     const config = getValidatedSystemConfig();
     return res.status(200).json({
@@ -363,7 +458,7 @@ app.get("/api/system/config", (req: Request, res: Response) => {
   }
 });
 
-app.post("/api/system/config", requireAdmin, (req: Request, res: Response) => {
+app.post(["/api/system/config", "/system/config"], requireAdmin, (req: Request, res: Response) => {
   try {
     if (!req.body || typeof req.body !== "object") {
       console.warn("[System Config POST Warning] Corpo da requisição ausente ou inválido:", {
@@ -412,7 +507,7 @@ app.post("/api/system/config", requireAdmin, (req: Request, res: Response) => {
 });
 
 // Secure Administrative Master Wipe Endpoint
-app.post("/api/admin/master-wipe", requireAuth, requireAdmin, async (req: Request, res: Response) => {
+app.post(["/api/admin/master-wipe", "/admin/master-wipe"], requireAuth, requireAdmin, async (req: Request, res: Response) => {
   const adminUid = req.authUser!.uid;
   const adminEmail = req.authUser!.email || "root_admin";
   const { reauthConfirmed, confirmationWord } = req.body || {};
@@ -428,8 +523,8 @@ app.post("/api/admin/master-wipe", requireAuth, requireAdmin, async (req: Reques
 
   try {
     const deletedCounts: Record<string, number> = { items: 0, claims: 0, comments: 0, notifications: 0 };
-    if (getApps().length) {
-      const firestore = getFirestore();
+    const firestore = getAdminFirestore();
+    if (firestore) {
       const collectionsToWipe = ["items", "claims", "comments", "notifications", "backup_logs", "error_logs"];
       for (const colName of collectionsToWipe) {
         const snap = await firestore.collection(colName).get();
@@ -482,7 +577,7 @@ app.post("/api/admin/master-wipe", requireAuth, requireAdmin, async (req: Reques
 });
 
 // API Health Check & System Monitoring
-app.get("/api/health", (_req, res) => {
+app.get(["/api/health", "/health"], (_req, res) => {
   try {
     const memUsage = process.memoryUsage ? Math.round(process.memoryUsage().heapUsed / 1024 / 1024) : 0;
     const uptimeSec = Math.floor((Date.now() - serverStartTime) / 1000);
@@ -506,7 +601,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 // Analytics Tracking Endpoint (Google Analytics + Firebase Backend Receiver)
-app.post("/api/analytics/track", (req: Request, res: Response) => {
+app.post(["/api/analytics/track", "/analytics/track"], (req: Request, res: Response) => {
   try {
     if (!req.body || typeof req.body !== "object") {
       console.warn("[Analytics Track Warning] Payload inválido recebido em /api/analytics/track", {
@@ -559,19 +654,18 @@ app.post("/api/analytics/track", (req: Request, res: Response) => {
     console.error("[Analytics Track Error] Falha ao processar telemetria:", {
       message: err?.message || String(err),
       stack: err?.stack,
-      ip: req.ip,
+      ip: req.ip || req.socket.remoteAddress,
       timestamp: new Date().toISOString(),
     });
-    return res.status(500).json({
-      success: false,
-      error: "Erro interno ao processar telemetria de analíticos.",
-      details: process.env.NODE_ENV !== "production" ? err?.message : undefined,
+    return res.status(200).json({
+      success: true,
+      warning: "Telemetria processada em modo fallback de segurança.",
     });
   }
 });
 
 // Analytics Dashboard Metrics Endpoint
-app.get("/api/analytics/metrics", (req: Request, res: Response) => {
+app.get(["/api/analytics/metrics", "/analytics/metrics"], (req: Request, res: Response) => {
   try {
     const memoryHeap = process.memoryUsage ? Math.round(process.memoryUsage().heapUsed / 1024 / 1024) : 0;
     const uptimeSec = Math.floor((Date.now() - (serverStartTime || Date.now())) / 1000);
@@ -610,7 +704,7 @@ app.get("/api/analytics/metrics", (req: Request, res: Response) => {
 });
 
 // AI Endpoint: Extrair detalhes de um objeto com base no relato ou imagem
-app.post("/api/ai/analyze-object", requireAuth, aiRateLimiter, async (req, res) => {
+app.post(["/api/ai/analyze-object", "/ai/analyze-object"], requireAuth, aiRateLimiter, async (req, res) => {
   const userId = req.authUser!.uid;
   const userEmail = req.authUser?.email;
   const userRole = req.authUser?.role;
@@ -761,7 +855,7 @@ A resposta DEVE ser estritamente no formato JSON definido no schema.`;
 });
 
 // Dedicated Vision & Image Understanding Endpoint using gemini-3.1-pro-preview
-app.post("/api/ai/analyze-image", requireAuth, aiRateLimiter, async (req, res) => {
+app.post(["/api/ai/analyze-image", "/ai/analyze-image"], requireAuth, aiRateLimiter, async (req, res) => {
   const userId = req.authUser!.uid;
   const userEmail = req.authUser?.email;
   const userRole = req.authUser?.role;
@@ -931,7 +1025,7 @@ Retorne um JSON rigorosamente estruturado conforme o schema.`;
 });
 
 // AI Endpoint Fast Query Expansion / Quick Auto-Tagging using gemini-3.1-flash-lite
-app.post("/api/ai/quick-tag", requireAuth, aiRateLimiter, async (req, res) => {
+app.post(["/api/ai/quick-tag", "/ai/quick-tag"], requireAuth, aiRateLimiter, async (req, res) => {
   const userId = req.authUser!.uid;
   const userEmail = req.authUser?.email;
   const userRole = req.authUser?.role;
@@ -1006,7 +1100,7 @@ app.post("/api/ai/quick-tag", requireAuth, aiRateLimiter, async (req, res) => {
 });
 
 // AI Endpoint: Comparação de similaridade textual e semântica entre novo item e existentes
-app.post("/api/ai/match-similarity", requireAuth, aiRateLimiter, async (req, res) => {
+app.post(["/api/ai/match-similarity", "/ai/match-similarity"], requireAuth, aiRateLimiter, async (req, res) => {
   const userId = req.authUser!.uid;
   const userEmail = req.authUser?.email;
   const userRole = req.authUser?.role;
@@ -1161,7 +1255,7 @@ Calcule uma pontuação de similaridade de 0 a 100 para cada um. Retorne apenas 
 });
 
 // Firebase Cloud Messaging Push Notification Dispatch Endpoint
-app.post("/api/fcm/send-match-alert", requireAuth, generalRateLimiter, async (req, res) => {
+app.post(["/api/fcm/send-match-alert", "/fcm/send-match-alert"], requireAuth, generalRateLimiter, async (req, res) => {
   const userId = req.authUser!.uid;
   const userEmail = req.authUser?.email;
   const userRole = req.authUser?.role;
@@ -1341,7 +1435,7 @@ async function sendFeedbackToDiscord(ticket: {
   }
 }
 
-app.post("/api/support/send-feedback", generalRateLimiter, async (req, res) => {
+app.post(["/api/support/send-feedback", "/support/send-feedback"], generalRateLimiter, async (req, res) => {
   try {
     const { name, email, category, subject, message, priority, clientDiagnostics } = req.body;
 
@@ -1653,7 +1747,7 @@ async function sendNovoAchadoToDiscord(item: {
   }
 }
 
-app.post("/api/items/notify-novos-achados", generalRateLimiter, async (req, res) => {
+app.post(["/api/items/notify-novos-achados", "/items/notify-novos-achados"], generalRateLimiter, async (req, res) => {
   try {
     const item = req.body?.item || req.body;
     if (!item || !item.title) {
@@ -1846,7 +1940,7 @@ async function sendNovaPerdaToDiscord(item: {
   }
 }
 
-app.post("/api/items/notify-novas-perdas", generalRateLimiter, async (req, res) => {
+app.post(["/api/items/notify-novas-perdas", "/items/notify-novas-perdas"], generalRateLimiter, async (req, res) => {
   try {
     const item = req.body?.item || req.body;
     if (!item || !item.title) {
@@ -1883,7 +1977,7 @@ app.post("/api/items/notify-novas-perdas", generalRateLimiter, async (req, res) 
 
 
 // Gemini Semantic Search Endpoint (Home Search Bar NL Search)
-app.post("/api/gemini/semantic-search", requireAuth, aiRateLimiter, async (req, res) => {
+app.post(["/api/gemini/semantic-search", "/gemini/semantic-search"], requireAuth, aiRateLimiter, async (req, res) => {
   const userId = req.authUser!.uid;
   const userEmail = req.authUser?.email;
   const userRole = req.authUser?.role;
@@ -2062,7 +2156,7 @@ Retorne a lista com os IDs dos itens correspondentes, nota de relevância de 0 a
 });
 
 // Dedicated AI Security & Audit Logs Query Endpoint
-app.get("/api/ai/audit-logs", requireAuth, requireAdmin, (_req, res) => {
+app.get(["/api/ai/audit-logs", "/ai/audit-logs"], requireAuth, requireAdmin, (_req, res) => {
   res.json({
     success: true,
     totalRecords: aiAuditLogs.length,
@@ -2071,7 +2165,7 @@ app.get("/api/ai/audit-logs", requireAuth, requireAdmin, (_req, res) => {
 });
 
 // Endpoint to export comprehensive monitoring & performance diagnostic logs
-app.get("/api/monitoring/export-logs", (req, res) => {
+app.get(["/api/monitoring/export-logs", "/monitoring/export-logs"], (req, res) => {
   try {
     const memory = process.memoryUsage();
     const payload = {
@@ -2113,7 +2207,7 @@ app.get("/api/monitoring/export-logs", (req, res) => {
 });
 
 // API Root Status Endpoint
-app.get("/api", (_req, res) => {
+app.get(["/api", "/api/status"], (_req, res) => {
   res.json({
     status: "ok",
     service: "IFPR Achados & Perdidos Backend API",
@@ -2124,6 +2218,26 @@ app.get("/api", (_req, res) => {
       nodeEnv: process.env.NODE_ENV || "development",
     },
   });
+});
+
+// Global Express Error Handler Middleware
+app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
+  console.error("[Global Error Handler] Exceção capturada no servidor:", {
+    message: err?.message || String(err),
+    stack: err?.stack,
+    method: req.method,
+    url: req.originalUrl || req.url,
+    ip: req.ip || req.socket.remoteAddress,
+    timestamp: new Date().toISOString(),
+  });
+
+  if (!res.headersSent) {
+    res.status(500).json({
+      success: false,
+      error: "Erro interno no servidor do Localiza+ IFPR.",
+      details: process.env.NODE_ENV !== "production" ? err?.message : undefined,
+    });
+  }
 });
 
 // Serve frontend assets
@@ -2149,9 +2263,19 @@ async function startServer() {
       }
     }
   } else {
-    app.use(express.static(distPath));
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+    }
     app.get("*", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+      const indexPath = path.join(distPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).json({
+          error: "Not Found",
+          message: "Frontend static files not found in build directory.",
+        });
+      }
     });
   }
 
@@ -2167,3 +2291,4 @@ if (!process.env.VERCEL && process.env.NODE_ENV !== "test") {
 }
 
 export default app;
+
