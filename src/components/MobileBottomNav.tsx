@@ -12,11 +12,15 @@ import {
 } from "lucide-react";
 
 export const MobileBottomNav: React.FC = () => {
-  const { activeTab, setActiveTab, currentUser, language } = useApp();
+  const { activeTab, setActiveTab, currentUser, language, requestAuthForRegistration } = useApp();
 
   const handleTab = (tab: "home" | "lost" | "found" | "register" | "profile" | "dashboard" | "image_analyzer") => {
     vibrateClick();
-    setActiveTab(tab);
+    if (tab === "register") {
+      requestAuthForRegistration();
+    } else {
+      setActiveTab(tab);
+    }
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 

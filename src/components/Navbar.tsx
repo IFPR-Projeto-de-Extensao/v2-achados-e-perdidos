@@ -59,6 +59,9 @@ export const Navbar: React.FC = () => {
     syncOfflineQueue,
     items,
     setSelectedItemForDetail,
+    isGuest,
+    isAuthenticated,
+    requestAuthForRegistration,
   } = useApp();
 
   const { isInstalled, promptInstall } = usePWA();
@@ -77,14 +80,17 @@ export const Navbar: React.FC = () => {
 
   const handleNavClick = (tab: "home" | "lost" | "found" | "register" | "dashboard" | "profile" | "image_analyzer") => {
     vibrateClick();
-    setActiveTab(tab);
+    if (tab === "register") {
+      requestAuthForRegistration();
+    } else {
+      setActiveTab(tab);
+    }
     setMobileMenuOpen(false);
   };
 
   const handleRegisterClick = (type: "PERDIDO" | "ENCONTRADO") => {
     vibrateClick();
-    setRegisterTypeSelection(type);
-    setActiveTab("register");
+    requestAuthForRegistration(type);
     setMobileMenuOpen(false);
   };
 

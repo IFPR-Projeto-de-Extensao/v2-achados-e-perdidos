@@ -4,10 +4,63 @@ import autoTable from "jspdf-autotable";
 import { LostFoundItem } from "../types";
 import { useApp } from "../context/AppContext";
 import { usePossessionVerification } from "../hooks/usePossessionVerification";
-import { formatDate, formatSafeDate, formatDateTime, formatSafeDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, isItemNew, getItemAgeText } from "../lib/utils";
+import { formatDateTime, formatSafeDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, isItemNew, getItemAgeText } from "../lib/utils";
 import { getItemPublicUrl, getItemQrValue } from "../lib/qrCodeUtils";
 import { QRCodeSVG } from "qrcode.react";
 import { RestrictedQRViewModal } from "./RestrictedQRViewModal";
+
+/**
+ * Utilitário 'formatSafeDate' para validação e formatação segura de datas (Timestamp, string, number ou Date).
+ * Valida todas as propriedades de data antes de renderizar e retorna 'Data não informada'
+ * em caso de dados nulos, indefinidos ou malformatados, eliminando completamente falhas com 'RangeError'.
+ */
+export function formatSafeDate(input: unknown, fallback = "Data não informada"): string {
+  if (input === null || input === undefined || input === "" || input === "null" || input === "undefined") {
+    return fallback;
+  }
+
+  // 1. Suporte a Firestore Timestamp com método .toDate()
+  if (typeof input === "object" && input !== null && typeof (input as any).toDate === "function") {
+    try {
+      const d = (input as any).toDate();
+      if (d instanceof Date && !isNaN(d.getTime())) {
+        return new Intl.DateTimeFormat("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+        }).format(d);
+      }
+    } catch {
+      return fallback;
+    }
+  }
+
+  // 2. Parser seguro resiliente contra strings e números
+  const date = safeParseDate(input);
+  if (!date || isNaN(date.getTime())) {
+    return fallback;
+  }
+
+  try {
+    return new Intl.DateTimeFormat("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(date);
+  } catch {
+    try {
+      const d = String(date.getDate()).padStart(2, "0");
+      const m = String(date.getMonth() + 1).padStart(2, "0");
+      const y = date.getFullYear();
+      return `${d}/${m}/${y}`;
+    } catch {
+      return fallback;
+    }
+  }
+}
+
+// Alias local para compatibilidade
+const formatDate = formatSafeDate;
 import {
   X,
   MapPin,

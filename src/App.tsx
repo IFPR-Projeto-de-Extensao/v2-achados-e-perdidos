@@ -44,6 +44,9 @@ const MainContent: React.FC = () => {
     currentUser,
     items,
     addToast,
+    isGuest,
+    isAuthenticated,
+    requestAuthForRegistration,
   } = useApp();
 
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
@@ -76,7 +79,7 @@ const MainContent: React.FC = () => {
           break;
         case "R":
           e.preventDefault();
-          setActiveTab("register");
+          requestAuthForRegistration();
           break;
         case "D":
           e.preventDefault();
@@ -175,10 +178,18 @@ const MainContent: React.FC = () => {
         const actionParam = params.get("action");
 
         if (tabParam && (APP_VALID_TABS as readonly string[]).includes(tabParam)) {
-          setActiveTab(tabParam as AppTabType);
+          if (tabParam === "register") {
+            requestAuthForRegistration();
+          } else {
+            setActiveTab(tabParam as AppTabType);
+          }
         }
         if (actionParam === "scan") {
           setQrScannerOpen(true);
+        } else if (actionParam === "register_lost") {
+          requestAuthForRegistration("PERDIDO");
+        } else if (actionParam === "register_found") {
+          requestAuthForRegistration("ENCONTRADO");
         }
       }
 

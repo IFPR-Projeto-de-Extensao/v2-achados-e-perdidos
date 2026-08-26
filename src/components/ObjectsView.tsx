@@ -1055,12 +1055,12 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
             </div>
           </div>
         ) : (
-          /* ADAPTATIVE GRID MODE (RNF03: CSS Grid with auto-fit and minmax for fluid responsive cards) */
+          /* RESPONSIVE GRID MODE (grid-cols-1 md:grid-cols-2 lg:grid-cols-3 for 320px mobile to desktop) */
           <div
             className={
               layoutViewMode === "CARDS"
-                ? "grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-6 w-full max-w-full"
-                : "grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] md:hidden lg:grid gap-6 w-full max-w-full"
+                ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-full min-w-0"
+                : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 md:hidden lg:grid gap-6 w-full max-w-full min-w-0"
             }
           >
             {filteredItems.map((item) => (

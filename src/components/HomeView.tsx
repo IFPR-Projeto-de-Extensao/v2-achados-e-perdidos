@@ -44,6 +44,7 @@ export const HomeView: React.FC = () => {
     setQrScannerOpen,
     t,
     language,
+    requestAuthForRegistration,
   } = useApp();
 
   const [homeSearch, setHomeSearch] = useState<string>("");
@@ -173,8 +174,7 @@ export const HomeView: React.FC = () => {
 
   const handleRegister = (type: "PERDIDO" | "ENCONTRADO") => {
     vibrateClick();
-    setRegisterTypeSelection(type);
-    setActiveTab("register");
+    requestAuthForRegistration(type);
   };
 
   const handleSelectExampleQuery = (queryText: string) => {
@@ -553,7 +553,7 @@ export const HomeView: React.FC = () => {
 
         {/* Visual Loading State Skeletons while Gemini is processing */}
         {isSearchingSemantic ? (
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-6 w-full max-w-full">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-full min-w-0">
             {[1, 2, 3].map((skeletonId) => (
               <div
                 key={skeletonId}
@@ -592,7 +592,7 @@ export const HomeView: React.FC = () => {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-6 w-full max-w-full">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-full min-w-0">
             {displayedItems.map((item) => {
               const semMatch = semanticResults?.find((r) => r.itemId === item.id);
               return (

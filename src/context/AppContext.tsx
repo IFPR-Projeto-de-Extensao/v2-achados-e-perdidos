@@ -17,6 +17,7 @@ import {
   DocumentTemplate,
   GeneratedDocumentRecord,
   ProjectSettings,
+  PendingPostLoginAction,
 } from "../types";
 import { DEFAULT_DOCUMENT_TEMPLATES } from "../lib/defaultDocumentTemplates";
 import { DEFAULT_PROJECT_SETTINGS } from "../lib/projectSettingsConstants";
@@ -122,6 +123,15 @@ interface AppContextType {
   firebaseUser: FirebaseUser | null;
   authLoading: boolean;
   isAuthLoading: boolean;
+  isAuthenticated: boolean;
+  isGuest: boolean;
+  pendingPostLoginAction: PendingPostLoginAction | null;
+  setPendingPostLoginAction: (action: PendingPostLoginAction | null) => void;
+  requestAuthForRegistration: (
+    registerType?: "PERDIDO" | "ENCONTRADO",
+    prefilledItem?: Partial<LostFoundItem> | null,
+    customMsg?: string
+  ) => boolean;
   authModalOpen: boolean;
   setAuthModalOpen: (open: boolean) => void;
   claims: ItemClaim[];
@@ -1333,6 +1343,92 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [registerTypeSelection, setRegisterTypeSelection] = useState<"PERDIDO" | "ENCONTRADO">("PERDIDO");
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  // Authenticated state check: True ONLY when signed into Firebase Auth or valid non-guest user session
+  const isAuthenticated = Boolean(
+    firebaseUser ||
+      (currentUser &&
+        currentUser.id &&
+        currentUser.id !== DEFAULT_GUEST_USER.id &&
+        currentUser.id !== "guest_visitor" &&
+        !currentUser.id.startsWith("guest"))
+  );
+  const isGuest = !isAuthenticated;
+
+  // Pending Post-Login Action (intent to register an item or open a specific form after auth)
+  const [pendingPostLoginAction, setPendingPostLoginActionState] = useState<PendingPostLoginAction | null>(() => {
+    try {
+      const saved = sessionStorage.getItem("ifpr_pending_post_login");
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (_) {}
+    return null;
+  });
+
+  const setPendingPostLoginAction = (action: PendingPostLoginAction | null) => {
+    setPendingPostLoginActionState(action);
+    try {
+      if (action) {
+        sessionStorage.setItem("ifpr_pending_post_login", JSON.stringify(action));
+      } else {
+        sessionStorage.removeItem("ifpr_pending_post_login");
+      }
+    } catch (_) {}
+  };
+
+  // Request auth gate for registering an item (used across all navigation, buttons, shortcuts)
+  const requestAuthForRegistration = (
+    registerType?: "PERDIDO" | "ENCONTRADO",
+    prefilledItem?: Partial<LostFoundItem> | null,
+    customMsg?: string
+  ): boolean => {
+    if (registerType) {
+      setRegisterTypeSelection(registerType);
+    }
+    if (prefilledItem) {
+      setPrefilledItemFromAI(prefilledItem);
+    }
+
+    if (isAuthenticated) {
+      setActiveTab("register");
+      return true;
+    }
+
+    vibrateClick();
+    setPendingPostLoginAction({
+      action: "REGISTER_ITEM",
+      tab: "register",
+      registerType: registerType || registerTypeSelection,
+      prefilledItem: prefilledItem || prefilledItemFromAI,
+      message: customMsg || "É necessário fazer login para cadastrar um item.",
+      customMessage: customMsg || "Autenticação Obrigatória para Cadastro",
+    });
+    setAuthModalOpen(true);
+    addToast(customMsg || "É necessário fazer login para cadastrar um item.", "warning");
+    return false;
+  };
+
+  // Execute pending post-login action seamlessly (e.g. redirect to registration form)
+  useEffect(() => {
+    if (isAuthenticated && pendingPostLoginAction) {
+      const action = pendingPostLoginAction;
+      setPendingPostLoginAction(null);
+      if (action.registerType) {
+        setRegisterTypeSelection(action.registerType);
+      }
+      if (action.prefilledItem) {
+        setPrefilledItemFromAI(action.prefilledItem);
+      }
+      if (action.tab) {
+        setActiveTab(action.tab);
+      }
+      addToast(
+        "Você está autenticado! Agora você pode preencher e cadastrar o item.",
+        "success"
+      );
+    }
+  }, [isAuthenticated, pendingPostLoginAction]);
+
   const addToast = (text: string, type: "success" | "error" | "info" | "warning" = "info") => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts((prev) => [...prev, { id, text, type }]);
@@ -2157,8 +2253,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     try {
       localStorage.removeItem(LOCAL_STORAGE_CURRENT_USER_KEY);
+      sessionStorage.removeItem("ifpr_pending_post_login");
     } catch (_) {}
+    setPendingPostLoginActionState(null);
     setCurrentUser(DEFAULT_GUEST_USER);
+    if (activeTab === "register") {
+      setActiveTab("home");
+    }
     addToast("Sessão encerrada com sucesso.", "info");
   };
 
@@ -2232,6 +2333,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addItem = async (
     itemData: Omit<LostFoundItem, "id" | "createdAt" | "qrCodeId" | "registeredByUserId" | "registeredByName" | "registeredByRole">
   ): Promise<{ newItem: LostFoundItem; matches: AIMatchResult[] }> => {
+    // 🔒 Security Guard: Only authenticated users can register lost or found items
+    if (isGuest || !auth.currentUser) {
+      setPendingPostLoginAction({ tab: "register", registerType: itemData.type });
+      setAuthModalOpen(true);
+      addToast("É necessário fazer login para cadastrar um item.", "warning");
+      throw new Error("É necessário fazer login para cadastrar um item.");
+    }
+
     const uniqueNum = Math.floor(100 + Math.random() * 900);
     const newItemId = `ifpr-${uniqueNum}`;
     const safeTitle = String(itemData.title ?? "ITEM").substring(0, 10).toUpperCase().replace(/\s+/g, "");
@@ -2992,6 +3101,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         firebaseUser,
         authLoading,
         isAuthLoading: authLoading,
+        isAuthenticated,
+        isGuest,
+        pendingPostLoginAction,
+        setPendingPostLoginAction,
+        requestAuthForRegistration,
         authModalOpen,
         setAuthModalOpen,
         claims,

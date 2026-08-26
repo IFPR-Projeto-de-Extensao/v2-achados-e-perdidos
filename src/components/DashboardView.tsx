@@ -106,6 +106,7 @@ export const DashboardView: React.FC = () => {
     errorLogsList,
     sendNotificationToUser,
     darkMode,
+    requestAuthForRegistration,
   } = useApp();
 
   // Notification Modal State (Admin to Student)
@@ -867,8 +868,8 @@ export const DashboardView: React.FC = () => {
             </div>
           </div>
 
-          {/* Student Stats Cards (RNF03 Responsive CSS Grid) */}
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4">
+          {/* Student Stats Cards (Responsive CSS Grid) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-w-0">
             <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-2">
               <div className="flex items-center justify-between text-neutral-500">
                 <span className="text-xs font-bold uppercase tracking-wider">Minhas Ocorrências</span>
@@ -910,7 +911,7 @@ export const DashboardView: React.FC = () => {
                 Seus Objetos Cadastrados
               </h2>
               <button
-                onClick={() => setActiveTab("register")}
+                onClick={() => requestAuthForRegistration()}
                 className="px-4 py-2 rounded-xl bg-[#00843D] text-white text-xs font-bold hover:bg-[#006e33] transition-colors"
               >
                 + Registrar Novo Item

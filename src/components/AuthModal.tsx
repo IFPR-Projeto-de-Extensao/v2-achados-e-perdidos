@@ -21,6 +21,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     firebaseUser,
     addToast,
     setActiveTab,
+    pendingPostLoginAction,
   } = useApp();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [loading, setLoading] = useState(false);
@@ -203,6 +204,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
         {/* Body Content */}
         <div className="p-6 overflow-y-auto space-y-5">
+          {pendingPostLoginAction?.action === "REGISTER_ITEM" && (
+            <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 text-amber-800 dark:text-amber-200 text-xs flex items-start gap-3 shadow-xs">
+              <div className="p-2 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
+                <Shield className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <p className="font-extrabold text-xs text-amber-900 dark:text-amber-100">
+                  {pendingPostLoginAction.customMessage || "Autenticação Obrigatória para Cadastro"}
+                </p>
+                <p className="text-[11px] leading-relaxed text-amber-800/90 dark:text-amber-300/90 font-medium">
+                  Para garantir a segurança e rastreabilidade dos pertences no Campus Ivaiporã, apenas usuários cadastrados (alunos, servidores ou admin) podem registrar itens perdidos ou achados. Entre ou crie sua conta e você será redirecionado automaticamente ao formulário!
+                </p>
+              </div>
+            </div>
+          )}
+
           {(currentUser.id !== "guest_visitor" || firebaseUser) && (
             <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between">
               <div className="space-y-0.5">

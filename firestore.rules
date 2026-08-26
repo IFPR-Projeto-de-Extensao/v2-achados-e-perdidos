@@ -85,16 +85,14 @@ service cloud.firestore {
     // 2. Lost & Found Items Collection
     // ==========================================
     match /items/{itemId} {
-      // Public catalog read: anyone on campus can view lost & found objects
+      // Public catalog read: anyone on campus (including unauthenticated visitors) can view, search, and scan lost & found objects
       allow get: if true;
       allow list: if true;
 
-      // Creation: Authenticated user with their own uid or string identifier (ACADEMIC, ALUNO, SERVIDOR, ADMIN), or unauthenticated campus visitor/student
-      allow create: if (isSignedIn() && 
-                        (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
-                        (incoming().registeredByRole != 'ADMIN' || isAdmin() || isRootAdmin())) ||
-                       (!isSignedIn() && 
-                        incoming().registeredByRole != 'ADMIN');
+      // Creation: ONLY Authenticated users (request.auth != null) can register lost or found items
+      allow create: if isSignedIn() && 
+                    (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
+                    (incoming().registeredByRole != 'ADMIN' || isAdmin() || isRootAdmin());
 
       // Update: Admin, Servidor, or the item owner can update
       allow update: if isAdmin() ||
@@ -109,11 +107,10 @@ service cloud.firestore {
     match /found_items/{itemId} {
       allow get: if true;
       allow list: if true;
-      allow create: if (isSignedIn() && 
-                        (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
-                        (incoming().registeredByRole != 'ADMIN' || isAdmin() || isRootAdmin())) ||
-                       (!isSignedIn() && 
-                        incoming().registeredByRole != 'ADMIN');
+      // Creation: ONLY Authenticated users can register found items
+      allow create: if isSignedIn() && 
+                    (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
+                    (incoming().registeredByRole != 'ADMIN' || isAdmin() || isRootAdmin());
       allow update: if isAdmin() ||
                        isRootAdmin() ||
                        (isSignedIn() && (existing().registeredByUserId == request.auth.uid || incoming().registeredByUserId == request.auth.uid)) ||
@@ -124,11 +121,10 @@ service cloud.firestore {
     match /lost_items/{itemId} {
       allow get: if true;
       allow list: if true;
-      allow create: if (isSignedIn() && 
-                        (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
-                        (incoming().registeredByRole != 'ADMIN' || isAdmin() || isRootAdmin())) ||
-                       (!isSignedIn() && 
-                        incoming().registeredByRole != 'ADMIN');
+      // Creation: ONLY Authenticated users can register lost items
+      allow create: if isSignedIn() && 
+                    (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
+                    (incoming().registeredByRole != 'ADMIN' || isAdmin() || isRootAdmin());
       allow update: if isAdmin() ||
                        isRootAdmin() ||
                        (isSignedIn() && (existing().registeredByUserId == request.auth.uid || incoming().registeredByUserId == request.auth.uid)) ||

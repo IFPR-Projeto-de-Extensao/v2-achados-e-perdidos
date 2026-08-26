@@ -41,6 +41,7 @@ export const ImageAnalyzerView: React.FC = () => {
     setPrefilledItemFromAI,
     setSelectedItemForDetail,
     addToast,
+    requestAuthForRegistration,
   } = useApp();
 
   const [selectedImage, setSelectedImage] = useState<string>(
@@ -284,17 +285,17 @@ export const ImageAnalyzerView: React.FC = () => {
   const handleProceedToRegistration = () => {
     if (!analysis) return;
 
-    setPrefilledItemFromAI({
+    const prefilledData = {
       title: analysis.title,
       category: (analysis.category as ItemCategory) || "Outros",
       color: analysis.color,
       brand: analysis.brand,
       description: `${analysis.description}\n\n🔍 [Análise de Visão Gemini 3.1 Pro]\n• Estado: ${analysis.condition}\n• Marcas identificadas: ${analysis.distinctiveFeatures.join(", ")}`,
       imageUrl: selectedImage,
-    });
+    };
 
-    setActiveTab("register");
-    addToast("Dados preenchidos no formulário de cadastro!", "info");
+    setPrefilledItemFromAI(prefilledData);
+    requestAuthForRegistration("ENCONTRADO", prefilledData, "Faça login para cadastrar o objeto analisado pela IA.");
   };
 
   return (

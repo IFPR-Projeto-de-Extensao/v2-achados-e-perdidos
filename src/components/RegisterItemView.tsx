@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useApp } from "../context/AppContext";
+import { useRequireAuth } from "../hooks/useRequireAuth";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
 import { safeFetchJson, clientAnalyzeObject, clientAnalyzeImage } from "../lib/apiHelper";
@@ -34,6 +35,9 @@ import {
   Trash2,
   History,
   RotateCcw,
+  Lock,
+  LogIn,
+  ArrowRight,
 } from "lucide-react";
 
 const DRAFT_STORAGE_KEY = "ifpr_achados_register_draft";
@@ -51,7 +55,18 @@ export const RegisterItemView: React.FC = () => {
     prefilledItemFromAI,
     setPrefilledItemFromAI,
     isOnline,
+    isAuthenticated,
+    requestAuthForRegistration,
+    setAuthModalOpen,
   } = useApp();
+
+  // Hook institucional de verificação de autenticação (redireciona visitantes não autenticados)
+  const { isGuest, requireAuth } = useRequireAuth({
+    redirectOnUnauth: true,
+    targetTab: "register",
+    registerType: registerTypeSelection,
+    customMessage: "Apenas usuários autenticados podem cadastrar novos itens no IFPR. Faça login para continuar.",
+  });
 
   // Form State
   const [type, setType] = useState<"PERDIDO" | "ENCONTRADO">(registerTypeSelection);
@@ -509,6 +524,28 @@ export const RegisterItemView: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     vibrateCritical();
+
+    // Strict Auth Verification for Visitors
+    if (isGuest) {
+      requireAuth(
+        type,
+        {
+          title,
+          category,
+          type,
+          description,
+          color,
+          brand,
+          location,
+          date,
+          imageUrl,
+          contactInfo,
+        },
+        "Apenas usuários autenticados podem cadastrar novos itens. Faça login para continuar."
+      );
+      return;
+    }
+
     if (!title || !description || !location) {
       addToast("Preencha todos os campos obrigatórios.", "error");
       return;
@@ -541,6 +578,62 @@ export const RegisterItemView: React.FC = () => {
       setActiveTab(type === "PERDIDO" ? "lost" : "found");
     }
   };
+
+  // If user is a visitor/guest, render the friendly and secure Auth Guard Screen
+  if (isGuest) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 px-4 sm:px-6">
+        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-xl p-6 sm:p-10 text-center space-y-6">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-center text-amber-600 dark:text-amber-400">
+            <Lock className="w-8 h-8 sm:w-10 sm:h-10" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+              Autenticação Obrigatória
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+              Identifique-se para Cadastrar
+            </h1>
+            <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400 max-w-md mx-auto">
+              Para garantir a segurança, integridade e rastreabilidade dos registros no IFPR Campus Ivaiporã, apenas usuários autenticados podem cadastrar novos itens.
+            </p>
+          </div>
+
+          <div className="p-4 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200/80 dark:border-neutral-700/60 text-left space-y-2 text-xs sm:text-sm text-neutral-600 dark:text-neutral-300">
+            <div className="flex items-center gap-2 font-bold text-neutral-800 dark:text-neutral-200">
+              <ShieldCheck className="w-4 h-4 text-[#00843D]" /> O que você pode fazer como visitante:
+            </div>
+            <ul className="list-disc list-inside space-y-1 pl-1 text-neutral-500 dark:text-neutral-400">
+              <li>Consultar o mural de itens perdidos e encontrados</li>
+              <li>Utilizar a busca e filtros avançados</li>
+              <li>Escanear QR Codes de etiquetas nos murais do campus</li>
+              <li>Visualizar detalhes públicos dos pertences</li>
+            </ul>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <button
+              id="btn-guest-login-to-register"
+              onClick={() => {
+                requireAuth(type);
+              }}
+              className="flex-1 inline-flex items-center justify-center gap-2 py-3.5 px-6 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-bold text-sm sm:text-base shadow-lg shadow-emerald-700/20 active:scale-[0.98] transition-all cursor-pointer"
+            >
+              <LogIn className="w-5 h-5" /> Fazer Login ou Criar Conta
+            </button>
+            <button
+              id="btn-guest-back-to-lost"
+              onClick={() => setActiveTab("lost")}
+              className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold text-sm transition-all cursor-pointer"
+            >
+              Explorar Itens
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-16">

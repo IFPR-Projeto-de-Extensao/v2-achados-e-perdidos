@@ -380,6 +380,17 @@ export interface DocumentTemplate {
   createdByEmail?: string;
 }
 
+export type AppTab = "home" | "lost" | "found" | "register" | "dashboard" | "profile" | "image_analyzer";
+
+export interface PendingPostLoginAction {
+  action?: "REGISTER_ITEM" | "VIEW_ITEM" | "NAVIGATE";
+  tab: AppTab;
+  registerType?: "PERDIDO" | "ENCONTRADO";
+  prefilledItem?: Partial<LostFoundItem> | null;
+  message?: string;
+  customMessage?: string;
+}
+
 export interface GeneratedDocumentRecord {
   id: string;
   templateId: string;
