@@ -102,32 +102,32 @@ export const Navbar: React.FC = () => {
       {/* Top green accent border bar IFPR */}
       <div className="h-1 w-full bg-gradient-to-r from-[#00843D] via-[#00843D] to-[#C8102E]" />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+      <div className="max-w-7xl mx-auto px-2.5 xs:px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-14 sm:h-16">
           {/* Logo & Brand Name */}
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-1.5 xs:space-x-2.5 sm:space-x-3 min-w-0">
             <Link
               to="/"
-              className="flex items-center space-x-3 cursor-pointer select-none"
+              className="flex items-center space-x-1.5 xs:space-x-2 sm:space-x-3 cursor-pointer select-none min-w-0"
               title="Ir para a página inicial do Localiza+ IFPR"
             >
-              <div className="relative flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 hover:scale-105 transition-transform shrink-0">
+              <div className="relative flex items-center justify-center w-7 h-7 xs:w-8 xs:h-8 sm:w-10 sm:h-10 hover:scale-105 transition-transform shrink-0">
                 <img
                   src="/ifpr-logo.svg"
                   alt="IFPR Logo"
                   className="w-full h-full object-contain select-none drop-shadow-xs"
                 />
               </div>
-              <div>
-                <div className="flex items-center space-x-1.5">
-                  <span className="font-extrabold text-lg tracking-tight text-neutral-900 dark:text-white">
+              <div className="min-w-0">
+                <div className="flex items-center space-x-1 xs:space-x-1.5">
+                  <span className="font-extrabold text-base xs:text-lg sm:text-xl tracking-tight text-neutral-900 dark:text-white truncate">
                     Localiza+
                   </span>
-                  <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 border border-[#00843D]/20">
+                  <span className="px-1 xs:px-1.5 py-0.2 text-[9px] xs:text-[10px] font-bold rounded bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 border border-[#00843D]/20 shrink-0">
                     IFPR
                   </span>
                 </div>
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 hidden sm:block">
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 hidden sm:block truncate">
                   Achados &amp; Perdidos • Campus Ivaiporã
                 </p>
               </div>
@@ -143,16 +143,16 @@ export const Navbar: React.FC = () => {
                     ? `Modo Offline ativado. ${pendingSyncCount} ocorrência(s) salva(s) no IndexedDB aguardando sincronização.`
                     : "Modo Offline: Formulários e dados são preservados com segurança localmente via IndexedDB."
                 }
-                className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-bold animate-in fade-in duration-300"
+                className="hidden xs:flex items-center space-x-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] font-bold animate-in fade-in duration-300 shrink-0"
               >
-                <span className="relative flex h-2 w-2">
+                <span className="relative flex h-1.5 w-1.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
                 </span>
-                <WifiOff className="w-3.5 h-3.5" />
-                <span className="text-[11px] tracking-tight whitespace-nowrap">Modo Offline</span>
+                <WifiOff className="w-3 h-3" />
+                <span className="text-[10px] tracking-tight whitespace-nowrap hidden sm:inline">Modo Offline</span>
                 {pendingSyncCount > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-extrabold">
+                  <span className="px-1 py-0.2 rounded-full bg-amber-500 text-white text-[9px] font-extrabold">
                     {pendingSyncCount}
                   </span>
                 )}
@@ -164,10 +164,10 @@ export const Navbar: React.FC = () => {
                   syncOfflineQueue();
                 }}
                 title="Sincronizar dados pendentes do IndexedDB com o Firestore"
-                className="flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-[#00843D]/10 hover:bg-[#00843D]/20 border border-[#00843D]/30 text-[#00843D] dark:text-green-400 text-xs font-bold transition-colors animate-pulse"
+                className="hidden xs:flex items-center space-x-1 px-2 py-0.5 rounded-full bg-[#00843D]/10 hover:bg-[#00843D]/20 border border-[#00843D]/30 text-[#00843D] dark:text-green-400 text-[10px] font-bold transition-colors animate-pulse shrink-0"
               >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span className="text-[11px]">Sincronizar ({pendingSyncCount})</span>
+                <RefreshCw className="w-3 h-3" />
+                <span className="text-[10px]">Sincronizar ({pendingSyncCount})</span>
               </button>
             ) : null}
           </div>
@@ -263,13 +263,13 @@ export const Navbar: React.FC = () => {
           </nav>
 
           {/* Right Action Icons & Profile Switcher */}
-          <div className="flex items-center space-x-2 sm:space-x-3">
-            {/* Quick Support Link to /suporte */}
+          <div className="flex items-center space-x-1 xs:space-x-1.5 sm:space-x-2.5 shrink-0">
+            {/* Quick Support Link to /suporte - Desktop only */}
             <Link
               to="/suporte"
               id="navbar-quick-support-btn"
               title="Central de Suporte & Dúvidas"
-              className={`p-2 rounded-xl transition-colors relative ${
+              className={`hidden sm:inline-flex p-2 rounded-xl transition-colors relative ${
                 routeKey === "support" || routeKey === "support_feedback" || routeKey === "support_bug"
                   ? "bg-[#00843D]/15 text-[#00843D] dark:text-green-400"
                   : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
@@ -278,13 +278,13 @@ export const Navbar: React.FC = () => {
               <LifeBuoy className="w-5 h-5" />
             </Link>
 
-            {/* Quick QR Code Scanner Shortcut */}
+            {/* Quick QR Code Scanner Shortcut - Desktop only */}
             <button
               onClick={handleQrScannerClick}
               role="button"
               aria-label="Abrir Scanner de QR Code de Devolução"
               title="Escanear QR Code de Devolução"
-              className="p-2 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors relative"
+              className="hidden sm:inline-flex p-2 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors relative"
             >
               <QrCode className="w-5 h-5 text-[#00843D] dark:text-green-400" />
             </button>
@@ -300,15 +300,15 @@ export const Navbar: React.FC = () => {
                 aria-label={`Notificações: ${unreadCount} não lidas`}
                 aria-expanded={notificationsOpen}
                 aria-haspopup="dialog"
-                className={`p-2 rounded-xl transition-colors relative ${
+                className={`p-1.5 xs:p-2 rounded-xl transition-colors relative ${
                   routeKey === "notifications"
                     ? "bg-[#00843D]/15 text-[#00843D] dark:text-green-400"
                     : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                 }`}
               >
-                <Bell className="w-5 h-5" />
+                <Bell className="w-4.5 h-4.5 xs:w-5 xs:h-5" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-1 right-1 w-4 h-4 bg-[#C8102E] text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
+                  <span className="absolute top-0.5 right-0.5 xs:top-1 xs:right-1 w-3.5 h-3.5 xs:w-4 xs:h-4 bg-[#C8102E] text-white text-[9px] xs:text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
                     {unreadCount}
                   </span>
                 )}
@@ -316,10 +316,10 @@ export const Navbar: React.FC = () => {
 
               {/* Notifications Dropdown Drawer */}
               {notificationsOpen && (
-                <div role="dialog" aria-label="Painel de Notificações do IFPR" className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-[#1E1E1E] rounded-2xl shadow-xl border border-neutral-200 dark:border-neutral-800 z-50 p-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-neutral-800">
-                    <h3 className="font-bold text-sm text-neutral-900 dark:text-white flex items-center gap-2">
-                      <Bell className="w-4 h-4 text-[#00843D]" /> Notificações do IFPR
+                <div role="dialog" aria-label="Painel de Notificações do IFPR" className="absolute right-0 mt-2 w-72 xs:w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-white dark:bg-[#1E1E1E] rounded-2xl shadow-xl border border-neutral-200 dark:border-neutral-800 z-50 p-3.5 xs:p-4">
+                  <div className="flex items-center justify-between pb-2.5 xs:pb-3 border-b border-neutral-200 dark:border-neutral-800">
+                    <h3 className="font-bold text-xs xs:text-sm text-neutral-900 dark:text-white flex items-center gap-1.5 xs:gap-2">
+                      <Bell className="w-3.5 h-3.5 xs:w-4 xs:h-4 text-[#00843D]" /> Notificações IFPR
                     </h3>
                     <div className="flex items-center space-x-2">
                       <button
@@ -328,7 +328,7 @@ export const Navbar: React.FC = () => {
                           setNotificationsOpen(false);
                           navigate("/notificacoes");
                         }}
-                        className="text-xs text-[#00843D] dark:text-green-400 hover:underline font-bold"
+                        className="text-[11px] xs:text-xs text-[#00843D] dark:text-green-400 hover:underline font-bold"
                       >
                         Ver todas
                       </button>
@@ -337,23 +337,23 @@ export const Navbar: React.FC = () => {
 
                   {/* FCM Push Notification Request Button */}
                   {!fcmPermissionGranted && (
-                    <div className="mt-3 p-2.5 rounded-xl bg-[#00843D]/10 border border-[#00843D]/20 flex items-center justify-between gap-2">
-                      <div className="text-[11px] text-[#00843D] dark:text-green-400 font-medium">
-                        Ative alertas em tempo real no seu navegador para devoluções.
+                    <div className="mt-2.5 xs:mt-3 p-2 xs:p-2.5 rounded-xl bg-[#00843D]/10 border border-[#00843D]/20 flex items-center justify-between gap-2">
+                      <div className="text-[10px] xs:text-[11px] text-[#00843D] dark:text-green-400 font-medium">
+                        Ative alertas em tempo real no navegador.
                       </div>
                       <button
                         onClick={() => {
                           vibrateClick();
                           requestNotificationPermission();
                         }}
-                        className="px-2.5 py-1 rounded-lg bg-[#00843D] text-white font-bold text-[10px] shrink-0 hover:bg-[#006830]"
+                        className="px-2 py-1 rounded-lg bg-[#00843D] text-white font-bold text-[9px] xs:text-[10px] shrink-0 hover:bg-[#006830]"
                       >
-                        Ativar Push FCM
+                        Ativar Push
                       </button>
                     </div>
                   )}
 
-                  <div className="mt-3 space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                  <div className="mt-2.5 xs:mt-3 space-y-2 max-h-64 sm:max-h-72 overflow-y-auto pr-1">
                     {userNotifications.length === 0 ? (
                       <p className="text-xs text-center py-6 text-neutral-500">
                         Nenhuma notificação recente.
@@ -372,19 +372,19 @@ export const Navbar: React.FC = () => {
                               if (it) setSelectedItemForDetail(it);
                             }
                           }}
-                          className={`p-3 rounded-xl text-xs transition-colors border cursor-pointer ${
+                          className={`p-2.5 xs:p-3 rounded-xl text-xs transition-colors border cursor-pointer ${
                             !n.read
                               ? "bg-[#00843D]/5 border-[#00843D]/20 dark:bg-[#00843D]/10 hover:bg-[#00843D]/10"
                               : "bg-neutral-50 dark:bg-neutral-800/50 border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                           }`}
                         >
                           <div className="flex justify-between items-start font-semibold text-neutral-900 dark:text-white mb-1">
-                            <span>{n.title}</span>
+                            <span className="truncate pr-2">{n.title}</span>
                             {!n.read && (
-                              <span className="w-2 h-2 rounded-full bg-[#00843D]" />
+                              <span className="w-2 h-2 rounded-full bg-[#00843D] shrink-0 mt-1" />
                             )}
                           </div>
-                          <p className="text-neutral-600 dark:text-neutral-300 leading-relaxed">
+                          <p className="text-[11px] xs:text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed line-clamp-2">
                             {n.message}
                           </p>
                         </div>
@@ -392,11 +392,11 @@ export const Navbar: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 mt-3 text-center">
+                  <div className="pt-2.5 xs:pt-3 border-t border-neutral-100 dark:border-neutral-800 mt-2.5 text-center">
                     <Link
                       to="/notificacoes"
                       onClick={() => setNotificationsOpen(false)}
-                      className="text-xs font-bold text-[#00843D] dark:text-green-400 hover:underline inline-flex items-center gap-1"
+                      className="text-[11px] xs:text-xs font-bold text-[#00843D] dark:text-green-400 hover:underline inline-flex items-center gap-1"
                     >
                       <span>Abrir Central de Notificações Completa</span>
                       <ExternalLink className="w-3 h-3" />
@@ -418,19 +418,19 @@ export const Navbar: React.FC = () => {
                 }}
                 role="button"
                 aria-label="Entrar ou cadastrar conta"
-                className="px-3.5 py-2 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white text-xs font-bold transition-all shadow-xs flex items-center space-x-1.5"
+                className="px-2.5 py-1.5 xs:px-3.5 xs:py-2 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white text-[11px] xs:text-xs font-bold transition-all shadow-xs flex items-center space-x-1"
               >
                 <LogIn className="w-3.5 h-3.5" />
                 <span>Entrar</span>
               </button>
             ) : (
-              <div className="flex items-center space-x-1.5">
+              <div className="flex items-center space-x-1">
                 <Link
                   to="/perfil"
                   title={`Ver perfil de ${currentUser.name}`}
-                  className="hidden sm:flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs font-bold border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-colors"
+                  className="hidden md:flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs font-bold border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-colors"
                 >
-                  <span>{currentUser.name} ({currentUser.role})</span>
+                  <span className="truncate max-w-[100px]">{currentUser.name}</span>
                 </Link>
                 <button
                   onClick={() => {
@@ -440,26 +440,25 @@ export const Navbar: React.FC = () => {
                   role="button"
                   aria-label="Sair da Conta"
                   title="Sair da Conta (Logout)"
-                  className="px-2.5 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white text-xs font-bold transition-all border border-red-500/20 flex items-center space-x-1"
+                  className="hidden sm:flex px-2 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white text-xs font-bold transition-all border border-red-500/20 items-center space-x-1"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span className="hidden md:inline">Sair</span>
                 </button>
+                {/* Profile Avatar Trigger */}
+                <Link
+                  to="/perfil"
+                  title="Meu Perfil"
+                  className="flex items-center pl-0.5 cursor-pointer focus:outline-none shrink-0"
+                >
+                  <img
+                    src={currentUser.avatarUrl}
+                    alt={currentUser.name}
+                    className="w-7 h-7 xs:w-8 xs:h-8 rounded-full object-cover border-2 border-[#00843D]"
+                  />
+                </Link>
               </div>
             )}
-
-            {/* Profile Avatar Trigger */}
-            <Link
-              to="/perfil"
-              title="Meu Perfil"
-              className="flex items-center space-x-2 pl-1 cursor-pointer focus:outline-none"
-            >
-              <img
-                src={currentUser.avatarUrl}
-                alt={currentUser.name}
-                className="w-8 h-8 rounded-full object-cover border-2 border-[#00843D]"
-              />
-            </Link>
 
             {/* Mobile menu hamburger button */}
             <button
@@ -470,9 +469,9 @@ export const Navbar: React.FC = () => {
               role="button"
               aria-label={mobileMenuOpen ? "Fechar menu móvel" : "Abrir menu móvel"}
               aria-expanded={mobileMenuOpen}
-              className="lg:hidden p-2 rounded-lg text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              className="lg:hidden p-1.5 xs:p-2 rounded-lg text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 shrink-0"
             >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {mobileMenuOpen ? <X className="w-5 h-5 xs:w-6 xs:h-6" /> : <Menu className="w-5 h-5 xs:w-6 xs:h-6" />}
             </button>
           </div>
         </div>

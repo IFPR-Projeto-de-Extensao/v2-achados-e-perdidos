@@ -39,9 +39,9 @@ export const RouterProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const targetPath = targetUrl.pathname + targetUrl.search;
 
       if (options?.replace) {
-        window.history.replaceState(options.state || {}, "", targetPath);
+        window.history.replaceState(options?.state || {}, "", targetPath);
       } else {
-        window.history.pushState(options.state || {}, "", targetPath);
+        window.history.pushState(options?.state || {}, "", targetPath);
       }
 
       const parsed = parseCurrentRoute(targetUrl.pathname, targetUrl.search);

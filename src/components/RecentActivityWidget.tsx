@@ -40,24 +40,24 @@ export const RecentActivityWidget: React.FC<RecentActivityWidgetProps> = ({
     });
 
   return (
-    <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6 shadow-sm space-y-5">
-      <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-4">
+    <div className="bg-white dark:bg-[#1E1E1E] rounded-2xl sm:rounded-3xl border border-neutral-200 dark:border-neutral-800 p-3.5 xs:p-4 sm:p-6 shadow-sm space-y-3.5 sm:space-y-5">
+      <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-3 sm:pb-4">
         <div className="flex items-center space-x-2">
-          <div className="p-2 rounded-xl bg-[#00843D]/10 text-[#00843D] dark:text-green-400">
-            <Activity className="w-5 h-5 animate-pulse" />
+          <div className="p-1.5 xs:p-2 rounded-xl bg-[#00843D]/10 text-[#00843D] dark:text-green-400">
+            <Activity className="w-4 h-4 xs:w-5 xs:h-5 animate-pulse" />
           </div>
           <div>
-            <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+            <h3 className="font-extrabold text-sm xs:text-base text-neutral-900 dark:text-white">
               Atividade Recente • Feed em Tempo Real
             </h3>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            <p className="text-[11px] xs:text-xs text-neutral-500 dark:text-neutral-400 hidden xs:block">
               Últimas atualizações, novos registros e devoluções no Campus Ivaiporã
             </p>
           </div>
         </div>
 
-        <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-extrabold uppercase border border-emerald-500/20 flex items-center space-x-1">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+        <span className="px-2 xs:px-2.5 py-0.5 xs:py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[9px] xs:text-[10px] font-extrabold uppercase border border-emerald-500/20 flex items-center space-x-1 shrink-0">
+          <span className="w-1.5 h-1.5 xs:w-2 xs:h-2 rounded-full bg-emerald-500 animate-ping" />
           <span>Ao Vivo</span>
         </span>
       </div>

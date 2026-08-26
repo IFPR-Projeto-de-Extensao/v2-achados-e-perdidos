@@ -22,18 +22,18 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
         aria-checked={darkMode}
         aria-label={darkMode ? "Alternar para Modo Claro" : "Alternar para Modo Escuro"}
         title={darkMode ? "Tema Escuro Ativo (Clique para Modo Claro)" : "Tema Claro Ativo (Clique para Modo Escuro)"}
-        className="relative inline-flex items-center h-8 w-14 rounded-full p-1 bg-neutral-200 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 transition-colors duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#00843D] shrink-0 shadow-inner"
+        className="relative inline-flex items-center h-7 w-12 xs:h-8 xs:w-14 rounded-full p-1 bg-neutral-200 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 transition-colors duration-300 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#00843D] shrink-0 shadow-inner"
       >
         <span className="sr-only">Alternar tema da interface</span>
         <span
-          className={`flex items-center justify-center w-6 h-6 rounded-full bg-white dark:bg-neutral-900 shadow-md transform transition-transform duration-300 ${
-            darkMode ? "translate-x-6" : "translate-x-0"
+          className={`flex items-center justify-center w-5 h-5 xs:w-6 xs:h-6 rounded-full bg-white dark:bg-neutral-900 shadow-md transform transition-transform duration-300 ${
+            darkMode ? "translate-x-5 xs:translate-x-6" : "translate-x-0"
           }`}
         >
           {darkMode ? (
-            <Moon className="w-3.5 h-3.5 fill-amber-300 text-amber-300 transition-transform duration-200" />
+            <Moon className="w-3 h-3 xs:w-3.5 xs:h-3.5 fill-amber-300 text-amber-300 transition-transform duration-200" />
           ) : (
-            <Sun className="w-3.5 h-3.5 text-amber-500 fill-amber-500 transition-transform duration-200" />
+            <Sun className="w-3 h-3 xs:w-3.5 xs:h-3.5 text-amber-500 fill-amber-500 transition-transform duration-200" />
           )}
         </span>
       </button>

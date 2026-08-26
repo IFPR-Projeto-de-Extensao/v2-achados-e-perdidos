@@ -188,61 +188,61 @@ export const HomeView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-12 pb-16">
+    <div className="space-y-6 sm:space-y-8 lg:space-y-12 pb-10 sm:pb-16">
       {/* HERO BANNER SECTION */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#00843D] via-[#006e33] to-[#004f24] text-white p-8 sm:p-12 lg:p-16 shadow-xl border border-[#00843D]/30">
+      <section className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-[#00843D] via-[#006e33] to-[#004f24] text-white p-4 xs:p-6 sm:p-10 lg:p-14 shadow-xl border border-[#00843D]/30">
         {/* Background Decorative Patterns */}
         <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-80 h-80 bg-[#C8102E]/20 rounded-full blur-2xl pointer-events-none" />
         <div className="absolute inset-0 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:24px_24px] opacity-10" />
 
-        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
-          <div className="lg:col-span-8 space-y-6">
-            <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-bold tracking-wide">
-              <Sparkles className="w-4 h-4 text-amber-300" />
-              <span>Sistema Oficial de Achados & Perdidos • IFPR Campus Ivaiporã</span>
+        <div className="relative z-10 grid grid-cols-1 md:grid-cols-12 gap-6 sm:gap-8 lg:gap-12 items-center">
+          <div className="md:col-span-8 space-y-3.5 xs:space-y-4 sm:space-y-6">
+            <div className="inline-flex items-center space-x-1.5 xs:space-x-2 px-2.5 xs:px-3.5 py-1 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-[10px] xs:text-xs font-bold tracking-wide max-w-full truncate">
+              <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span className="truncate">Achados &amp; Perdidos • IFPR Campus Ivaiporã</span>
             </div>
 
-            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-tight">
-              Achados & Perdidos <br className="hidden sm:inline" />
+            <h1 className="text-2xl xs:text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">
+              Achados &amp; Perdidos <br className="hidden sm:inline" />
               <span className="text-emerald-200">Campus Ivaiporã</span>
             </h1>
 
-            <p className="text-base sm:text-xl text-emerald-50/90 font-medium leading-relaxed max-w-2xl">
+            <p className="text-xs xs:text-sm sm:text-base lg:text-lg text-emerald-50/90 font-medium leading-relaxed max-w-2xl">
               Conectando alunos, professores e servidores do Campus Ivaiporã aos seus objetos de forma rápida, inteligente e segura.
             </p>
 
-            {/* Action Buttons */}
-            <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            {/* Action Buttons Grid on Mobile / Flex on Large Screens */}
+            <div className="pt-1 xs:pt-2 grid grid-cols-1 xs:grid-cols-2 lg:flex lg:flex-wrap items-stretch lg:items-center gap-2 xs:gap-2.5 sm:gap-3">
               <button
                 onClick={() => navigate("/analisador-ia")}
-                className="px-6 py-3.5 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-sm shadow-lg shadow-[#00843D]/30 transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2 border border-emerald-400/30"
+                className="col-span-1 xs:col-span-2 lg:col-span-auto px-4 xs:px-5 py-2.5 xs:py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center space-x-2 border border-emerald-400/30"
               >
-                <Sparkles className="w-5 h-5 text-amber-300 fill-amber-300" />
+                <Sparkles className="w-4 h-4 text-amber-300 fill-amber-300" />
                 <span>Analisar Foto com IA Gemini</span>
               </button>
 
               <button
                 onClick={() => handleRegister("PERDIDO")}
-                className="px-6 py-3.5 rounded-2xl bg-[#EF4444] hover:bg-red-600 text-white font-bold text-sm shadow-lg shadow-red-900/30 transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2"
+                className="px-3.5 xs:px-4 py-2.5 xs:py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-[#EF4444] hover:bg-red-600 text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center space-x-1.5"
               >
-                <PackageSearch className="w-5 h-5" />
-                <span>Cadastrar Objeto Perdido</span>
+                <PackageSearch className="w-4 h-4" />
+                <span>Cadastrar Perdido</span>
               </button>
 
               <button
                 onClick={() => handleRegister("ENCONTRADO")}
-                className="px-6 py-3.5 rounded-2xl bg-white text-[#00843D] hover:bg-emerald-50 font-extrabold text-sm shadow-lg shadow-black/10 transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2"
+                className="px-3.5 xs:px-4 py-2.5 xs:py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-white text-[#00843D] hover:bg-emerald-50 font-extrabold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center space-x-1.5"
               >
-                <PlusCircle className="w-5 h-5" />
-                <span>Cadastrar Objeto Encontrado</span>
+                <PlusCircle className="w-4 h-4" />
+                <span>Cadastrar Encontrado</span>
               </button>
 
               <button
                 onClick={() => navigate("/buscar")}
-                className="px-5 py-3.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm backdrop-blur-md border border-white/20 transition-all flex items-center justify-center space-x-2"
+                className="px-3.5 xs:px-4 py-2.5 xs:py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm backdrop-blur-md border border-white/20 transition-all flex items-center justify-center space-x-1.5"
               >
-                <Search className="w-4 h-4" />
+                <Search className="w-3.5 h-3.5" />
                 <span>Pesquisar Todos</span>
               </button>
 
@@ -251,18 +251,18 @@ export const HomeView: React.FC = () => {
                   vibrateClick();
                   setIsTourOpen(true);
                 }}
-                className="px-5 py-3.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-neutral-900 font-black text-sm shadow-lg shadow-amber-900/20 transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2 border border-amber-300"
+                className="col-span-1 xs:col-span-2 lg:col-span-auto px-3.5 xs:px-4 py-2.5 xs:py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-amber-400 hover:bg-amber-300 text-neutral-900 font-black text-xs sm:text-sm shadow-md transition-all flex items-center justify-center space-x-1.5 border border-amber-300"
                 title="Iniciar Tutorial Passo a Passo do Sistema"
               >
-                <Compass className="w-4 h-4 text-neutral-950" />
+                <Compass className="w-3.5 h-3.5 text-neutral-950" />
                 <span>Tutorial do Sistema</span>
               </button>
             </div>
           </div>
 
           {/* Hero Brand Image (Transparent IF Logo) */}
-          <div className="flex col-span-1 lg:col-span-4 items-center justify-center p-2 sm:p-4">
-            <div className="relative flex items-center justify-center w-full max-w-[160px] sm:max-w-[200px] lg:max-w-[240px] aspect-[216/292]">
+          <div className="hidden md:flex md:col-span-4 items-center justify-center p-2 sm:p-4">
+            <div className="relative flex items-center justify-center w-full max-w-[150px] sm:max-w-[180px] lg:max-w-[220px] aspect-[216/292]">
               <img
                 src="/ifpr-logo.svg"
                 alt="Instituto Federal do Paraná - IFPR"
@@ -274,70 +274,70 @@ export const HomeView: React.FC = () => {
       </section>
 
       {/* HIGHLIGHTED STATISTICS CARDS */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 xs:gap-3.5 sm:gap-4 lg:gap-6">
         <motion.div
-          whileHover={{ y: -3 }}
-          className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200/80 dark:border-neutral-800 shadow-xs flex items-center space-x-4"
+          whileHover={{ y: -2 }}
+          className="p-3 xs:p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200/80 dark:border-neutral-800 shadow-xs flex items-center space-x-2.5 xs:space-x-3.5 sm:space-x-4 min-w-0"
         >
-          <div className="w-12 h-12 rounded-xl bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 flex items-center justify-center shrink-0">
-            <Layers className="w-6 h-6" />
+          <div className="w-8 h-8 xs:w-10 xs:h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 flex items-center justify-center shrink-0">
+            <Layers className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <span className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">
+          <div className="min-w-0">
+            <span className="text-[10px] xs:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
               Cadastrados
             </span>
-            <span className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+            <span className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 dark:text-white truncate block">
               {totalRegistered}
             </span>
           </div>
         </motion.div>
 
         <motion.div
-          whileHover={{ y: -3 }}
-          className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200/80 dark:border-neutral-800 shadow-xs flex items-center space-x-4"
+          whileHover={{ y: -2 }}
+          className="p-3 xs:p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200/80 dark:border-neutral-800 shadow-xs flex items-center space-x-2.5 xs:space-x-3.5 sm:space-x-4 min-w-0"
         >
-          <div className="w-12 h-12 rounded-xl bg-[#22C55E]/10 dark:bg-[#22C55E]/20 text-[#22C55E] dark:text-green-400 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-6 h-6" />
+          <div className="w-8 h-8 xs:w-10 xs:h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-[#22C55E]/10 dark:bg-[#22C55E]/20 text-[#22C55E] dark:text-green-400 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <span className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">
+          <div className="min-w-0">
+            <span className="text-[10px] xs:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
               Encontrados
             </span>
-            <span className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+            <span className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 dark:text-white truncate block">
               {totalFound}
             </span>
           </div>
         </motion.div>
 
         <motion.div
-          whileHover={{ y: -3 }}
-          className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200/80 dark:border-neutral-800 shadow-xs flex items-center space-x-4"
+          whileHover={{ y: -2 }}
+          className="p-3 xs:p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200/80 dark:border-neutral-800 shadow-xs flex items-center space-x-2.5 xs:space-x-3.5 sm:space-x-4 min-w-0"
         >
-          <div className="w-12 h-12 rounded-xl bg-[#3B82F6]/10 dark:bg-[#3B82F6]/20 text-[#3B82F6] dark:text-blue-400 flex items-center justify-center shrink-0">
-            <CheckCircle className="w-6 h-6" />
+          <div className="w-8 h-8 xs:w-10 xs:h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-[#3B82F6]/10 dark:bg-[#3B82F6]/20 text-[#3B82F6] dark:text-blue-400 flex items-center justify-center shrink-0">
+            <CheckCircle className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <span className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">
+          <div className="min-w-0">
+            <span className="text-[10px] xs:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
               Devolvidos
             </span>
-            <span className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+            <span className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 dark:text-white truncate block">
               {totalReturned}
             </span>
           </div>
         </motion.div>
 
         <motion.div
-          whileHover={{ y: -3 }}
-          className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200/80 dark:border-neutral-800 shadow-xs flex items-center space-x-4"
+          whileHover={{ y: -2 }}
+          className="p-3 xs:p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200/80 dark:border-neutral-800 shadow-xs flex items-center space-x-2.5 xs:space-x-3.5 sm:space-x-4 min-w-0"
         >
-          <div className="w-12 h-12 rounded-xl bg-amber-500/10 dark:bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
-            <TrendingUp className="w-6 h-6" />
+          <div className="w-8 h-8 xs:w-10 xs:h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-amber-500/10 dark:bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
+            <TrendingUp className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <span className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">
+          <div className="min-w-0">
+            <span className="text-[10px] xs:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
               Taxa de Sucesso
             </span>
-            <span className="text-2xl sm:text-3xl font-black text-[#00843D] dark:text-green-400">
+            <span className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-black text-[#00843D] dark:text-green-400 truncate block">
               {successRate}%
             </span>
           </div>
