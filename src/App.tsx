@@ -27,6 +27,7 @@ import { savePerformanceMetricLog } from "./lib/offlineDb";
 import { parseQrCodeOrUrl, findItemInList, fetchItemFromFirestore } from "./lib/qrCodeUtils";
 import { APP_VALID_TABS, DEFAULT_MAINTENANCE_MESSAGE, type AppTabType } from "./lib/shared-constants";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 const MainContent: React.FC = () => {
   const {
@@ -389,6 +390,9 @@ const MainContent: React.FC = () => {
 
       {/* Footer */}
       <Footer />
+
+      {/* Vercel Speed Insights */}
+      <SpeedInsights />
     </div>
   );
 };
