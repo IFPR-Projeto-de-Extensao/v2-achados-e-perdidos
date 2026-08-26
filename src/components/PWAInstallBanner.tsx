@@ -66,9 +66,12 @@ export const PWAInstallBanner: React.FC = () => {
             }}
           >
             {/* App Icon preview */}
-            <div className="relative w-10 h-10 rounded-xl bg-[#00843D] text-white flex items-center justify-center shrink-0 shadow-md shadow-[#00843D]/20 overflow-hidden">
-              <span className="text-base font-black tracking-tighter">IF</span>
-              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-[#C8102E] rounded-full border border-white" />
+            <div className="relative w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center shrink-0">
+              <img
+                src="/ifpr-logo.svg"
+                alt="Localiza+ IFPR"
+                className="w-full h-full object-contain select-none"
+              />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">

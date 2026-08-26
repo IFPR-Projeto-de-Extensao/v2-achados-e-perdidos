@@ -36,6 +36,7 @@ import {
   updateDoc,
   deleteDoc,
   deleteField,
+  writeBatch,
 } from "firebase/firestore";
 import {
   signInWithPopup,
@@ -149,6 +150,7 @@ interface AppContextType {
   maintenanceCustomMessage: string;
   updateMaintenanceCustomMessage: (msg: string) => Promise<void>;
   approveUser: (userId: string, approved: boolean) => Promise<void>;
+  approveAllPendingUsers: () => Promise<void>;
   backupLogs: BackupLog[];
   backupScheduleConfig: BackupScheduleConfig;
   updateBackupScheduleConfig: (config: Partial<BackupScheduleConfig>) => Promise<void>;
@@ -918,6 +920,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     } catch (e) {
       console.warn("Aviso ao atualizar aprovação no Firestore:", e);
+    }
+  };
+
+  const approveAllPendingUsers = async () => {
+    if (currentUser.role !== "ADMIN") {
+      addToast("Apenas administradores têm permissão para aprovar cadastros em lote.", "error");
+      return;
+    }
+    const pendingList = (allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE");
+    if (pendingList.length === 0) {
+      addToast("Nenhuma solicitação pendente de aprovação no momento.", "info");
+      return;
+    }
+
+    setAllUsers((prev) =>
+      prev.map((u) => (u.approvalStatus === "PENDENTE" ? { ...u, approvalStatus: "APROVADO" } : u))
+    );
+
+    try {
+      const batch = writeBatch(db);
+      for (const u of pendingList) {
+        batch.set(doc(db, "users", u.id), { approvalStatus: "APROVADO" }, { merge: true });
+      }
+      await batch.commit();
+      await logAdminAction(
+        "APROVACAO_EM_LOTE",
+        `Aprovou todos os ${pendingList.length} cadastros acadêmicos pendentes no sistema em lote por ${currentUser.name}.`
+      );
+      addToast(`✅ Todos os ${pendingList.length} cadastros pendentes foram aprovados com sucesso!`, "success");
+    } catch (e) {
+      console.error("Erro ao aprovar cadastros em lote:", e);
+      addToast("Erro ao gravar aprovações em lote no Firestore.", "error");
     }
   };
 
@@ -3123,6 +3157,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         maintenanceCustomMessage,
         updateMaintenanceCustomMessage,
         approveUser,
+        approveAllPendingUsers,
         backupLogs,
         backupScheduleConfig,
         updateBackupScheduleConfig,

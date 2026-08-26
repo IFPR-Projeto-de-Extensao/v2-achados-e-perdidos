@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Mail,
@@ -13,27 +13,29 @@ import {
   ExternalLink,
   Loader2,
   AlertTriangle,
-  Sparkles,
+  Wrench,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
-import { SupportCategory, SupportFeedbackTicket } from "../types";
-import { db, handleFirestoreError, OperationType } from "../lib/firebase";
-import { doc, setDoc } from "firebase/firestore";
-import { sanitizeFirestoreData } from "../lib/shared-constants";
-import { safeFetchJson } from "../lib/apiHelper";
+import { SupportCategory } from "../types";
+import { submitSupportFeedback } from "../lib/supportFeedbackService";
 import { vibrateClick, vibrateSuccess, vibrateWarning } from "../lib/utils";
 
-interface ContactSupportModalProps {
+export interface ContactSupportModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialCategory?: SupportCategory;
 }
 
-export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen, onClose }) => {
+export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
+  isOpen,
+  onClose,
+  initialCategory = "FEEDBACK",
+}) => {
   const { currentUser, language, t, addToast } = useApp();
 
   const [name, setName] = useState(currentUser?.name || "");
   const [email, setEmail] = useState(currentUser?.email || "");
-  const [category, setCategory] = useState<SupportCategory>("FEEDBACK");
+  const [category, setCategory] = useState<SupportCategory>(initialCategory);
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [priority, setPriority] = useState<"BAIXA" | "MEDIA" | "ALTA">("MEDIA");
@@ -44,9 +46,31 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
   const [copied, setCopied] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Sync category when modal opens or initialCategory changes
+  useEffect(() => {
+    if (isOpen) {
+      if (initialCategory) {
+        setCategory(initialCategory);
+      }
+      if (currentUser?.name && !name) {
+        setName(currentUser.name);
+      }
+      if (currentUser?.email && !email) {
+        setEmail(currentUser.email);
+      }
+      setErrorMessage(null);
+    }
+  }, [isOpen, initialCategory, currentUser]);
+
   if (!isOpen) return null;
 
-  const categories: { id: SupportCategory; labelPt: string; labelEn: string; icon: React.ReactNode; color: string }[] = [
+  const categories: {
+    id: SupportCategory;
+    labelPt: string;
+    labelEn: string;
+    icon: React.ReactNode;
+    color: string;
+  }[] = [
     {
       id: "BUG_REPORT",
       labelPt: "Relatar Bug / Erro no Sistema",
@@ -62,11 +86,18 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
       color: "text-amber-600 dark:text-amber-400 bg-amber-500/10 border-amber-500/20",
     },
     {
+      id: "SUPPORT",
+      labelPt: "Suporte Técnico & Atendimento",
+      labelEn: "Technical Support & Help",
+      icon: <Wrench className="w-4 h-4" />,
+      color: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20",
+    },
+    {
       id: "BELONGING_QUERY",
       labelPt: "Dúvida sobre Pertence / Retirada",
       labelEn: "Question about Lost Item / Pickup",
       icon: <HelpCircle className="w-4 h-4" />,
-      color: "text-blue-600 dark:text-blue-400 bg-blue-500/10 border-blue-500/20",
+      color: "text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 border-indigo-500/20",
     },
     {
       id: "OTHER",
@@ -94,79 +125,34 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
     setLoading(true);
     vibrateClick();
 
-    const protocol = `IFPR-SUP-${Date.now().toString(36).toUpperCase()}`;
-    const timestamp = new Date().toISOString();
-
-    const diagnostics = includeDiagnostics
-      ? {
-          userAgent: navigator.userAgent,
-          screen: `${window.screen.width}x${window.screen.height}`,
-          online: navigator.onLine,
-          language: navigator.language,
-          currentPath: window.location.pathname + window.location.search,
-        }
-      : undefined;
-
-    const ticketData: SupportFeedbackTicket = {
-      id: `ticket_${protocol}`,
-      name: name.trim(),
-      email: email.trim(),
-      category,
-      subject: subject.trim(),
-      message: message.trim(),
-      priority,
-      userId: currentUser?.id,
-      userRole: currentUser?.role,
-      createdAt: timestamp,
-      status: "NOVO",
-      userAgent: navigator.userAgent,
-      protocol,
-    };
-
     try {
-      // 1. Send to server endpoint to trigger direct email notification & Discord dispatch
-      const res = await fetch("/api/support/send-feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          email: email.trim(),
-          category,
-          subject: subject.trim(),
-          message: message.trim(),
-          priority,
-          clientDiagnostics: diagnostics,
-        }),
+      // Centralized submission flow: validation -> /api/support/send-feedback -> Discord webhook -> confirmation
+      const result = await submitSupportFeedback({
+        name: name.trim(),
+        email: email.trim(),
+        category,
+        subject: subject.trim(),
+        message: message.trim(),
+        priority,
+        includeDiagnostics,
+        userId: currentUser?.id,
+        userRole: currentUser?.role,
       });
 
-      const resData = await res.json().catch(() => null);
-
-      if (!res.ok || (resData && resData.success === false)) {
-        throw new Error(resData?.error || "Erro ao processar envio no servidor de suporte.");
-      }
-
-      const confirmedProtocol = resData?.protocol || protocol;
-
-      // 2. Persist in Firestore support_tickets collection (non-blocking for resilient UX)
-      if (db) {
-        try {
-          const ticketRef = doc(db, "support_tickets", ticketData.id);
-          await setDoc(ticketRef, sanitizeFirestoreData({ ...ticketData, protocol: confirmedProtocol }));
-        } catch (dbErr) {
-          console.warn("[Support Tickets Firestore Notice] Gravação secundária no Firestore:", dbErr);
-        }
+      if (!result.success) {
+        throw new Error(result.error || "Erro ao processar envio no servidor.");
       }
 
       vibrateSuccess();
-      setSubmittedProtocol(confirmedProtocol);
+      setSubmittedProtocol(result.protocol || `IFPR-SUP-${Date.now().toString(36).toUpperCase()}`);
       addToast(
         language === "pt"
-          ? "Feedback enviado com sucesso para a equipe do Campus Ivaiporã!"
-          : "Feedback sent successfully to Campus Ivaiporã team!",
+          ? "Mensagem e notificação enviadas com sucesso para a equipe do Campus Ivaiporã!"
+          : "Message and notification sent successfully to Campus Ivaiporã team!",
         "success"
       );
     } catch (err: any) {
-      console.error("Erro ao enviar suporte:", err);
+      console.error("Erro ao enviar suporte/feedback:", err);
       setErrorMessage(
         err?.message ||
           (language === "pt"
@@ -234,11 +220,17 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
             <div>
               <div className="flex items-center space-x-2">
                 <span className="text-[10px] font-extrabold tracking-wider uppercase px-2 py-0.5 rounded bg-[#00843D]/15 text-[#00843D] dark:text-green-400">
-                  {language === "pt" ? "Campus Ivaiporã • Suporte Direto" : "Ivaiporã Campus • Direct Support"}
+                  {language === "pt" ? "Campus Ivaiporã • Central Integrada" : "Ivaiporã Campus • Integrated Center"}
                 </span>
               </div>
               <h2 id="contact-modal-title" className="text-lg font-black text-neutral-900 dark:text-white mt-0.5">
-                {t("contactModalTitle", "Suporte & Feedback Institucional")}
+                {category === "BUG_REPORT"
+                  ? (language === "pt" ? "Relatar Bug / Erro no Sistema" : "Report a System Bug")
+                  : category === "FEEDBACK"
+                  ? (language === "pt" ? "Enviar Sugestão ou Feedback" : "Send Feedback or Suggestion")
+                  : category === "SUPPORT"
+                  ? (language === "pt" ? "Suporte Técnico & Atendimento" : "Technical Support & Help")
+                  : t("contactModalTitle", "Suporte & Feedback Institucional")}
               </h2>
             </div>
           </div>
@@ -249,7 +241,7 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
               vibrateClick();
               onClose();
             }}
-            className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors"
+            className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
             aria-label={t("close", "Fechar")}
           >
             <X className="w-5 h-5" />
@@ -267,12 +259,12 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
 
               <div className="space-y-2">
                 <h3 className="text-xl font-black text-neutral-900 dark:text-white">
-                  {t("contactSuccessTitle", "Mensagem Encaminhada com Sucesso!")}
+                  {t("contactSuccessTitle", "Mensagem & Notificação Encaminhadas com Sucesso!")}
                 </h3>
                 <p className="text-xs text-neutral-600 dark:text-neutral-400 max-w-md mx-auto leading-relaxed">
                   {t(
                     "contactSuccessDesc",
-                    "Seu relato foi registrado e notificado para a equipe de suporte do IFPR Campus Ivaiporã via e-mail (localizamais6@gmail.com)."
+                    "Seu relato foi registrado e notificado para a equipe de apoio e canais de atendimento do IFPR Campus Ivaiporã."
                   )}
                 </p>
               </div>
@@ -290,7 +282,7 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
                 <button
                   id="copy-protocol-btn"
                   onClick={handleCopyProtocol}
-                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#2A2A2A] border border-neutral-200 dark:border-neutral-700 text-xs font-bold flex items-center space-x-1.5 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 transition-all shadow-xs"
+                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-[#2A2A2A] border border-neutral-200 dark:border-neutral-700 text-xs font-bold flex items-center space-x-1.5 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 transition-all shadow-xs cursor-pointer"
                 >
                   <Copy className="w-3.5 h-3.5" />
                   <span>{copied ? t("contactCopied", "Copiado!") : t("contactCopyProtocol", "Copiar")}</span>
@@ -302,8 +294,8 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
                 <Mail className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
                 <span>
                   {language === "pt"
-                    ? "Cópia despachada para: localizamais6@gmail.com"
-                    : "Copy dispatched to: localizamais6@gmail.com"}
+                    ? "Cópia arquivada para a equipe de suporte: localizamais6@gmail.com"
+                    : "Archived copy to support team: localizamais6@gmail.com"}
                 </span>
               </div>
 
@@ -311,7 +303,7 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
                 <button
                   id="new-feedback-btn"
                   onClick={handleResetForm}
-                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-neutral-200 dark:bg-neutral-800 hover:bg-neutral-300 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all"
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-neutral-200 dark:bg-neutral-800 hover:bg-neutral-300 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all cursor-pointer"
                 >
                   {language === "pt" ? "Enviar Outra Mensagem" : "Send Another Message"}
                 </button>
@@ -321,7 +313,7 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
                     vibrateClick();
                     onClose();
                   }}
-                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006e32] text-white text-xs font-extrabold transition-all shadow-md"
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006e32] text-white text-xs font-extrabold transition-all shadow-md cursor-pointer"
                 >
                   {t("close", "Fechar Janela")}
                 </button>
@@ -347,7 +339,7 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
               {/* Category Selector */}
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                  {t("contactCategoryLabel", "Tipo de Mensagem")} <span className="text-red-500">*</span>
+                  {t("contactCategoryLabel", "Tipo de Mensagem / Canal")} <span className="text-red-500">*</span>
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {categories.map((cat) => {
@@ -356,11 +348,12 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
                       <button
                         type="button"
                         key={cat.id}
+                        id={`support-cat-btn-${cat.id.toLowerCase()}`}
                         onClick={() => {
                           vibrateClick();
                           setCategory(cat.id);
                         }}
-                        className={`p-3 rounded-2xl border text-left flex items-center space-x-3 transition-all ${
+                        className={`p-3 rounded-2xl border text-left flex items-center space-x-3 transition-all cursor-pointer ${
                           isSelected
                             ? "border-[#00843D] bg-[#00843D]/10 text-neutral-900 dark:text-white ring-2 ring-[#00843D]/20 shadow-xs"
                             : "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#181818] text-neutral-600 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-700"
@@ -428,7 +421,11 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
                     placeholder={
                       category === "BUG_REPORT"
                         ? "Ex: Erro ao escanear etiqueta QR no celular"
-                        : "Ex: Sugestão de novo ponto de entrega no ginásio"
+                        : category === "FEEDBACK"
+                        ? "Ex: Sugestão de novo ponto de entrega no ginásio"
+                        : category === "SUPPORT"
+                        ? "Ex: Dúvida sobre retirada de objeto ou cadastro"
+                        : "Ex: Contato geral com a equipe"
                     }
                     className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-[#00843D]/30 focus:border-[#00843D] transition-all"
                   />
@@ -463,8 +460,10 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder={
-                    language === "pt"
-                      ? "Descreva seu relato com o máximo de detalhes (passos para reproduzir se for um bug, ou informações do objeto/sugestão)..."
+                    category === "BUG_REPORT"
+                      ? "Descreva os passos para reproduzir o erro, tela onde ocorreu e o que era esperado..."
+                      : language === "pt"
+                      ? "Descreva seu relato com detalhes (sugestões, dúvidas sobre pertences ou suporte institucional)..."
                       : "Provide as much detail as possible (steps to reproduce for bugs, or suggestion notes)..."
                   }
                   className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-[#00843D]/30 focus:border-[#00843D] transition-all resize-none"
@@ -506,7 +505,7 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
                   id="submit-contact-btn"
                   type="submit"
                   disabled={loading}
-                  className="w-full sm:w-auto px-6 py-2.5 rounded-2xl bg-[#00843D] hover:bg-[#006e32] text-white text-xs font-black transition-all flex items-center justify-center space-x-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-2xl bg-[#00843D] hover:bg-[#006e32] text-white text-xs font-black transition-all flex items-center justify-center space-x-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {loading ? (
                     <>
@@ -516,7 +515,7 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({ isOpen
                   ) : (
                     <>
                       <Send className="w-4 h-4" />
-                      <span>{t("contactSubmitBtn", "Enviar Mensagem por E-mail")}</span>
+                      <span>{t("contactSubmitBtn", "Enviar Mensagem & Notificar")}</span>
                     </>
                   )}
                 </button>

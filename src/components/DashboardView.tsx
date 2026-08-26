@@ -68,6 +68,7 @@ import {
   Send,
   Bell,
   MessageSquare,
+  PackageCheck,
 } from "lucide-react";
 
 export const DashboardView: React.FC = () => {
@@ -92,6 +93,7 @@ export const DashboardView: React.FC = () => {
     maintenanceCustomMessage,
     updateMaintenanceCustomMessage,
     approveUser,
+    approveAllPendingUsers,
     backupLogs,
     backupScheduleConfig,
     updateBackupScheduleConfig,
@@ -153,6 +155,7 @@ export const DashboardView: React.FC = () => {
   // Table Filters for Admin/Server items view
   const [tableSearch, setTableSearch] = useState("");
   const [tableCategory, setTableCategory] = useState("TODAS");
+  const [serverFilterStatus, setServerFilterStatus] = useState<string>("TODOS");
 
   // Admin Sub-Tab State
   const [adminSubTab, setAdminSubTab] = useState<"users" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings">("users");
@@ -1364,6 +1367,163 @@ export const DashboardView: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Painel Operacional de Recepção e Custódia de Objetos no Campus */}
+            <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 dark:border-neutral-800 pb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="p-3 rounded-2xl bg-[#00843D]/10 text-[#00843D]">
+                    <PackageCheck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                      <span>Gerenciamento & Recepção de Objetos na Guarita / Secretaria</span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 text-[10px] font-extrabold">
+                        {items.length} Registros
+                      </span>
+                    </h3>
+                    <p className="text-xs text-neutral-500">
+                      Confirmação presencial de chegada, guarda física, custódia e baixa de devoluções no campus.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filtros e Busca Rápida */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {["TODOS", "PERDIDO", "ENCONTRADO", "EM_ANALISE", "DEVOLVIDO"].map((st) => (
+                    <button
+                      key={st}
+                      onClick={() => setServerFilterStatus(st)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        serverFilterStatus === st
+                          ? "bg-[#00843D] text-white shadow-xs"
+                          : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                      }`}
+                    >
+                      {st === "TODOS" ? "Todos os Objetos" : st === "EM_ANALISE" ? "Em Análise / Custódia" : st}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="relative min-w-[220px]">
+                  <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={tableSearch}
+                    onChange={(e) => setTableSearch(e.target.value)}
+                    placeholder="Buscar objeto ou local..."
+                    className="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
+                  />
+                </div>
+              </div>
+
+              {/* Tabela de Objetos com Ações de Servidor */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-neutral-200 dark:border-neutral-800 text-neutral-400 uppercase text-[10px] font-bold">
+                      <th className="py-2.5 px-3">Objeto</th>
+                      <th className="py-2.5 px-3">Tipo</th>
+                      <th className="py-2.5 px-3">Localização</th>
+                      <th className="py-2.5 px-3 text-center">Status</th>
+                      <th className="py-2.5 px-3">Data</th>
+                      <th className="py-2.5 px-3 text-right">Ações Operacionais</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
+                    {items
+                      .filter((it) => {
+                        if (serverFilterStatus !== "TODOS" && it.status !== serverFilterStatus) return false;
+                        if (tableSearch) {
+                          const s = tableSearch.toLowerCase();
+                          return (
+                            (it.title || "").toLowerCase().includes(s) ||
+                            (it.location || "").toLowerCase().includes(s) ||
+                            (it.category || "").toLowerCase().includes(s)
+                          );
+                        }
+                        return true;
+                      })
+                      .slice(0, 15)
+                      .map((it) => (
+                        <tr key={it.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-2.5">
+                              {it.imageUrl ? (
+                                <img src={it.imageUrl} alt={it.title} className="w-8 h-8 rounded-lg object-cover border border-neutral-200 dark:border-neutral-700" />
+                              ) : (
+                                <div className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center font-bold text-neutral-400 text-[10px]">
+                                  IF
+                                </div>
+                              )}
+                              <div>
+                                <span className="font-bold text-neutral-900 dark:text-white block truncate max-w-[180px]">
+                                  {it.title}
+                                </span>
+                                <span className="text-[10px] text-neutral-400 font-mono">
+                                  {it.category} {it.color ? `• ${it.color}` : ""}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                              it.type === "ENCONTRADO" ? "bg-emerald-500/10 text-emerald-600" : "bg-red-500/10 text-red-600"
+                            }`}>
+                              {it.type}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-neutral-600 dark:text-neutral-400 font-medium">
+                            {it.location || "Campus IFPR"}
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase inline-block ${
+                              it.status === "ENCONTRADO"
+                                ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                                : it.status === "EM_ANALISE"
+                                ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                                : it.status === "DEVOLVIDO"
+                                ? "bg-blue-500/10 text-blue-600 border border-blue-500/20"
+                                : "bg-red-500/10 text-red-600 border border-red-500/20"
+                            }`}>
+                              {it.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-neutral-400 font-mono text-[11px]">
+                            {formatDate(it.createdAt)}
+                          </td>
+                          <td className="py-3 px-3 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {it.status !== "EM_ANALISE" && it.status !== "DEVOLVIDO" && (
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await updateItemStatus(it.id, "EM_ANALISE");
+                                    addToast(`Chegada do objeto "${it.title}" confirmada sob custódia na Guarita!`, "success");
+                                  }}
+                                  className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500 text-amber-700 hover:text-white border border-amber-500/30 text-[10px] font-black transition-all cursor-pointer"
+                                  title="Confirmar que o objeto foi recebido fisicamente na guarita / secretaria"
+                                >
+                                  📥 Confirmar Chegada
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => setSelectedItemForDetail(it)}
+                                className="px-2.5 py-1 rounded-lg bg-[#00843D] hover:bg-[#006e33] text-white text-[10px] font-black transition-all cursor-pointer shadow-xs"
+                              >
+                                Ver / Devolver
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -2359,6 +2519,17 @@ export const DashboardView: React.FC = () => {
                         </p>
                       </div>
                     </div>
+
+                    {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length > 0 && (
+                      <button
+                        onClick={approveAllPendingUsers}
+                        className="py-2.5 px-4 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs transition-all shadow-sm flex items-center justify-center space-x-2 shrink-0 cursor-pointer"
+                        title="Aprovar todas as solicitações pendentes de uma só vez"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Aprovar Todos os Pendentes ({(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length})</span>
+                      </button>
+                    )}
                   </div>
 
                   {(allUsers || []).filter((u) => u && (u.approvalStatus === "PENDENTE" || String(u.email ?? "").includes("ifpr.edu.br"))).length === 0 ? (

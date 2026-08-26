@@ -1,39 +1,23 @@
 import React, { useState } from "react";
 import { ShieldCheck, MapPin, Phone, Mail, Globe, Heart, Languages, Check, Download, Smartphone, MessageSquarePlus, LifeBuoy, FileText } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { useRouter, Link } from "../context/RouterContext";
 import { SupportedLanguage } from "../lib/i18n";
 import { vibrateClick } from "../lib/utils";
 import { usePWA } from "../hooks/usePWA";
+import { SupportCategory } from "../types";
 import { ContactSupportModal } from "./ContactSupportModal";
 
 export const Footer: React.FC = () => {
-  const { language, setLanguage, t, setActiveTab } = useApp();
+  const { language, setLanguage, t } = useApp();
+  const { navigate } = useRouter();
   const { isInstalled, promptInstall } = usePWA();
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [modalCategory, setModalCategory] = useState<SupportCategory>("FEEDBACK");
 
   const handleLanguageChange = (lang: SupportedLanguage) => {
     vibrateClick();
     setLanguage(lang);
-  };
-
-  const handleOpenPrivacyPolicy = (e?: React.MouseEvent) => {
-    if (e) e.preventDefault();
-    vibrateClick();
-    if (typeof window !== "undefined") {
-      window.history.pushState({ tab: "privacy_policy" }, "", "/politica-de-privacidade");
-    }
-    setActiveTab("privacy_policy");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleOpenTermsOfUse = (e?: React.MouseEvent) => {
-    if (e) e.preventDefault();
-    vibrateClick();
-    if (typeof window !== "undefined") {
-      window.history.pushState({ tab: "terms_of_use" }, "", "/termos-de-uso");
-    }
-    setActiveTab("terms_of_use");
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
@@ -96,14 +80,18 @@ export const Footer: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 pb-10 border-b border-neutral-200 dark:border-neutral-800">
           {/* Col 1: Brand & Info */}
           <div className="space-y-4 md:col-span-1">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 rounded-lg bg-[#00843D] text-white font-bold flex items-center justify-center text-sm shadow-xs">
-                IF
+            <Link to="/" className="flex items-center space-x-2">
+              <div className="w-8 h-8 flex items-center justify-center shrink-0">
+                <img
+                  src="/ifpr-logo.svg"
+                  alt="IFPR"
+                  className="w-full h-full object-contain select-none"
+                />
               </div>
               <span className="font-bold text-lg text-neutral-900 dark:text-white">
                 {t("appName", "IFPR Achados & Perdidos")}
               </span>
-            </div>
+            </Link>
             <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
               {t("footerCampusDesc", "Plataforma institucional do Instituto Federal do Paraná (IFPR) - Campus Ivaiporã para localização, cadastro e devolução transparente de bens e objetos.")}
             </p>
@@ -154,17 +142,13 @@ export const Footer: React.FC = () => {
                 </button>
               </li>
               <li>
-                <button
-                  id="footer-open-support-link"
-                  onClick={() => {
-                    vibrateClick();
-                    setIsContactModalOpen(true);
-                  }}
+                <Link
+                  to="/suporte"
                   className="hover:text-[#00843D] dark:hover:text-green-400 transition-colors flex items-center space-x-1.5 text-left font-medium text-[#00843D] dark:text-green-400"
                 >
                   <LifeBuoy className="w-3.5 h-3.5 shrink-0" />
-                  <span>{t("contactSupport", "Fale com o Suporte / Feedback")}</span>
-                </button>
+                  <span>{t("contactSupport", "Central de Suporte & Dúvidas")}</span>
+                </Link>
               </li>
               <li>
                 <a href="https://ivaipora.ifpr.edu.br" target="_blank" rel="noopener noreferrer" className="hover:text-[#00843D] transition-colors flex items-center space-x-1">
@@ -173,39 +157,22 @@ export const Footer: React.FC = () => {
                 </a>
               </li>
               <li>
-                <a href="#diretrizes" className="hover:text-[#00843D] transition-colors">
-                  {language === "pt" ? "Regulamento de Bens Esquecidos" : "Lost Belongings Regulations"}
-                </a>
-              </li>
-              <li>
-                <a href="#duvidas" className="hover:text-[#00843D] transition-colors">
-                  {language === "pt" ? "Perguntas Frequentes (FAQ)" : "Frequently Asked Questions (FAQ)"}
-                </a>
-              </li>
-              <li>
-                <a href="#qrcode" className="hover:text-[#00843D] transition-colors">
-                  {language === "pt" ? "Como funciona a entrega por QR Code" : "How QR Code Drop-off Works"}
-                </a>
-              </li>
-              <li>
-                <a
-                  href="/politica-de-privacidade"
-                  onClick={handleOpenPrivacyPolicy}
+                <Link
+                  to="/politica-de-privacidade"
                   className="text-[#00843D] dark:text-green-400 font-semibold hover:underline flex items-center space-x-1"
                 >
                   <ShieldCheck className="w-3.5 h-3.5" />
                   <span>{language === "pt" ? "Política de Privacidade" : "Privacy Policy"}</span>
-                </a>
+                </Link>
               </li>
               <li>
-                <a
-                  href="/termos-de-uso"
-                  onClick={handleOpenTermsOfUse}
+                <Link
+                  to="/termos-de-uso"
                   className="text-neutral-600 dark:text-neutral-400 hover:text-[#00843D] dark:hover:text-green-400 transition-colors flex items-center space-x-1"
                 >
                   <FileText className="w-3.5 h-3.5" />
                   <span>{language === "pt" ? "Termos de Uso" : "Terms of Use"}</span>
-                </a>
+                </Link>
               </li>
             </ul>
           </div>
@@ -222,28 +189,21 @@ export const Footer: React.FC = () => {
               </li>
               <li className="flex items-center space-x-2">
                 <Mail className="w-3.5 h-3.5 text-[#00843D]" />
-                <button
-                  onClick={() => {
-                    vibrateClick();
-                    setIsContactModalOpen(true);
-                  }}
+                <a
+                  href="mailto:localizamais6@gmail.com"
                   className="hover:underline hover:text-[#00843D] dark:hover:text-green-400 text-left transition-colors font-medium"
                 >
                   localizamais6@gmail.com
-                </button>
+                </a>
               </li>
               <li className="pt-1">
-                <button
-                  id="footer-support-btn"
-                  onClick={() => {
-                    vibrateClick();
-                    setIsContactModalOpen(true);
-                  }}
+                <Link
+                  to="/suporte/feedback"
                   className="w-full py-2.5 px-3 rounded-xl bg-[#00843D] hover:bg-[#006e32] text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center space-x-2"
                 >
                   <MessageSquarePlus className="w-4 h-4" />
                   <span>{t("contactSupportBtn", "Enviar Feedback ou Relatar Bug")}</span>
-                </button>
+                </Link>
               </li>
               <li className="pt-1">
                 <span className="inline-block px-2.5 py-1 rounded-md bg-neutral-100 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 font-semibold text-[11px] border border-neutral-200 dark:border-neutral-800">
@@ -260,21 +220,19 @@ export const Footer: React.FC = () => {
             <p>
               © {new Date().getFullYear()} {t("footerRights", "Instituto Federal do Paraná (IFPR) - Campus Ivaiporã. Todos os direitos reservados.")}
             </p>
-            <a
-              href="/termos-de-uso"
-              onClick={handleOpenTermsOfUse}
+            <Link
+              to="/termos-de-uso"
               className="text-[#00843D] dark:text-green-400 hover:underline font-semibold"
             >
               Termos de Uso
-            </a>
+            </Link>
             <span className="text-neutral-300 dark:text-neutral-700 hidden sm:inline">•</span>
-            <a
-              href="/politica-de-privacidade"
-              onClick={handleOpenPrivacyPolicy}
+            <Link
+              to="/politica-de-privacidade"
               className="text-[#00843D] dark:text-green-400 hover:underline font-semibold"
             >
               Política de Privacidade
-            </a>
+            </Link>
           </div>
           <div className="flex items-center space-x-1">
             <span>{language === "pt" ? "Desenvolvido com" : "Built with"}</span>
@@ -288,8 +246,8 @@ export const Footer: React.FC = () => {
       <ContactSupportModal
         isOpen={isContactModalOpen}
         onClose={() => setIsContactModalOpen(false)}
+        initialCategory={modalCategory}
       />
     </footer>
   );
 };
-

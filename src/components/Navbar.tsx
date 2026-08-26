@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
+import { useRouter, Link } from "../context/RouterContext";
 import { triggerVibration, vibrateClick, vibrateSuccess } from "../lib/utils";
 import { filterNotificationsForUser } from "../lib/notificationHelper";
 import { usePWA } from "../hooks/usePWA";
@@ -32,14 +33,13 @@ import {
   RefreshCw,
   CloudOff,
   LifeBuoy,
+  Settings,
+  Layers,
+  ExternalLink,
 } from "lucide-react";
 
 export const Navbar: React.FC = () => {
   const {
-    activeTab,
-    setActiveTab,
-    darkMode,
-    toggleDarkMode,
     currentUser,
     switchUserRole,
     notifications,
@@ -64,6 +64,7 @@ export const Navbar: React.FC = () => {
     requestAuthForRegistration,
   } = useApp();
 
+  const { routeKey, pathname, navigate } = useRouter();
   const { isInstalled, promptInstall } = usePWA();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -78,19 +79,16 @@ export const Navbar: React.FC = () => {
 
   const unreadCount = userNotifications.filter((n) => !n.read).length;
 
-  const handleNavClick = (tab: "home" | "lost" | "found" | "register" | "dashboard" | "profile" | "image_analyzer") => {
+  const handleNavClick = (path: string) => {
     vibrateClick();
-    if (tab === "register") {
-      requestAuthForRegistration();
-    } else {
-      setActiveTab(tab);
-    }
+    navigate(path);
     setMobileMenuOpen(false);
   };
 
   const handleRegisterClick = (type: "PERDIDO" | "ENCONTRADO") => {
     vibrateClick();
     requestAuthForRegistration(type);
+    navigate(`/cadastrar?tipo=${type.toLowerCase()}`);
     setMobileMenuOpen(false);
   };
 
@@ -108,17 +106,17 @@ export const Navbar: React.FC = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo & Brand Name */}
           <div className="flex items-center space-x-3">
-            <div
-              role="button"
-              tabIndex={0}
-              aria-label="Ir para a página inicial do Localiza+ IFPR"
-              onKeyDown={(e) => e.key === "Enter" && handleNavClick("home")}
+            <Link
+              to="/"
               className="flex items-center space-x-3 cursor-pointer select-none"
-              onClick={() => handleNavClick("home")}
+              title="Ir para a página inicial do Localiza+ IFPR"
             >
-              <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-[#00843D] text-white font-bold shadow-md shadow-[#00843D]/20 hover:scale-105 transition-transform">
-                <span className="text-xl tracking-tighter font-extrabold">IF</span>
-                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#C8102E] rounded-full border-2 border-white dark:border-[#181818]" />
+              <div className="relative flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 hover:scale-105 transition-transform shrink-0">
+                <img
+                  src="/ifpr-logo.svg"
+                  alt="IFPR Logo"
+                  className="w-full h-full object-contain select-none drop-shadow-xs"
+                />
               </div>
               <div>
                 <div className="flex items-center space-x-1.5">
@@ -133,7 +131,7 @@ export const Navbar: React.FC = () => {
                   Achados &amp; Perdidos • Campus Ivaiporã
                 </p>
               </div>
-            </div>
+            </Link>
 
             {/* Floating Status Indicator in Navbar for Offline Mode */}
             {!isOnline ? (
@@ -176,107 +174,109 @@ export const Navbar: React.FC = () => {
 
           {/* Desktop Navigation Links */}
           <nav role="navigation" aria-label="Navegação Principal do Sistema" className="hidden lg:flex items-center space-x-1">
-            <button
-              onClick={() => handleNavClick("home")}
-              aria-label={t("home", "Início")}
-              aria-current={activeTab === "home" ? "page" : undefined}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === "home"
-                  ? "bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 font-semibold"
+            <Link
+              to="/"
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-colors ${
+                routeKey === "home"
+                  ? "bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 font-bold"
                   : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
               }`}
             >
               <Home className="w-4 h-4" />
               <span>{t("home", "Início")}</span>
-            </button>
+            </Link>
 
-            <button
-              onClick={() => handleNavClick("lost")}
-              aria-label={t("lostItems", "Perdidos")}
-              aria-current={activeTab === "lost" ? "page" : undefined}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === "lost"
-                  ? "bg-[#EF4444]/10 text-[#EF4444] dark:text-red-400 font-semibold"
+            <Link
+              to="/buscar"
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-colors ${
+                routeKey === "search"
+                  ? "bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 font-bold"
+                  : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              }`}
+            >
+              <Search className="w-4 h-4" />
+              <span>Buscar</span>
+            </Link>
+
+            <Link
+              to="/perdidos"
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-colors ${
+                pathname === "/perdidos"
+                  ? "bg-[#EF4444]/10 text-[#EF4444] dark:text-red-400 font-bold"
                   : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
               }`}
             >
               <PackageSearch className="w-4 h-4 text-[#EF4444]" />
               <span>{t("lostItems", "Perdidos")}</span>
-            </button>
+            </Link>
 
-            <button
-              onClick={() => handleNavClick("found")}
-              aria-label={t("foundItems", "Encontrados")}
-              aria-current={activeTab === "found" ? "page" : undefined}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === "found"
-                  ? "bg-[#22C55E]/10 text-[#22C55E] dark:text-green-400 font-semibold"
+            <Link
+              to="/encontrados"
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-colors ${
+                pathname === "/encontrados"
+                  ? "bg-[#22C55E]/10 text-[#22C55E] dark:text-green-400 font-bold"
                   : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
               }`}
             >
               <CheckCircle2 className="w-4 h-4 text-[#22C55E]" />
               <span>{t("foundItems", "Encontrados")}</span>
-            </button>
+            </Link>
 
-            <button
-              onClick={() => handleNavClick("image_analyzer")}
-              aria-label={t("imageAnalyzer", "Analisador IA")}
-              aria-current={activeTab === "image_analyzer" ? "page" : undefined}
-              className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-sm font-bold transition-all ${
-                activeTab === "image_analyzer"
+            <Link
+              to="/analisador-ia"
+              className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-sm font-bold transition-all ${
+                routeKey === "image_analyzer"
                   ? "bg-emerald-500/15 text-[#00843D] dark:text-green-400 border border-[#00843D]/30"
                   : "text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
               }`}
             >
               <Sparkles className="w-4 h-4 text-amber-500 fill-amber-500" />
               <span>{language === "pt" ? "Analisar Fotos (IA)" : "Photo AI Analyzer"}</span>
-            </button>
+            </Link>
 
-            <button
-              onClick={() => handleNavClick("register")}
-              aria-label={t("registerItem", "Registrar Item")}
-              aria-current={activeTab === "register" ? "page" : undefined}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === "register"
-                  ? "bg-[#00843D] text-white shadow-sm font-semibold"
-                  : "text-[#00843D] dark:text-green-400 hover:bg-[#00843D]/10 dark:hover:bg-[#00843D]/20 font-semibold"
+            <Link
+              to="/cadastrar"
+              className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-sm font-bold transition-colors ${
+                routeKey === "register"
+                  ? "bg-[#00843D] text-white shadow-sm"
+                  : "text-[#00843D] dark:text-green-400 hover:bg-[#00843D]/10 dark:hover:bg-[#00843D]/20"
               }`}
             >
               <PlusCircle className="w-4 h-4" />
               <span>{t("registerItem", "Cadastrar")}</span>
-            </button>
+            </Link>
 
-            <button
-              onClick={() => handleNavClick("dashboard")}
-              aria-label={t("dashboard", "Painel Admin")}
-              aria-current={activeTab === "dashboard" ? "page" : undefined}
-              className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-colors ${
-                activeTab === "dashboard"
-                  ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold"
-                  : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-              }`}
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              <span>{t("dashboard", "Dashboard")}</span>
-            </button>
+            {/* Admin Panel Link */}
+            {currentUser.role === "ADMIN" && (
+              <Link
+                to="/admin"
+                className={`flex items-center space-x-2 px-3.5 py-2 rounded-xl text-sm font-bold transition-colors ${
+                  routeKey === "admin"
+                    ? "bg-purple-600 text-white shadow-sm"
+                    : "text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40"
+                }`}
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                <span>Painel Admin</span>
+              </Link>
+            )}
           </nav>
 
           {/* Right Action Icons & Profile Switcher */}
           <div className="flex items-center space-x-2 sm:space-x-3">
-            {/* Quick Support / Dúvidas Discord Shortcut Button */}
-            <button
+            {/* Quick Support Link to /suporte */}
+            <Link
+              to="/suporte"
               id="navbar-quick-support-btn"
-              onClick={() => {
-                vibrateClick();
-                setIsSupportModalOpen(true);
-              }}
-              role="button"
-              aria-label="Tirar Dúvidas ou Enviar Suporte via Discord"
-              title="Suporte Rápido & Tirar Dúvidas (Discord)"
-              className="p-2 rounded-lg text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors relative"
+              title="Central de Suporte & Dúvidas"
+              className={`p-2 rounded-xl transition-colors relative ${
+                routeKey === "support" || routeKey === "support_feedback" || routeKey === "support_bug"
+                  ? "bg-[#00843D]/15 text-[#00843D] dark:text-green-400"
+                  : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+              }`}
             >
               <LifeBuoy className="w-5 h-5" />
-            </button>
+            </Link>
 
             {/* Quick QR Code Scanner Shortcut */}
             <button
@@ -284,12 +284,12 @@ export const Navbar: React.FC = () => {
               role="button"
               aria-label="Abrir Scanner de QR Code de Devolução"
               title="Escanear QR Code de Devolução"
-              className="p-2 rounded-lg text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors relative"
+              className="p-2 rounded-xl text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors relative"
             >
               <QrCode className="w-5 h-5 text-[#00843D] dark:text-green-400" />
             </button>
 
-            {/* Notifications Button */}
+            {/* Notifications Button & Dropdown */}
             <div className="relative">
               <button
                 onClick={() => {
@@ -300,7 +300,11 @@ export const Navbar: React.FC = () => {
                 aria-label={`Notificações: ${unreadCount} não lidas`}
                 aria-expanded={notificationsOpen}
                 aria-haspopup="dialog"
-                className="p-2 rounded-lg text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors relative"
+                className={`p-2 rounded-xl transition-colors relative ${
+                  routeKey === "notifications"
+                    ? "bg-[#00843D]/15 text-[#00843D] dark:text-green-400"
+                    : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                }`}
               >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
@@ -317,17 +321,18 @@ export const Navbar: React.FC = () => {
                     <h3 className="font-bold text-sm text-neutral-900 dark:text-white flex items-center gap-2">
                       <Bell className="w-4 h-4 text-[#00843D]" /> Notificações do IFPR
                     </h3>
-                    {unreadCount > 0 && (
+                    <div className="flex items-center space-x-2">
                       <button
                         onClick={() => {
                           vibrateClick();
-                          clearAllNotifications();
+                          setNotificationsOpen(false);
+                          navigate("/notificacoes");
                         }}
-                        className="text-xs text-[#00843D] dark:text-green-400 hover:underline font-medium"
+                        className="text-xs text-[#00843D] dark:text-green-400 hover:underline font-bold"
                       >
-                        Marcar todas lidas
+                        Ver todas
                       </button>
-                    )}
+                    </div>
                   </div>
 
                   {/* FCM Push Notification Request Button */}
@@ -354,7 +359,7 @@ export const Navbar: React.FC = () => {
                         Nenhuma notificação recente.
                       </p>
                     ) : (
-                      userNotifications.map((n) => (
+                      userNotifications.slice(0, 5).map((n) => (
                         <div
                           key={n.id}
                           onClick={() => {
@@ -386,6 +391,17 @@ export const Navbar: React.FC = () => {
                       ))
                     )}
                   </div>
+
+                  <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 mt-3 text-center">
+                    <Link
+                      to="/notificacoes"
+                      onClick={() => setNotificationsOpen(false)}
+                      className="text-xs font-bold text-[#00843D] dark:text-green-400 hover:underline inline-flex items-center gap-1"
+                    >
+                      <span>Abrir Central de Notificações Completa</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>
@@ -402,20 +418,20 @@ export const Navbar: React.FC = () => {
                 }}
                 role="button"
                 aria-label="Entrar ou cadastrar conta"
-                className="px-3 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white text-xs font-bold transition-all shadow-xs flex items-center space-x-1.5"
+                className="px-3.5 py-2 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white text-xs font-bold transition-all shadow-xs flex items-center space-x-1.5"
               >
                 <LogIn className="w-3.5 h-3.5" />
-                <span>Entrar / Cadastrar</span>
+                <span>Entrar</span>
               </button>
             ) : (
               <div className="flex items-center space-x-1.5">
-                <button
-                  onClick={() => handleNavClick("profile")}
-                  aria-label={`Ver perfil de ${currentUser.name}`}
-                  className="hidden sm:flex items-center space-x-1 px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs font-bold border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-colors"
+                <Link
+                  to="/perfil"
+                  title={`Ver perfil de ${currentUser.name}`}
+                  className="hidden sm:flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs font-bold border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-colors"
                 >
                   <span>{currentUser.name} ({currentUser.role})</span>
-                </button>
+                </Link>
                 <button
                   onClick={() => {
                     vibrateClick();
@@ -424,7 +440,7 @@ export const Navbar: React.FC = () => {
                   role="button"
                   aria-label="Sair da Conta"
                   title="Sair da Conta (Logout)"
-                  className="px-2.5 py-1 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white text-xs font-bold transition-all border border-red-500/20 flex items-center space-x-1"
+                  className="px-2.5 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white text-xs font-bold transition-all border border-red-500/20 flex items-center space-x-1"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span className="hidden md:inline">Sair</span>
@@ -433,19 +449,17 @@ export const Navbar: React.FC = () => {
             )}
 
             {/* Profile Avatar Trigger */}
-            <button
-              onClick={() => handleNavClick("profile")}
-              role="button"
-              aria-label={`Acessar perfil de ${currentUser.name}`}
+            <Link
+              to="/perfil"
+              title="Meu Perfil"
               className="flex items-center space-x-2 pl-1 cursor-pointer focus:outline-none"
-              title="Ver Perfil"
             >
               <img
                 src={currentUser.avatarUrl}
                 alt={currentUser.name}
                 className="w-8 h-8 rounded-full object-cover border-2 border-[#00843D]"
               />
-            </button>
+            </Link>
 
             {/* Mobile menu hamburger button */}
             <button
@@ -468,10 +482,10 @@ export const Navbar: React.FC = () => {
       {mobileMenuOpen && (
         <div role="navigation" aria-label="Menu Móvel" className="lg:hidden border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#181818] px-4 pt-3 pb-6 space-y-2 animate-in slide-in-from-top-2 duration-200">
           <button
-            onClick={() => handleNavClick("home")}
+            onClick={() => handleNavClick("/")}
             aria-label="Início"
             className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-              activeTab === "home"
+              routeKey === "home"
                 ? "bg-[#00843D]/10 text-[#00843D] font-bold"
                 : "text-neutral-700 dark:text-neutral-200"
             }`}
@@ -481,10 +495,23 @@ export const Navbar: React.FC = () => {
           </button>
 
           <button
-            onClick={() => handleNavClick("lost")}
+            onClick={() => handleNavClick("/buscar")}
+            aria-label="Buscar Itens"
+            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
+              routeKey === "search"
+                ? "bg-[#00843D]/10 text-[#00843D] font-bold"
+                : "text-neutral-700 dark:text-neutral-200"
+            }`}
+          >
+            <Search className="w-5 h-5 text-[#00843D]" />
+            <span>Buscar Objetos</span>
+          </button>
+
+          <button
+            onClick={() => handleNavClick("/perdidos")}
             aria-label="Objetos Perdidos"
             className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-              activeTab === "lost"
+              pathname === "/perdidos"
                 ? "bg-[#EF4444]/10 text-[#EF4444] font-bold"
                 : "text-neutral-700 dark:text-neutral-200"
             }`}
@@ -494,10 +521,10 @@ export const Navbar: React.FC = () => {
           </button>
 
           <button
-            onClick={() => handleNavClick("found")}
+            onClick={() => handleNavClick("/encontrados")}
             aria-label="Objetos Encontrados"
             className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-              activeTab === "found"
+              pathname === "/encontrados"
                 ? "bg-[#22C55E]/10 text-[#22C55E] font-bold"
                 : "text-neutral-700 dark:text-neutral-200"
             }`}
@@ -507,10 +534,23 @@ export const Navbar: React.FC = () => {
           </button>
 
           <button
-            onClick={() => handleNavClick("image_analyzer")}
+            onClick={() => handleNavClick("/meus-registros")}
+            aria-label="Meus Registros"
+            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
+              routeKey === "my_items"
+                ? "bg-[#00843D]/10 text-[#00843D] font-bold"
+                : "text-neutral-700 dark:text-neutral-200"
+            }`}
+          >
+            <Layers className="w-5 h-5 text-[#00843D]" />
+            <span>Meus Registros</span>
+          </button>
+
+          <button
+            onClick={() => handleNavClick("/analisador-ia")}
             aria-label="Analisar Fotos com Inteligência Artificial Gemini"
             className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold ${
-              activeTab === "image_analyzer"
+              routeKey === "image_analyzer"
                 ? "bg-emerald-500/15 text-[#00843D] dark:text-green-400 font-extrabold"
                 : "text-emerald-700 dark:text-emerald-400"
             }`}
@@ -540,31 +580,57 @@ export const Navbar: React.FC = () => {
             </button>
           </div>
 
+          {/* Admin Panel Link on Mobile */}
+          {currentUser.role === "ADMIN" && (
+            <button
+              onClick={() => handleNavClick("/admin")}
+              aria-label="Painel Administrativo do Campus"
+              className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold ${
+                routeKey === "admin"
+                  ? "bg-purple-600 text-white"
+                  : "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300"
+              }`}
+            >
+              <LayoutDashboard className="w-5 h-5" />
+              <span>Painel Administrativo (/admin)</span>
+            </button>
+          )}
+
           <button
-            onClick={() => handleNavClick("dashboard")}
-            aria-label="Painel Administrativo do Campus"
+            onClick={() => handleNavClick("/suporte")}
+            role="button"
+            aria-label="Central de Suporte e Dúvidas"
+            className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-colors"
+          >
+            <LifeBuoy className="w-5 h-5" />
+            <span>Central de Suporte & Dúvidas</span>
+          </button>
+
+          <button
+            onClick={() => handleNavClick("/configuracoes")}
+            aria-label="Configurações & Preferências"
             className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-              activeTab === "dashboard"
-                ? "bg-amber-500/10 text-amber-600 font-bold"
+              routeKey === "settings"
+                ? "bg-[#00843D]/10 text-[#00843D] font-bold"
                 : "text-neutral-700 dark:text-neutral-200"
             }`}
           >
-            <LayoutDashboard className="w-5 h-5 text-amber-500" />
-            <span>Dashboard Administrativo</span>
+            <Settings className="w-5 h-5 text-neutral-500" />
+            <span>Configurações & Preferências</span>
           </button>
 
-          {/* Mobile Theme Toggle Switch */}
-          <div className="flex items-center justify-between py-2 px-3.5 rounded-xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700/80 my-1">
-            <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-2">
-              {darkMode ? (
-                <Moon className="w-4 h-4 text-amber-400 fill-amber-400" />
-              ) : (
-                <Sun className="w-4 h-4 text-amber-500 fill-amber-500" />
-              )}
-              <span>{darkMode ? "Modo Escuro Ativo" : "Modo Claro Ativo"}</span>
-            </span>
-            <ThemeToggle />
-          </div>
+          <button
+            onClick={() => handleNavClick("/perfil")}
+            aria-label={`Meu Perfil (${currentUser.role})`}
+            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
+              routeKey === "profile"
+                ? "bg-[#00843D]/10 text-[#00843D] font-bold"
+                : "text-neutral-700 dark:text-neutral-200"
+            }`}
+          >
+            <UserCheck className="w-5 h-5 text-[#00843D]" />
+            <span>Meu Perfil ({currentUser.role})</span>
+          </button>
 
           {/* PWA Install Button in Mobile Menu */}
           {!isInstalled && (
@@ -584,33 +650,6 @@ export const Navbar: React.FC = () => {
               <Download className="w-4 h-4" />
             </button>
           )}
-
-          <button
-            onClick={() => {
-              vibrateClick();
-              setIsSupportModalOpen(true);
-              setMobileMenuOpen(false);
-            }}
-            role="button"
-            aria-label="Tirar Dúvidas ou Enviar Suporte via Discord"
-            className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-colors"
-          >
-            <LifeBuoy className="w-5 h-5" />
-            <span>Tirar Dúvidas / Suporte Rápido</span>
-          </button>
-
-          <button
-            onClick={() => handleNavClick("profile")}
-            aria-label={`Meu Perfil (${currentUser.role})`}
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-              activeTab === "profile"
-                ? "bg-[#00843D]/10 text-[#00843D] font-bold"
-                : "text-neutral-700 dark:text-neutral-200"
-            }`}
-          >
-            <UserCheck className="w-5 h-5 text-[#00843D]" />
-            <span>Meu Perfil ({currentUser.role})</span>
-          </button>
 
           {(currentUser.id !== "guest_visitor" || firebaseUser) ? (
             <button
@@ -644,12 +683,12 @@ export const Navbar: React.FC = () => {
         </div>
       )}
 
-      {/* Quick Support Modal for Discord Feedback */}
+      {/* Quick Support Modal */}
       <ContactSupportModal
         isOpen={isSupportModalOpen}
         onClose={() => setIsSupportModalOpen(false)}
+        initialCategory="SUPPORT"
       />
     </header>
   );
 };
-

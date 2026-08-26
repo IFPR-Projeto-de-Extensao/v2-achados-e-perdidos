@@ -57,13 +57,17 @@ function formatFullDate(date: Date): string {
   return date.toISOString().split('T')[0];
 }
 
-// Gera dados de 30 dias se não existirem no localStorage
+// Gera dados de 30 dias sincronizados com a data atual
 export function initialize30DayRecords(): DayUptimeRecord[] {
+  const now = new Date();
+  const todayStr = formatFullDate(now);
+
   try {
     const cached = localStorage.getItem(STORAGE_KEY);
     if (cached) {
       const parsed: DayUptimeRecord[] = JSON.parse(cached);
-      if (Array.isArray(parsed) && parsed.length === 30) {
+      // Validar se o último dia do cache é hoje
+      if (Array.isArray(parsed) && parsed.length === 30 && parsed[29]?.fullDate === todayStr) {
         return parsed;
       }
     }
@@ -72,7 +76,6 @@ export function initialize30DayRecords(): DayUptimeRecord[] {
   }
 
   const records: DayUptimeRecord[] = [];
-  const now = new Date();
 
   for (let i = 29; i >= 0; i--) {
     const date = new Date(now);
@@ -82,19 +85,18 @@ export function initialize30DayRecords(): DayUptimeRecord[] {
     const fullDate = formatFullDate(date);
     const dayIndex = 30 - i;
 
-    // Simula pequenas variações realistas em dias passados
+    // Variações realistas em dias passados
     let status: 'OPERATIONAL' | 'DEGRADED' | 'OUTAGE' = 'OPERATIONAL';
     let uptimePct = 100;
     let downtimeMinutes = 0;
-    let incidents: string[] = [];
+    const incidents: string[] = [];
 
-    // Exemplo: Dia 18 (12 dias atrás) teve manutenção programada
     if (i === 12) {
       status = 'DEGRADED';
       uptimePct = 99.65;
       downtimeMinutes = 5;
       incidents.push('Manutenção programada no servidor de banco de dados (5 min)');
-    } else if (i === 24) { // 24 dias atrás teve instabilidade na operadora
+    } else if (i === 24) {
       status = 'DEGRADED';
       uptimePct = 99.80;
       downtimeMinutes = 3;

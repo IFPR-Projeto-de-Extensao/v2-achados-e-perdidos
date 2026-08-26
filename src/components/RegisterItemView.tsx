@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useApp } from "../context/AppContext";
+import { useRouter } from "../context/RouterContext";
 import { useRequireAuth } from "../hooks/useRequireAuth";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
@@ -59,6 +60,8 @@ export const RegisterItemView: React.FC = () => {
     requestAuthForRegistration,
     setAuthModalOpen,
   } = useApp();
+
+  const { navigate } = useRouter();
 
   // Hook institucional de verificação de autenticação (redireciona visitantes não autenticados)
   const { isGuest, requireAuth } = useRequireAuth({
@@ -575,7 +578,7 @@ export const RegisterItemView: React.FC = () => {
     vibrateSuccess();
 
     if (res.matches.length === 0) {
-      setActiveTab(type === "PERDIDO" ? "lost" : "found");
+      navigate(type === "PERDIDO" ? "/perdidos" : "/encontrados");
     }
   };
 

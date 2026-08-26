@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
+import { useRouter } from "../context/RouterContext";
 import { ItemCard } from "./ItemCard";
 import { RecentActivityWidget } from "./RecentActivityWidget";
 import { TourGuide } from "./TourGuide";
@@ -38,7 +39,6 @@ export const HomeView: React.FC = () => {
   const {
     items,
     notifications,
-    setActiveTab,
     setSelectedItemForDetail,
     setRegisterTypeSelection,
     setQrScannerOpen,
@@ -46,6 +46,8 @@ export const HomeView: React.FC = () => {
     language,
     requestAuthForRegistration,
   } = useApp();
+
+  const { navigate } = useRouter();
 
   const [homeSearch, setHomeSearch] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("TODAS");
@@ -175,6 +177,7 @@ export const HomeView: React.FC = () => {
   const handleRegister = (type: "PERDIDO" | "ENCONTRADO") => {
     vibrateClick();
     requestAuthForRegistration(type);
+    navigate(`/cadastrar?tipo=${type.toLowerCase()}`);
   };
 
   const handleSelectExampleQuery = (queryText: string) => {
@@ -193,66 +196,79 @@ export const HomeView: React.FC = () => {
         <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-80 h-80 bg-[#C8102E]/20 rounded-full blur-2xl pointer-events-none" />
         <div className="absolute inset-0 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:24px_24px] opacity-10" />
 
-        <div className="relative z-10 max-w-3xl space-y-6">
-          <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-bold tracking-wide">
-            <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Sistema Oficial de Achados & Perdidos • IFPR Campus Ivaiporã</span>
+        <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+          <div className="lg:col-span-8 space-y-6">
+            <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-bold tracking-wide">
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>Sistema Oficial de Achados & Perdidos • IFPR Campus Ivaiporã</span>
+            </div>
+
+            <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-tight">
+              Achados & Perdidos <br className="hidden sm:inline" />
+              <span className="text-emerald-200">Campus Ivaiporã</span>
+            </h1>
+
+            <p className="text-base sm:text-xl text-emerald-50/90 font-medium leading-relaxed max-w-2xl">
+              Conectando alunos, professores e servidores do Campus Ivaiporã aos seus objetos de forma rápida, inteligente e segura.
+            </p>
+
+            {/* Action Buttons */}
+            <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <button
+                onClick={() => navigate("/analisador-ia")}
+                className="px-6 py-3.5 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-sm shadow-lg shadow-[#00843D]/30 transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2 border border-emerald-400/30"
+              >
+                <Sparkles className="w-5 h-5 text-amber-300 fill-amber-300" />
+                <span>Analisar Foto com IA Gemini</span>
+              </button>
+
+              <button
+                onClick={() => handleRegister("PERDIDO")}
+                className="px-6 py-3.5 rounded-2xl bg-[#EF4444] hover:bg-red-600 text-white font-bold text-sm shadow-lg shadow-red-900/30 transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2"
+              >
+                <PackageSearch className="w-5 h-5" />
+                <span>Cadastrar Objeto Perdido</span>
+              </button>
+
+              <button
+                onClick={() => handleRegister("ENCONTRADO")}
+                className="px-6 py-3.5 rounded-2xl bg-white text-[#00843D] hover:bg-emerald-50 font-extrabold text-sm shadow-lg shadow-black/10 transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2"
+              >
+                <PlusCircle className="w-5 h-5" />
+                <span>Cadastrar Objeto Encontrado</span>
+              </button>
+
+              <button
+                onClick={() => navigate("/buscar")}
+                className="px-5 py-3.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm backdrop-blur-md border border-white/20 transition-all flex items-center justify-center space-x-2"
+              >
+                <Search className="w-4 h-4" />
+                <span>Pesquisar Todos</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  vibrateClick();
+                  setIsTourOpen(true);
+                }}
+                className="px-5 py-3.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-neutral-900 font-black text-sm shadow-lg shadow-amber-900/20 transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2 border border-amber-300"
+                title="Iniciar Tutorial Passo a Passo do Sistema"
+              >
+                <Compass className="w-4 h-4 text-neutral-950" />
+                <span>Tutorial do Sistema</span>
+              </button>
+            </div>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-tight">
-            Achados & Perdidos <br className="hidden sm:inline" />
-            <span className="text-emerald-200">Campus Ivaiporã</span>
-          </h1>
-
-          <p className="text-base sm:text-xl text-emerald-50/90 font-medium leading-relaxed max-w-2xl">
-            Conectando alunos, professores e servidores do Campus Ivaiporã aos seus objetos de forma rápida, inteligente e segura.
-          </p>
-
-          {/* Action Buttons */}
-          <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <button
-              onClick={() => setActiveTab("image_analyzer")}
-              className="px-6 py-3.5 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-sm shadow-lg shadow-[#00843D]/30 transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2 border border-emerald-400/30"
-            >
-              <Sparkles className="w-5 h-5 text-amber-300 fill-amber-300" />
-              <span>Analisar Foto com IA Gemini</span>
-            </button>
-
-            <button
-              onClick={() => handleRegister("PERDIDO")}
-              className="px-6 py-3.5 rounded-2xl bg-[#EF4444] hover:bg-red-600 text-white font-bold text-sm shadow-lg shadow-red-900/30 transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2"
-            >
-              <PackageSearch className="w-5 h-5" />
-              <span>Cadastrar Objeto Perdido</span>
-            </button>
-
-            <button
-              onClick={() => handleRegister("ENCONTRADO")}
-              className="px-6 py-3.5 rounded-2xl bg-white text-[#00843D] hover:bg-emerald-50 font-extrabold text-sm shadow-lg shadow-black/10 transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2"
-            >
-              <PlusCircle className="w-5 h-5" />
-              <span>Cadastrar Objeto Encontrado</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("lost")}
-              className="px-5 py-3.5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm backdrop-blur-md border border-white/20 transition-all flex items-center justify-center space-x-2"
-            >
-              <Search className="w-4 h-4" />
-              <span>Pesquisar Todos</span>
-            </button>
-
-            <button
-              onClick={() => {
-                vibrateClick();
-                setIsTourOpen(true);
-              }}
-              className="px-5 py-3.5 rounded-2xl bg-amber-400 hover:bg-amber-300 text-neutral-900 font-black text-sm shadow-lg shadow-amber-900/20 transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2 border border-amber-300"
-              title="Iniciar Tutorial Passo a Passo do Sistema"
-            >
-              <Compass className="w-4 h-4 text-neutral-950" />
-              <span>Tutorial do Sistema</span>
-            </button>
+          {/* Hero Brand Image (Transparent IF Logo) */}
+          <div className="flex col-span-1 lg:col-span-4 items-center justify-center p-2 sm:p-4">
+            <div className="relative flex items-center justify-center w-full max-w-[160px] sm:max-w-[200px] lg:max-w-[240px] aspect-[216/292]">
+              <img
+                src="/ifpr-logo.svg"
+                alt="Instituto Federal do Paraná - IFPR"
+                className="w-full h-full object-contain select-none drop-shadow-2xl transition-transform hover:scale-105 duration-300"
+              />
+            </div>
           </div>
         </div>
       </section>
@@ -542,7 +558,7 @@ export const HomeView: React.FC = () => {
           <button
             onClick={() => {
               vibrateClick();
-              setActiveTab("lost");
+              navigate("/buscar");
             }}
             className="text-xs font-bold text-[#00843D] dark:text-green-400 hover:underline flex items-center space-x-1"
           >

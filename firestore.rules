@@ -41,9 +41,10 @@ service cloud.firestore {
 
     function isServidor() {
       return isSignedIn() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'SERVIDOR' ||
-              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN');
+             (isAdmin() ||
+              (request.auth.token.role == 'SERVIDOR') ||
+              (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'SERVIDOR'));
     }
 
     function incoming() {

@@ -1,15 +1,21 @@
 import React, { useState, useEffect, useRef } from "react";
 import { AppProvider, useApp } from "./context/AppContext";
+import { RouterProvider, useRouter } from "./context/RouterContext";
 import { Navbar } from "./components/Navbar";
 import { Footer } from "./components/Footer";
 import { HomeView } from "./components/HomeView";
 import { ObjectsView } from "./components/ObjectsView";
 import { RegisterItemView } from "./components/RegisterItemView";
-import { DashboardView } from "./components/DashboardView";
+import { AdminView } from "./components/AdminView";
 import { ProfileView } from "./components/ProfileView";
+import { MyItemsView } from "./components/MyItemsView";
+import { NotificationsView } from "./components/NotificationsView";
+import { SettingsView } from "./components/SettingsView";
+import { SupportView } from "./components/SupportView";
 import { ImageAnalyzerView } from "./components/ImageAnalyzerView";
 import { PrivacyPolicyView } from "./components/PrivacyPolicyView";
 import { TermsOfUseView } from "./components/TermsOfUseView";
+import { NotFoundView } from "./components/NotFoundView";
 import { ItemDetailModal } from "./components/ItemDetailModal";
 import { QRCodeScannerModal } from "./components/QRCodeScannerModal";
 import { AIMatchModal } from "./components/AIMatchModal";
@@ -25,13 +31,18 @@ import { trackPageView } from "./lib/analytics";
 import { traceFirebasePerformance } from "./lib/firebase";
 import { savePerformanceMetricLog } from "./lib/offlineDb";
 import { parseQrCodeOrUrl, findItemInList, fetchItemFromFirestore } from "./lib/qrCodeUtils";
-import { APP_VALID_TABS, DEFAULT_MAINTENANCE_MESSAGE, type AppTabType } from "./lib/shared-constants";
+import { DEFAULT_MAINTENANCE_MESSAGE } from "./lib/shared-constants";
+import { Breadcrumbs } from "./components/Breadcrumbs";
+import {
+  determineTransitionType,
+  getRouteAnimationVariants,
+  TransitionType,
+} from "./lib/routeAnimations";
+import { AppRouteKey } from "./lib/routes";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 
 const MainContent: React.FC = () => {
   const {
-    activeTab,
-    setActiveTab,
     qrScannerOpen,
     setQrScannerOpen,
     selectedItemForDetail,
@@ -43,15 +54,34 @@ const MainContent: React.FC = () => {
     maintenanceCustomMessage,
     currentUser,
     items,
-    addToast,
-    isGuest,
-    isAuthenticated,
     requestAuthForRegistration,
   } = useApp();
 
+  const { routeKey, pathname, searchParams, navigate } = useRouter();
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
   const shouldReduceMotion = useReducedMotion();
   const lastResolvedItemIdRef = useRef<string | null>(null);
+
+  // Track previous route to determine hierarchy direction for transitions
+  const prevPathRef = useRef<string>(pathname);
+  const prevRouteKeyRef = useRef<AppRouteKey>(routeKey);
+  const [transitionType, setTransitionType] = useState<TransitionType>("cross-fade");
+
+  useEffect(() => {
+    if (prevPathRef.current !== pathname) {
+      const nextType = determineTransitionType(
+        prevPathRef.current,
+        prevRouteKeyRef.current,
+        pathname,
+        routeKey
+      );
+      setTransitionType(nextType);
+      prevPathRef.current = pathname;
+      prevRouteKeyRef.current = routeKey;
+    }
+  }, [pathname, routeKey]);
+
+  const animationVariants = getRouteAnimationVariants(transitionType, !!shouldReduceMotion);
 
   // Global Keyboard Shortcuts for rapid navigation and power-user accessibility
   useEffect(() => {
@@ -71,27 +101,28 @@ const MainContent: React.FC = () => {
       switch (key) {
         case "H":
           e.preventDefault();
-          setActiveTab("home");
+          navigate("/");
           break;
         case "S":
           e.preventDefault();
-          setActiveTab("lost");
+          navigate("/buscar");
           break;
         case "R":
           e.preventDefault();
           requestAuthForRegistration();
+          navigate("/cadastrar");
           break;
         case "D":
           e.preventDefault();
-          setActiveTab("dashboard");
+          navigate("/admin");
           break;
         case "P":
           e.preventDefault();
-          setActiveTab("profile");
+          navigate("/perfil");
           break;
         case "A":
           e.preventDefault();
-          setActiveTab("image_analyzer");
+          navigate("/analisador-ia");
           break;
         case "Q":
           e.preventDefault();
@@ -109,7 +140,7 @@ const MainContent: React.FC = () => {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setActiveTab, setQrScannerOpen]);
+  }, [navigate, requestAuthForRegistration, setQrScannerOpen]);
 
   // Handle URL deep-linking for QR codes and direct item links (e.g. ?itemId=..., ?qr=..., /item/:id)
   useEffect(() => {
@@ -140,22 +171,13 @@ const MainContent: React.FC = () => {
       if (matchedItem) {
         lastResolvedItemIdRef.current = matchedItem.id;
         setSelectedItemForDetail(matchedItem);
-        
-        // Switch tab to lost/found if specified
-        if (parsed.tab && (APP_VALID_TABS as readonly string[]).includes(parsed.tab)) {
-          setActiveTab(parsed.tab as AppTabType);
-        } else if (matchedItem.type === "PERDIDO") {
-          setActiveTab("lost");
-        } else if (matchedItem.type === "ENCONTRADO") {
-          setActiveTab("found");
-        }
       }
     };
 
     resolveItemFromUrl();
-  }, [items, setSelectedItemForDetail, setActiveTab]);
+  }, [items, setSelectedItemForDetail]);
 
-  // Secondary non-blocking services (Analytics, Performance, PWA Uptime) initialized after DOM mount & render
+  // Secondary non-blocking services (Analytics, Performance, PWA Uptime)
   useEffect(() => {
     const timer = setTimeout(() => {
       try {
@@ -165,108 +187,15 @@ const MainContent: React.FC = () => {
       }
     }, 60);
 
-    // Check PWA launch shortcuts from URL query params (?tab=... or ?action=scan) or pathname
-    if (typeof window !== "undefined") {
-      const pathname = window.location.pathname.toLowerCase();
-      if (pathname === "/politica-de-privacidade" || pathname === "/politica-de-privacidade/") {
-        setActiveTab("privacy_policy");
-      } else if (pathname === "/termos-de-uso" || pathname === "/termos-de-uso/") {
-        setActiveTab("terms_of_use");
-      } else {
-        const params = new URLSearchParams(window.location.search);
-        const tabParam = params.get("tab");
-        const actionParam = params.get("action");
-
-        if (tabParam && (APP_VALID_TABS as readonly string[]).includes(tabParam)) {
-          if (tabParam === "register") {
-            requestAuthForRegistration();
-          } else {
-            setActiveTab(tabParam as AppTabType);
-          }
-        }
-        if (actionParam === "scan") {
-          setQrScannerOpen(true);
-        } else if (actionParam === "register_lost") {
-          requestAuthForRegistration("PERDIDO");
-        } else if (actionParam === "register_found") {
-          requestAuthForRegistration("ENCONTRADO");
-        }
-      }
-
-      const handlePopState = () => {
-        const currentPath = window.location.pathname.toLowerCase();
-        if (currentPath === "/politica-de-privacidade" || currentPath === "/politica-de-privacidade/") {
-          setActiveTab("privacy_policy");
-        } else if (currentPath === "/termos-de-uso" || currentPath === "/termos-de-uso/") {
-          setActiveTab("terms_of_use");
-        } else {
-          const p = new URLSearchParams(window.location.search);
-          const t = p.get("tab");
-          const itemParam = p.get("itemId") || p.get("item");
-
-          if (t && (APP_VALID_TABS as readonly string[]).includes(t)) {
-            setActiveTab(t as AppTabType);
-          } else {
-            setActiveTab("home");
-          }
-
-          // If back navigation occurred and no itemId is in URL, close modal
-          if (!itemParam) {
-            setSelectedItemForDetail(null);
-            lastResolvedItemIdRef.current = null;
-          }
-        }
-      };
-
-      window.addEventListener("popstate", handlePopState);
-      return () => {
-        clearTimeout(timer);
-        window.removeEventListener("popstate", handlePopState);
-      };
-    }
-
     return () => clearTimeout(timer);
-  }, [setActiveTab, setQrScannerOpen, setSelectedItemForDetail]);
+  }, []);
 
-  // Sync window path history when navigating tabs and opening/closing item modal
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const currentPath = window.location.pathname.toLowerCase();
-    
-    if (activeTab === "privacy_policy") {
-      if (currentPath !== "/politica-de-privacidade") {
-        window.history.pushState({ tab: "privacy_policy" }, "", "/politica-de-privacidade");
-      }
-    } else if (activeTab === "terms_of_use") {
-      if (currentPath !== "/termos-de-uso") {
-        window.history.pushState({ tab: "terms_of_use" }, "", "/termos-de-uso");
-      }
-    } else {
-      const url = new URL(window.location.href);
-      if (selectedItemForDetail) {
-        url.searchParams.set("itemId", selectedItemForDetail.id);
-        if (selectedItemForDetail.qrCodeId) {
-          url.searchParams.set("qr", selectedItemForDetail.qrCodeId);
-        }
-        url.searchParams.set("tab", selectedItemForDetail.type === "PERDIDO" ? "lost" : "found");
-        window.history.replaceState({ itemId: selectedItemForDetail.id }, "", url.toString());
-      } else {
-        if (url.searchParams.has("itemId") || url.searchParams.has("qr")) {
-          url.searchParams.delete("itemId");
-          url.searchParams.delete("qr");
-          url.searchParams.delete("item");
-          window.history.replaceState({ tab: activeTab }, "", url.toString());
-        }
-      }
-    }
-  }, [activeTab, selectedItemForDetail]);
-
-  // RNF01 & RNF02: Firebase Performance Monitoring tracking component render time & tab latency
+  // Performance tracking per route
   useEffect(() => {
     const startTime = performance.now();
-    const perfTrace = traceFirebasePerformance(`view_render_${activeTab}`);
+    const perfTrace = traceFirebasePerformance(`view_render_${routeKey}`);
 
-    trackPageView(`aba_${activeTab}`);
+    trackPageView(`rota_${pathname}`);
 
     return () => {
       const renderDurationMs = Math.round(performance.now() - startTime);
@@ -276,9 +205,51 @@ const MainContent: React.FC = () => {
           perfTrace.stop();
         } catch (_) {}
       }
-      savePerformanceMetricLog(`render_duration_${activeTab}`, renderDurationMs);
+      savePerformanceMetricLog(`render_duration_${routeKey}`, renderDurationMs);
     };
-  }, [activeTab]);
+  }, [routeKey, pathname]);
+
+  // Render view based on routeKey
+  const renderCurrentView = () => {
+    switch (routeKey) {
+      case "home":
+        return <HomeView />;
+      case "search": {
+        const filterType =
+          searchParams.tipo === "perdido"
+            ? "PERDIDO"
+            : searchParams.tipo === "encontrado"
+            ? "ENCONTRADO"
+            : "TODOS";
+        return <ObjectsView initialFilterType={filterType} />;
+      }
+      case "register":
+        return <RegisterItemView />;
+      case "admin":
+        return <AdminView />;
+      case "profile":
+        return <ProfileView />;
+      case "my_items":
+        return <MyItemsView />;
+      case "notifications":
+        return <NotificationsView />;
+      case "settings":
+        return <SettingsView />;
+      case "support":
+      case "support_feedback":
+      case "support_bug":
+        return <SupportView />;
+      case "image_analyzer":
+        return <ImageAnalyzerView />;
+      case "privacy_policy":
+        return <PrivacyPolicyView />;
+      case "terms_of_use":
+        return <TermsOfUseView />;
+      case "not_found":
+      default:
+        return <NotFoundView />;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#F5F5F5] dark:bg-[#121212] text-neutral-900 dark:text-neutral-100 flex flex-col font-sans transition-colors duration-200 selection:bg-[#00843D] selection:text-white">
@@ -329,26 +300,21 @@ const MainContent: React.FC = () => {
       {/* Top Navbar */}
       <Navbar />
 
-      {/* Main View Container (responsive spacing for mobile bottom navigation) */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-20 lg:pb-12">
+      {/* Main View Container with dynamic Breadcrumbs and route hierarchy transitions */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-20 lg:pb-12">
+        {/* Dynamic Structural Breadcrumbs Navigation */}
+        <Breadcrumbs />
+
         <AnimatePresence mode="wait">
           <motion.div
-            key={activeTab}
-            initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: -6 }}
-            transition={{ duration: shouldReduceMotion ? 0 : 0.16, ease: "easeOut" }}
+            key={pathname}
+            initial={animationVariants.initial}
+            animate={animationVariants.animate}
+            exit={animationVariants.exit}
+            transition={animationVariants.transition}
             className="w-full"
           >
-            {activeTab === "home" && <HomeView />}
-            {activeTab === "lost" && <ObjectsView initialFilterType="PERDIDO" />}
-            {activeTab === "found" && <ObjectsView initialFilterType="ENCONTRADO" />}
-            {activeTab === "register" && <RegisterItemView />}
-            {activeTab === "dashboard" && <DashboardView />}
-            {activeTab === "profile" && <ProfileView />}
-            {activeTab === "image_analyzer" && <ImageAnalyzerView />}
-            {activeTab === "privacy_policy" && <PrivacyPolicyView />}
-            {activeTab === "terms_of_use" && <TermsOfUseView />}
+            {renderCurrentView()}
           </motion.div>
         </AnimatePresence>
       </main>
@@ -396,7 +362,9 @@ const MainContent: React.FC = () => {
 export default function App() {
   return (
     <AppProvider>
-      <MainContent />
+      <RouterProvider>
+        <MainContent />
+      </RouterProvider>
     </AppProvider>
   );
 }

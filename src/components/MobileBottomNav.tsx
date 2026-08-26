@@ -1,5 +1,6 @@
 import React from "react";
 import { useApp } from "../context/AppContext";
+import { useRouter, Link } from "../context/RouterContext";
 import { vibrateClick } from "../lib/utils";
 import {
   Home,
@@ -12,15 +13,19 @@ import {
 } from "lucide-react";
 
 export const MobileBottomNav: React.FC = () => {
-  const { activeTab, setActiveTab, currentUser, language, requestAuthForRegistration } = useApp();
+  const { currentUser, requestAuthForRegistration } = useApp();
+  const { routeKey, pathname, navigate } = useRouter();
 
-  const handleTab = (tab: "home" | "lost" | "found" | "register" | "profile" | "dashboard" | "image_analyzer") => {
+  const handleTab = (path: string) => {
     vibrateClick();
-    if (tab === "register") {
-      requestAuthForRegistration();
-    } else {
-      setActiveTab(tab);
-    }
+    navigate(path);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleRegisterClick = () => {
+    vibrateClick();
+    requestAuthForRegistration();
+    navigate("/cadastrar");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -33,11 +38,11 @@ export const MobileBottomNav: React.FC = () => {
       <div className="max-w-md mx-auto grid grid-cols-5 items-center justify-around">
         {/* Início */}
         <button
-          onClick={() => handleTab("home")}
+          onClick={() => handleTab("/")}
           aria-label="Início"
-          aria-current={activeTab === "home" ? "page" : undefined}
+          aria-current={routeKey === "home" ? "page" : undefined}
           className={`flex flex-col items-center justify-center py-1 rounded-xl transition-all ${
-            activeTab === "home"
+            routeKey === "home"
               ? "text-[#00843D] dark:text-green-400 font-bold scale-105"
               : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
           }`}
@@ -48,11 +53,11 @@ export const MobileBottomNav: React.FC = () => {
 
         {/* Perdidos */}
         <button
-          onClick={() => handleTab("lost")}
+          onClick={() => handleTab("/perdidos")}
           aria-label="Objetos Perdidos"
-          aria-current={activeTab === "lost" ? "page" : undefined}
+          aria-current={pathname === "/perdidos" ? "page" : undefined}
           className={`flex flex-col items-center justify-center py-1 rounded-xl transition-all ${
-            activeTab === "lost"
+            pathname === "/perdidos"
               ? "text-[#EF4444] dark:text-red-400 font-bold scale-105"
               : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
           }`}
@@ -63,14 +68,14 @@ export const MobileBottomNav: React.FC = () => {
 
         {/* Cadastrar (Center Highlight Button) */}
         <button
-          onClick={() => handleTab("register")}
+          onClick={handleRegisterClick}
           aria-label="Cadastrar novo item"
-          aria-current={activeTab === "register" ? "page" : undefined}
+          aria-current={routeKey === "register" ? "page" : undefined}
           className="flex flex-col items-center justify-center -mt-4 group"
         >
           <div
             className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition-transform group-active:scale-90 ${
-              activeTab === "register"
+              routeKey === "register"
                 ? "bg-[#006e33] text-white ring-4 ring-[#00843D]/20 scale-105"
                 : "bg-[#00843D] text-white hover:bg-[#006e33] shadow-[#00843D]/30"
             }`}
@@ -84,11 +89,11 @@ export const MobileBottomNav: React.FC = () => {
 
         {/* Encontrados */}
         <button
-          onClick={() => handleTab("found")}
+          onClick={() => handleTab("/encontrados")}
           aria-label="Objetos Encontrados"
-          aria-current={activeTab === "found" ? "page" : undefined}
+          aria-current={pathname === "/encontrados" ? "page" : undefined}
           className={`flex flex-col items-center justify-center py-1 rounded-xl transition-all ${
-            activeTab === "found"
+            pathname === "/encontrados"
               ? "text-[#22C55E] dark:text-green-400 font-bold scale-105"
               : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
           }`}
@@ -99,11 +104,11 @@ export const MobileBottomNav: React.FC = () => {
 
         {/* Perfil / Admin */}
         <button
-          onClick={() => handleTab(currentUser.role === "ADMIN" ? "dashboard" : "profile")}
+          onClick={() => handleTab(currentUser.role === "ADMIN" ? "/admin" : "/perfil")}
           aria-label={currentUser.role === "ADMIN" ? "Painel Admin" : "Meu Perfil"}
-          aria-current={activeTab === "profile" || activeTab === "dashboard" ? "page" : undefined}
+          aria-current={routeKey === "profile" || routeKey === "admin" ? "page" : undefined}
           className={`flex flex-col items-center justify-center py-1 rounded-xl transition-all ${
-            activeTab === "profile" || activeTab === "dashboard"
+            routeKey === "profile" || routeKey === "admin"
               ? "text-[#00843D] dark:text-green-400 font-bold scale-105"
               : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
           }`}

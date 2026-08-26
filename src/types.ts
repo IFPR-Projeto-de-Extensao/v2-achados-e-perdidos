@@ -291,7 +291,7 @@ export interface UploadTaskStatus {
   isBackgroundSyncRegistered?: boolean;
 }
 
-export type SupportCategory = "BUG_REPORT" | "FEEDBACK" | "BELONGING_QUERY" | "OTHER";
+export type SupportCategory = "BUG_REPORT" | "FEEDBACK" | "SUPPORT" | "BELONGING_QUERY" | "OTHER";
 
 export interface SupportFeedbackTicket {
   id: string;
