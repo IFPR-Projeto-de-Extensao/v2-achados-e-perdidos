@@ -76,6 +76,11 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
   const [filterType, setFilterType] = useState<"TODOS" | "PERDIDO" | "ENCONTRADO" | "DEVOLVIDO">(
     initialFilterType
   );
+
+  // Synchronize filterType when routing parameters change (e.g., navigating between /perdidos, /encontrados, /buscar)
+  useEffect(() => {
+    setFilterType(initialFilterType);
+  }, [initialFilterType]);
   const [selectedCategory, setSelectedCategory] = useState<string>("TODAS");
   const [selectedLocation, setSelectedLocation] = useState<string>("TODOS");
   const [selectedCampusBlock, setSelectedCampusBlock] = useState<string>("TODOS");

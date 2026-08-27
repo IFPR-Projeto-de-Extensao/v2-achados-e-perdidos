@@ -105,6 +105,7 @@ export const RegisterItemView: React.FC = () => {
   const [draftRestored, setDraftRestored] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Restore Draft on Mount
   useEffect(() => {
@@ -549,36 +550,45 @@ export const RegisterItemView: React.FC = () => {
       return;
     }
 
-    if (!title || !description || !location) {
-      addToast("Preencha todos os campos obrigatórios.", "error");
+    if (!title.trim() || !description.trim() || !location.trim()) {
+      addToast("Preencha todos os campos obrigatórios (título, descrição e local).", "error");
       return;
     }
 
-    const res = await addItem({
-      title,
-      category,
-      type,
-      status: type === "PERDIDO" ? "PERDIDO" : "ENCONTRADO",
-      description,
-      color: color || "Não informada",
-      brand: brand || "Desconhecida",
-      location,
-      date,
-      imageUrl,
-      contactInfo,
-    });
-
-    // Clear saved draft on successful submission
+    setIsSubmitting(true);
     try {
-      localStorage.removeItem(DRAFT_STORAGE_KEY);
-      setDraftSavedAt(null);
-      setDraftRestored(false);
-    } catch (_) {}
+      const res = await addItem({
+        title: title.trim(),
+        category,
+        type,
+        status: type === "PERDIDO" ? "PERDIDO" : "ENCONTRADO",
+        description: description.trim(),
+        color: color.trim() || "Não informada",
+        brand: brand.trim() || "Desconhecida",
+        location: location.trim(),
+        date,
+        imageUrl,
+        contactInfo: contactInfo.trim(),
+      });
 
-    vibrateSuccess();
+      // Clear saved draft on successful submission
+      try {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+        setDraftSavedAt(null);
+        setDraftRestored(false);
+      } catch (_) {}
 
-    if (res.matches.length === 0) {
-      navigate(type === "PERDIDO" ? "/perdidos" : "/encontrados");
+      vibrateSuccess();
+
+      // If no AI match alerts are opened, navigate directly to the relevant list
+      if (!res?.matches || res.matches.length === 0) {
+        navigate(type === "PERDIDO" ? "/perdidos" : "/encontrados");
+      }
+    } catch (submitErr: any) {
+      console.error("Erro ao cadastrar item:", submitErr);
+      addToast(submitErr?.message || "Erro ao salvar item no banco de dados.", "error");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1246,18 +1256,29 @@ export const RegisterItemView: React.FC = () => {
           <button
             type="button"
             aria-label="Cancelar cadastro e retornar à página inicial"
+            disabled={isSubmitting}
             onClick={() => setActiveTab("home")}
-            className="px-5 py-3 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors focus:ring-2 focus:ring-neutral-400"
+            className="px-5 py-3 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors focus:ring-2 focus:ring-neutral-400 disabled:opacity-50"
           >
             Cancelar
           </button>
           <button
             type="submit"
+            disabled={isSubmitting}
             aria-label="Salvar registro do objeto no banco de dados"
-            className="px-6 py-3 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md shadow-[#00843D]/20 transition-all flex items-center space-x-2 focus:ring-2 focus:ring-offset-2 focus:ring-[#00843D]"
+            className="px-6 py-3 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md shadow-[#00843D]/20 transition-all flex items-center space-x-2 focus:ring-2 focus:ring-offset-2 focus:ring-[#00843D] disabled:opacity-75 disabled:cursor-not-allowed"
           >
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Salvar Registro de Objeto</span>
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <span>Salvando Objeto...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Salvar Registro de Objeto</span>
+              </>
+            )}
           </button>
         </div>
       </form>

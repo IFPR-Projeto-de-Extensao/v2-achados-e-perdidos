@@ -101,7 +101,7 @@ export function parseCurrentRoute(pathname: string, search: string = ""): Parsed
 
   if (cleanPath === "/perdidos") {
     return {
-      pathname: "/buscar",
+      pathname: "/perdidos",
       routeKey: "search",
       searchParams: { ...searchParamsObj, tipo: "perdido" },
       itemId,
@@ -111,7 +111,7 @@ export function parseCurrentRoute(pathname: string, search: string = ""): Parsed
 
   if (cleanPath === "/encontrados") {
     return {
-      pathname: "/buscar",
+      pathname: "/encontrados",
       routeKey: "search",
       searchParams: { ...searchParamsObj, tipo: "encontrado" },
       itemId,
