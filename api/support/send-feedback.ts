@@ -43,9 +43,12 @@ async function sendFeedbackToDiscord(ticket: {
   clientDiagnostics?: any;
 }): Promise<boolean> {
   const webhookUrl = getDiscordFeedbackWebhookUrl();
-  if (!webhookUrl) {
+  const isConfigured = Boolean(webhookUrl && webhookUrl.length > 10);
+  console.log(`[Feedback API Diagnostics] DISCORD_FEEDBACK_WEBHOOK_URL configured: ${isConfigured}`);
+
+  if (!isConfigured) {
     console.info(
-      "[Discord Feedback Notice] DISCORD_FEEDBACK_WEBHOOK_URL não configurada nas variáveis de ambiente. O feedback foi registrado normalmente."
+      `[Discord Feedback Notice] DISCORD_FEEDBACK_WEBHOOK_URL não configurada nas variáveis de ambiente. Protocolo ${ticket.protocol} registrado sem envio ao Discord.`
     );
     return false;
   }
@@ -129,6 +132,7 @@ async function sendFeedbackToDiscord(ticket: {
       ],
     };
 
+    console.log(`[Feedback API Diagnostics] Dispatching fetch to Discord for protocol ${ticket.protocol}...`);
     const response = await fetch(webhookUrl, {
       method: "POST",
       headers: {
@@ -136,6 +140,8 @@ async function sendFeedbackToDiscord(ticket: {
       },
       body: JSON.stringify(discordPayload),
     });
+
+    console.log(`[Feedback API Diagnostics] Discord fetch response status: ${response.status} (${response.statusText || 'OK'})`);
 
     if (!response.ok) {
       const errText = await response.text().catch(() => "N/A");
@@ -217,6 +223,8 @@ export default async function handler(req: any, res: any) {
     const ticketProtocol = `IFPR-SUP-${Date.now().toString(36).toUpperCase()}`;
     const timestamp = new Date().toISOString();
     const destinationEmail = "localizamais6@gmail.com";
+
+    console.log(`[Feedback API Diagnostics] Request received (${req.method}) - Protocol: ${ticketProtocol}, Category: ${category || 'FEEDBACK'}, Subject: ${trimmedSubject.substring(0, 40)}...`);
 
     const discordSent = await sendFeedbackToDiscord({
       protocol: ticketProtocol,

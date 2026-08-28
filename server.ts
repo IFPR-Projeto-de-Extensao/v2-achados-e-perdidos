@@ -1578,6 +1578,28 @@ app.post(
   }
 });
 
+// Diagnostic Environment Endpoint (Boolean flags only, strictly no secrets)
+app.get(["/api/debug/env", "/debug/env"], (req, res) => {
+  const isConfigured = Boolean(
+    process.env.DISCORD_FEEDBACK_WEBHOOK_URL ||
+    process.env.DISCORD_WEBHOOK_URL_FEEDBACK ||
+    process.env.DISCORD_FEEDBACK_URL ||
+    process.env.DISCORD_WEBHOOK_FEEDBACK ||
+    process.env.DISCORD_SUPPORT_WEBHOOK_URL ||
+    process.env.DISCORD_WEBHOOK_URL ||
+    process.env.DISCORD_WEBHOOK ||
+    process.env.DISCORD_FEEDBACK
+  );
+
+  res.json({
+    status: isConfigured,
+    DISCORD_FEEDBACK_WEBHOOK_URL: isConfigured,
+    DISCORD_WEBHOOK_READY: isConfigured,
+    runtime: "express",
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // ==========================================
 // Discord Integration for #novos-achados & #novas-perdas
 // ==========================================
