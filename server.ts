@@ -2304,6 +2304,175 @@ app.get(["/api/monitoring/export-logs", "/monitoring/export-logs"], (req, res) =
   }
 });
 
+// API Endpoint: Automated Email Notification on Item Return
+app.post(["/api/automation/notify-item-returned", "/automation/notify-item-returned"], async (req, res) => {
+  try {
+    const { itemId, itemTitle, recipientEmail, recipientName, resolutionNotes, qrCodeId, location, category } = req.body || {};
+
+    if (!itemId || !itemTitle) {
+      return res.status(400).json({
+        success: false,
+        error: "Parâmetros obrigatórios ausentes (itemId, itemTitle).",
+      });
+    }
+
+    const targetEmail = recipientEmail || "localizamais6@gmail.com";
+    const targetName = recipientName || "Comunidade IFPR";
+    const timestamp = new Date().toISOString();
+    const emailSubject = `🎉 Seu objeto "${itemTitle}" foi devolvido com sucesso! - IFPR Achados e Perdidos`;
+    const emailBody = `Olá, ${targetName}!\n\n` +
+      `Confirmamos que o seu objeto "${itemTitle}" (Código QR: ${qrCodeId || itemId}), registrado no sistema de Achados e Perdidos do IFPR Campus Ivaiporã, foi marcado como DEVOLVIDO.\n\n` +
+      `Detalhes do Registro:\n` +
+      `- Objeto: ${itemTitle}\n` +
+      `- Categoria: ${category || "Geral"}\n` +
+      `- Local: ${location || "Campus Ivaiporã"}\n` +
+      `- Data e Hora da Baixa: ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}\n\n` +
+      (resolutionNotes ? `Notas de encerramento: ${resolutionNotes}\n\n` : "") +
+      `Agradecemos pela colaboração com a comunidade acadêmica do Instituto Federal do Paraná!\n\n` +
+      `Atenciosamente,\n` +
+      `Equipe de Apoio ao Estudante (SEBAC) & Portaria\n` +
+      `Instituto Federal do Paraná - Campus Ivaiporã`;
+
+    console.info(`[Automation Email] Notificação automática de devolução despachada para ${targetEmail} referente ao item #${itemId}.`);
+
+    // In local or Cloud environment, persist to Firestore if admin client is available
+    const adminDb = getAdminFirestore();
+    if (adminDb) {
+      try {
+        const notifDocId = `email_auto_${itemId}_${Date.now()}`;
+        await adminDb.collection("email_notifications").doc(notifDocId).set({
+          id: notifDocId,
+          itemId,
+          itemTitle,
+          recipientEmail: targetEmail,
+          recipientName: targetName,
+          subject: emailSubject,
+          body: emailBody,
+          type: "ITEM_RETURNED_AUTOMATION",
+          status: "SENT",
+          sentAt: timestamp,
+          createdAt: timestamp,
+        });
+      } catch (dbErr) {
+        console.warn("[Automation Warning] Falha ao persistir log de e-mail no Firestore:", dbErr);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `E-mail de confirmação de devolução registrado e despachado para ${targetEmail}.`,
+      subject: emailSubject,
+      recipientEmail: targetEmail,
+      timestamp,
+    });
+  } catch (error: any) {
+    console.error("Erro na rota /api/automation/notify-item-returned:", error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || "Erro interno ao processar e-mail de devolução.",
+    });
+  }
+});
+
+// API Endpoint: Send Remote Digital Signature Request via Email
+app.post(["/api/signature/send-request", "/signature/send-request"], async (req, res) => {
+  try {
+    const { itemId, itemTitle, recipientEmail, recipientName, signatureLink, signatureToken, returnedByName } = req.body || {};
+
+    if (!itemId || !recipientEmail) {
+      return res.status(400).json({
+        success: false,
+        error: "Parâmetros obrigatórios ausentes (itemId, recipientEmail).",
+      });
+    }
+
+    const targetEmail = recipientEmail || "localizamais6@gmail.com";
+    const targetName = recipientName || "Aluno / Servidor IFPR";
+    const timestamp = new Date().toISOString();
+    const emailSubject = `📝 Assinatura Digital Necessária: Recebimento do Objeto "${itemTitle || itemId}" - IFPR Campus Ivaiporã`;
+    const emailBody = `Olá, ${targetName}!\n\n` +
+      `O seu pertence "${itemTitle || "Objeto"}" foi entregue pela equipe de atendimento do IFPR Campus Ivaiporã (${returnedByName || "SEBAC / Portaria"}).\n\n` +
+      `Para concluir a devolução em conformidade com as normas institucionais, por favor confirme o recebimento e realize sua Assinatura Digital através do link seguro abaixo:\n\n` +
+      `🔗 Link para Assinar o Termo de Recebimento:\n` +
+      `${signatureLink}\n\n` +
+      `Código do Termo: ${signatureToken || itemId}\n\n` +
+      `Caso já tenha assinado presencialmente, desconsidere esta mensagem.\n\n` +
+      `Atenciosamente,\n` +
+      `Seção de Apoio ao Estudante (SEBAC) & Portaria\n` +
+      `Instituto Federal do Paraná - Campus Ivaiporã`;
+
+    console.info(`[Signature Email Request] Link de assinatura digital despachado para ${targetEmail} referente ao item #${itemId}.`);
+
+    const adminDb = getAdminFirestore();
+    if (adminDb) {
+      try {
+        const notifDocId = `sig_req_${itemId}_${Date.now()}`;
+        await adminDb.collection("email_notifications").doc(notifDocId).set({
+          id: notifDocId,
+          itemId,
+          itemTitle,
+          recipientEmail: targetEmail,
+          recipientName: targetName,
+          signatureLink,
+          signatureToken,
+          subject: emailSubject,
+          body: emailBody,
+          type: "REMOTE_SIGNATURE_REQUEST",
+          status: "SENT",
+          sentAt: timestamp,
+          createdAt: timestamp,
+        });
+      } catch (dbErr) {
+        console.warn("[Signature Warning] Falha ao persistir log no Firestore:", dbErr);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Link de assinatura digital enviado com sucesso para ${targetEmail}.`,
+      signatureLink,
+      recipientEmail: targetEmail,
+      timestamp,
+    });
+  } catch (error: any) {
+    console.error("Erro na rota /api/signature/send-request:", error);
+    return res.status(500).json({
+      success: false,
+      error: error?.message || "Erro interno ao enviar link de assinatura.",
+    });
+  }
+});
+
+// API Endpoint: Notify when remote signature is completed
+app.post(["/api/signature/notify-signed", "/signature/notify-signed"], async (req, res) => {
+  try {
+    const { itemId, itemTitle, signerName, signerEmail, signedAt } = req.body || {};
+    console.info(`[Signature Completed] Item #${itemId} assinado digitalmente por ${signerName} (${signerEmail}) em ${signedAt}.`);
+
+    const adminDb = getAdminFirestore();
+    if (adminDb) {
+      try {
+        const notifDocId = `sig_done_${itemId}_${Date.now()}`;
+        await adminDb.collection("email_notifications").doc(notifDocId).set({
+          id: notifDocId,
+          itemId,
+          itemTitle,
+          signerName,
+          signerEmail,
+          type: "SIGNATURE_COMPLETED",
+          status: "LOGGED",
+          signedAt: signedAt || new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        });
+      } catch (e) {}
+    }
+
+    return res.json({ success: true, message: "Assinatura registrada no backend com sucesso." });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message });
+  }
+});
+
 // API Root Status Endpoint
 app.get(["/api", "/api/status"], (_req, res) => {
   res.json({

@@ -18,6 +18,7 @@ import {
   GeneratedDocumentRecord,
   ProjectSettings,
   PendingPostLoginAction,
+  ItemReturnData,
 } from "../types";
 import { DEFAULT_DOCUMENT_TEMPLATES } from "../lib/defaultDocumentTemplates";
 import { DEFAULT_PROJECT_SETTINGS } from "../lib/projectSettingsConstants";
@@ -177,15 +178,20 @@ interface AppContextType {
   updateItemData: (id: string, updatedFields: Partial<LostFoundItem>) => Promise<void>;
   registerItemReturn: (
     itemId: string,
-    returnData: {
-      recipientName: string;
-      recipientEmail: string;
-      recipientBond: string;
-      identityVerified?: boolean;
-      returnObservations?: string;
-      observations?: string;
+    returnData: ItemReturnData
+  ) => Promise<void>;
+  submitItemDigitalSignature: (
+    itemId: string,
+    signatureData: {
+      signatureDataUrl: string;
+      signerName: string;
+      signerEmail?: string;
+      signerBond?: string;
+      documentNumber?: string;
+      signatureType?: "IN_PERSON_DEVICE" | "REMOTE_EMAIL";
     }
   ) => Promise<void>;
+  updateDocDirectly: (collectionName: string, docId: string, data: Record<string, any>) => Promise<void>;
   reopenItemReturn: (itemId: string, reason: string) => Promise<void>;
   registerItemDestination: (
     itemId: string,
@@ -1699,25 +1705,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, []);
 
-  // Sync Items from Firestore
+  // Sync Items from Firestore with Offline IndexedDB Resilience & Background Queue Processor
   useEffect(() => {
+    let isMounted = true;
+
+    // 1. Instantly load items from IndexedDB offline storage so history is viewable without internet
+    getItemsFromIndexedDB()
+      .then((cachedItems) => {
+        if (isMounted && cachedItems && cachedItems.length > 0) {
+          setItems((curr) => (curr.length === 0 ? cachedItems : curr));
+        }
+      })
+      .catch((err) => console.warn("Aviso ao ler cache IndexedDB inicial:", err));
+
+    // 2. Real-time Firestore sync with continuous IndexedDB persistence
     const unsubscribe = onSnapshot(
       collection(db, "items"),
       async (snapshot) => {
         if (snapshot.empty) {
-          setItems([]);
+          if (isMounted) setItems([]);
+          saveItemsToIndexedDB([]).catch(() => {});
         } else {
           const loadedItems: LostFoundItem[] = snapshot.docs.map((d) => d.data() as LostFoundItem);
           // Sort by creation date safely
           loadedItems.sort((a, b) => (safeParseDate(b.createdAt || b.date)?.getTime() || 0) - (safeParseDate(a.createdAt || a.date)?.getTime() || 0));
-          setItems(loadedItems);
+          if (isMounted) setItems(loadedItems);
+          saveItemsToIndexedDB(loadedItems).catch((e) => console.warn("Aviso ao persistir itens no IndexedDB:", e));
         }
       },
-      (error) => {
+      async (error) => {
         handleFirestoreError(error, OperationType.GET, "items");
+        // Fallback to local IndexedDB cache when network is offline
+        try {
+          const cached = await getItemsFromIndexedDB();
+          if (isMounted && cached && cached.length > 0) {
+            setItems(cached);
+          }
+        } catch (_) {}
       }
     );
-    return () => unsubscribe();
+
+    // 3. Online event handler: Automatically process queued pre-registrations when connection is restored
+    const handleOnlineSync = async () => {
+      try {
+        const queue = await getPendingSyncQueue();
+        if (queue && queue.length > 0) {
+          addToast(`Conexão restaurada! Sincronizando ${queue.length} pré-cadastro(s) offline com o Firestore...`, "info");
+          for (const entry of queue) {
+            if (entry.type === "REGISTER_ITEM" && entry.payload) {
+              try {
+                await setDoc(doc(db, "items", entry.payload.id), sanitizeFirestoreData(entry.payload));
+                await removeSyncQueueEntry(entry.id);
+              } catch (syncErr) {
+                console.warn("Erro ao sincronizar item offline individual:", syncErr);
+              }
+            }
+          }
+          const remaining = await getSyncQueueCount();
+          setPendingSyncCount(remaining);
+          if (remaining === 0) {
+            addToast("Todos os pré-cadastros offline foram sincronizados com sucesso!", "success");
+          }
+        }
+      } catch (err) {
+        console.warn("Aviso ao processar fila offline de pré-cadastros:", err);
+      }
+    };
+
+    window.addEventListener("online", handleOnlineSync);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener("online", handleOnlineSync);
+      unsubscribe();
+    };
   }, []);
 
   // Sync Claims from Firestore
@@ -2745,6 +2806,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         `Alterou o status do objeto #${id} para '${status}'`
       );
       addToast(`Status do objeto atualizado para: ${status.replace("_", " ")}`, "info");
+
+      // Automated email notification when marked as DEVOLVIDO
+      if (status === "DEVOLVIDO" && existing) {
+        const ownerEmail = (existing as any).registeredByUserEmail || existing.contactInfo || "localizamais6@gmail.com";
+        safeFetchJson(
+          "/api/automation/notify-item-returned",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              itemId: id,
+              itemTitle: existing.title,
+              recipientEmail: ownerEmail,
+              recipientName: existing.registeredByName || "Comunidade IFPR",
+              qrCodeId: existing.qrCodeId,
+              location: existing.location,
+              category: existing.category,
+              resolutionNotes: `Devolução finalizada no sistema por ${currentUser.name}.`,
+            }),
+          },
+          () => ({ success: true })
+        ).catch(() => {});
+      }
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `items/${id}`);
     }
@@ -2789,14 +2873,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const registerItemReturn = async (
     itemId: string,
-    returnData: {
-      recipientName: string;
-      recipientEmail: string;
-      recipientBond: string;
-      identityVerified?: boolean;
-      returnObservations?: string;
-      observations?: string;
-    }
+    returnData: ItemReturnData
   ) => {
     const existing = items.find((i) => i.id === itemId);
     const existingHistory = existing?.history || [];
@@ -2804,10 +2881,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const now = new Date();
     const returnDate = now.toLocaleDateString("pt-BR");
     const returnTime = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    const signatureToken = returnData.signatureToken || `sig_${Math.random().toString(36).substring(2, 10)}`;
+
+    const isDirectlySigned = returnData.signatureType === "IN_PERSON_DEVICE" && !!returnData.signatureDataUrl;
+    const isRemoteEmail = returnData.signatureType === "REMOTE_EMAIL";
 
     const newHistLog: ItemHistoryLog = {
       id: `hist-${Date.now()}`,
-      action: "Devolução registrada",
+      action: isDirectlySigned
+        ? "Devolução registrada com Assinatura Presencial"
+        : isRemoteEmail
+        ? "Devolução registrada (Aguardando Assinatura por E-mail)"
+        : "Devolução registrada",
       actorId: currentUser.id,
       actorName: currentUser.name,
       actorRole: currentUser.role,
@@ -2815,7 +2900,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       userName: currentUser.name,
       userRole: currentUser.role,
       timestamp: now.toISOString(),
-      details: `Devolução concluída para ${returnData.recipientName} (${returnData.recipientBond}). Servidor responsável: ${currentUser.name}`,
+      details: `Devolução concluída para ${returnData.recipientName} (${returnData.recipientBond}). Servidor responsável: ${currentUser.name}.${
+        isDirectlySigned ? " Assinatura digital colhida no dispositivo." : isRemoteEmail ? " Link de assinatura enviado por e-mail." : ""
+      }`,
     };
 
     const updatePayload = sanitizeFirestoreData({
@@ -2829,8 +2916,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       recipientName: returnData.recipientName,
       recipientEmail: returnData.recipientEmail,
       recipientBond: returnData.recipientBond,
+      recipientDocument: returnData.recipientDocument || "",
       returnObservations: returnData.returnObservations || returnData.observations || "",
       receiptValidationCode: validationCode,
+      recipientSignatureUrl: returnData.signatureDataUrl || "",
+      recipientSignatureType: returnData.signatureType || (isDirectlySigned ? "IN_PERSON_DEVICE" : isRemoteEmail ? "REMOTE_EMAIL" : "PRE_VERIFIED"),
+      recipientSignatureStatus: isDirectlySigned ? "SIGNED" : isRemoteEmail ? "PENDING_REMOTE" : "NOT_REQUIRED",
+      signatureToken: isRemoteEmail ? signatureToken : undefined,
+      signedAt: isDirectlySigned ? now.toISOString() : undefined,
       history: [...existingHistory, newHistLog],
       historyLogs: [...existingHistory, newHistLog],
     });
@@ -2842,8 +2935,111 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         `Registrou a devolução do item #${itemId} (${existing?.title || ""}) para ${returnData.recipientName} (${returnData.recipientBond}). Responsável: ${currentUser.name}`
       );
       addToast(`Devolução do item #${itemId} registrada com sucesso!`, "success");
+
+      // Automated email notification / remote signature link
+      const targetEmail = returnData.recipientEmail || (existing as any)?.registeredByUserEmail || "localizamais6@gmail.com";
+      const originUrl = typeof window !== "undefined" ? window.location.origin : "";
+      const signatureLink = `${originUrl}/?tab=sign-receipt&itemId=${encodeURIComponent(itemId)}&token=${encodeURIComponent(signatureToken)}`;
+
+      if (isRemoteEmail) {
+        // Send email with remote signature request
+        safeFetchJson(
+          "/api/signature/send-request",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              itemId,
+              itemTitle: existing?.title || "Pertence",
+              recipientEmail: targetEmail,
+              recipientName: returnData.recipientName,
+              signatureLink,
+              signatureToken,
+              returnedByName: currentUser.name,
+            }),
+          },
+          () => ({ success: true })
+        ).catch(() => {});
+      } else {
+        // Standard automated return confirmation email
+        safeFetchJson(
+          "/api/automation/notify-item-returned",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              itemId,
+              itemTitle: existing?.title || "Pertence",
+              recipientEmail: targetEmail,
+              recipientName: returnData.recipientName,
+              qrCodeId: existing?.qrCodeId,
+              location: existing?.location,
+              category: existing?.category,
+              resolutionNotes: returnData.returnObservations || returnData.observations || `Devolução concluída por ${currentUser.name}`,
+            }),
+          },
+          () => ({ success: true })
+        ).catch(() => {});
+      }
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `items/${itemId}`);
+    }
+  };
+
+  const submitItemDigitalSignature = async (
+    itemId: string,
+    signatureData: {
+      signatureDataUrl: string;
+      signerName: string;
+      signerEmail?: string;
+      signerBond?: string;
+      documentNumber?: string;
+      signatureType?: "IN_PERSON_DEVICE" | "REMOTE_EMAIL";
+    }
+  ) => {
+    const existing = items.find((i) => i.id === itemId);
+    const existingHistory = existing?.history || [];
+    const now = new Date().toISOString();
+
+    const newHistLog: ItemHistoryLog = {
+      id: `hist-sign-${Date.now()}`,
+      action: "Assinatura Digital Gravada",
+      actorId: currentUser?.id || "remote-user",
+      actorName: signatureData.signerName,
+      actorRole: (signatureData.signerBond === "Servidor" ? "SERVIDOR" : "ALUNO") as any,
+      timestamp: now,
+      details: `Assinatura digital do termo de recebimento concluída (${signatureData.signerName}).`,
+    };
+
+    const updatePayload = sanitizeFirestoreData({
+      recipientSignatureUrl: signatureData.signatureDataUrl,
+      recipientSignatureType: signatureData.signatureType || "IN_PERSON_DEVICE",
+      recipientSignatureStatus: "SIGNED",
+      recipientDocument: signatureData.documentNumber || existing?.recipientDocument || "",
+      signedAt: now,
+      status: "DEVOLVIDO" as ItemStatus,
+      history: [...existingHistory, newHistLog],
+      historyLogs: [...existingHistory, newHistLog],
+    });
+
+    try {
+      await updateDoc(doc(db, "items", itemId), updatePayload);
+      await logAdminAction(
+        "ASSINATURA_DIGITAL_RECEBIDA",
+        `Gravou a assinatura digital da ocorrência #${itemId} para ${signatureData.signerName}`
+      );
+      addToast("Assinatura digital registrada com sucesso!", "success");
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `items/${itemId}`);
+    }
+  };
+
+  const updateDocDirectly = async (collectionName: string, docId: string, data: Record<string, any>) => {
+    try {
+      await updateDoc(doc(db, collectionName, docId), sanitizeFirestoreData(data));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, `${collectionName}/${docId}`);
+      throw e;
     }
   };
 
@@ -3181,6 +3377,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateItemStatus,
         updateItemData,
         registerItemReturn,
+        submitItemDigitalSignature,
+        updateDocDirectly,
         reopenItemReturn,
         registerItemDestination,
         logItemLabelGenerated,

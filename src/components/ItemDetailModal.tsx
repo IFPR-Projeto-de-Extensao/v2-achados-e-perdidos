@@ -8,6 +8,7 @@ import { formatDateTime, formatSafeDateTime, safeParseDate, triggerVibration, vi
 import { getItemPublicUrl, getItemQrValue } from "../lib/qrCodeUtils";
 import { QRCodeSVG } from "qrcode.react";
 import { RestrictedQRViewModal } from "./RestrictedQRViewModal";
+import { AccessibleVoiceReader } from "./AccessibleVoiceReader";
 
 /**
  * Utilitário 'formatSafeDate' para validação e formatação segura de datas (Timestamp, string, number ou Date).
@@ -90,7 +91,14 @@ import {
   Eye,
   FileText,
   Sparkles,
+  PenTool,
+  CheckCheck,
+  MailCheck,
+  RefreshCw,
+  FileSignature,
 } from "lucide-react";
+import { DigitalSignaturePad } from "./DigitalSignaturePad";
+import { RemoteSignatureModal } from "./RemoteSignatureModal";
 
 interface ItemDetailModalProps {
   item: LostFoundItem;
@@ -127,9 +135,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const [returnRecipientName, setReturnRecipientName] = useState("");
   const [returnRecipientEmail, setReturnRecipientEmail] = useState("");
   const [returnRecipientBond, setReturnRecipientBond] = useState<"Aluno" | "Servidor" | "Visitante" | "Terceirizado">("Aluno");
+  const [returnRecipientDocument, setReturnRecipientDocument] = useState("");
   const [returnIdentityConfirmed, setReturnIdentityConfirmed] = useState(false);
   const [returnObservations, setReturnObservations] = useState("");
+  const [returnSignatureMode, setReturnSignatureMode] = useState<"IN_PERSON_DEVICE" | "REMOTE_EMAIL">("IN_PERSON_DEVICE");
+  const [returnSignatureDataUrl, setReturnSignatureDataUrl] = useState<string>("");
   const [isRegisteringReturn, setIsRegisteringReturn] = useState(false);
+
+  // Digital Signature Remote Modal State
+  const [remoteSignatureModalOpen, setRemoteSignatureModalOpen] = useState(false);
+  const [showSignaturePreviewModal, setShowSignaturePreviewModal] = useState(false);
+  const [isResendingSignatureEmail, setIsResendingSignatureEmail] = useState(false);
 
   // Reopen Return Flow State
   const [reopenModalOpen, setReopenModalOpen] = useState(false);
@@ -769,25 +785,71 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     setIsPostingComment(false);
   };
 
+  // Handle Resend Signature Email
+  const handleResendSignatureEmail = async () => {
+    if (!item.id) return;
+    setIsResendingSignatureEmail(true);
+    try {
+      const origin = window.location.origin;
+      const token = item.signatureToken || `sig_${item.id}_${Date.now()}`;
+      const signatureLink = `${origin}/?tab=sign-receipt&itemId=${item.id}&token=${token}`;
+
+      await fetch("/api/signature/send-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemId: item.id,
+          itemTitle: item.title,
+          recipientEmail: item.recipientSignatureEmail || item.contactInfo || "localizamais6@gmail.com",
+          recipientName: item.recipientSignatureName || "Aluno / Servidor IFPR",
+          signatureLink,
+          signatureToken: token,
+          returnedByName: currentUser.name,
+        }),
+      });
+      vibrateSuccess();
+      addToast("Link de assinatura digital reenviado com sucesso por e-mail!", "success");
+    } catch (e) {
+      addToast("Erro ao reenviar e-mail de assinatura.", "error");
+    } finally {
+      setIsResendingSignatureEmail(false);
+    }
+  };
+
   // Handle Submit Devolution Registration
   const handleRegisterReturnSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!returnRecipientName || !returnRecipientEmail || !returnIdentityConfirmed) {
+    if (!returnRecipientName.trim() || !returnRecipientEmail.trim() || !returnIdentityConfirmed) {
       addToast("Preencha os dados do receptor e confirme a verificação do documento com foto.", "error");
+      return;
+    }
+
+    if (returnSignatureMode === "IN_PERSON_DEVICE" && !returnSignatureDataUrl) {
+      addToast("Por favor, colha a assinatura digital do recebedor no quadro abaixo antes de confirmar.", "error");
       return;
     }
 
     setIsRegisteringReturn(true);
     try {
       await registerItemReturn(item.id, {
-        recipientName: returnRecipientName,
-        recipientEmail: returnRecipientEmail,
+        recipientName: returnRecipientName.trim(),
+        recipientEmail: returnRecipientEmail.trim(),
         recipientBond: returnRecipientBond,
+        recipientDocument: returnRecipientDocument.trim(),
         identityVerified: returnIdentityConfirmed,
-        observations: returnObservations,
+        observations: returnObservations.trim(),
+        signatureType: returnSignatureMode,
+        signatureStatus: returnSignatureMode === "IN_PERSON_DEVICE" ? "SIGNED" : "PENDING_REMOTE",
+        signatureDataUrl: returnSignatureMode === "IN_PERSON_DEVICE" ? returnSignatureDataUrl : undefined,
       });
 
-      addToast(`Devolução do objeto "${item.title}" foi registrada com sucesso!`, "success");
+      vibrateSuccess();
+      addToast(
+        returnSignatureMode === "IN_PERSON_DEVICE"
+          ? `Devolução e Assinatura Digital do objeto "${item.title}" registradas com sucesso!`
+          : `Devolução registrada! Link de assinatura digital despachado para ${returnRecipientEmail}.`,
+        "success"
+      );
       setReturnModalOpen(false);
       handlePrintReceiptPDF();
       onClose();
@@ -1284,6 +1346,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               </div>
             </div>
 
+            {/* Accessible Voice Reader (Text-to-Speech) */}
+            <AccessibleVoiceReader item={item} />
+
             {/* Description Box */}
             <div className="space-y-1.5">
               <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-500">
@@ -1304,6 +1369,129 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 {item.contactInfo}
               </p>
             </div>
+
+            {/* Digital Signature Card (If Item is Returned or Signature in Progress) */}
+            {(item.status === "DEVOLVIDO" || item.recipientSignatureStatus || item.recipientSignatureUrl) && (
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
+                    ? "bg-emerald-500/10 border-emerald-500/30 dark:bg-emerald-950/20"
+                    : "bg-amber-500/10 border-amber-500/30 dark:bg-amber-950/20"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <div
+                      className={`p-2 rounded-xl shrink-0 ${
+                        item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
+                          ? "bg-emerald-500 text-white"
+                          : "bg-amber-500 text-white"
+                      }`}
+                    >
+                      <FileSignature className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-extrabold text-xs text-neutral-900 dark:text-white uppercase tracking-wider">
+                          Termo de Devolução & Assinatura Digital
+                        </h4>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                            item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
+                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300"
+                              : "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300"
+                          }`}
+                        >
+                          {item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
+                            ? "Assinado Digitalmente"
+                            : "Aguardando Assinatura Remota"}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-1">
+                        {item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
+                          ? `Recebido por: ${item.recipientSignatureName || item.registeredByName || "Proprietário"} (${item.recipientSignatureBond || "Comunidade IFPR"}) em ${formatDateTime(item.recipientSignatureDate || item.resolutionDate)}.`
+                          : `Link de assinatura despachado para ${item.recipientSignatureEmail || item.contactInfo || "o e-mail do proprietário"}.`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Signature Preview Thumbnail if signed */}
+                {(item.recipientSignatureUrl || returnSignatureDataUrl) && (
+                  <div className="mt-3 pt-3 border-t border-emerald-500/20 flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-white dark:bg-neutral-900 p-1.5 rounded-xl border border-emerald-500/30 shadow-xs">
+                        <img
+                          src={item.recipientSignatureUrl || returnSignatureDataUrl}
+                          alt="Assinatura Digital"
+                          className="h-10 max-w-[140px] object-contain"
+                        />
+                      </div>
+                      <div className="text-[11px]">
+                        <span className="font-bold text-neutral-800 dark:text-neutral-200 block">
+                          Assinatura Registrada
+                        </span>
+                        <span className="text-neutral-500 text-[10px] font-mono">
+                          Código: {item.signatureToken || item.id}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handlePrintReceiptPDF}
+                      className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5" />
+                      <span>Imprimir Recibo Assinado</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Remote Pending Signature Actions */}
+                {item.recipientSignatureStatus === "PENDING_REMOTE" && !item.recipientSignatureUrl && (
+                  <div className="mt-3 pt-3 border-t border-amber-500/20 flex items-center justify-between gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setRemoteSignatureModalOpen(true)}
+                      className="py-1.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                    >
+                      <PenTool className="w-3.5 h-3.5" />
+                      <span>Assinar no Dispositivo Agora</span>
+                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const origin = window.location.origin;
+                          const token = item.signatureToken || item.id;
+                          const link = `${origin}/?tab=sign-receipt&itemId=${item.id}&token=${token}`;
+                          navigator.clipboard.writeText(link);
+                          vibrateSuccess();
+                          addToast("Link de assinatura digital copiado para a área de transferência!", "success");
+                        }}
+                        className="py-1.5 px-3 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copiar Link</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleResendSignatureEmail}
+                        disabled={isResendingSignatureEmail}
+                        className="py-1.5 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-900 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isResendingSignatureEmail ? "animate-spin" : ""}`} />
+                        <span>{isResendingSignatureEmail ? "Reenviando..." : "Reenviar E-mail"}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Comments Section */}
             <div className="space-y-3 pt-2 border-t border-neutral-200 dark:border-neutral-800">
@@ -1680,13 +1868,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       {/* Devolution Registration Modal */}
       {returnModalOpen && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-lg w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4">
+          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-xl w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
               <div className="flex items-center gap-2">
-                <CheckCircle className="w-5 h-5 text-blue-600" />
+                <FileSignature className="w-5 h-5 text-[#00843D]" />
                 <div>
                   <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
-                    Registrar Devolução de Objeto
+                    Registrar Devolução & Assinatura Digital
                   </h3>
                   <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
                     Protocolo Oficial SEBAC • IFPR Campus Ivaiporã
@@ -1695,7 +1883,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               </div>
               <button
                 onClick={() => setReturnModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1712,12 +1900,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   value={returnRecipientName}
                   onChange={(e) => setReturnRecipientName(e.target.value)}
                   placeholder="Nome de quem está recebendo o pertence..."
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-1">
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
                     E-mail do Receptor *
                   </label>
@@ -1727,7 +1915,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     value={returnRecipientEmail}
                     onChange={(e) => setReturnRecipientEmail(e.target.value)}
                     placeholder="email@estudantes.ifpr.edu.br"
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
                   />
                 </div>
 
@@ -1738,7 +1926,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   <select
                     value={returnRecipientBond}
                     onChange={(e) => setReturnRecipientBond(e.target.value as any)}
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-[#00843D]"
                   >
                     <option value="Aluno">Aluno(a)</option>
                     <option value="Servidor">Servidor / TAE / Professor</option>
@@ -1746,32 +1934,114 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     <option value="Visitante">Visitante Externo</option>
                   </select>
                 </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                    Matrícula / Doc. ID
+                  </label>
+                  <input
+                    type="text"
+                    value={returnRecipientDocument}
+                    onChange={(e) => setReturnRecipientDocument(e.target.value)}
+                    placeholder="RG, CPF ou Matrícula..."
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                  />
+                </div>
               </div>
+
+              {/* Signature Method Selector */}
+              <div className="space-y-1.5 pt-1">
+                <label className="block text-xs font-extrabold uppercase tracking-wider text-neutral-700 dark:text-neutral-200">
+                  Etapa de Assinatura Digital de Recebimento
+                </label>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setReturnSignatureMode("IN_PERSON_DEVICE")}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      returnSignatureMode === "IN_PERSON_DEVICE"
+                        ? "bg-[#00843D]/10 border-[#00843D] text-[#00843D] dark:text-green-400 font-bold shadow-xs"
+                        : "border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 text-xs font-black">
+                      <PenTool className="w-4 h-4" />
+                      <span>Presencial no Dispositivo</span>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-1 leading-snug">
+                      O aluno/servidor assina agora na tela do atendente.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setReturnSignatureMode("REMOTE_EMAIL")}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                      returnSignatureMode === "REMOTE_EMAIL"
+                        ? "bg-[#00843D]/10 border-[#00843D] text-[#00843D] dark:text-green-400 font-bold shadow-xs"
+                        : "border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 text-xs font-black">
+                      <Send className="w-4 h-4" />
+                      <span>Link por E-mail (Remoto)</span>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 mt-1 leading-snug">
+                      Envia link seguro para assinatura posterior no celular.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Conditional Signature Area */}
+              {returnSignatureMode === "IN_PERSON_DEVICE" ? (
+                <div className="pt-1">
+                  <DigitalSignaturePad
+                    signerName={returnRecipientName || "Aluno / Servidor"}
+                    signerBond={returnRecipientBond}
+                    signerEmail={returnRecipientEmail}
+                    onSignatureCapture={(url) => setReturnSignatureDataUrl(url)}
+                    onClear={() => setReturnSignatureDataUrl("")}
+                  />
+                </div>
+              ) : (
+                <div className="p-3.5 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-xs text-blue-900 dark:text-blue-200 space-y-1.5">
+                  <div className="flex items-center gap-2 font-bold text-blue-700 dark:text-blue-300">
+                    <MailCheck className="w-4 h-4" />
+                    <span>Disparo Automático do Termo de Recebimento</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    Ao registrar, um e-mail com link exclusivo e token de segurança será enviado para{" "}
+                    <strong>{returnRecipientEmail || "o e-mail do receptor"}</strong>. Ele poderá assinar pelo próprio celular a qualquer momento.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
-                  Observações / Dados do Documento Aresentado
+                  Observações de Entrega
                 </label>
                 <textarea
                   rows={2}
                   value={returnObservations}
                   onChange={(e) => setReturnObservations(e.target.value)}
-                  placeholder="Ex: Apresentou RG 12.345.678-9 e informou que o chaveiro continha o nome gravado na parte posterior..."
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Ex: Objeto conferido com êxito pelo proprietário na SEBAC..."
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
-              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-start gap-2.5">
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-start gap-2.5">
                 <input
                   type="checkbox"
                   id="confirmIdentityCheck"
                   required
                   checked={returnIdentityConfirmed}
                   onChange={(e) => setReturnIdentityConfirmed(e.target.checked)}
-                  className="mt-0.5 rounded border-neutral-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  className="mt-0.5 rounded border-neutral-300 text-[#00843D] focus:ring-[#00843D] cursor-pointer"
                 />
-                <label htmlFor="confirmIdentityCheck" className="text-xs text-blue-800 dark:text-blue-300 cursor-pointer font-bold">
-                  Confirmo que conferi presencialmente o documento oficial com foto do receptor antes da entrega.
+                <label htmlFor="confirmIdentityCheck" className="text-xs text-emerald-900 dark:text-emerald-300 cursor-pointer font-bold">
+                  Confirmo que conferi presencialmente o documento oficial com foto do receptor antes da liberação do objeto.
                 </label>
               </div>
 
@@ -1786,15 +2056,34 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <button
                   type="submit"
                   disabled={isRegisteringReturn}
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <CheckCircle className="w-3.5 h-3.5" />
-                  <span>{isRegisteringReturn ? "Registrando..." : "Registrar Devolução & PDF"}</span>
+                  <span>
+                    {isRegisteringReturn
+                      ? "Registrando..."
+                      : returnSignatureMode === "IN_PERSON_DEVICE"
+                      ? "Concluir Devolução com Assinatura"
+                      : "Concluir & Enviar Link de Assinatura"}
+                  </span>
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* Remote Signature Modal Trigger */}
+      {remoteSignatureModalOpen && (
+        <RemoteSignatureModal
+          itemId={item.id}
+          token={item.signatureToken}
+          onClose={() => setRemoteSignatureModalOpen(false)}
+          onSuccess={() => {
+            setRemoteSignatureModalOpen(false);
+            addToast("Assinatura digital registrada com sucesso!", "success");
+          }}
+        />
       )}
 
       {/* Reopen Return Modal (Admin Only) */}

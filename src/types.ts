@@ -86,8 +86,21 @@ export interface LostFoundItem {
   recipientName?: string;
   recipientEmail?: string;
   recipientBond?: string;
+  recipientDocument?: string;
   returnObservations?: string;
   receiptValidationCode?: string;
+
+  // Digital Signature & Proof of Receipt
+  recipientSignatureUrl?: string;
+  recipientSignatureType?: "IN_PERSON_DEVICE" | "REMOTE_EMAIL" | "PRE_VERIFIED";
+  recipientSignatureStatus?: "SIGNED" | "PENDING_REMOTE" | "NOT_REQUIRED";
+  recipientSignatureName?: string;
+  recipientSignatureEmail?: string;
+  recipientSignatureBond?: string;
+  recipientSignatureDate?: string;
+  signatureToken?: string;
+  signedAt?: string;
+  signatureIpOrDevice?: string;
 
   // Deadline & Unclaimed destination tracking
   storageDeadlineDays?: number;
@@ -105,6 +118,22 @@ export interface LostFoundItem {
   // Offline Sync metadata
   isOfflineQueued?: boolean;
   syncedAt?: string;
+}
+
+export interface ItemReturnData {
+  recipientName: string;
+  recipientEmail: string;
+  recipientBond: string;
+  recipientDocument?: string;
+  identityVerified?: boolean;
+  returnObservations?: string;
+  observations?: string;
+  signatureType?: "IN_PERSON_DEVICE" | "REMOTE_EMAIL" | "PRE_VERIFIED";
+  signatureStatus?: "SIGNED" | "PENDING_REMOTE" | "NOT_REQUIRED";
+  signatureDataUrl?: string;
+  signatureToken?: string;
+  signedAt?: string;
+  signatureIpOrDevice?: string;
 }
 
 export interface SyncQueueEntry {

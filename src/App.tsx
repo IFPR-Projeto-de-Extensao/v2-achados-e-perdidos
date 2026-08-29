@@ -21,6 +21,8 @@ import { QRCodeScannerModal } from "./components/QRCodeScannerModal";
 import { AIMatchModal } from "./components/AIMatchModal";
 import { AuthModal } from "./components/AuthModal";
 import { KeyboardShortcutsModal } from "./components/KeyboardShortcutsModal";
+import { TourGuide } from "./components/TourGuide";
+import { RemoteSignatureModal } from "./components/RemoteSignatureModal";
 import { ToastContainer } from "./components/ToastContainer";
 import { PWAInstallBanner } from "./components/PWAInstallBanner";
 import { MobileBottomNav } from "./components/MobileBottomNav";
@@ -59,6 +61,36 @@ const MainContent: React.FC = () => {
 
   const { routeKey, pathname, searchParams, navigate } = useRouter();
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
+  const [tourGuideOpen, setTourGuideOpen] = useState<boolean>(() => {
+    try {
+      const isDismissed = ["ifpr_achados_tour_completed", "ifpr_tour_completed", "ifpr_dont_show_tour"].some(
+        (k) => localStorage.getItem(k) === "true"
+      );
+      return !isDismissed;
+    } catch (_) {
+      return false;
+    }
+  });
+
+  const [remoteSignatureParams, setRemoteSignatureParams] = useState<{ itemId?: string; token?: string } | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    const token = params.get("token") || params.get("sigToken");
+    const itemId = params.get("itemId");
+    if (tab === "sign-receipt" || (token && itemId)) {
+      setRemoteSignatureParams({ itemId: itemId || undefined, token: token || undefined });
+    }
+  }, [pathname, searchParams]);
+
+  useEffect(() => {
+    const handleOpenTour = () => setTourGuideOpen(true);
+    window.addEventListener("open-tour-guide", handleOpenTour);
+    return () => window.removeEventListener("open-tour-guide", handleOpenTour);
+  }, []);
+
   const shouldReduceMotion = useReducedMotion();
   const lastResolvedItemIdRef = useRef<string | null>(null);
 
@@ -341,6 +373,40 @@ const MainContent: React.FC = () => {
         <KeyboardShortcutsModal
           isOpen={shortcutsModalOpen}
           onClose={() => setShortcutsModalOpen(false)}
+        />
+      )}
+
+      {/* Interactive Guided Onboarding Tour */}
+      <TourGuide
+        isOpen={tourGuideOpen}
+        onClose={() => setTourGuideOpen(false)}
+      />
+
+      {/* Remote Digital Signature Modal triggered by deep link / query param */}
+      {remoteSignatureParams && (
+        <RemoteSignatureModal
+          itemId={remoteSignatureParams.itemId}
+          token={remoteSignatureParams.token}
+          onClose={() => {
+            setRemoteSignatureParams(null);
+            try {
+              const url = new URL(window.location.href);
+              url.searchParams.delete("tab");
+              url.searchParams.delete("token");
+              url.searchParams.delete("sigToken");
+              window.history.replaceState({}, "", url.toString());
+            } catch (_) {}
+          }}
+          onSuccess={() => {
+            setRemoteSignatureParams(null);
+            try {
+              const url = new URL(window.location.href);
+              url.searchParams.delete("tab");
+              url.searchParams.delete("token");
+              url.searchParams.delete("sigToken");
+              window.history.replaceState({}, "", url.toString());
+            } catch (_) {}
+          }}
         />
       )}
 

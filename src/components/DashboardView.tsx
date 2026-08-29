@@ -6,8 +6,12 @@ import { formatDate, formatDateTime, triggerVibration, vibrateClick, vibrateSucc
 import { UserRole, ActivityLog, BackupScheduleConfig } from "../types";
 import { AppUptimeMonitor } from "./AppUptimeMonitor";
 import { MonthlyItemsD3Chart } from "./MonthlyItemsD3Chart";
+import { WeeklyFlowD3Chart } from "./WeeklyFlowD3Chart";
 import { DocumentManagerView } from "./DocumentManagerView";
 import { ProjectConfigView } from "./documents/ProjectConfigView";
+import { VersionHistoryView } from "./VersionHistoryView";
+import { AIEfficiencyReportView } from "./AIEfficiencyReportView";
+import { CustodyRemindersView } from "./CustodyRemindersView";
 import { ExportFoundItemsReportModal } from "./ExportFoundItemsReportModal";
 import { db, traceFirebasePerformance } from "../lib/firebase";
 import { collection, query, limit, getDocs } from "firebase/firestore";
@@ -64,6 +68,7 @@ import {
   Cpu,
   HardDrive,
   Sparkles,
+  GitBranch,
   Mail,
   Send,
   Bell,
@@ -158,7 +163,18 @@ export const DashboardView: React.FC = () => {
   const [serverFilterStatus, setServerFilterStatus] = useState<string>("TODOS");
 
   // Admin Sub-Tab State
-  const [adminSubTab, setAdminSubTab] = useState<"users" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings">("users");
+  const [adminSubTab, setAdminSubTab] = useState<
+    "users" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "ai_efficiency" | "custody_reminders"
+  >("users");
+
+  // Items held for >90 days count
+  const itemsOver90DaysCount = items.filter(
+    (it) =>
+      it &&
+      it.status !== "DEVOLVIDO" &&
+      it.status !== "ENCERRADO" &&
+      (Date.now() - new Date(it.createdAt).getTime()) / (1000 * 60 * 60 * 24) >= 90
+  ).length;
 
   const [serverMetrics, setServerMetrics] = useState<{
     totalServerRequests?: number;
@@ -1143,6 +1159,9 @@ export const DashboardView: React.FC = () => {
               </div>
             </div>
 
+            {/* D3.js Weekly Flow Chart Component (Fluxo por Dia da Semana & Categoria) */}
+            <WeeklyFlowD3Chart items={items} darkMode={darkMode} />
+
             {/* D3.js Monthly Evolution Chart Component */}
             <MonthlyItemsD3Chart items={items} darkMode={darkMode} />
 
@@ -1639,6 +1658,47 @@ export const DashboardView: React.FC = () => {
                   >
                     <Sparkles className="w-4 h-4" />
                     <span>Dados do Projeto</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAdminSubTab("ai_efficiency")}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
+                      adminSubTab === "ai_efficiency"
+                        ? "bg-purple-700 text-white shadow-md"
+                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>Eficiência da IA</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAdminSubTab("custody_reminders")}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
+                      adminSubTab === "custody_reminders"
+                        ? "bg-amber-600 text-white shadow-md"
+                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                    }`}
+                  >
+                    <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    <span>Lembretes (+90 Dias)</span>
+                    {itemsOver90DaysCount > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-black animate-pulse">
+                        {itemsOver90DaysCount}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => setAdminSubTab("versions")}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
+                      adminSubTab === "versions"
+                        ? "bg-[#00843D] text-white shadow-md"
+                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                    }`}
+                  >
+                    <GitBranch className="w-4 h-4" />
+                    <span>Versões & Changelog</span>
                   </button>
                 </div>
 
@@ -2652,12 +2712,14 @@ export const DashboardView: React.FC = () => {
                       </div>
 
                       <button
+                        id="btn-download-full-backup"
                         onClick={handleManualBackup}
                         disabled={isExecutingBackup}
-                        className="px-4 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-black font-black text-xs transition-all shadow-md flex items-center space-x-2 self-start sm:self-auto"
+                        className="px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-black font-black text-xs transition-all shadow-md flex items-center space-x-2 self-start sm:self-auto cursor-pointer"
+                        title="Exportar snapshot JSON com todas as coleções do Firestore do IFPR"
                       >
                         <Download className={`w-4 h-4 ${isExecutingBackup ? "animate-bounce" : ""}`} />
-                        <span>⚡ Executar Backup do Firestore Agora</span>
+                        <span>{isExecutingBackup ? "Gerando Backup..." : "Baixar Backup Completo"}</span>
                       </button>
                     </div>
 
@@ -2985,6 +3047,27 @@ export const DashboardView: React.FC = () => {
           {adminSubTab === "project_settings" && (
             <div className="space-y-6">
               <ProjectConfigView />
+            </div>
+          )}
+
+          {/* TAB 7: HISTÓRICO DE VERSÕES & CHANGELOG (ADMIN ONLY) */}
+          {adminSubTab === "versions" && (
+            <div className="space-y-6">
+              <VersionHistoryView darkMode={darkMode} />
+            </div>
+          )}
+
+          {/* TAB 8: RELATÓRIO DE EFICIÊNCIA DA IA */}
+          {adminSubTab === "ai_efficiency" && (
+            <div className="space-y-6">
+              <AIEfficiencyReportView />
+            </div>
+          )}
+
+          {/* TAB 9: LEMBRETES DE CUSTÓDIA >90 DIAS */}
+          {adminSubTab === "custody_reminders" && (
+            <div className="space-y-6">
+              <CustodyRemindersView />
             </div>
           )}
         </>

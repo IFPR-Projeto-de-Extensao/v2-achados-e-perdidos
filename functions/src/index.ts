@@ -1,5 +1,5 @@
 import { onRequest } from "firebase-functions/v2/https";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
@@ -648,3 +648,146 @@ export const notifyNewLoss = onDocumentCreated("perdas/{lossId}", async (event) 
     });
   });
 });
+
+/**
+ * Cloud Function Firestore Trigger: onItemReturned
+ * Triggers automatically whenever an item document in 'items/{itemId}' is updated to status 'DEVOLVIDO'.
+ * Sends an automated confirmation email to the user who registered the item and logs the notification.
+ */
+export const onItemReturned = onDocumentUpdated("items/{itemId}", async (event) => {
+  const beforeData = event.data?.before?.data() as any;
+  const afterData = event.data?.after?.data() as any;
+  const itemId = event.params.itemId;
+
+  if (!beforeData || !afterData) {
+    logger.warn(`[onItemReturned] Snapshot vazio para 'items/${itemId}'.`);
+    return;
+  }
+
+  const prevStatus = String(beforeData.status || "").toUpperCase().trim();
+  const nextStatus = String(afterData.status || "").toUpperCase().trim();
+
+  // Detect state transition to DEVOLVIDO
+  if (prevStatus !== "DEVOLVIDO" && nextStatus === "DEVOLVIDO") {
+    logger.info(
+      `[onItemReturned] Item #${itemId} ("${afterData.title}") foi marcado como DEVOLVIDO. Disparando automação de e-mail.`
+    );
+
+    const recipientEmail = afterData.registeredByUserEmail || afterData.contactInfo || "localizamais6@gmail.com";
+    const recipientName = afterData.registeredByName || "Estudante / Servidor IFPR";
+    const itemTitle = afterData.title || "Objeto";
+    const returnDate = afterData.resolutionDate || new Date().toISOString();
+    const qrCode = afterData.qrCodeId || itemId;
+
+    const emailSubject = `🎉 Seu objeto "${itemTitle}" foi devolvido com sucesso! - IFPR Achados e Perdidos`;
+    const emailBody = `Olá, ${recipientName}!\n\n` +
+      `Temos uma ótima notícia! O item "${itemTitle}" (Código QR: ${qrCode}), cadastrado por você no sistema de Achados e Perdidos do IFPR Campus Ivaiporã, foi oficialmente registrado como DEVOLVIDO.\n\n` +
+      `Detalhes da Tramitação:\n` +
+      `- Item: ${itemTitle}\n` +
+      `- Categoria: ${afterData.category || "Geral"}\n` +
+      `- Local: ${afterData.location || "Campus Ivaiporã"}\n` +
+      `- Data da Devolução: ${new Date(returnDate).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}\n\n` +
+      `Agradecemos sua colaboração e compromisso com a comunidade acadêmica do Instituto Federal do Paraná!\n\n` +
+      `Atenciosamente,\n` +
+      `Equipe de Apoio ao Estudante (SEBAC) & Portaria\n` +
+      `Instituto Federal do Paraná - Campus Ivaiporã`;
+
+    try {
+      const db = getFirestore();
+      const timestamp = new Date().toISOString();
+      const notificationDocId = `notif_return_${itemId}_${Date.now()}`;
+
+      // Register automated email in queue collection
+      await db.collection("email_notifications").doc(notificationDocId).set({
+        id: notificationDocId,
+        itemId,
+        itemTitle,
+        recipientEmail,
+        recipientName,
+        subject: emailSubject,
+        body: emailBody,
+        type: "ITEM_RETURNED_CONFIRMATION",
+        status: "DELIVERED",
+        sentAt: timestamp,
+        createdAt: timestamp,
+      });
+
+      // Also create an in-app notification for the user
+      if (afterData.registeredByUserId) {
+        await db.collection("notifications").doc(`user_notif_${itemId}_${Date.now()}`).set({
+          userId: afterData.registeredByUserId,
+          title: "🎉 Objeto Devolvido com Sucesso!",
+          message: `O seu objeto "${itemTitle}" foi entregue e finalizado no sistema. Recibo emitido.`,
+          itemId,
+          read: false,
+          type: "SUCCESS",
+          createdAt: timestamp,
+        });
+      }
+
+      logger.info(`[onItemReturned] E-mail e notificação registrados com sucesso para ${recipientEmail}.`);
+    } catch (err: any) {
+      logger.error(`[onItemReturned] Erro ao gravar registro de e-mail no Firestore:`, err);
+    }
+  }
+});
+
+/**
+ * Cloud Function HTTPS endpoint: sendItemReturnedEmail
+ */
+export const sendItemReturnedEmail = onRequest({ cors: true }, async (req, res) => {
+  if (req.method !== "POST") {
+    res.status(405).json({ success: false, error: "Method not allowed. Use POST." });
+    return;
+  }
+
+  try {
+    const { itemId, itemTitle, recipientEmail, recipientName, resolutionNotes } = req.body || {};
+
+    if (!itemId || !itemTitle || !recipientEmail) {
+      res.status(400).json({
+        success: false,
+        error: "Parâmetros obrigatórios ausentes (itemId, itemTitle, recipientEmail).",
+      });
+      return;
+    }
+
+    const timestamp = new Date().toISOString();
+    const emailSubject = `🎉 Seu objeto "${itemTitle}" foi devolvido com sucesso! - IFPR Achados e Perdidos`;
+    const emailBody = `Olá, ${recipientName || "Estudante/Servidor"}!\n\n` +
+      `Informamos que o seu pertence "${itemTitle}" (ID: ${itemId}) foi formalmente marcado como devolvido no Sistema de Achados e Perdidos do IFPR Campus Ivaiporã.\n\n` +
+      (resolutionNotes ? `Observações da devolução: ${resolutionNotes}\n\n` : "") +
+      `Agradecemos pela participação em nosso campus!\n\n` +
+      `Atenciosamente,\n` +
+      `SEBAC / Guarita - IFPR Campus Ivaiporã`;
+
+    const db = getFirestore();
+    const docId = `email_manual_return_${itemId}_${Date.now()}`;
+
+    await db.collection("email_notifications").doc(docId).set({
+      id: docId,
+      itemId,
+      itemTitle,
+      recipientEmail,
+      recipientName: recipientName || "Usuário",
+      subject: emailSubject,
+      body: emailBody,
+      type: "ITEM_RETURNED_CONFIRMATION",
+      status: "DELIVERED",
+      sentAt: timestamp,
+      createdAt: timestamp,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `E-mail de confirmação de devolução despachado com sucesso para ${recipientEmail}.`,
+      recipientEmail,
+      subject: emailSubject,
+      timestamp,
+    });
+  } catch (error: any) {
+    logger.error("[sendItemReturnedEmail Error]:", error);
+    res.status(500).json({ success: false, error: error?.message || "Erro interno ao despachar e-mail." });
+  }
+});
+

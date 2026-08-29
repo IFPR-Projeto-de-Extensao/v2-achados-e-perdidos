@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useApp } from "../context/AppContext";
 import { ItemCard } from "./ItemCard";
 import { ExportFoundItemsReportModal } from "./ExportFoundItemsReportModal";
+import { VoiceSearchModal } from "./VoiceSearchModal";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
 import { formatDate, vibrateClick, vibrateSuccess, safeToLower, safeIncludes, sanitizeQuery, isItemNew, safeParseDate } from "../lib/utils";
@@ -38,6 +39,7 @@ import {
   Coffee,
   Umbrella,
   HelpCircle,
+  Mic,
 } from "lucide-react";
 
 interface ObjectsViewProps {
@@ -108,6 +110,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [isSelectableMode, setIsSelectableMode] = useState<boolean>(false);
   const [isExportReportModalOpen, setIsExportReportModalOpen] = useState<boolean>(false);
+  const [isVoiceSearchOpen, setIsVoiceSearchOpen] = useState<boolean>(false);
 
   const isAdminOrServer = currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR";
 
@@ -415,21 +418,37 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                 onKeyDown={(e) => {
                   if (e.key === "Enter") saveSearchTerm(search);
                 }}
-                placeholder="Buscar por título, marca, cor, QR Code ou descrição..."
-                className="w-full pl-10 pr-10 py-2.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/90 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-xs focus:ring-2 focus:ring-[#00843D] outline-none transition-all"
+                placeholder="Buscar por título, marca, cor, QR Code ou fale 'Localiza [objeto]'..."
+                className="w-full pl-10 pr-20 py-2.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/90 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-xs focus:ring-2 focus:ring-[#00843D] outline-none transition-all"
               />
-              {search && (
+              <div className="absolute right-2.5 top-2 flex items-center space-x-1">
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch("");
+                      setDebouncedSearch("");
+                    }}
+                    className="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-white cursor-pointer rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+                    title="Limpar busca"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 <button
+                  id="btn-voice-search-trigger"
                   type="button"
                   onClick={() => {
-                    setSearch("");
-                    setDebouncedSearch("");
+                    vibrateClick();
+                    setIsVoiceSearchOpen(true);
                   }}
-                  className="absolute right-3 top-2.5 p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-white cursor-pointer"
+                  className="p-1.5 rounded-xl bg-[#00843D]/10 hover:bg-[#00843D] text-[#00843D] hover:text-white dark:text-green-400 dark:hover:text-white transition-all cursor-pointer shadow-2xs flex items-center justify-center"
+                  title="Busca por Comando de Voz ('Localiza [objeto]')"
+                  aria-label="Iniciar busca por comando de voz"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <Mic className="w-3.5 h-3.5" />
                 </button>
-              )}
+              </div>
             </div>
 
             {/* Search History Chips (Recent Searches) */}
@@ -1212,6 +1231,17 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
       <ExportFoundItemsReportModal
         isOpen={isExportReportModalOpen}
         onClose={() => setIsExportReportModalOpen(false)}
+      />
+
+      {/* Voice Search Command Modal */}
+      <VoiceSearchModal
+        isOpen={isVoiceSearchOpen}
+        onClose={() => setIsVoiceSearchOpen(false)}
+        onSearchQuery={(voiceQuery) => {
+          setSearch(voiceQuery);
+          setDebouncedSearch(voiceQuery);
+          saveSearchTerm(voiceQuery);
+        }}
       />
     </div>
   );
