@@ -33,6 +33,7 @@ import {
   Milestone,
   ListFilter,
   CheckCircle,
+  ShieldCheck,
 } from "lucide-react";
 import {
   APP_VERSIONS_DATA,
@@ -41,10 +42,12 @@ import {
   TOTAL_VERSIONS_COUNT,
   TOTAL_ADDITIONS_COUNT,
   TOTAL_FIXES_COUNT,
+  CURRENT_VERSION,
 } from "../data/versionsData";
 import { downloadVersionsReportPdf } from "../lib/versionsReportPdfGenerator";
 import { useApp } from "../context/AppContext";
 import { vibrateClick, vibrateSuccess } from "../lib/utils";
+import { TestBatteryManagerView } from "./TestBatteryManagerView";
 
 interface VersionHistoryViewProps {
   darkMode?: boolean;
@@ -52,6 +55,9 @@ interface VersionHistoryViewProps {
 
 export const VersionHistoryView: React.FC<VersionHistoryViewProps> = ({ darkMode }) => {
   const { addToast, currentUser } = useApp();
+
+  // Top-level Navigation Tab: Changelog vs Test Battery Manager
+  const [mainTab, setMainTab] = useState<"CHANGELOG" | "TEST_BATTERIES">("CHANGELOG");
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"ALL" | "ADDITIONS" | "FIXES">("ALL");
@@ -290,8 +296,63 @@ Relatório completo de atualizações e manutenções desde a criação do siste
 
   return (
     <div className="space-y-6">
-      {/* 1. Header Banner & Action Buttons */}
-      <div className="bg-gradient-to-r from-[#00843D]/10 via-purple-500/10 to-blue-500/10 dark:from-[#00843D]/20 dark:via-purple-900/20 dark:to-blue-900/20 rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-4">
+      {/* 0. Top Navigation Switcher: Changelog vs Test Battery Manager */}
+      <div className="bg-white dark:bg-[#1E1E1E] p-2 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl">
+          <button
+            type="button"
+            onClick={() => {
+              vibrateClick();
+              setMainTab("CHANGELOG");
+            }}
+            className={`px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center space-x-2 cursor-pointer ${
+              mainTab === "CHANGELOG"
+                ? "bg-[#00843D] text-white shadow-sm"
+                : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+            }`}
+          >
+            <GitBranch className="w-4 h-4" />
+            <span>Changelog & Histórico de Versões</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+              mainTab === "CHANGELOG" ? "bg-white/20 text-white" : "bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
+            }`}>
+              {TOTAL_VERSIONS_COUNT} Releases
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              vibrateClick();
+              setMainTab("TEST_BATTERIES");
+            }}
+            className={`px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center space-x-2 cursor-pointer ${
+              mainTab === "TEST_BATTERIES"
+                ? "bg-purple-600 text-white shadow-sm"
+                : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+            }`}
+          >
+            <ShieldCheck className="w-4 h-4" />
+            <span>Bateria de Testes & Validação</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+              mainTab === "TEST_BATTERIES" ? "bg-white/20 text-white" : "bg-purple-500/10 text-purple-600 dark:text-purple-400"
+            }`}>
+              Governança & QA
+            </span>
+          </button>
+        </div>
+
+        <div className="text-[11px] text-neutral-500 font-medium px-3">
+          {mainTab === "CHANGELOG" ? "Relatório Oficial de Alterações" : "Validação com Trilha de Auditoria"}
+        </div>
+      </div>
+
+      {mainTab === "TEST_BATTERIES" ? (
+        <TestBatteryManagerView darkMode={darkMode} />
+      ) : (
+        <>
+          {/* 1. Header Banner & Action Buttons */}
+          <div className="bg-gradient-to-r from-[#00843D]/10 via-purple-500/10 to-blue-500/10 dark:from-[#00843D]/20 dark:via-purple-900/20 dark:to-blue-900/20 rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1.5">
             <div className="flex items-center space-x-2.5">
@@ -304,7 +365,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                     Histórico de Versões & Changelog
                   </h2>
                   <span className="px-2.5 py-0.5 rounded-full bg-[#00843D]/15 text-[#00843D] dark:text-[#00c75c] text-xs font-black">
-                    v1.8.0 Atual
+                    {CURRENT_VERSION} Atual
                   </span>
                 </div>
                 <p className="text-xs text-neutral-600 dark:text-neutral-400">
@@ -1153,7 +1214,9 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                   onChange={(e) => setPdfSelectedVersion(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs font-bold text-neutral-900 dark:text-white outline-none focus:border-[#00843D]"
                 >
-                  <option value="ALL">Todas as 10 Versões (v1.0.0 a v1.8.0)</option>
+                  <option value="ALL">
+                    Todas as {TOTAL_VERSIONS_COUNT} Versões ({APP_VERSIONS_DATA[APP_VERSIONS_DATA.length - 1]?.version} a {CURRENT_VERSION})
+                  </option>
                   {APP_VERSIONS_DATA.map((v) => (
                     <option key={v.version} value={v.version}>
                       {v.version} — {v.codename} ({v.releaseDate}) {v.isCurrent ? "★ Atual" : ""}
@@ -1220,6 +1283,8 @@ Relatório completo de atualizações e manutenções desde a criação do siste
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );

@@ -6,6 +6,17 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Returns today's date formatted as YYYY-MM-DD in local timezone (avoiding UTC timezone offset rollback).
+ */
+export function getTodayDateString(): string {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * Safely parses any date representation into a valid JavaScript Date object.
  * Guaranteed to never throw RangeError or TypeError.
  * Handles:

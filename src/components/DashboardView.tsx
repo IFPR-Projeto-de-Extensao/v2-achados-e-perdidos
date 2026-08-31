@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useApp } from "../context/AppContext";
-import { formatDate, formatDateTime, triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeIncludes, sanitizeQuery } from "../lib/utils";
+import { formatDate, formatDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeIncludes, sanitizeQuery } from "../lib/utils";
 import { UserRole, ActivityLog, BackupScheduleConfig } from "../types";
 import { AppUptimeMonitor } from "./AppUptimeMonitor";
 import { MonthlyItemsD3Chart } from "./MonthlyItemsD3Chart";
@@ -10,8 +10,11 @@ import { WeeklyFlowD3Chart } from "./WeeklyFlowD3Chart";
 import { DocumentManagerView } from "./DocumentManagerView";
 import { ProjectConfigView } from "./documents/ProjectConfigView";
 import { VersionHistoryView } from "./VersionHistoryView";
+import { TestBatteryManagerView } from "./TestBatteryManagerView";
+import { AuditTrailManagerView } from "./AuditTrailManagerView";
 import { AIEfficiencyReportView } from "./AIEfficiencyReportView";
 import { CustodyRemindersView } from "./CustodyRemindersView";
+import { DigitalReturnsD3Chart } from "./DigitalReturnsD3Chart";
 import { ExportFoundItemsReportModal } from "./ExportFoundItemsReportModal";
 import { db, traceFirebasePerformance } from "../lib/firebase";
 import { collection, query, limit, getDocs } from "firebase/firestore";
@@ -74,6 +77,9 @@ import {
   Bell,
   MessageSquare,
   PackageCheck,
+  FileCheck2,
+  ShieldCheck,
+  Shuffle,
 } from "lucide-react";
 
 export const DashboardView: React.FC = () => {
@@ -164,17 +170,33 @@ export const DashboardView: React.FC = () => {
 
   // Admin Sub-Tab State
   const [adminSubTab, setAdminSubTab] = useState<
-    "users" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "ai_efficiency" | "custody_reminders"
+    "users" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "test_batteries" | "test_distribution" | "ai_efficiency" | "custody_reminders" | "digital_returns"
   >("users");
 
-  // Items held for >90 days count
-  const itemsOver90DaysCount = items.filter(
+  // Items returned with digital signature count
+  const digitalReturnedItemsCount = items.filter(
     (it) =>
       it &&
-      it.status !== "DEVOLVIDO" &&
-      it.status !== "ENCERRADO" &&
-      (Date.now() - new Date(it.createdAt).getTime()) / (1000 * 60 * 60 * 24) >= 90
+      it.status === "DEVOLVIDO" &&
+      (it.recipientSignatureStatus === "SIGNED" ||
+        Boolean(it.recipientSignatureUrl) ||
+        Boolean(it.signedAt) ||
+        Boolean(it.receiptValidationCode) ||
+        it.recipientSignatureType === "REMOTE_EMAIL" ||
+        it.recipientSignatureType === "IN_PERSON_DEVICE" ||
+        Boolean(it.signatureTokenUsed))
   ).length;
+
+  // Items held for >90 days count
+  const itemsOver90DaysCount = items.filter((it) => {
+    if (!it || it.status === "DEVOLVIDO" || it.status === "ENCERRADO" || (it.status as string) === "DOADO" || (it.status as string) === "DESCARTE") {
+      return false;
+    }
+    const itemDate = safeParseDate(it.date || it.createdAt);
+    if (!itemDate) return false;
+    const diffDays = Math.floor((Date.now() - itemDate.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays >= 90;
+  }).length;
 
   const [serverMetrics, setServerMetrics] = useState<{
     totalServerRequests?: number;
@@ -1690,6 +1712,48 @@ export const DashboardView: React.FC = () => {
                   </button>
 
                   <button
+                    onClick={() => setAdminSubTab("digital_returns")}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
+                      adminSubTab === "digital_returns"
+                        ? "bg-[#00843D] text-white shadow-md"
+                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                    }`}
+                  >
+                    <FileCheck2 className="w-4 h-4 text-emerald-400" />
+                    <span>Métricas Devoluções (D3)</span>
+                    {digitalReturnedItemsCount > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 text-[10px] font-black">
+                        {digitalReturnedItemsCount}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={() => setAdminSubTab("test_batteries")}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
+                      adminSubTab === "test_batteries"
+                        ? "bg-purple-600 text-white shadow-md"
+                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                    }`}
+                  >
+                    <ShieldCheck className="w-4 h-4 text-amber-300" />
+                    <span>Bateria de Testes QA</span>
+                  </button>
+
+                  <button
+                    id="btn-tab-test-distribution"
+                    onClick={() => setAdminSubTab("test_distribution")}
+                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
+                      adminSubTab === "test_distribution"
+                        ? "bg-emerald-600 text-white shadow-md"
+                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                    }`}
+                  >
+                    <Shuffle className="w-4 h-4 text-emerald-300" />
+                    <span>Distribuição de Testes</span>
+                  </button>
+
+                  <button
                     onClick={() => setAdminSubTab("versions")}
                     className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
                       adminSubTab === "versions"
@@ -2116,236 +2180,7 @@ export const DashboardView: React.FC = () => {
               {/* TAB: AUDITORIA E LOGS DO SISTEMA */}
               {adminSubTab === "audit" && (
                 <div className="space-y-6 animate-in fade-in duration-200">
-                  <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-100 dark:border-neutral-800 pb-5">
-                      <div className="flex items-center space-x-3">
-                        <div className="p-3 rounded-2xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                          <History className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <h2 className="text-lg font-black text-neutral-900 dark:text-white flex items-center gap-2">
-                            <span>Painel de Auditoria e Logs do Sistema</span>
-                            <span className="px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-[10px] font-black uppercase">
-                              OFICIAL IFPR
-                            </span>
-                          </h2>
-                          <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                            Registro auditável de todas as devoluções, reaberturas, alterações de status e permissões no Campus Ivaiporã.
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
-                        <button
-                          onClick={handleExportItemsCSV}
-                          className="px-4 py-3 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-black text-xs transition-all shadow-xs flex items-center space-x-2 cursor-pointer border border-neutral-300 dark:border-neutral-700"
-                        >
-                          <FileSpreadsheet className="w-4 h-4 text-[#00843D]" />
-                          <span>Exportar Itens (CSV)</span>
-                        </button>
-
-                        <button
-                          onClick={handleExportMonitoringLogsJSON}
-                          disabled={isExportingMonitoringJSON}
-                          className="px-4 py-3 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-black text-xs transition-all shadow-xs flex items-center space-x-2 cursor-pointer border border-neutral-300 dark:border-neutral-700"
-                        >
-                          <Download className={`w-4 h-4 text-[#00843D] ${isExportingMonitoringJSON ? "animate-bounce" : ""}`} />
-                          <span>{isExportingMonitoringJSON ? "Baixando JSON..." : "Exportar Logs (JSON)"}</span>
-                        </button>
-
-                        <button
-                          onClick={handleExportAuditPDF}
-                          className="px-5 py-3 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-black text-xs transition-all shadow-md flex items-center space-x-2 cursor-pointer"
-                        >
-                          <Download className="w-4 h-4" />
-                          <span>Exportar Relatório em PDF</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Filter Controls Bar */}
-                    <div className="bg-neutral-50 dark:bg-neutral-900/60 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-black uppercase tracking-wider text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
-                          <Filter className="w-4 h-4 text-indigo-500" />
-                          <span>Filtros de Auditoria</span>
-                        </span>
-                        {(logFilterAction !== "TODOS" || logSearchQuery || logStartDate || logEndDate) && (
-                          <button
-                            onClick={() => {
-                              setLogFilterAction("TODOS");
-                              setLogSearchQuery("");
-                              setLogStartDate("");
-                              setLogEndDate("");
-                            }}
-                            className="text-[11px] font-bold text-red-600 hover:underline flex items-center gap-1"
-                          >
-                            <X className="w-3.5 h-3.5" /> Limpar Filtros
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                        {/* Search Query */}
-                        <div>
-                          <label className="block text-[11px] font-bold text-neutral-500 mb-1">Buscar por Palavra-chave:</label>
-                          <div className="relative">
-                            <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-400" />
-                            <input
-                              type="text"
-                              value={logSearchQuery}
-                              onChange={(e) => setLogSearchQuery(e.target.value)}
-                              placeholder="Nome do responsável ou detalhe..."
-                              className="w-full pl-8 pr-3 py-2 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Action Selector */}
-                        <div>
-                          <label className="block text-[11px] font-bold text-neutral-500 mb-1">Tipo de Operação:</label>
-                          <select
-                            value={logFilterAction}
-                            onChange={(e) => setLogFilterAction(e.target.value)}
-                            className="w-full py-2 px-3 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-indigo-500"
-                          >
-                            <option value="TODOS">Todas as Operações</option>
-                            <option value="DEVOLUCAO_OBJETO">Devolução de Objeto</option>
-                            <option value="REABERTURA_DEVOLUCAO">Reabertura de Devolução</option>
-                            <option value="EXCLUSAO_USUARIO">Exclusão de Usuário</option>
-                            <option value="MODO_MANUTENCAO">Modo Manutenção</option>
-                            <option value="ALTERACAO_PERMISSAO">Alteração de Permissão</option>
-                            <option value="STATUS_OVERRIDE">Override de Status</option>
-                            <option value="DESTINACAO_ITEM">Destinação de Objeto</option>
-                            <option value="NOVO_USUARIO">Novo Usuário</option>
-                            <option value="RESET_SISTEMA">Reset de Sistema</option>
-                          </select>
-                        </div>
-
-                        {/* Start Date */}
-                        <div>
-                          <label className="block text-[11px] font-bold text-neutral-500 mb-1">Data Inicial:</label>
-                          <input
-                            type="date"
-                            value={logStartDate}
-                            onChange={(e) => setLogStartDate(e.target.value)}
-                            className="w-full py-1.5 px-3 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-
-                        {/* End Date */}
-                        <div>
-                          <label className="block text-[11px] font-bold text-neutral-500 mb-1">Data Final:</label>
-                          <input
-                            type="date"
-                            value={logEndDate}
-                            onChange={(e) => setLogEndDate(e.target.value)}
-                            className="w-full py-1.5 px-3 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Audit Table */}
-                    <div className="overflow-x-auto rounded-2xl border border-neutral-200 dark:border-neutral-800">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-neutral-100 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-400 uppercase font-extrabold text-[10px] tracking-wider">
-                          <tr>
-                            <th className="p-3.5 rounded-l-xl">Data / Hora</th>
-                            <th className="p-3.5">Responsável</th>
-                            <th className="p-3.5">Operação</th>
-                            <th className="p-3.5 rounded-r-xl">Detalhes da Ação</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-sans">
-                          {(activityLogs || [])
-                            .filter((log) => {
-                              if (!log) return false;
-                              const matchAction = logFilterAction === "TODOS" || log.action === logFilterAction;
-                              const lq = sanitizeQuery(logSearchQuery);
-                              const matchSearch =
-                                !lq ||
-                                safeIncludes(log.adminName, lq) ||
-                                safeIncludes(log.details, lq) ||
-                                safeIncludes(log.action, lq);
-
-                              let matchDate = true;
-                              if (logStartDate) {
-                                matchDate = matchDate && new Date(log.timestamp) >= new Date(logStartDate);
-                              }
-                              if (logEndDate) {
-                                const end = new Date(logEndDate);
-                                end.setHours(23, 59, 59, 999);
-                                matchDate = matchDate && new Date(log.timestamp) <= end;
-                              }
-
-                              return matchAction && matchSearch && matchDate;
-                            })
-                            .length === 0 ? (
-                            <tr>
-                              <td colSpan={4} className="text-center py-10 text-neutral-400 font-medium">
-                                Nenhum log de auditoria encontrado para os filtros selecionados.
-                              </td>
-                            </tr>
-                          ) : (
-                            (activityLogs || [])
-                              .filter((log) => {
-                                if (!log) return false;
-                                const matchAction = logFilterAction === "TODOS" || log.action === logFilterAction;
-                                const lq = sanitizeQuery(logSearchQuery);
-                                const matchSearch =
-                                  !lq ||
-                                  safeIncludes(log.adminName, lq) ||
-                                  safeIncludes(log.details, lq) ||
-                                  safeIncludes(log.action, lq);
-
-                                let matchDate = true;
-                                if (logStartDate) {
-                                  matchDate = matchDate && new Date(log.timestamp) >= new Date(logStartDate);
-                                }
-                                if (logEndDate) {
-                                  const end = new Date(logEndDate);
-                                  end.setHours(23, 59, 59, 999);
-                                  matchDate = matchDate && new Date(log.timestamp) <= end;
-                                }
-
-                                return matchAction && matchSearch && matchDate;
-                              })
-                              .map((log) => (
-                                <tr key={log.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
-                                  <td className="p-3.5 font-mono text-neutral-500 whitespace-nowrap">
-                                    {formatDate(log.timestamp)}
-                                  </td>
-                                  <td className="p-3.5 font-bold text-neutral-900 dark:text-white">
-                                    {log.adminName}
-                                  </td>
-                                  <td className="p-3.5 whitespace-nowrap">
-                                    <span
-                                      className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase border ${
-                                        log.action === "DEVOLUCAO_OBJETO"
-                                          ? "bg-blue-500/10 text-blue-600 border-blue-500/30"
-                                          : log.action === "REABERTURA_DEVOLUCAO"
-                                          ? "bg-amber-500/10 text-amber-600 border-amber-500/30"
-                                          : log.action === "MODO_MANUTENCAO"
-                                          ? "bg-purple-500/10 text-purple-600 border-purple-500/30"
-                                          : log.action === "EXCLUSAO_USUARIO"
-                                          ? "bg-red-500/10 text-red-600 border-red-500/30"
-                                          : "bg-emerald-500/10 text-emerald-600 border-emerald-500/30"
-                                      }`}
-                                    >
-                                      {log.action.replace(/_/g, " ")}
-                                    </span>
-                                  </td>
-                                  <td className="p-3.5 text-neutral-700 dark:text-neutral-300 font-medium max-w-md">
-                                    {log.details}
-                                  </td>
-                                </tr>
-                              ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                  <AuditTrailManagerView darkMode={darkMode} />
                 </div>
               )}
 
@@ -3057,6 +2892,20 @@ export const DashboardView: React.FC = () => {
             </div>
           )}
 
+          {/* TAB 7.1: BATERIA DE TESTES & VALIDAÇÃO DO SISTEMA (GOVERNANÇA & AUDITORIA) */}
+          {adminSubTab === "test_batteries" && (
+            <div className="space-y-6">
+              <TestBatteryManagerView darkMode={darkMode} />
+            </div>
+          )}
+
+          {/* TAB 7.2: SEÇÃO DE DISTRIBUIÇÃO DE TESTES */}
+          {adminSubTab === "test_distribution" && (
+            <div className="space-y-6">
+              <TestBatteryManagerView darkMode={darkMode} initialTab="DISTRIBUTION" />
+            </div>
+          )}
+
           {/* TAB 8: RELATÓRIO DE EFICIÊNCIA DA IA */}
           {adminSubTab === "ai_efficiency" && (
             <div className="space-y-6">
@@ -3068,6 +2917,18 @@ export const DashboardView: React.FC = () => {
           {adminSubTab === "custody_reminders" && (
             <div className="space-y-6">
               <CustodyRemindersView />
+            </div>
+          )}
+
+          {/* TAB 10: MÉTRICAS DE DEVOLUÇÕES DIGITAIS VIA D3.JS */}
+          {adminSubTab === "digital_returns" && (
+            <div className="space-y-6">
+              <DigitalReturnsD3Chart
+                items={items}
+                activityLogs={activityLogs}
+                darkMode={darkMode}
+                onSelectItem={(it) => setSelectedItemForDetail(it)}
+              />
             </div>
           )}
         </>

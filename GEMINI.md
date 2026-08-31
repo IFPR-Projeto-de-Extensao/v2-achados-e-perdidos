@@ -130,24 +130,6 @@ NUNCA esquecer de atualizar o Histórico de Versões (`src/data/versionsData.ts`
 
 Toda alteração realizada deve gerar uma entrada correspondente.
 
-Isso inclui:
-- Nova funcionalidade;
-- Correção de bug;
-- Melhoria;
-- Alteração visual;
-- Correção de responsividade;
-- Alteração de segurança;
-- Alteração de banco;
-- Alteração de API;
-- Alteração de integração;
-- Alteração de configuração;
-- Correção de erro de produção;
-- Alteração de IA;
-- Alteração do sistema de notificações;
-- Alteração do sistema de documentos;
-- Alteração do PWA;
-- Alteração do sistema de QR Code.
-
 ---
 
 ## 8. O HISTÓRICO DE VERSÕES DEVE SER ATUALIZADO NA MESMA TAREFA
@@ -180,17 +162,7 @@ O changelog deve representar fielmente o estado real do sistema.
 
 ## 10. VERSÃO DO SISTEMA DEVE SER CONSISTENTE
 
-A versão exibida no:
-- Site;
-- Painel administrativo;
-- Histórico de versões;
-- Changelog;
-- Relatório PDF;
-- Informações de build;
-
-deve ser consistente sempre que esses componentes utilizarem o mesmo número de versão.
-
-Não permitir situações com versões divergentes entre ambiente ativo e changelog. A versão ativa deve representar a versão realmente implantada em produção.
+A versão exibida no site, painel administrativo, changelog e relatórios deve ser consistente. A versão ativa deve representar a versão realmente implantada em produção.
 
 ---
 
@@ -208,176 +180,72 @@ Cada alteração deve ser registrada uma única vez.
 
 ## 12. DADOS DO HISTÓRICO DEVEM SER REAIS
 
-O Histórico de Versões também está sujeito à regra de dados reais.
-
-Não inventar:
-- Quantidade de funcionalidades;
-- Quantidade de correções;
-- Datas;
-- Horários;
-- Versões;
-- Descrições;
-- Status;
-- Funcionalidades implementadas.
-
-Os números apresentados no resumo do histórico devem ser calculados a partir das entradas reais existentes.
+O Histórico de Versões também está sujeito à regra de dados reais. Não inventar métricas, quantidades ou status. Os números no resumo devem ser calculados a partir das entradas reais existentes.
 
 ---
 
 ## 13. TESTE O SISTEMA REAL
 
-Antes de marcar uma tarefa como concluída:
-
-**Frontend:**
-- Verificar console;
-- Verificar erros JavaScript / TypeScript;
-- Verificar interface.
-
-**Backend:**
-- Verificar APIs;
-- Verificar respostas HTTP;
-- Verificar logs;
-- Verificar tratamento de erros.
-
-**Firebase:**
-- Verificar Authentication;
-- Verificar Firestore;
-- Verificar regras de segurança;
-- Verificar persistência.
-
-**Integrações:**
-- Discord;
-- E-mail;
-- IA;
-- APIs externas;
-- Vercel / Cloud Run;
-- Outros serviços utilizados.
-
-**Interface:**
-- Celular / Smartphone;
-- Tablet;
-- Desktop.
+Antes de marcar uma tarefa como concluída, testar Frontend, Backend, Firebase, Integrações e Interface (Mobile, Tablet e Desktop).
 
 ---
 
 ## 14. TESTE DE PONTA A PONTA
 
 Quando uma funcionalidade envolver várias partes, testar o fluxo completo:
-
 `Usuário → Interface → API → Backend → Firebase → Banco → Resposta → Interface`
-
-Não considerar a tarefa concluída apenas porque o botão ou elemento visual aparece.
 
 ---
 
 ## 15. NÃO ALTERAR DADOS DE PRODUÇÃO DURANTE TESTES
 
-Nunca apagar ou modificar dados reais apenas para testar uma funcionalidade.
-
-Não executar:
-- Wipe / Limpeza de coleções;
-- Exclusões em massa;
-- Reset de banco;
-- Alterações destrutivas;
-
-em produção sem autorização explícita.
+Nunca apagar, limpar coleções, resetar ou sobrescrever dados reais de usuários, objetos e registros existentes no Firestore de produção.
 
 ---
 
 ## 16. SEGURANÇA
 
-Nunca colocar no código:
-- Senhas;
-- Tokens;
-- Chaves privadas;
-- Service Account Keys;
-- Webhooks privados;
-- Credenciais;
-- Secrets.
-
-Utilizar sempre variáveis de ambiente (`.env.example`) e mecanismos seguros.
-Nunca remover uma regra de segurança apenas para fazer uma funcionalidade funcionar.
+Nunca colocar senhas, tokens, chaves privadas, service account keys ou secrets no código. Utilizar `.env.example` e variáveis de ambiente.
 
 ---
 
 ## 17. AUTENTICAÇÃO E PERMISSÕES
 
-As permissões devem ser verificadas no backend/banco quando necessário.
-
-Não confiar somente em:
-- Botões escondidos;
-- Rotas protegidas exclusivamente no frontend;
-- Variáveis locais;
-- localStorage;
-- Estado visual da aplicação.
-
-Usuários só podem executar operações compatíveis com suas permissões reais (Aluno, Servidor/TAE, Administrador).
+As permissões devem ser validadas no backend/banco. Não confiar somente no controle visual de botões ou telas.
 
 ---
 
 ## 18. NÃO CRIAR UMA SEGUNDA FONTE DE VERDADE
 
-- Se uma informação já existe no Firestore, não criar uma cópia hardcoded no frontend.
-- Se existe uma configuração real, não criar outra configuração paralela.
-- Se existe um Histórico de Versões real, não criar outro changelog independente sem necessidade.
-
-O sistema deve possuir uma fonte de verdade clara e única.
+Manter uma única fonte de verdade clara para cada dado do sistema.
 
 ---
 
 ## 19. VARIÁVEIS DE AMBIENTE
 
-Quando uma funcionalidade depender de uma variável de ambiente:
-- Verificar se ela existe;
-- Verificar se possui o nome correto;
-- Verificar se está disponível no ambiente de produção;
-- Verificar se o código a utiliza corretamente.
-
-Se estiver ausente: **não invente um valor**. Informe que a configuração necessária está ausente.
+Verificar existência e uso correto das variáveis de ambiente. Se faltar, informar com transparência em vez de inventar valores.
 
 ---
 
 ## 20. NÃO CONSIDERAR BUILD COMO SINÔNIMO DE SISTEMA FUNCIONANDO
 
-Um `npm run build` bem-sucedido não significa que o sistema está funcionando de ponta a ponta.
-
-Também verificar:
-- APIs;
-- Firebase;
-- Autenticação;
-- Permissões;
-- Integrações;
-- Persistência;
-- Interface;
-- Funcionalidades críticas.
+Um build bem-sucedido não garante a execução correta das regras de negócio, integrações e persistência.
 
 ---
 
 ## 21. NÃO CONSIDERAR "SEM ERRO VISUAL" COMO FUNCIONALIDADE CONCLUÍDA
 
-Uma tela bonita não significa que o sistema funciona.
-A funcionalidade precisa funcionar de verdade com persistência e integridade.
+A funcionalidade deve funcionar de ponta a ponta com persistência real.
 
 ---
 
 ## 22. RESUMO TÉCNICO OBRIGATÓRIO
 
-Ao concluir uma alteração, fornecer obrigatoriamente:
-
-1. **Alteração realizada / O que mudou:** Descrição técnica e funcional objetiva;
-2. **Arquivos afetados:** Caminhos completos dos arquivos criados ou modificados;
-3. **Funcionalidade:** Comportamento adicionado ou corrigido de ponta a ponta;
-4. **Testes e validações:** Linting (`tsc --noEmit`), Build (`npm run build`) e testes realizados;
-5. **Histórico de Versões:** Confirmação da versão registrada em `src/data/versionsData.ts`;
-6. **Ambiente / Deploy:** Confirmação de integração e prontidão para o ambiente publicado.
-
-Nunca afirmar que uma dessas etapas foi concluída sem realmente ter sido.
+Fornecer resumo detalhado com arquivos afetados, alterações técnicas/funcionais, testes realizados, confirmação no Histórico de Versões e status de deploy.
 
 ---
 
 ## 23. CHECKLIST FINAL OBRIGATÓRIO
-
-Antes de finalizar QUALQUER tarefa:
 
 - [ ] Usei somente dados reais?
 - [ ] Evitei qualquer dado fictício?
@@ -402,5 +270,3 @@ Antes de finalizar QUALQUER tarefa:
 - [ ] O Histórico corresponde exatamente ao que foi implementado?
 - [ ] Não existem informações fictícias no Histórico?
 - [ ] O resumo técnico foi fornecido?
-
-**SE QUALQUER ITEM ACIMA FOR "NÃO", A TAREFA NÃO ESTÁ CONCLUÍDA.**

@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { LostFoundItem } from "../types";
-import { formatDateTime, formatDate, vibrateClick, vibrateSuccess } from "../lib/utils";
+import { formatDateTime, formatDate, safeParseDate, vibrateClick, vibrateSuccess } from "../lib/utils";
 
 interface CustodyRemindersViewProps {
   darkMode?: boolean;
@@ -56,13 +56,13 @@ export const CustodyRemindersView: React.FC<CustodyRemindersViewProps> = ({ dark
         if (item.status === "DEVOLVIDO" || item.status === "ENCERRADO" || (item.status as string) === "DOADO" || (item.status as string) === "DESCARTE") {
           return false;
         }
-        const itemDate = new Date(item.date || item.createdAt || "").getTime();
-        if (isNaN(itemDate)) return false;
+        const itemDate = safeParseDate(item.date || item.createdAt || "")?.getTime();
+        if (!itemDate || isNaN(itemDate)) return false;
         const diffDays = Math.floor((now - itemDate) / (1000 * 60 * 60 * 24));
         return diffDays >= 90;
       })
       .map((item) => {
-        const itemDate = new Date(item.date || item.createdAt || "").getTime();
+        const itemDate = safeParseDate(item.date || item.createdAt || "")?.getTime() || now;
         const diffDays = Math.floor((now - itemDate) / (1000 * 60 * 60 * 24));
         return {
           ...item,

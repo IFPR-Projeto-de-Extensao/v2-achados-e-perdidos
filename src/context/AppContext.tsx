@@ -19,6 +19,8 @@ import {
   ProjectSettings,
   PendingPostLoginAction,
   ItemReturnData,
+  SystemAuditLog,
+  AuditObjectType,
 } from "../types";
 import { DEFAULT_DOCUMENT_TEMPLATES } from "../lib/defaultDocumentTemplates";
 import { DEFAULT_PROJECT_SETTINGS } from "../lib/projectSettingsConstants";
@@ -164,7 +166,20 @@ interface AppContextType {
   exportFirestoreDataToJson: () => Promise<void>;
   masterWipeFirestore: () => Promise<void>;
   activityLogs: ActivityLog[];
+  systemAuditLogs: SystemAuditLog[];
   logAdminAction: (action: ActivityLog["action"], details: string) => Promise<void>;
+  recordAuditLog: (entry: {
+    objectId: string;
+    objectType: AuditObjectType;
+    objectTitle?: string;
+    action: string;
+    fieldChanged?: string;
+    oldValue?: string | null;
+    newValue?: string | null;
+    details: string;
+    transactionId?: string;
+    actorOverride?: Partial<User>;
+  }) => Promise<SystemAuditLog>;
   activeTab: AppTabType;
   setActiveTab: (tab: AppTabType) => void;
   prefilledItemFromAI: Partial<LostFoundItem> | null;
@@ -173,7 +188,7 @@ interface AppContextType {
   setSelectedItemForDetail: (item: LostFoundItem | null) => void;
   addItem: (
     itemData: Omit<LostFoundItem, "id" | "createdAt" | "qrCodeId" | "registeredByUserId" | "registeredByName" | "registeredByRole">
-  ) => Promise<{ newItem: LostFoundItem; matches: AIMatchResult[] }>;
+  ) => Promise<{ newItem: LostFoundItem; matches: AIMatchResult[]; persistenceStatus: "CONFIRMED" | "OFFLINE_QUEUED"; isOffline: boolean }>;
   updateItemStatus: (id: string, status: ItemStatus) => void;
   updateItemData: (id: string, updatedFields: Partial<LostFoundItem>) => Promise<void>;
   registerItemReturn: (
@@ -601,6 +616,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Activity Logs state (Admin Transparency Log)
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+
+  // System Audit Logs state (Immutable Institutional Traceability)
+  const [systemAuditLogs, setSystemAuditLogs] = useState<SystemAuditLog[]>([]);
 
   // Document Templates & Generated Documents State (Módulo de Documentos PDF Editáveis)
   const [documentTemplates, setDocumentTemplates] = useState<DocumentTemplate[]>(() => {
@@ -1934,6 +1952,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, []);
 
+  // Sync System Audit Logs from Firestore (Immutable Audit Trail)
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, "audit_logs"),
+      async (snapshot) => {
+        if (!snapshot.empty) {
+          const loaded: SystemAuditLog[] = snapshot.docs.map((d) => d.data() as SystemAuditLog);
+          loaded.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          setSystemAuditLogs(loaded);
+        }
+      },
+      (error) => {
+        console.warn("Aviso ao sincronizar audit_logs:", error);
+      }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  const recordAuditLog = async (entry: {
+    objectId: string;
+    objectType: AuditObjectType;
+    objectTitle?: string;
+    action: string;
+    fieldChanged?: string;
+    oldValue?: string | null;
+    newValue?: string | null;
+    details: string;
+    transactionId?: string;
+    actorOverride?: Partial<User>;
+  }): Promise<SystemAuditLog> => {
+    const now = new Date();
+    const txId = entry.transactionId || `TX-${entry.objectType}-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    const actor = entry.actorOverride || currentUser;
+
+    const auditLogDoc: SystemAuditLog = {
+      id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      transactionId: txId,
+      objectId: entry.objectId,
+      objectType: entry.objectType,
+      objectTitle: entry.objectTitle || entry.objectId,
+      action: entry.action,
+      actorId: actor.id || "sistema-ifpr",
+      actorName: actor.name || "Sistema IFPR",
+      actorEmail: actor.email || "localizamais6@gmail.com",
+      actorRole: (actor.role as UserRole) || "ALUNO",
+      timestamp: now.toISOString(),
+      fieldChanged: entry.fieldChanged,
+      oldValue: entry.oldValue !== undefined && entry.oldValue !== null ? String(entry.oldValue) : undefined,
+      newValue: entry.newValue !== undefined && entry.newValue !== null ? String(entry.newValue) : undefined,
+      details: entry.details,
+      immutable: true,
+    };
+
+    setSystemAuditLogs((prev) => [auditLogDoc, ...prev.filter((l) => l.id !== auditLogDoc.id)]);
+
+    try {
+      await setDoc(doc(db, "audit_logs", auditLogDoc.id), sanitizeFirestoreData(auditLogDoc));
+    } catch (err) {
+      console.warn("Aviso ao salvar log de auditoria no Firestore:", err);
+    }
+
+    // Also update activity_logs for backward compatibility
+    try {
+      const actLog: ActivityLog = {
+        id: auditLogDoc.id,
+        adminId: auditLogDoc.actorId,
+        adminName: auditLogDoc.actorName,
+        action: auditLogDoc.action,
+        transactionId: auditLogDoc.transactionId,
+        objectId: auditLogDoc.objectId,
+        objectType: auditLogDoc.objectType,
+        fieldChanged: auditLogDoc.fieldChanged,
+        oldValue: auditLogDoc.oldValue || undefined,
+        newValue: auditLogDoc.newValue || undefined,
+        details: `${auditLogDoc.details} [TX: ${auditLogDoc.transactionId} | OBJ: ${auditLogDoc.objectId}]${auditLogDoc.fieldChanged ? ` (${auditLogDoc.fieldChanged}: ${auditLogDoc.oldValue || 'Nenhum'} ➔ ${auditLogDoc.newValue || 'Nenhum'})` : ''}`,
+        timestamp: auditLogDoc.timestamp,
+      };
+      await setDoc(doc(db, "activity_logs", actLog.id), sanitizeFirestoreData(actLog));
+    } catch (_) {}
+
+    return auditLogDoc;
+  };
+
   const logAdminAction = async (action: ActivityLog["action"], details: string) => {
     if (!currentUser || (currentUser.role !== "ADMIN" && currentUser.role !== "SERVIDOR")) return;
     const newLog: ActivityLog = {
@@ -2377,6 +2478,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         prev.map((u) => (u.id === targetUserId ? { ...u, role: newRole } : u))
       );
 
+      const targetUser = allUsers.find((u) => u.id === targetUserId);
+      await recordAuditLog({
+        objectId: targetUserId,
+        objectType: "USER",
+        objectTitle: targetUser?.name || targetUserId,
+        action: "ALTERACAO_PERMISSAO",
+        fieldChanged: "role",
+        oldValue: targetUser?.role || "ALUNO",
+        newValue: newRole,
+        details: `Permissão de acesso do usuário '${targetUser?.name || targetUserId}' alterada de ${targetUser?.role || "ALUNO"} para ${newRole}.`,
+      });
+
       if (currentUser.id === targetUserId) {
         setCurrentUser((prev) => ({ ...prev, role: newRole }));
       }
@@ -2427,7 +2540,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Add Item
   const addItem = async (
     itemData: Omit<LostFoundItem, "id" | "createdAt" | "qrCodeId" | "registeredByUserId" | "registeredByName" | "registeredByRole">
-  ): Promise<{ newItem: LostFoundItem; matches: AIMatchResult[] }> => {
+  ): Promise<{ newItem: LostFoundItem; matches: AIMatchResult[]; persistenceStatus: "CONFIRMED" | "OFFLINE_QUEUED"; isOffline: boolean }> => {
     // 🔒 Security Guard: Only authenticated users can register lost or found items
     if (isGuest || !auth.currentUser) {
       setPendingPostLoginAction({ tab: "register", registerType: itemData.type });
@@ -2498,6 +2611,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         userRole: effectiveUserRole,
         timestamp: new Date().toISOString(),
         details: `Ocorrência registrada no sistema do IFPR Campus Ivaiporã como ${itemData.type}.`,
+        objectId: newItemId,
+        transactionId: `tx-init-${newItemId}`,
+        newValue: `Tipo: ${itemData.type} | Local: ${itemData.location}`,
       },
     ];
 
@@ -2540,10 +2656,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isBackgroundSyncRegistered: true,
           completedAt: new Date().toISOString(),
         });
-        addToast(
-          `Modo Offline: O objeto "${newItem.title}" foi salvo no seu dispositivo (IndexedDB) e o Service Worker sincronizará em segundo plano assim que a conexão retornar!`,
-          "info"
-        );
       } catch (offErr) {
         console.warn("Aviso ao enfileirar offline:", offErr);
         setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
@@ -2553,19 +2665,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           statusMessage: "Erro ao gravar offline",
         });
       }
-      return { newItem, matches: [] };
+      return { newItem, matches: [], persistenceStatus: "OFFLINE_QUEUED", isOffline: true };
     }
 
-    // Online: Save item to Firestore
+    // Online: Save item to Firestore with strict persistence check
     updateUploadTask(taskId, {
       progress: 70,
       status: "UPLOADING",
-      statusMessage: "Enviando ao servidor em nuvem...",
+      statusMessage: "Enviando ao servidor em nuvem e aguardando confirmação do Firestore...",
     });
 
     try {
       await setDoc(doc(db, "items", newItem.id), sanitizeFirestoreData(newItem));
       setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
+      
+      const itemTxId = `TX-ITEM-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      await recordAuditLog({
+        objectId: newItem.id,
+        objectType: "ITEM",
+        objectTitle: newItem.title,
+        action: "CADASTRO_OCORRENCIA",
+        fieldChanged: "status_inicial",
+        oldValue: "NAO_REGISTRADO",
+        newValue: newItem.status,
+        details: `Ocorrência #${newItem.id} "${newItem.title}" (${newItem.type}) cadastrada no campus ${newItem.location} com persistência confirmada.`,
+        transactionId: itemTxId,
+      });
+
       if (currentUser?.role === "ADMIN" || currentUser?.role === "SERVIDOR") {
         await logAdminAction(
           "CADASTRO_OCORRENCIA",
@@ -2575,7 +2701,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updateUploadTask(taskId, {
         progress: 100,
         status: "COMPLETED",
-        statusMessage: "Upload e cadastro concluídos com sucesso!",
+        statusMessage: "Persistência confirmada com sucesso no Firestore!",
         completedAt: new Date().toISOString(),
       });
       vibrateSuccess();
@@ -2603,7 +2729,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           console.warn("[Novos Achados Webhook Notice] Envio assíncrono ao Discord:", webhookErr);
         });
       } else if (newItem.type === "PERDIDO") {
-        // Trigger automatic Discord Webhook notification to '#novas-perdas' ONLY after confirmed database save
         safeFetchJson(
           "/api/items/notify-novas-perdas",
           {
@@ -2630,11 +2755,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isBackgroundSyncRegistered: true,
           completedAt: new Date().toISOString(),
         });
-        addToast(
-          `Conexão instável. O cadastro de "${newItem.title}" foi salvo localmente e sincronizará automaticamente em segundo plano.`,
-          "info"
-        );
-        return { newItem, matches: [] };
+        return { newItem, matches: [], persistenceStatus: "OFFLINE_QUEUED", isOffline: true };
       } catch (_) {}
       updateUploadTask(taskId, {
         status: "ERROR",
@@ -2771,7 +2892,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     addToast(`Objeto "${newItem.title}" cadastrado com sucesso no Firestore!`, "success");
-    return { newItem, matches: aiMatches };
+    return { newItem, matches: aiMatches, persistenceStatus: "CONFIRMED", isOffline: false };
   };
 
   const updateItemStatus = async (id: string, status: ItemStatus) => {
@@ -2801,6 +2922,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await updateDoc(doc(db, "items", id), updates);
+      
+      const statusTxId = `TX-STAT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      await recordAuditLog({
+        objectId: id,
+        objectType: "ITEM",
+        objectTitle: existing?.title || id,
+        action: "STATUS_OVERRIDE",
+        fieldChanged: "status",
+        oldValue: existing?.status || "DESCONHECIDO",
+        newValue: status,
+        details: `Status do objeto '${existing?.title || id}' alterado de ${existing?.status || "DESCONHECIDO"} para ${status}.`,
+        transactionId: statusTxId,
+      });
+
       await logAdminAction(
         "STATUS_OVERRIDE",
         `Alterou o status do objeto #${id} para '${status}'`
@@ -2861,6 +2996,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await updateDoc(doc(db, "items", id), mergedData);
+      
+      const editTxId = `TX-EDIT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      const fieldsList = Object.keys(updatedFields).join(", ");
+      await recordAuditLog({
+        objectId: id,
+        objectType: "ITEM",
+        objectTitle: existing?.title || id,
+        action: "EDIT_OCORRENCIA",
+        fieldChanged: fieldsList || "dados_gerais",
+        oldValue: existing?.title || "Valores anteriores",
+        newValue: updatedFields.title || "Valores atualizados",
+        details: `Atualização cadastral do objeto #${id} (${existing?.title || ""}) nos campos: ${fieldsList}.`,
+        transactionId: editTxId,
+      });
+
       await logAdminAction(
         "EDIT_OCORRENCIA",
         `Atualizou os dados da ocorrência #${id} por ${currentUser.name} (${currentUser.role})`
@@ -2930,6 +3080,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await updateDoc(doc(db, "items", itemId), updatePayload);
+      
+      const returnTxId = `TX-RET-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      await recordAuditLog({
+        objectId: itemId,
+        objectType: "RETURN",
+        objectTitle: existing?.title || itemId,
+        action: "REGISTRO_DEVOLUCAO",
+        fieldChanged: "status_devolucao",
+        oldValue: existing?.status || "ENCONTRADO",
+        newValue: "DEVOLVIDO",
+        details: `Devolução do item #${itemId} (${existing?.title || ""}) concluída para ${returnData.recipientName} (${returnData.recipientBond}). Código validador: ${validationCode}.${isDirectlySigned ? " Assinatura presencial colhida." : ""}`,
+        transactionId: returnTxId,
+      });
+
       await logAdminAction(
         "REGISTRO_DEVOLUCAO",
         `Registrou a devolução do item #${itemId} (${existing?.title || ""}) para ${returnData.recipientName} (${returnData.recipientBond}). Responsável: ${currentUser.name}`
@@ -3366,6 +3530,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         exportFirestoreDataToJson,
         masterWipeFirestore,
         activityLogs,
+        systemAuditLogs,
+        recordAuditLog,
         logAdminAction,
         activeTab,
         setActiveTab,

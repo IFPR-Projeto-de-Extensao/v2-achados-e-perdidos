@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { APP_VERSIONS_DATA, AppVersion, TOTAL_ADDITIONS_COUNT, TOTAL_FIXES_COUNT, TOTAL_VERSIONS_COUNT } from "../data/versionsData";
+import { APP_VERSIONS_DATA, AppVersion, TOTAL_ADDITIONS_COUNT, TOTAL_FIXES_COUNT, TOTAL_VERSIONS_COUNT, CURRENT_VERSION } from "../data/versionsData";
 import { formatDateTime } from "./utils";
 
 export interface VersionReportOptions {
@@ -150,7 +150,7 @@ export function generateVersionsReportPdf(options: VersionReportOptions = {}): {
   doc.setTextColor(0, 90, 180);
   doc.text("AMBIENTE ATIVO", b4X + 3, currentY + 4.5);
   doc.setFontSize(10);
-  doc.text("v1.8.0 Produção", b4X + 3, currentY + 11.5);
+  doc.text(`${CURRENT_VERSION} Produção`, b4X + 3, currentY + 11.5);
 
   currentY += boxHeight + 6;
 

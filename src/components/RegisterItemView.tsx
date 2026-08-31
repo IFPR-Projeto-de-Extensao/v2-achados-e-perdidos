@@ -5,7 +5,7 @@ import { useRequireAuth } from "../hooks/useRequireAuth";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
 import { safeFetchJson, clientAnalyzeObject, clientAnalyzeImage } from "../lib/apiHelper";
-import { triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, safeToLower, safeIncludes, safeTextCorpus, sanitizeQuery } from "../lib/utils";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, safeToLower, safeIncludes, safeTextCorpus, sanitizeQuery, getTodayDateString } from "../lib/utils";
 import { compressImage, formatBytes } from "../lib/imageCompression";
 import {
   Sparkles,
@@ -32,6 +32,7 @@ import {
   Printer,
   QrCode,
   WifiOff,
+  Clock,
   Save,
   Trash2,
   History,
@@ -86,7 +87,7 @@ export const RegisterItemView: React.FC = () => {
   const [color, setColor] = useState("");
   const [brand, setBrand] = useState("");
   const [location, setLocation] = useState(IFPR_LOCATIONS[0]);
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(getTodayDateString());
   const [contactInfo, setContactInfo] = useState(currentUser?.email || "localizamais6@gmail.com");
   const [imageUrl, setImageUrl] = useState(
     "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=600&auto=format&fit=crop&q=80"
@@ -524,6 +525,12 @@ export const RegisterItemView: React.FC = () => {
     }
   };
 
+  // Persistence Feedback State
+  const [registrationFeedback, setRegistrationFeedback] = useState<{
+    status: "CONFIRMED" | "OFFLINE_QUEUED";
+    item: LostFoundItem;
+  } | null>(null);
+
   // Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -580,9 +587,18 @@ export const RegisterItemView: React.FC = () => {
 
       vibrateSuccess();
 
-      // If no AI match alerts are opened, navigate directly to the relevant list
-      if (!res?.matches || res.matches.length === 0) {
-        navigate(type === "PERDIDO" ? "/perdidos" : "/encontrados");
+      if (res.persistenceStatus === "CONFIRMED") {
+        addToast(`Cadastro Concluído! O objeto "${res.newItem.title}" foi confirmado e persistido no Firestore.`, "success");
+        setRegistrationFeedback({
+          status: "CONFIRMED",
+          item: res.newItem,
+        });
+      } else {
+        addToast(`Aguardando sincronização: Objeto "${res.newItem.title}" salvo localmente no dispositivo.`, "info");
+        setRegistrationFeedback({
+          status: "OFFLINE_QUEUED",
+          item: res.newItem,
+        });
       }
     } catch (submitErr: any) {
       console.error("Erro ao cadastrar item:", submitErr);
@@ -1361,6 +1377,129 @@ export const RegisterItemView: React.FC = () => {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Registration Persistence Feedback Modal */}
+      {registrationFeedback && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
+          <div className="bg-white dark:bg-neutral-900 rounded-3xl p-6 sm:p-8 max-w-lg w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-6 text-center animate-in fade-in zoom-in-95 duration-200">
+            {registrationFeedback.status === "CONFIRMED" ? (
+              <>
+                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-3xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center text-[#00843D] dark:text-emerald-400">
+                  <CheckCircle2 className="w-10 h-10 sm:w-12 sm:h-12" />
+                </div>
+
+                <div className="space-y-2">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">
+                    <ShieldCheck className="w-3.5 h-3.5" /> Persistência Confirmada no Firestore
+                  </span>
+                  <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                    Cadastro Concluído!
+                  </h2>
+                  <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">
+                    O registro do pertence <strong className="text-neutral-900 dark:text-white">"{registrationFeedback.item.title}"</strong> foi gravado, autenticado e verificado com sucesso no banco de dados do IFPR Campus Ivaiporã.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200/80 dark:border-neutral-700/60 text-left space-y-2 text-xs text-neutral-600 dark:text-neutral-300">
+                  <div className="flex justify-between items-center pb-1.5 border-b border-neutral-200 dark:border-neutral-700">
+                    <span className="text-neutral-500">Identificador (ID):</span>
+                    <span className="font-mono font-bold text-neutral-900 dark:text-white">{registrationFeedback.item.id}</span>
+                  </div>
+                  <div className="flex justify-between items-center pb-1.5 border-b border-neutral-200 dark:border-neutral-700">
+                    <span className="text-neutral-500">Código QR:</span>
+                    <span className="font-mono text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">{registrationFeedback.item.qrCodeId}</span>
+                  </div>
+                  <div className="flex justify-between items-center pb-1.5 border-b border-neutral-200 dark:border-neutral-700">
+                    <span className="text-neutral-500">Local Registrado:</span>
+                    <span className="font-semibold text-neutral-900 dark:text-white">{registrationFeedback.item.location}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-neutral-500">Status no Sistema:</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400 uppercase">{registrationFeedback.item.status}</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegistrationFeedback(null);
+                      navigate(type === "PERDIDO" ? "/perdidos" : "/encontrados");
+                    }}
+                    className="flex-1 py-3.5 px-5 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-bold text-sm shadow-lg shadow-emerald-700/20 transition-all cursor-pointer"
+                  >
+                    Ver no Mural de {type === "PERDIDO" ? "Perdidos" : "Encontrados"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegistrationFeedback(null);
+                      setTitle("");
+                      setDescription("");
+                      setLocation("");
+                      setColor("");
+                      setBrand("");
+                      setImageUrl(undefined);
+                    }}
+                    className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold text-xs transition-all cursor-pointer"
+                  >
+                    Cadastrar Outro
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-3xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                  <Clock className="w-10 h-10 sm:w-12 sm:h-12" />
+                </div>
+
+                <div className="space-y-2">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+                    <Clock className="w-3.5 h-3.5" /> Aguardando sincronização
+                  </span>
+                  <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                    Aguardando Sincronização
+                  </h2>
+                  <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">
+                    O objeto <strong className="text-neutral-900 dark:text-white">"{registrationFeedback.item.title}"</strong> foi armazenado com segurança localmente no dispositivo (IndexedDB) devido ao estado offline da rede.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-amber-50/60 dark:bg-amber-950/20 rounded-2xl border border-amber-200/80 dark:border-amber-800/40 text-left space-y-2 text-xs text-amber-800 dark:text-amber-300">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" /> Diretriz RNF-04:
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
+                    Conforme os requisitos de governança do IFPR, o status final de persistência somente será emitido após a confirmação de recebimento pelo Firestore em nuvem. A sincronização ocorrerá automaticamente em segundo plano.
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegistrationFeedback(null);
+                      navigate(type === "PERDIDO" ? "/perdidos" : "/encontrados");
+                    }}
+                    className="flex-1 py-3.5 px-5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm shadow-lg shadow-amber-600/20 transition-all cursor-pointer"
+                  >
+                    Entendido, Explorar Itens
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegistrationFeedback(null);
+                    }}
+                    className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold text-xs transition-all cursor-pointer"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

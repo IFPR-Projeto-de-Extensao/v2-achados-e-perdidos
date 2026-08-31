@@ -1,6 +1,7 @@
 export type ItemStatus =
   | "PERDIDO"
   | "ENCONTRADO"
+  | "DISPONIVEL"
   | "EM_ANALISE"
   | "PROPRIETARIO_IDENTIFICADO"
   | "DEVOLVIDO"
@@ -46,6 +47,8 @@ export interface ItemHistoryLog {
   fieldChanged?: string;
   oldValue?: string;
   newValue?: string;
+  objectId?: string;
+  transactionId?: string;
 }
 
 export interface LostFoundItem {
@@ -99,6 +102,7 @@ export interface LostFoundItem {
   recipientSignatureBond?: string;
   recipientSignatureDate?: string;
   signatureToken?: string;
+  signatureTokenUsed?: boolean;
   signedAt?: string;
   signatureIpOrDevice?: string;
 
@@ -240,10 +244,49 @@ export interface ItemComment {
   createdAt: string;
 }
 
+export type AuditObjectType =
+  | "ITEM"
+  | "TEST_BATTERY"
+  | "TEST_CASE"
+  | "TEST_PARTICIPANT"
+  | "USER"
+  | "CLAIM"
+  | "RETURN"
+  | "DOCUMENT"
+  | "PROJECT_SETTINGS"
+  | "SYSTEM";
+
+export interface SystemAuditLog {
+  id: string;
+  transactionId: string;
+  objectId: string;
+  objectType: AuditObjectType;
+  objectTitle?: string;
+  action: string;
+  actorId: string;
+  actorName: string;
+  actorEmail: string;
+  actorRole: UserRole;
+  timestamp: string;
+  fieldChanged?: string;
+  oldValue?: string | null;
+  newValue?: string | null;
+  details: string;
+  ipAddress?: string;
+  userAgent?: string;
+  immutable: boolean;
+}
+
 export interface ActivityLog {
   id: string;
   adminId: string;
   adminName: string;
+  transactionId?: string;
+  objectId?: string;
+  objectType?: AuditObjectType;
+  fieldChanged?: string;
+  oldValue?: string;
+  newValue?: string;
   action:
     | "EXCLUSAO_USUARIO"
     | "MODO_MANUTENCAO"
@@ -267,6 +310,10 @@ export interface ActivityLog {
     | "REABERTURA_DEVOLUCAO"
     | "DESTINACAO_ITEM"
     | "COMPROVANTE_GERADO"
+    | "RESULTADO_TESTE"
+    | "EVIDENCIA_TESTE"
+    | "CRIACAO_BATERIA"
+    | "CONCLUSAO_BATERIA"
     | string;
   details: string;
   timestamp: string;
@@ -471,5 +518,162 @@ export interface ProjectSettings {
   updatedBy?: string;
   updatedByEmail?: string;
 }
+
+// =========================================================================
+// BATERIA DE TESTES, PARTICIPANTES & GOVERNANÇA DO SISTEMA
+// =========================================================================
+
+export type TestStatus = "NAO_EXECUTADO" | "EM_EXECUCAO" | "APROVADO" | "REPROVADO" | "PENDENTE" | "BLOQUEADO";
+
+export type TestBatteryStatus = "PLANEJADA" | "ABERTA" | "EM_EXECUCAO" | "PAUSADA" | "FINALIZADA" | "CANCELADA";
+
+export type TestCategory =
+  | "AUTENTICACAO"
+  | "CADASTRO"
+  | "ACHADOS_PERDIDOS"
+  | "REIVINDICACOES"
+  | "QR_CODE"
+  | "IA_GEMINI"
+  | "PWA_MOBILE"
+  | "DOCUMENTOS"
+  | "NOTIFICACOES"
+  | "SEGURANCA"
+  | "APIS_PRODUCAO"
+  | "MONITORAMENTO";
+
+export interface TestParticipant {
+  id: string; // userId do sistema
+  name: string;
+  email: string;
+  globalRole: UserRole; // Aluno | Servidor | Administrador
+  contextualRole: "TESTADOR";
+  status: "ATIVO" | "INATIVO";
+  assignedCategories?: TestCategory[];
+  assignedTestCount?: number;
+  completedTestCount?: number;
+  passedTestCount?: number;
+  failedTestCount?: number;
+  addedAt: string;
+  addedBy: string;
+}
+
+export interface TestEvidence {
+  screenshotUrl?: string;
+  recordId?: string; // ID do registro criado no Firestore/Backend
+  requestId?: string;
+  protocol?: string;
+  logText?: string;
+  url?: string;
+  transactionId?: string;
+  technicalNotes?: string;
+}
+
+export interface TestCaseHistoryEntry {
+  timestamp: string;
+  previousStatus: TestStatus;
+  newStatus: TestStatus;
+  changedBy: string;
+  changedByEmail?: string;
+  reason?: string;
+}
+
+export interface TestCaseItem {
+  id: string;
+  category: TestCategory;
+  categoryName: string;
+  title: string;
+  description?: string;
+  preconditions?: string;
+  expectedResult: string;
+  obtainedResult: string;
+  status: TestStatus;
+  procedureSteps?: string[];
+  procedure?: string[];
+  isCriticalPersistence?: boolean;
+  assignedToUserId?: string;
+  assignedToName?: string;
+  assignedToEmail?: string;
+  evidence?: TestEvidence;
+  observations?: string;
+  startedAt?: string;
+  executedAt?: string;
+  executedBy?: string;
+  executedByEmail?: string;
+  testVersion?: string;
+  environment?: string;
+  history?: TestCaseHistoryEntry[];
+}
+
+export interface TestExecutionAuditEntry {
+  id: string;
+  changedAt: string;
+  changedBy: string;
+  changedByEmail: string;
+  changedByRole?: UserRole;
+  changeType:
+    | "CREATE"
+    | "UPDATE_STATUS"
+    | "UPDATE_DETAILS"
+    | "ADD_TEST"
+    | "EVIDENCE_ATTACHED"
+    | "DURATION_UPDATE"
+    | "EXECUTION_COMPLETE"
+    | "PARTICIPANT_ADDED"
+    | "PARTICIPANT_REMOVED"
+    | "ADD_PARTICIPANT"
+    | "REMOVE_PARTICIPANT"
+    | "TEST_ASSIGNED"
+    | "ASSIGN_TESTER"
+    | "AUTO_DISTRIBUTE"
+    | "BATTERY_STARTED"
+    | "BATTERY_PAUSED"
+    | "BATTERY_FINALIZED"
+    | "BATTERY_REOPENED";
+  description: string;
+  previousStatus?: string;
+  newStatus?: string;
+  previousValue?: string;
+  oldValue?: string;
+  newValue?: string;
+  fieldChanged?: string;
+  testId?: string;
+  objectId?: string;
+  transactionId?: string;
+  reason?: string;
+}
+
+export interface TestBatteryExecution {
+  id: string; // Ex: BT-2026-001
+  title?: string;
+  name?: string;
+  description?: string;
+  testDate: string; // Formato YYYY-MM-DD (Editável)
+  startTime: string; // Formato HH:MM (Editável)
+  endTime: string; // Formato HH:MM (Editável)
+  startedRealTimestamp?: string;
+  startedBy?: string;
+  finalizedRealTimestamp?: string;
+  finalizedBy?: string;
+  responsible: string; // Nome do responsável (Editável)
+  responsibleEmail?: string;
+  environment: "Desenvolvimento" | "Homologação" | "Produção";
+  systemVersion: string; // Ex: v1.8.4 (Editável)
+  commitOrBuild?: string; // Ex: build-7c2a1e (Editável)
+  browser?: string; // Ex: Chrome 128 / Safari / Edge (Editável)
+  device?: string; // Ex: Desktop / Mobile / Tablet (Editável)
+  os?: string; // Ex: Windows 11 / Linux / Android (Editável)
+  participants?: TestParticipant[];
+  categories?: TestCategory[];
+  overallStatus: TestBatteryStatus | "EM_ANDAMENTO" | "CONCLUIDO" | "PARCIAL";
+  status?: TestBatteryStatus | "EM_ANDAMENTO" | "CONCLUIDO" | "PARCIAL";
+  observations: string;
+  tests: TestCaseItem[];
+  auditTrail?: TestExecutionAuditEntry[];
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
+  createdByEmail: string;
+}
+
 
 

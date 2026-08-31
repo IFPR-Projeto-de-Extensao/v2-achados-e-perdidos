@@ -18,7 +18,7 @@ import {
 import { useApp } from "../context/AppContext";
 import { ItemCategory, LostFoundItem } from "../types";
 import { downloadFoundItemsReportPdf, generateFoundItemsReportPdf } from "../lib/foundItemsReportPdfGenerator";
-import { vibrateClick, vibrateSuccess } from "../lib/utils";
+import { safeParseDate, vibrateClick, vibrateSuccess } from "../lib/utils";
 import { IFPR_LOCATIONS } from "../data/mockData";
 
 interface ExportFoundItemsReportModalProps {
@@ -53,7 +53,8 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
       if (locationFilter !== "TODOS" && i.location !== locationFilter) return false;
       if (statusFilter !== "TODOS" && i.status !== statusFilter) return false;
 
-      const itemDate = new Date(i.date || i.createdAt);
+      const itemDate = safeParseDate(i.date || i.createdAt);
+      if (!itemDate) return false;
 
       if (periodPreset === "MES_ATUAL") {
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -70,14 +71,18 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
         if (itemDate < startOfYear || itemDate > endOfYear) return false;
       } else if (periodPreset === "CUSTOM") {
         if (startDate) {
-          const start = new Date(startDate);
-          start.setHours(0, 0, 0, 0);
-          if (itemDate < start) return false;
+          const start = safeParseDate(startDate);
+          if (start) {
+            start.setHours(0, 0, 0, 0);
+            if (itemDate < start) return false;
+          }
         }
         if (endDate) {
-          const end = new Date(endDate);
-          end.setHours(23, 59, 59, 999);
-          if (itemDate > end) return false;
+          const end = safeParseDate(endDate);
+          if (end) {
+            end.setHours(23, 59, 59, 999);
+            if (itemDate > end) return false;
+          }
         }
       }
 

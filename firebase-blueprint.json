@@ -161,6 +161,22 @@
         "updatedBy": { "type": "string", "maxLength": 100 }
       },
       "required": ["teamName", "members", "professor", "institution"]
+    },
+    "TestParticipant": {
+      "title": "TestParticipant",
+      "description": "Registered participant for test batteries with contextual tester role",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 150 },
+        "globalRole": { "type": "string", "enum": ["ALUNO", "SERVIDOR", "ADMIN"] },
+        "contextualRole": { "type": "string", "enum": ["TESTADOR"] },
+        "status": { "type": "string", "enum": ["ATIVO", "INATIVO"] },
+        "addedAt": { "type": "string" },
+        "addedBy": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "globalRole", "contextualRole", "status", "addedAt"]
     }
   },
   "firestore": {
@@ -225,6 +241,13 @@
     "/project_settings/{settingsId}": {
       "schema": { "$ref": "#/entities/ProjectSettings" },
       "description": "Permanent project metadata, InovaIF team members, professor, and campus info"
+    },
+    "/test_executions/{executionId}": {
+      "description": "Official test battery executions, validation results, and audit trails for Localiza+ governance"
+    },
+    "/test_participants/{participantId}": {
+      "schema": { "$ref": "#/entities/TestParticipant" },
+      "description": "Registered participants pool for collaborative test batteries"
     }
   }
 }
