@@ -1,6 +1,26 @@
 <!doctype html>
 <html lang="pt-BR">
   <head>
+    <script>
+      // Suppress benign Vite HMR websocket connection errors in sandboxed preview environments where HMR is disabled
+      (function() {
+        if (typeof window !== 'undefined' && window.console && window.console.error) {
+          var _origErr = window.console.error;
+          window.console.error = function() {
+            var firstArg = arguments[0];
+            if (
+              typeof firstArg === 'string' &&
+              (firstArg.indexOf('[vite] failed to connect to websocket') !== -1 ||
+               firstArg.indexOf('[vite] connecting...') !== -1 ||
+               (firstArg.indexOf('[vite]') !== -1 && firstArg.indexOf('websocket') !== -1))
+            ) {
+              return;
+            }
+            return _origErr.apply(window.console, arguments);
+          };
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
     <title>Localiza+ • Achados &amp; Perdidos IFPR Campus Ivaiporã</title>

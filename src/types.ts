@@ -523,9 +523,31 @@ export interface ProjectSettings {
 // BATERIA DE TESTES, PARTICIPANTES & GOVERNANÇA DO SISTEMA
 // =========================================================================
 
-export type TestStatus = "NAO_EXECUTADO" | "EM_EXECUCAO" | "APROVADO" | "REPROVADO" | "PENDENTE" | "BLOQUEADO";
+export type TestStatus =
+  | "PENDENTE"
+  | "EM_EXECUCAO"
+  | "CONCLUIDO"
+  | "PROBLEMA"
+  | "NAO_SE_APLICA"
+  | "NAO_EXECUTADO"
+  | "APROVADO"
+  | "REPROVADO"
+  | "BLOQUEADO";
 
-export type TestBatteryStatus = "PLANEJADA" | "ABERTA" | "EM_EXECUCAO" | "PAUSADA" | "FINALIZADA" | "CANCELADA";
+export type TestPriority = "BAIXA" | "MEDIA" | "ALTA" | "CRITICA";
+
+export type TestBatteryStatus =
+  | "RASCUNHO"
+  | "EM_ANDAMENTO"
+  | "CONCLUIDA"
+  | "CONCLUIDO"
+  | "ARQUIVADA"
+  | "PLANEJADA"
+  | "ABERTA"
+  | "EM_EXECUCAO"
+  | "PAUSADA"
+  | "FINALIZADA"
+  | "CANCELADA";
 
 export type TestCategory =
   | "AUTENTICACAO"
@@ -601,6 +623,8 @@ export interface TestCaseItem {
   executedByEmail?: string;
   testVersion?: string;
   environment?: string;
+  priority?: TestPriority;
+  createdAt?: string;
   history?: TestCaseHistoryEntry[];
 }
 
@@ -628,7 +652,14 @@ export interface TestExecutionAuditEntry {
     | "BATTERY_STARTED"
     | "BATTERY_PAUSED"
     | "BATTERY_FINALIZED"
-    | "BATTERY_REOPENED";
+    | "BATTERY_REOPENED"
+    | "BATTERY_EDITED"
+    | "BATTERY_ARCHIVED"
+    | "BATTERY_DELETED"
+    | "TEST_DELETED"
+    | "DELETE_TEST_CASE"
+    | "TEST_DUPLICATED"
+    | "TEST_UPDATED";
   description: string;
   previousStatus?: string;
   newStatus?: string;

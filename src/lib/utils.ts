@@ -421,3 +421,27 @@ export function isValidPhone(value: string): boolean {
   return true;
 }
 
+/**
+ * Recursively strips all `undefined` values from an object or array before persisting to Firestore.
+ * Firestore strictly rejects documents containing `undefined` with the error:
+ * "Function setDoc() called with invalid data. Unsupported field value: undefined"
+ */
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return null as any;
+  }
+  if (Array.isArray(data)) {
+    return data.map((item) => (item === undefined ? null : sanitizeForFirestore(item))) as any;
+  }
+  if (typeof data === "object" && !(data instanceof Date)) {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        cleaned[key] = sanitizeForFirestore(value);
+      }
+    }
+    return cleaned as any;
+  }
+  return data;
+}
+

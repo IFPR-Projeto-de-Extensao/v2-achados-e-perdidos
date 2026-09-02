@@ -1,4 +1,4 @@
-import { TestCaseItem, TestBatteryExecution, TestParticipant } from "../types";
+import { TestCaseItem, TestBatteryExecution, TestParticipant, TestBatteryStatus } from "../types";
 
 /**
  * Standard test templates across all 12 operational categories of Localiza+
@@ -698,7 +698,39 @@ export const STANDARD_TEST_DEFINITIONS: Omit<TestCaseItem, "obtainedResult" | "s
 ];
 
 /**
- * Creates a fresh, standardized test battery execution populated with the official test cases.
+ * Helper functions to determine test status categories cleanly
+ */
+export function isTestCompleted(status?: string): boolean {
+  return status === "CONCLUIDO" || status === "APROVADO";
+}
+
+export function isTestFailed(status?: string): boolean {
+  return status === "PROBLEMA" || status === "REPROVADO";
+}
+
+export function isTestInProgress(status?: string): boolean {
+  return status === "EM_EXECUCAO";
+}
+
+export function isTestPending(status?: string): boolean {
+  return status === "PENDENTE" || status === "NAO_EXECUTADO" || !status;
+}
+
+export function isTestNotApplicable(status?: string): boolean {
+  return status === "NAO_SE_APLICA" || status === "BLOQUEADO";
+}
+
+export function getTestStatusLabel(status?: string): string {
+  if (isTestCompleted(status)) return "Concluído";
+  if (isTestFailed(status)) return "Problema encontrado";
+  if (isTestInProgress(status)) return "Em execução";
+  if (isTestNotApplicable(status)) return "Não se aplica";
+  return "Pendente";
+}
+
+/**
+ * Creates a fresh, standardized test battery execution.
+ * If initialTests is not provided, it starts cleanly with an empty array [] as requested by governance rules.
  */
 export function createNewTestBatteryExecution(
   id: string,
@@ -708,24 +740,21 @@ export function createNewTestBatteryExecution(
   systemVersion: string = "v1.8.4",
   title?: string,
   description?: string,
-  participants?: TestParticipant[]
+  participants?: TestParticipant[],
+  initialTests?: TestCaseItem[],
+  initialStatus: TestBatteryStatus = "RASCUNHO"
 ): TestBatteryExecution {
   const now = new Date();
   const dateStr = now.toISOString().split("T")[0];
   const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
 
-  const tests: TestCaseItem[] = STANDARD_TEST_DEFINITIONS.map((t) => ({
-    ...t,
-    obtainedResult: "Pendente de validação no ciclo ativo.",
-    status: "NAO_EXECUTADO",
-    observations: "",
-  }));
+  const tests: TestCaseItem[] = initialTests || [];
 
   return {
     id,
     title: title || `Bateria de Testes Institucional ${id}`,
     name: title || `Bateria de Testes ${id}`,
-    description: description || "Bateria de testes colaborativa e validação de conformidade técnica do Localiza+ IFPR Campus Ivaiporã.",
+    description: description || "Bateria de testes e validação de conformidade técnica do Localiza+ IFPR Campus Ivaiporã.",
     testDate: dateStr,
     startTime: timeStr,
     endTime: "",
@@ -737,8 +766,8 @@ export function createNewTestBatteryExecution(
     browser: "Google Chrome 128 / Edge (V8)",
     device: "Desktop & Mobile IFPR",
     os: "Windows 11 / Android 14 / Linux",
-    overallStatus: "EM_EXECUCAO",
-    status: "EM_EXECUCAO",
+    overallStatus: initialStatus,
+    status: initialStatus,
     observations: "Bateria de testes e homologação oficial em tempo real com controle de participantes e auditoria.",
     participants: participants || [],
     tests,
@@ -749,7 +778,7 @@ export function createNewTestBatteryExecution(
         changedBy: responsibleName || "Administrador",
         changedByEmail: responsibleEmail || "",
         changeType: "CREATE",
-        description: `Bateria de testes ${id} criada com ${tests.length} casos de teste e ${participants?.length || 0} participantes atribuídos.`,
+        description: `Bateria de testes ${id} criada com status "${initialStatus}", contendo ${tests.length} casos de teste e ${participants?.length || 0} participantes atribuídos.`,
       },
     ],
     createdAt: now.toISOString(),
@@ -815,15 +844,15 @@ export function calculateTestDuration(startTime?: string, endTime?: string): str
 export function calculateBatterySummary(battery: TestBatteryExecution) {
   const tests = battery?.tests || [];
   const total = tests.length;
-  const passed = tests.filter((t) => t.status === "APROVADO").length;
-  const failed = tests.filter((t) => t.status === "REPROVADO").length;
-  const inProgress = tests.filter((t) => t.status === "EM_EXECUCAO").length;
+  const passed = tests.filter((t) => isTestCompleted(t.status)).length;
+  const failed = tests.filter((t) => isTestFailed(t.status)).length;
+  const inProgress = tests.filter((t) => isTestInProgress(t.status)).length;
   const notExecuted = tests.filter((t) => t.status === "NAO_EXECUTADO").length;
-  const pending = tests.filter((t) => t.status === "PENDENTE").length;
-  const blocked = tests.filter((t) => t.status === "BLOQUEADO").length;
+  const pending = tests.filter((t) => isTestPending(t.status)).length;
+  const blocked = tests.filter((t) => isTestNotApplicable(t.status)).length;
 
   const completed = passed + failed;
-  const executed = completed + pending + blocked + inProgress;
+  const executed = completed + inProgress + (tests.filter((t) => t.status === "BLOQUEADO").length);
   const passRate = completed > 0 ? ((passed / completed) * 100).toFixed(1) : "0.0";
   const completionRate = total > 0 ? ((completed / total) * 100).toFixed(1) : "0.0";
   const duration = calculateTestDuration(battery?.startTime, battery?.endTime);
@@ -860,11 +889,11 @@ export function calculateParticipantMetrics(battery: TestBatteryExecution) {
     );
 
     const totalAssigned = assignedTests.length;
-    const passed = assignedTests.filter((t) => t.status === "APROVADO").length;
-    const failed = assignedTests.filter((t) => t.status === "REPROVADO").length;
-    const inProgress = assignedTests.filter((t) => t.status === "EM_EXECUCAO").length;
-    const pending = assignedTests.filter((t) => t.status === "PENDENTE").length;
-    const blocked = assignedTests.filter((t) => t.status === "BLOQUEADO").length;
+    const passed = assignedTests.filter((t) => isTestCompleted(t.status)).length;
+    const failed = assignedTests.filter((t) => isTestFailed(t.status)).length;
+    const inProgress = assignedTests.filter((t) => isTestInProgress(t.status)).length;
+    const pending = assignedTests.filter((t) => isTestPending(t.status)).length;
+    const blocked = assignedTests.filter((t) => isTestNotApplicable(t.status)).length;
     const notExecuted = assignedTests.filter((t) => t.status === "NAO_EXECUTADO").length;
     const completed = passed + failed;
 
@@ -928,11 +957,11 @@ export function calculateCategoryMetrics(battery: TestBatteryExecution) {
     }
     const cat = categoryMap[t.category];
     cat.total += 1;
-    if (t.status === "APROVADO") cat.passed += 1;
-    else if (t.status === "REPROVADO") cat.failed += 1;
-    else if (t.status === "EM_EXECUCAO") cat.inProgress += 1;
-    else if (t.status === "PENDENTE") cat.pending += 1;
-    else if (t.status === "BLOQUEADO") cat.blocked += 1;
+    if (isTestCompleted(t.status)) cat.passed += 1;
+    else if (isTestFailed(t.status)) cat.failed += 1;
+    else if (isTestInProgress(t.status)) cat.inProgress += 1;
+    else if (isTestPending(t.status)) cat.pending += 1;
+    else if (isTestNotApplicable(t.status)) cat.blocked += 1;
     else cat.notExecuted += 1;
   });
 

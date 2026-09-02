@@ -24,12 +24,92 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.3",
+    codename: "Test Battery Governance, Full Matrix & Tester RBAC Architecture",
+    releaseDate: "02/09/2026",
+    releaseDateTime: "02 de Setembro de 2026 • 23:00 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Implementação e consolidação completa do módulo de Bateria de Testes, Matriz Completa sem limites de registros, Aba 'Meus Testes Atribuídos' com painel de métricas para testadores, Distribuição balanceada de casos de teste e controle de permissões baseado em papéis (RBAC) com persistência em tempo real no Firestore.",
+    additions: [
+      {
+        id: "v193-add-1",
+        title: "Gestão do Ciclo de Vida de Baterias de Teste & RBAC",
+        description: "Adicionado suporte completo para criação flexível (bateria vazia ou template oficial de 55 testes), edição cadastral, transição de status (Rascunho, Planejada, Em Andamento, Concluída, Arquivada) e exclusão segura com proteção estrita por papel de Administrador/Servidor.",
+        module: "ADMIN",
+        tag: "Bateria de Testes",
+      },
+      {
+        id: "v193-add-2",
+        title: "Matriz Completa de Testes Dinâmica & Filtros",
+        description: "Visualização irrestrita de todos os casos de teste cadastrados na bateria, com filtros dinâmicos funcionais por ID, Categoria/Área (12 categorias), Status, Testador Responsável, Persistência Crítica (RNF-04) e busca textual em tempo real.",
+        module: "ADMIN",
+        tag: "Matriz Completa",
+      },
+      {
+        id: "v193-add-3",
+        title: "Aba 'Meus Testes Atribuídos' com Perfil & Métricas do Testador",
+        description: "Aba dedicada para testadores contendo painel de perfil (Nome, E-mail, UID, Papel), barra de progresso individual, métricas (Atribuídos, Aprovados, Reprovados, Pendentes) e listagem exclusiva de casos designados ao UID/E-mail do usuário logado.",
+        module: "ADMIN",
+        tag: "Meus Testes",
+      },
+      {
+        id: "v193-add-4",
+        title: "Distribuição Balanceada e Atribuição de Casos de Teste",
+        description: "Seletor inline e distribuição automática inteligente por round-robin entre os participantes cadastrados na bateria, com proteção contra alterações não autorizadas por usuários comuns.",
+        module: "ADMIN",
+        tag: "Distribuição",
+      },
+      {
+        id: "v193-add-5",
+        title: "Trilha de Auditoria & Registro de Evidências Reais",
+        description: "Registro cronológico de todas as modificações de status, inclusões, atribuições e edições, com modal de evidências para anexação de prints, ID de documentos Firestore, logs e notas técnicas.",
+        module: "ADMIN",
+        tag: "Auditoria & Qualidade",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v193-fix-1",
+        title: "Normalização e Consistência de Tipagem de Baterias",
+        description: "Padronização das tipagens de status de bateria (TestBatteryStatus), cálculo em tempo real da duração dos testes e unificação das operações na trilha de auditoria.",
+        module: "ADMIN",
+        tag: "Tipagem & Consistência",
+      },
+      {
+        id: "v193-fix-2",
+        title: "Controle de Permissões (RBAC) em Ações de Bateria e Testes",
+        description: "Bloqueio no frontend e backend de botões de exclusão, edição, duplicação e início/finalização de baterias para usuários sem perfil administrativo.",
+        module: "ADMIN",
+        tag: "Segurança & RBAC",
+      },
+      {
+        id: "v193-fix-3",
+        title: "Tratamento de Alertas Vite HMR no Ambiente de Execução",
+        description: "Supressão de alertas benignos de reconexão de WebSocket do Vite HMR no ambiente de preview conteinerizado, evitando falsos positivos de console.",
+        module: "GERAL",
+        tag: "Infraestrutura",
+      },
+      {
+        id: "v193-fix-4",
+        title: "Sanitização de Campos 'undefined' na Persistência Firestore",
+        description: "Correção de erro 'Unsupported field value: undefined' na gravação de execuções de testes e baterias (setDoc), implementando sanitizador recursivo profundo em todas as chamadas de persistência.",
+        module: "FIRESTORE",
+        tag: "Persistência Firestore",
+      },
+    ],
+    stats: {
+      additionsCount: 5,
+      fixesCount: 4,
+    },
+  },
+  {
     version: "v1.9.2",
     codename: "Vercel Speed Insights Integration",
     releaseDate: "02/09/2026",
     releaseDateTime: "02 de Setembro de 2026 • 21:00 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Integração oficial do Vercel Speed Insights para monitoramento de métricas reais de performance (Web Vitals) do Localiza+ (IFPR Campus Ivaiporã) diretamente na plataforma Vercel.",
     additions: [
       {

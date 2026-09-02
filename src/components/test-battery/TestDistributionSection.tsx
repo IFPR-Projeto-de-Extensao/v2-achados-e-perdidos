@@ -37,6 +37,7 @@ interface TestDistributionSectionProps {
   currentUserEmail?: string;
   currentUserName?: string;
   darkMode?: boolean;
+  isAdmin?: boolean;
 }
 
 const CATEGORY_NAMES: Record<TestCategory, string> = {
@@ -61,6 +62,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
   currentUserEmail = "paulocauan39@gmail.com",
   currentUserName = "Administrador Geral",
   darkMode,
+  isAdmin = true,
 }) => {
   const [selectedParticipantId, setSelectedParticipantId] = useState<string>("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("ALL");
@@ -87,13 +89,20 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
     }
   }, [participants, selectedParticipantId]);
 
-  // Statistics
+  // Statistics & Progress
   const totalTests = tests.length;
   const totalParticipants = participants.length;
   const assignedTests = tests.filter((t) => t.assignedToUserId || t.assignedToEmail);
   const unassignedTests = tests.filter((t) => !t.assignedToUserId && !t.assignedToEmail);
   const assignedCount = assignedTests.length;
   const unassignedCount = unassignedTests.length;
+
+  // Status-based battery metrics
+  const completedTests = tests.filter((t) => t.status === "CONCLUIDO" || t.status === "APROVADO");
+  const failedTests = tests.filter((t) => t.status === "PROBLEMA" || t.status === "REPROVADO");
+  const inProgressTests = tests.filter((t) => t.status === "EM_EXECUCAO");
+  const pendingTests = tests.filter((t) => t.status === "PENDENTE" || t.status === "NAO_EXECUTADO" || !t.status);
+  const progressPct = totalTests > 0 ? ((completedTests.length / totalTests) * 100).toFixed(1) : "0.0";
 
   // Filter tests for selection
   const filteredAvailableTests = useMemo(() => {
@@ -502,70 +511,102 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
 
   return (
     <div id="test-distribution-section" className="space-y-6">
-      {/* 1. TOP STATISTICAL KPI CARDS */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* RBAC Notice for Non-Admins */}
+      {!isAdmin && (
+        <div className="p-3.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-800 dark:text-blue-300 flex items-center gap-2.5 text-xs font-semibold">
+          <Shield className="w-4 h-4 shrink-0 text-blue-500" />
+          <span>
+            <strong>Modo Somente Leitura:</strong> Apenas administradores e servidores do IFPR podem distribuir testes ou alterar a equipe. Você pode consultar os testes atribuídos a você na aba <em>Meus Testes Atribuídos</em>.
+          </span>
+        </div>
+      )}
+
+      {/* 1. RESUMO GERAL DA BATERIA (6 INDICADORES OBRIGATÓRIOS) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         <div
-          className={`p-4 rounded-xl border ${
+          className={`p-3.5 rounded-xl border ${
             darkMode ? "bg-neutral-900 border-neutral-800" : "bg-white border-neutral-200"
           }`}
         >
           <div className="text-[10px] font-extrabold uppercase tracking-wider text-neutral-500 mb-1">
             Total de Testes
           </div>
-          <div className="text-2xl font-black text-neutral-900 dark:text-white flex items-baseline gap-1.5">
+          <div className="text-xl font-black text-neutral-900 dark:text-white">
             {totalTests}
-            <span className="text-xs font-normal text-neutral-400">casos</span>
           </div>
-          <p className="text-[10px] text-neutral-400 mt-1">Definidos na bateria</p>
+          <p className="text-[10px] text-neutral-400 mt-0.5">Definidos na bateria</p>
         </div>
 
         <div
-          className={`p-4 rounded-xl border ${
-            darkMode ? "bg-neutral-900 border-neutral-800" : "bg-white border-neutral-200"
-          }`}
-        >
-          <div className="text-[10px] font-extrabold uppercase tracking-wider text-neutral-500 mb-1">
-            Total de Participantes
-          </div>
-          <div className="text-2xl font-black text-neutral-900 dark:text-white flex items-baseline gap-1.5">
-            {totalParticipants}
-            <span className="text-xs font-normal text-neutral-400">testadores</span>
-          </div>
-          <p className="text-[10px] text-neutral-400 mt-1">Equipe autorizada</p>
-        </div>
-
-        <div
-          className={`p-4 rounded-xl border ${
+          className={`p-3.5 rounded-xl border ${
             darkMode ? "bg-neutral-900 border-neutral-800" : "bg-white border-neutral-200"
           }`}
         >
           <div className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">
-            Testes Atribuídos
+            Distribuídos
           </div>
-          <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 flex items-baseline gap-1.5">
+          <div className="text-xl font-black text-emerald-600 dark:text-emerald-400">
             {assignedCount}
-            <span className="text-xs font-normal text-neutral-400">
-              ({totalTests > 0 ? ((assignedCount / totalTests) * 100).toFixed(0) : 0}%)
-            </span>
           </div>
-          <p className="text-[10px] text-neutral-400 mt-1">Com responsável ativo</p>
+          <p className="text-[10px] text-neutral-400 mt-0.5">
+            {totalTests > 0 ? ((assignedCount / totalTests) * 100).toFixed(0) : 0}% atribuídos
+          </p>
         </div>
 
         <div
-          className={`p-4 rounded-xl border ${
+          className={`p-3.5 rounded-xl border ${
             darkMode ? "bg-neutral-900 border-neutral-800" : "bg-white border-neutral-200"
           }`}
         >
           <div className="text-[10px] font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-1">
-            Testes Não Atribuídos
+            Não Distribuídos
           </div>
-          <div className="text-2xl font-black text-amber-600 dark:text-amber-400 flex items-baseline gap-1.5">
+          <div className="text-xl font-black text-amber-600 dark:text-amber-400">
             {unassignedCount}
-            <span className="text-xs font-normal text-neutral-400">
-              ({totalTests > 0 ? ((unassignedCount / totalTests) * 100).toFixed(0) : 0}%)
-            </span>
           </div>
-          <p className="text-[10px] text-neutral-400 mt-1">Aguardando distribuição</p>
+          <p className="text-[10px] text-neutral-400 mt-0.5">Aguardando testador</p>
+        </div>
+
+        <div
+          className={`p-3.5 rounded-xl border ${
+            darkMode ? "bg-neutral-900 border-neutral-800" : "bg-white border-neutral-200"
+          }`}
+        >
+          <div className="text-[10px] font-extrabold uppercase tracking-wider text-teal-600 dark:text-teal-400 mb-1">
+            Concluídos
+          </div>
+          <div className="text-xl font-black text-teal-600 dark:text-teal-400">
+            {completedTests.length}
+          </div>
+          <p className="text-[10px] text-neutral-400 mt-0.5">Finalizados</p>
+        </div>
+
+        <div
+          className={`p-3.5 rounded-xl border ${
+            darkMode ? "bg-neutral-900 border-neutral-800" : "bg-white border-neutral-200"
+          }`}
+        >
+          <div className="text-[10px] font-extrabold uppercase tracking-wider text-rose-600 dark:text-rose-400 mb-1">
+            Com Problemas
+          </div>
+          <div className="text-xl font-black text-rose-600 dark:text-rose-400">
+            {failedTests.length}
+          </div>
+          <p className="text-[10px] text-neutral-400 mt-0.5">Falhas apontadas</p>
+        </div>
+
+        <div
+          className={`p-3.5 rounded-xl border ${
+            darkMode ? "bg-neutral-900 border-neutral-800" : "bg-white border-neutral-200"
+          }`}
+        >
+          <div className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1">
+            Progresso Geral
+          </div>
+          <div className="text-xl font-black text-indigo-600 dark:text-indigo-400">
+            {progressPct}%
+          </div>
+          <p className="text-[10px] text-neutral-400 mt-0.5">{completedTests.length}/{totalTests} casos</p>
         </div>
       </div>
 
@@ -656,56 +697,91 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                   t.assignedToUserId === p.id ||
                   (t.assignedToEmail && t.assignedToEmail.toLowerCase() === p.email.toLowerCase())
               );
-              const count = myAssigned.length;
+              const totalAssigned = myAssigned.length;
+              const completedCount = myAssigned.filter(
+                (t) => t.status === "CONCLUIDO" || t.status === "APROVADO"
+              ).length;
+              const problemCount = myAssigned.filter(
+                (t) => t.status === "PROBLEMA" || t.status === "REPROVADO"
+              ).length;
+              const inProgressCount = myAssigned.filter(
+                (t) => t.status === "EM_EXECUCAO"
+              ).length;
+              const pendingCount = myAssigned.filter(
+                (t) => t.status === "PENDENTE" || t.status === "NAO_EXECUTADO" || !t.status
+              ).length;
+
               const isCurrent = selectedParticipantId === p.id;
-              const pctOfTotal = totalTests > 0 ? ((count / totalTests) * 100).toFixed(0) : "0";
+              const pctOfTotal = totalTests > 0 ? ((totalAssigned / totalTests) * 100).toFixed(0) : "0";
 
               return (
                 <div
                   key={p.id}
                   onClick={() => setSelectedParticipantId(p.id)}
-                  className={`p-2.5 rounded-lg border text-xs cursor-pointer transition flex items-center justify-between ${
+                  className={`p-3 rounded-xl border text-xs cursor-pointer transition flex flex-col justify-between gap-2.5 ${
                     isCurrent
-                      ? "border-emerald-600 bg-emerald-500/10 shadow-sm"
+                      ? "border-emerald-600 bg-emerald-500/10 shadow-sm ring-1 ring-emerald-500/30"
                       : "border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800/40"
                   }`}
                 >
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    <div
-                      className={`w-7 h-7 rounded-full flex items-center justify-center font-black text-[11px] flex-shrink-0 ${
-                        isCurrent
-                          ? "bg-emerald-600 text-white"
-                          : "bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
-                      }`}
-                    >
-                      {p.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div className="overflow-hidden">
-                      <div className="font-bold text-neutral-900 dark:text-white truncate">
-                        {p.name}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <div
+                        className={`w-7 h-7 rounded-full flex items-center justify-center font-black text-[11px] flex-shrink-0 ${
+                          isCurrent
+                            ? "bg-emerald-600 text-white"
+                            : "bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
+                        }`}
+                      >
+                        {p.name.charAt(0).toUpperCase()}
                       </div>
-                      <div className="text-[10px] text-neutral-500 flex items-center gap-1.5">
-                        <span
-                          className={`font-extrabold uppercase text-[9px] px-1 py-0.2 rounded ${
-                            p.globalRole === "ADMIN"
-                              ? "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300"
-                              : p.globalRole === "SERVIDOR"
-                              ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
-                              : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                          }`}
-                        >
-                          {p.globalRole}
-                        </span>
+                      <div className="overflow-hidden">
+                        <div className="font-bold text-neutral-900 dark:text-white truncate">
+                          {p.name}
+                        </div>
+                        <div className="text-[10px] text-neutral-500 flex items-center gap-1.5">
+                          <span
+                            className={`font-extrabold uppercase text-[9px] px-1 py-0.2 rounded ${
+                              p.globalRole === "ADMIN"
+                                ? "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300"
+                                : p.globalRole === "SERVIDOR"
+                                ? "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300"
+                                : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                            }`}
+                          >
+                            {p.globalRole}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right flex-shrink-0">
+                      <div className="font-black text-neutral-900 dark:text-white text-xs">
+                        {totalAssigned} {totalAssigned === 1 ? "teste" : "testes"}
+                      </div>
+                      <div className="text-[10px] text-neutral-400">
+                        {pctOfTotal}% do total
                       </div>
                     </div>
                   </div>
 
-                  <div className="text-right flex-shrink-0 ml-2">
-                    <div className="font-black text-neutral-900 dark:text-white text-xs">
-                      {count} {count === 1 ? "teste" : "testes"}
+                  {/* Resumo com os 5 indicadores obrigatórios por testador */}
+                  <div className="grid grid-cols-4 gap-1 text-[10px] pt-1.5 border-t dark:border-neutral-800/60 border-neutral-200 text-center">
+                    <div className="bg-neutral-100 dark:bg-neutral-800/80 rounded py-1 px-0.5">
+                      <div className="text-neutral-400 text-[9px] font-bold">Pend.</div>
+                      <div className="font-extrabold text-neutral-700 dark:text-neutral-300">{pendingCount}</div>
                     </div>
-                    <div className="text-[10px] text-neutral-400">
-                      {pctOfTotal}% do total
+                    <div className="bg-blue-50 dark:bg-blue-950/40 rounded py-1 px-0.5">
+                      <div className="text-blue-500 text-[9px] font-bold">Andam.</div>
+                      <div className="font-extrabold text-blue-600 dark:text-blue-400">{inProgressCount}</div>
+                    </div>
+                    <div className="bg-emerald-50 dark:bg-emerald-950/40 rounded py-1 px-0.5">
+                      <div className="text-emerald-500 text-[9px] font-bold">Concl.</div>
+                      <div className="font-extrabold text-emerald-600 dark:text-emerald-400">{completedCount}</div>
+                    </div>
+                    <div className="bg-rose-50 dark:bg-rose-950/40 rounded py-1 px-0.5">
+                      <div className="text-rose-500 text-[9px] font-bold">Prob.</div>
+                      <div className="font-extrabold text-rose-600 dark:text-rose-400">{problemCount}</div>
                     </div>
                   </div>
                 </div>

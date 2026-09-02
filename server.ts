@@ -2776,9 +2776,17 @@ async function startServer() {
 
   if (!isProduction) {
     try {
+      // In tsx/Node ESM execution, a global __dirname='.' string can cause plugins like vite-plugin-pwa to fail createRequire
+      if (typeof (globalThis as any).__dirname !== "undefined" && (globalThis as any).__dirname === ".") {
+        delete (globalThis as any).__dirname;
+      }
+      if (typeof (global as any).__dirname !== "undefined" && (global as any).__dirname === ".") {
+        delete (global as any).__dirname;
+      }
+
       const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
-        server: { middlewareMode: true },
+        server: { middlewareMode: true, hmr: process.env.DISABLE_HMR === "true" ? false : true },
         appType: "spa",
       });
       app.use(vite.middlewares);
