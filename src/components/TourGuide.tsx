@@ -128,6 +128,17 @@ export const TourGuide: React.FC<TourGuideProps> = ({ isOpen, onClose }) => {
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleSkip();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const currentStep = TOUR_STEPS[currentStepIndex];
@@ -182,6 +193,11 @@ export const TourGuide: React.FC<TourGuideProps> = ({ isOpen, onClose }) => {
     <AnimatePresence>
       <div
         id="tour-guide-modal-overlay"
+        onClick={(e) => {
+          if ((e.target as HTMLElement).id === "tour-guide-modal-overlay") {
+            handleSkip();
+          }
+        }}
         className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
       >
         {/* Modal Card */}

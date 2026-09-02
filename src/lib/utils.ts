@@ -366,3 +366,58 @@ export function getItemAgeText(input?: unknown, fallback = "Data não informada"
   }
 }
 
+/**
+ * Formats a Brazilian phone number up to 11 digits: (XX) 9XXXX-XXXX (mobile) or (XX) XXXX-XXXX (landline).
+ * Supports automatic stripping of the +55 country code when pasted.
+ */
+export function formatPhone(value: string): string {
+  if (!value) return "";
+  let digits = value.replace(/\D/g, "");
+  // Handle Brazilian country code (+55) when pasted
+  if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) {
+    digits = digits.slice(2);
+  }
+  digits = digits.slice(0, 11);
+  if (digits.length === 0) return "";
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+}
+
+/**
+ * Validates whether a given string is a valid Brazilian phone number (10 or 11 digits).
+ * Validates Brazilian DDD (11-99), 9-digit mobile prefix, and rejects invalid sequences.
+ */
+export function isValidPhone(value: string): boolean {
+  if (!value) return false;
+  let digits = value.replace(/\D/g, "");
+  // Handle Brazilian country code (+55) when pasted
+  if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) {
+    digits = digits.slice(2);
+  }
+  // Must have exactly 10 (landline) or 11 (mobile) digits
+  if (digits.length !== 10 && digits.length !== 11) return false;
+
+  // DDD must be between 11 and 99
+  const ddd = parseInt(digits.slice(0, 2), 10);
+  if (isNaN(ddd) || ddd < 11 || ddd > 99) return false;
+
+  // If 11 digits (mobile), the 3rd digit (first digit after DDD) must be 9
+  if (digits.length === 11 && digits.charAt(2) !== "9") {
+    return false;
+  }
+
+  // If 10 digits (landline), the 3rd digit is between 2 and 8
+  if (digits.length === 10 && !/^[2-8]/.test(digits.charAt(2))) {
+    return false;
+  }
+
+  // Reject sequence of repeated identical digits (e.g. 00000000000, 11111111111)
+  if (/^(\d)\1+$/.test(digits)) {
+    return false;
+  }
+
+  return true;
+}
+

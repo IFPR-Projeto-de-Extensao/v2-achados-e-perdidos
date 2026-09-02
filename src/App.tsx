@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { RouterProvider, useRouter } from "./context/RouterContext";
 import { Navbar } from "./components/Navbar";
@@ -379,7 +380,14 @@ const MainContent: React.FC = () => {
       {/* Interactive Guided Onboarding Tour */}
       <TourGuide
         isOpen={tourGuideOpen}
-        onClose={() => setTourGuideOpen(false)}
+        onClose={() => {
+          setTourGuideOpen(false);
+          try {
+            ["ifpr_achados_tour_completed", "ifpr_tour_completed", "ifpr_dont_show_tour"].forEach((k) =>
+              localStorage.setItem(k, "true")
+            );
+          } catch (_) {}
+        }}
       />
 
       {/* Remote Digital Signature Modal triggered by deep link / query param */}
@@ -430,6 +438,7 @@ export default function App() {
     <AppProvider>
       <RouterProvider>
         <MainContent />
+        <SpeedInsights />
       </RouterProvider>
     </AppProvider>
   );

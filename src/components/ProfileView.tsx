@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { useApp } from "../context/AppContext";
 import { ItemCard } from "./ItemCard";
-import { formatDate, formatDateTime, vibrateClick } from "../lib/utils";
+import { formatDate, formatDateTime, vibrateClick, formatPhone, isValidPhone } from "../lib/utils";
 import { UserRole, BadgeTier } from "../types";
 import { calculateUserReputation } from "../lib/reputationSystem";
 import {
@@ -36,6 +36,8 @@ import {
   Info,
   Sun,
   Moon,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 export const ProfileView: React.FC = () => {
@@ -84,6 +86,10 @@ export const ProfileView: React.FC = () => {
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (editPhone && !isValidPhone(editPhone)) {
+      addToast("Telefone inválido. Informe o DDD e o número completo (ex: (43) 99876-5432).", "warning");
+      return;
+    }
     await updateUserProfileData({
       ...currentUser,
       name: editName,
@@ -101,6 +107,7 @@ export const ProfileView: React.FC = () => {
   const userClaims = claims.filter((c) => c.claimerId === currentUser.id);
 
   // Calculate user reputation and badge system
+  const [showBadges, setShowBadges] = useState(false);
   const reputation = useMemo(() => {
     return calculateUserReputation(currentUser, items);
   }, [currentUser, items]);
@@ -237,7 +244,7 @@ export const ProfileView: React.FC = () => {
               </div>
               <div className="flex items-center justify-center md:justify-start space-x-2">
                 <Phone className="w-4 h-4 text-[#00843D]" />
-                <span>{currentUser.phone || "(43) 99999-0000"}</span>
+                <span>{currentUser.phone ? formatPhone(currentUser.phone) : "Telefone não informado"}</span>
               </div>
             </div>
           ) : (
@@ -287,7 +294,9 @@ export const ProfileView: React.FC = () => {
                   <input
                     type="text"
                     value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
+                    onChange={(e) => setEditPhone(formatPhone(e.target.value))}
+                    placeholder="(43) 99876-5432"
+                    maxLength={15}
                     className="w-full px-3 py-1.5 text-xs rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 outline-none focus:ring-2 focus:ring-[#00843D]"
                   />
                 </div>
@@ -389,19 +398,36 @@ export const ProfileView: React.FC = () => {
           </div>
         </div>
 
-        {/* BADGES GALLERY GRID */}
-        <div className="space-y-3 pt-2">
+        {/* BADGES GALLERY GRID (COLLAPSIBLE / DEFAULT HIDDEN TO KEEP INTERFACE CLEAN) */}
+        <div className="space-y-3 pt-2 border-t border-neutral-200/60 dark:border-neutral-800/60">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                setShowBadges((prev) => !prev);
+              }}
+              className="flex items-center gap-2 font-black text-xs sm:text-sm text-neutral-900 dark:text-white uppercase tracking-wider hover:text-[#00843D] transition-colors cursor-pointer"
+            >
               <Award className="w-4 h-4 text-[#00843D]" />
-              <span>Galeria de Medalhas e Conquistas de Cidadania</span>
-            </h3>
-            <span className="text-[11px] text-neutral-500 font-bold">
-              Desbloqueie realizando ações no sistema
-            </span>
+              <span>Galeria de Medalhas e Conquistas ({reputation.badges.filter((b) => b.unlocked).length}/{reputation.badges.length})</span>
+              {showBadges ? <ChevronUp className="w-4 h-4 text-neutral-500" /> : <ChevronDown className="w-4 h-4 text-neutral-500" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                setShowBadges((prev) => !prev);
+              }}
+              className="text-[11px] font-bold text-[#00843D] dark:text-green-400 hover:underline cursor-pointer"
+            >
+              {showBadges ? "Ocultar Galeria" : "Exibir Galeria"}
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {showBadges && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 animate-in fade-in duration-200">
             {reputation.badges.map((badge) => {
               const tierInfo = getTierDetails(badge.tier);
               const isUnlocked = badge.unlocked;
@@ -493,6 +519,7 @@ export const ProfileView: React.FC = () => {
               );
             })}
           </div>
+          )}
         </div>
       </div>
 

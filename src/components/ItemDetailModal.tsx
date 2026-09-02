@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { LostFoundItem } from "../types";
@@ -90,6 +90,8 @@ import {
   FileSpreadsheet,
   Eye,
   FileText,
+  Edit,
+  Save,
   Sparkles,
   PenTool,
   CheckCheck,
@@ -107,7 +109,9 @@ interface ItemDetailModalProps {
 
 export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose }) => {
   const {
+    items,
     currentUser,
+    isGuest,
     allUsers,
     submitClaim,
     updateItemStatus,
@@ -120,10 +124,43 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     reopenItemReturn,
     registerItemDestination,
     logItemLabelGenerated,
+    updateItemData,
   } = useApp();
-  const ownership = usePossessionVerification(item);
+
+  const currentItem = items.find((i) => i.id === item.id) || item;
+  const ownership = usePossessionVerification(currentItem);
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+
+  // Edit Item Modal State (Authorized users: Owner, Staff, Admin)
+  const [editItemModalOpen, setEditItemModalOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState(currentItem?.title || "");
+  const [editDescription, setEditDescription] = useState(currentItem?.description || "");
+  const [editCategory, setEditCategory] = useState<string>(currentItem?.category || "OUTROS");
+  const [editLocation, setEditLocation] = useState(currentItem?.location || "");
+  const [editColor, setEditColor] = useState(currentItem?.color || "");
+  const [editBrand, setEditBrand] = useState(currentItem?.brand || "");
+  const [editContactInfo, setEditContactInfo] = useState(currentItem?.contactInfo || "");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  useEffect(() => {
+    setEditTitle(currentItem?.title || "");
+    setEditDescription(currentItem?.description || "");
+    setEditCategory(currentItem?.category || "OUTROS");
+    setEditLocation(currentItem?.location || "");
+    setEditColor(currentItem?.color || "");
+    setEditBrand(currentItem?.brand || "");
+    setEditContactInfo(currentItem?.contactInfo || "");
+  }, [
+    currentItem?.id,
+    currentItem?.title,
+    currentItem?.description,
+    currentItem?.category,
+    currentItem?.location,
+    currentItem?.color,
+    currentItem?.brand,
+    currentItem?.contactInfo,
+  ]);
   const [claimModalOpen, setClaimModalOpen] = useState(false);
   const [claimSecretPasswordInput, setClaimSecretPasswordInput] = useState("");
   const [claimBrandInput, setClaimBrandInput] = useState("");
@@ -149,6 +186,29 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
   // Reopen Return Flow State
   const [reopenModalOpen, setReopenModalOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (editItemModalOpen) {
+          setEditItemModalOpen(false);
+        } else if (claimModalOpen) {
+          setClaimModalOpen(false);
+        } else if (returnModalOpen) {
+          setReturnModalOpen(false);
+        } else if (remoteSignatureModalOpen) {
+          setRemoteSignatureModalOpen(false);
+        } else if (reopenModalOpen) {
+          setReopenModalOpen(false);
+        } else {
+          vibrateClick();
+          onClose();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [editItemModalOpen, claimModalOpen, returnModalOpen, remoteSignatureModalOpen, reopenModalOpen, onClose]);
   const [reopenReason, setReopenReason] = useState("");
   const [isReopeningReturn, setIsReopeningReturn] = useState(false);
 
@@ -1001,7 +1061,47 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     }
   };
 
-  const allImages = [item.imageUrl, ...(item.additionalImages || [])];
+  const allImages = [currentItem.imageUrl, ...(currentItem.additionalImages || [])];
+
+  const isOwner = Boolean(
+    !isGuest &&
+      currentUser &&
+      currentUser.id !== "guest" &&
+      currentItem.registeredByUserId &&
+      currentItem.registeredByUserId === currentUser.id
+  );
+  const isAuthorizedToEdit = isOwner || currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR";
+
+  const handleSaveEditedItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isAuthorizedToEdit) {
+      addToast("Você não possui autorização para editar as informações deste objeto.", "error");
+      return;
+    }
+    if (!editTitle.trim()) {
+      addToast("O título do objeto não pode ficar em branco.", "error");
+      return;
+    }
+    setIsSavingEdit(true);
+    try {
+      await updateItemData(currentItem.id, {
+        title: editTitle.trim(),
+        description: editDescription.trim(),
+        category: editCategory as any,
+        location: editLocation.trim(),
+        color: editColor.trim(),
+        brand: editBrand.trim(),
+        contactInfo: editContactInfo.trim(),
+      });
+      setIsSavingEdit(false);
+      setEditItemModalOpen(false);
+      addToast("Informações do objeto atualizadas com sucesso!", "success");
+    } catch (err) {
+      setIsSavingEdit(false);
+      console.error("Erro ao atualizar objeto:", err);
+      addToast("Erro ao gravar alterações do objeto.", "error");
+    }
+  };
 
   const handleClaimSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1059,6 +1159,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       aria-modal="true"
       aria-labelledby="item-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-xs overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          vibrateClick();
+          onClose();
+        }
+      }}
     >
       <div
         className="relative w-full max-w-4xl bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200"
@@ -1624,6 +1730,28 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <Send className="w-4 h-4 text-[#00843D]" />
                 <span>Enviar Notificação / Mensagem sobre o Objeto</span>
               </button>
+
+              {/* Authorized Users (Owner, Servidor, Admin): Edit Item Button */}
+              {isAuthorizedToEdit && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditTitle(item.title);
+                    setEditDescription(item.description);
+                    setEditCategory(item.category);
+                    setEditLocation(item.location);
+                    setEditColor(item.color || "");
+                    setEditBrand(item.brand || "");
+                    setEditContactInfo(item.contactInfo || "");
+                    setEditItemModalOpen(true);
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer"
+                  title="Editar dados e informações do objeto"
+                >
+                  <Edit className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <span>Editar Informações do Objeto</span>
+                </button>
+              )}
 
               {/* Generate Official Printable Item Summary / Campus Report PDF Button */}
               <button
@@ -2221,6 +2349,150 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 >
                   <PackageCheck className="w-3.5 h-3.5" />
                   <span>{isRegisteringDestination ? "Registrando..." : "Confirmar & Encerrar"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Item Modal (Authorized Users) */}
+      {editItemModalOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-xl w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Edit className="w-5 h-5 text-amber-500" />
+                <div>
+                  <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                    Editar Informações do Objeto
+                  </h3>
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
+                    Apenas o Cadastrador do Item ou Servidores/Admins podem alterar
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditItemModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedItem} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                  Título / Nome do Objeto *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                  Descrição Detalhada
+                </label>
+                <textarea
+                  rows={3}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                    Categoria
+                  </label>
+                  <select
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                  >
+                    <option value="ELETRONICOS">Eletrônicos</option>
+                    <option value="DOCUMENTOS">Documentos</option>
+                    <option value="VESTUARIO">Vestuário / Roupas</option>
+                    <option value="MATERIAL_ESCOLAR">Material Escolar</option>
+                    <option value="CHAVES">Chaves</option>
+                    <option value="ACESSORIOS">Acessórios / Objetos Pessoais</option>
+                    <option value="OUTROS">Outros</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                    Localização no Campus
+                  </label>
+                  <input
+                    type="text"
+                    value={editLocation}
+                    onChange={(e) => setEditLocation(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                    Cor Predominante
+                  </label>
+                  <input
+                    type="text"
+                    value={editColor}
+                    onChange={(e) => setEditColor(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                    Marca / Fabricante
+                  </label>
+                  <input
+                    type="text"
+                    value={editBrand}
+                    onChange={(e) => setEditBrand(e.target.value)}
+                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                  Contato / Instruções de Devolução
+                </label>
+                <input
+                  type="text"
+                  value={editContactInfo}
+                  onChange={(e) => setEditContactInfo(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2 border-t border-neutral-200 dark:border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setEditItemModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingEdit}
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{isSavingEdit ? "Salvando..." : "Salvar Alterações"}</span>
                 </button>
               </div>
             </form>

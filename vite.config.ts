@@ -15,43 +15,58 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: 'auto',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg', 'pwa-192x192.png', 'pwa-512x512.png'],
+      includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-192.png', 'icon-maskable-512.png'],
       manifest: {
+        id: '/',
         name: 'Localiza+ IFPR Campus Ivaiporã',
         short_name: 'Localiza+ IFPR',
         description: 'Sistema Inteligente de Achados e Perdidos com IA do IFPR Campus Ivaiporã',
         theme_color: '#00843D',
         background_color: '#0a0a0a',
         display: 'standalone',
+        display_override: ['standalone', 'minimal-ui', 'window-controls-overlay'],
         orientation: 'portrait-primary',
         scope: '/',
         start_url: '/',
         lang: 'pt-BR',
         dir: 'ltr',
+        categories: ['utilities', 'productivity', 'education'],
         icons: [
           {
-            src: '/pwa-192x192.png',
+            src: '/icon-192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any',
           },
           {
-            src: '/pwa-192x192.png',
+            src: '/icon-maskable-192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'maskable',
           },
           {
-            src: '/pwa-512x512.png',
+            src: '/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any',
           },
           {
-            src: '/pwa-512x512.png',
+            src: '/icon-maskable-512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
+          },
+          {
+            src: '/pwa-icon.svg',
+            sizes: '512x512',
+            type: 'image/svg+xml',
+            purpose: 'any',
+          },
+          {
+            src: '/favicon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'any',
           },
         ],
         shortcuts: [
@@ -60,37 +75,38 @@ export default defineConfig({
             short_name: 'Perdidos',
             description: 'Ver lista de itens perdidos no campus',
             url: '/perdidos',
-            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+            icons: [{ src: '/icon-192.png', sizes: '192x192' }],
           },
           {
             name: 'Itens Encontrados',
             short_name: 'Encontrados',
             description: 'Ver itens encontrados aguardando devolução',
             url: '/encontrados',
-            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+            icons: [{ src: '/icon-192.png', sizes: '192x192' }],
           },
           {
             name: 'Cadastrar Objeto',
             short_name: 'Cadastrar',
             description: 'Cadastrar um novo item perdido ou encontrado',
             url: '/cadastrar',
-            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+            icons: [{ src: '/icon-192.png', sizes: '192x192' }],
           },
           {
             name: 'Buscar no Campus',
             short_name: 'Buscar',
             description: 'Buscar objetos perdidos ou achados no IFPR',
             url: '/buscar',
-            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+            icons: [{ src: '/icon-192.png', sizes: '192x192' }],
           },
           {
             name: 'Painel Administrativo',
             short_name: 'Admin',
             description: 'Acesso ao painel administrativo institucional',
             url: '/admin',
-            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+            icons: [{ src: '/icon-192.png', sizes: '192x192' }],
           },
         ],
+        prefer_related_applications: false,
       },
       workbox: {
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
@@ -98,7 +114,38 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//, /^\/__/],
+        importScripts: ['/sw-custom.js'],
         runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'gstatic-fonts-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365,
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
           {
             urlPattern: /^https:\/\/images\.unsplash\.com\/.*/i,
             handler: 'CacheFirst',
@@ -115,20 +162,21 @@ export default defineConfig({
           },
           {
             urlPattern: /^https:\/\/firestore\.googleapis\.com\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'firestore-api-cache',
-              networkTimeoutSeconds: 5,
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24, // 24 horas
-              },
-              cacheableResponse: {
-                statuses: [0, 200],
-              },
-            },
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /^https:\/\/identitytoolkit\.googleapis\.com\/.*/i,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /^https:\/\/securetoken\.googleapis\.com\/.*/i,
+            handler: 'NetworkOnly',
           },
         ],
+      },
+      devOptions: {
+        enabled: true,
+        type: 'module',
       },
     }),
   ],

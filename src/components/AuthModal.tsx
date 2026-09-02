@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X, Mail, Lock, User as UserIcon, Shield, GraduationCap, Building2, Phone, FileText, Sparkles, LogIn, UserPlus, LogOut, AlertTriangle, Check, Copy } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { useRouter } from "../context/RouterContext";
 import { UserRole } from "../types";
-import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning } from "../lib/utils";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, formatPhone, isValidPhone } from "../lib/utils";
 import { parseAuthError, handleAuthError } from "../lib/authErrorHandler";
 
 interface AuthModalProps {
@@ -23,6 +24,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     setActiveTab,
     pendingPostLoginAction,
   } = useApp();
+  const { navigate } = useRouter();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -41,20 +43,35 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [regMatricula, setRegMatricula] = useState("");
   const [regPhone, setRegPhone] = useState("");
 
+  // Close modal on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        vibrateClick();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     vibrateClick();
     setErrorMsg("");
-    if (!loginEmail || !loginPassword) {
+    const cleanEmail = loginEmail.trim().toLowerCase();
+    const cleanPass = loginPassword.trim();
+    if (!cleanEmail || !cleanPass) {
       setErrorMsg("Preencha e-mail e senha para entrar.");
       addToast("Preencha e-mail e senha para entrar.", "warning");
       return;
     }
     setLoading(true);
     try {
-      await loginWithEmailPassword(loginEmail, loginPassword);
+      await loginWithEmailPassword(cleanEmail, cleanPass);
       vibrateSuccess();
       addToast("Login realizado com sucesso!", "success");
       onClose();
@@ -73,21 +90,46 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     e.preventDefault();
     vibrateClick();
     setErrorMsg("");
-    if (!regName || !regEmail || !regPassword) {
-      setErrorMsg("Nome, e-mail e senha são obrigatórios.");
-      addToast("Preencha todos os campos obrigatórios.", "warning");
+
+    const trimmedName = regName.trim();
+    if (!trimmedName || trimmedName.length < 3) {
+      setErrorMsg("Por favor, informe seu nome completo (mínimo de 3 caracteres).");
+      addToast("Por favor, informe seu nome completo (mínimo de 3 caracteres).", "warning");
       return;
     }
+
+    const cleanEmail = regEmail.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      setErrorMsg("Por favor, informe um endereço de e-mail válido (ex: seu.nome@estudante.ifpr.edu.br).");
+      addToast("Por favor, informe um endereço de e-mail válido.", "warning");
+      return;
+    }
+
+    const cleanPass = regPassword.trim();
+    if (!cleanPass || cleanPass.length < 6) {
+      setErrorMsg("A senha deve ter no mínimo 6 caracteres.");
+      addToast("A senha deve ter no mínimo 6 caracteres.", "warning");
+      return;
+    }
+
+    const cleanPhone = regPhone.trim();
+    if (cleanPhone && !isValidPhone(cleanPhone)) {
+      setErrorMsg("Telefone inválido. Informe o DDD e o número completo (ex: (43) 99876-5432).");
+      addToast("Número de telefone inválido.", "warning");
+      return;
+    }
+
     setLoading(true);
     try {
-      await registerWithEmailPassword(regEmail, regPassword, {
-        name: regName,
-        email: regEmail,
+      await registerWithEmailPassword(cleanEmail, cleanPass, {
+        name: trimmedName,
+        email: cleanEmail,
         role: regRole,
-        courseOrDept: regCourseOrDept,
-        registrationNumber: regMatricula || `2026${Math.floor(10000 + Math.random() * 90000)}`,
-        phone: regPhone || "(43) 99999-0000",
-        avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(regName)}`,
+        courseOrDept: regCourseOrDept.trim() || (regRole === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã"),
+        registrationNumber: regMatricula.trim() || `2026${Math.floor(10000 + Math.random() * 90000)}`,
+        phone: cleanPhone ? formatPhone(cleanPhone) : "",
+        avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(trimmedName)}`,
       });
       vibrateSuccess();
       addToast("Cadastro concluído com sucesso!", "success");
@@ -141,6 +183,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          vibrateClick();
+          onClose();
+        }
+      }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
     >
       <div className="relative w-full max-w-lg bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden my-auto max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
@@ -160,9 +208,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               vibrateClick();
               onClose();
             }}
-            role="button"
+            type="button"
             aria-label="Fechar janela de autenticação"
-            className="p-2 rounded-full hover:bg-white/20 transition-colors text-white/90 hover:text-white"
+            className="p-2 rounded-full hover:bg-white/20 transition-colors text-white/90 hover:text-white cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -176,7 +224,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               setMode("login");
               setErrorMsg("");
             }}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-2 ${
+            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-2 cursor-pointer ${
               mode === "login"
                 ? "bg-white dark:bg-[#1E1E1E] text-[#00843D] dark:text-green-400 shadow-xs"
                 : "text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
@@ -191,7 +239,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               setMode("register");
               setErrorMsg("");
             }}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-2 ${
+            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-2 cursor-pointer ${
               mode === "register"
                 ? "bg-white dark:bg-[#1E1E1E] text-[#00843D] dark:text-green-400 shadow-xs"
                 : "text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
@@ -239,7 +287,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   await logout();
                   onClose();
                 }}
-                className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500 text-red-600 dark:text-red-400 hover:text-white text-xs font-bold transition-all border border-red-500/20 flex items-center gap-1"
+                className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500 text-red-600 dark:text-red-400 hover:text-white text-xs font-bold transition-all border border-red-500/20 flex items-center gap-1 cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Sair</span>
@@ -264,7 +312,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   <button
                     type="button"
                     onClick={handleCopyDomain}
-                    className="w-full py-2 px-3 rounded-lg bg-[#00843D] text-white text-[11px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#006e33] transition-colors mt-2"
+                    className="w-full py-2 px-3 rounded-lg bg-[#00843D] text-white text-[11px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#006e33] transition-colors mt-2 cursor-pointer"
                   >
                     {copiedDomain ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                     <span>
@@ -282,7 +330,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               type="button"
               onClick={handleGoogleClick}
               disabled={loading}
-              className="w-full py-3 px-4 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-100 text-xs font-bold hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors flex items-center justify-center space-x-3 shadow-xs"
+              className="w-full py-3 px-4 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-100 text-xs font-bold hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors flex items-center justify-center space-x-3 shadow-xs cursor-pointer"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path
@@ -327,7 +375,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   setLoginPassword("servidor123");
                   setMode("login");
                 }}
-                className="p-2.5 rounded-xl bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 text-[11px] font-bold text-neutral-800 dark:text-neutral-100 hover:border-[#00843D] hover:text-[#00843D] transition-all text-left"
+                className="p-2.5 rounded-xl bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 text-[11px] font-bold text-neutral-800 dark:text-neutral-100 hover:border-[#00843D] hover:text-[#00843D] transition-all text-left cursor-pointer"
               >
                 <div className="text-xs truncate font-bold">Maria Oliveira</div>
                 <div className="text-[9px] text-neutral-500 dark:text-neutral-400 font-normal">Servidor SEBAC</div>
@@ -339,7 +387,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   setLoginPassword("aluno123");
                   setMode("login");
                 }}
-                className="p-2.5 rounded-xl bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 text-[11px] font-bold text-neutral-800 dark:text-neutral-100 hover:border-[#00843D] hover:text-[#00843D] transition-all text-left"
+                className="p-2.5 rounded-xl bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 text-[11px] font-bold text-neutral-800 dark:text-neutral-100 hover:border-[#00843D] hover:text-[#00843D] transition-all text-left cursor-pointer"
               >
                 <div className="text-xs truncate font-bold">Lucas Santos</div>
                 <div className="text-[9px] text-neutral-500 dark:text-neutral-400 font-normal">Aluno IFPR</div>
@@ -391,13 +439,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-2"
-              >
-                {loading ? "Entrando..." : "Entrar no Sistema"}
-              </button>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    vibrateClick();
+                    onClose();
+                  }}
+                  className="w-1/3 py-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs transition-all flex items-center justify-center cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-2/3 py-3 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                >
+                  {loading ? "Entrando..." : "Entrar no Sistema"}
+                </button>
+              </div>
             </form>
           ) : (
             /* REGISTER FORM */
@@ -439,7 +499,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Senha *
+                    Senha (mínimo 6 caracteres) *
                   </label>
                   <div className="relative">
                     <Lock className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />
@@ -467,7 +527,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                       key={r}
                       type="button"
                       onClick={() => setRegRole(r)}
-                      className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all ${
+                      className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
                         regRole === r
                           ? "bg-[#00843D] text-white border-[#00843D]"
                           : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700"
@@ -519,10 +579,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   <div className="relative">
                     <Phone className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />
                     <input
-                      type="text"
+                      type="tel"
                       value={regPhone}
-                      onChange={(e) => setRegPhone(e.target.value)}
+                      onChange={(e) => setRegPhone(formatPhone(e.target.value))}
                       placeholder="(43) 99876-5432"
+                      maxLength={15}
                       className="w-full pl-9 pr-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
                     />
                   </div>
@@ -538,10 +599,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                     onClick={() => {
                       vibrateClick();
                       onClose();
-                      if (typeof window !== "undefined") {
-                        window.history.pushState({ tab: "terms_of_use" }, "", "/termos-de-uso");
-                      }
-                      setActiveTab("terms_of_use");
+                      navigate("/termos-de-uso");
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
                     className="text-[#00843D] dark:text-green-400 font-bold underline hover:text-[#006830] inline cursor-pointer"
@@ -554,10 +612,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                     onClick={() => {
                       vibrateClick();
                       onClose();
-                      if (typeof window !== "undefined") {
-                        window.history.pushState({ tab: "privacy_policy" }, "", "/politica-de-privacidade");
-                      }
-                      setActiveTab("privacy_policy");
+                      navigate("/politica-de-privacidade");
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
                     className="text-[#00843D] dark:text-green-400 font-bold underline hover:text-[#006830] inline cursor-pointer"
@@ -568,13 +623,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 </p>
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-2 mt-2"
-              >
-                {loading ? "Cadastrando..." : "Concluir Cadastro no Banco de Dados"}
-              </button>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    vibrateClick();
+                    onClose();
+                  }}
+                  className="w-1/3 py-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs transition-all flex items-center justify-center cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-2/3 py-3 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                >
+                  {loading ? "Cadastrando..." : "Concluir Cadastro"}
+                </button>
+              </div>
             </form>
           )}
         </div>

@@ -26,7 +26,9 @@ service cloud.firestore {
 
     function isRootAdmin() {
       return isSignedIn() && 
-             request.auth.token.email == 'paulocauan39@gmail.com';
+             request.auth.token.email != null &&
+             (request.auth.token.email == 'paulocauan39@gmail.com' ||
+              request.auth.token.email.lower() == 'paulocauan39@gmail.com');
     }
 
     function isDocAdmin() {
@@ -39,12 +41,28 @@ service cloud.firestore {
       return hasAdminClaim() || isRootAdmin() || isDocAdmin();
     }
 
+    function isDocServidor() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'SERVIDOR';
+    }
+
+    function isDocAluno() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ALUNO';
+    }
+
     function isServidor() {
       return isSignedIn() && 
              (isAdmin() ||
               (request.auth.token.role == 'SERVIDOR') ||
-              (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'SERVIDOR'));
+              isDocServidor() ||
+              (!isDocAluno() && request.auth.token.email != null && (
+                 request.auth.token.email.matches('.*@ifpr[.]edu[.]br') &&
+                 !request.auth.token.email.matches('.*@aluno[.]ifpr[.]edu[.]br') &&
+                 !request.auth.token.email.matches('.*@escola[.]ifpr[.]edu[.]br')
+              )));
     }
 
     function incoming() {
@@ -63,19 +81,15 @@ service cloud.firestore {
       allow get: if isSignedIn();
       allow list: if isSignedIn();
 
-      // Creation: user can only create their own user doc with matching uid and cannot elevate to ADMIN unless root admin
+      // Creation: user can create their own user doc with matching uid and cannot elevate to ADMIN or SERVIDOR unless root admin or admin
       allow create: if isSignedIn() && 
                        request.auth.uid == userId && 
-                       incoming().id == userId &&
-                       incoming().email == request.auth.token.email &&
-                       (incoming().role != 'ADMIN' || isRootAdmin());
+                       ((incoming().role != 'ADMIN' && incoming().role != 'SERVIDOR') || isRootAdmin() || isAdmin());
 
-      // Update: User can update their own profile fields without altering id, email, or elevating role; Admin can update anything
+      // Update: User can update their own profile fields without self-elevating their role; Admin can update any user
       allow update: if (isSignedIn() && 
                         request.auth.uid == userId && 
-                        incoming().id == existing().id &&
-                        incoming().email == existing().email &&
-                        incoming().role == existing().role) ||
+                        (incoming().role == existing().role || isRootAdmin() || isAdmin())) ||
                        isAdmin();
 
       // Deletion: Only Admin can delete users (and cannot delete their own active account)
@@ -90,46 +104,50 @@ service cloud.firestore {
       allow get: if true;
       allow list: if true;
 
-      // Creation: ONLY Authenticated users (request.auth != null) can register lost or found items
+      // Creation: ONLY Authenticated users (request.auth != null) can register lost or found items with their real UID
       allow create: if isSignedIn() && 
-                    (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
+                    (incoming().registeredByUserId == request.auth.uid) && 
                     (incoming().registeredByRole != 'ADMIN' || isAdmin() || isRootAdmin());
 
-      // Update: Admin, Servidor, or the item owner can update
+      // Update: Admin, Root Admin, Servidor, or the authenticated item owner can update
       allow update: if isAdmin() ||
                        isRootAdmin() ||
-                       (isSignedIn() && (existing().registeredByUserId == request.auth.uid || incoming().registeredByUserId == request.auth.uid)) ||
-                       isServidor();
+                       isServidor() ||
+                       (isSignedIn() && 
+                        existing().registeredByUserId == request.auth.uid && 
+                        incoming().registeredByUserId == existing().registeredByUserId);
 
-      // Delete: Admin or the user who registered the item
+      // Delete: Admin or the authenticated user who registered the item
       allow delete: if isAdmin() || isRootAdmin() || (isSignedIn() && existing().registeredByUserId == request.auth.uid);
     }
 
     match /found_items/{itemId} {
       allow get: if true;
       allow list: if true;
-      // Creation: ONLY Authenticated users can register found items
       allow create: if isSignedIn() && 
-                    (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
+                    (incoming().registeredByUserId == request.auth.uid) && 
                     (incoming().registeredByRole != 'ADMIN' || isAdmin() || isRootAdmin());
       allow update: if isAdmin() ||
                        isRootAdmin() ||
-                       (isSignedIn() && (existing().registeredByUserId == request.auth.uid || incoming().registeredByUserId == request.auth.uid)) ||
-                       isServidor();
+                       isServidor() ||
+                       (isSignedIn() && 
+                        existing().registeredByUserId == request.auth.uid && 
+                        incoming().registeredByUserId == existing().registeredByUserId);
       allow delete: if isAdmin() || isRootAdmin() || (isSignedIn() && existing().registeredByUserId == request.auth.uid);
     }
 
     match /lost_items/{itemId} {
       allow get: if true;
       allow list: if true;
-      // Creation: ONLY Authenticated users can register lost items
       allow create: if isSignedIn() && 
-                    (incoming().registeredByUserId == request.auth.uid || incoming().registeredByUserId is string) && 
+                    (incoming().registeredByUserId == request.auth.uid) && 
                     (incoming().registeredByRole != 'ADMIN' || isAdmin() || isRootAdmin());
       allow update: if isAdmin() ||
                        isRootAdmin() ||
-                       (isSignedIn() && (existing().registeredByUserId == request.auth.uid || incoming().registeredByUserId == request.auth.uid)) ||
-                       isServidor();
+                       isServidor() ||
+                       (isSignedIn() && 
+                        existing().registeredByUserId == request.auth.uid && 
+                        incoming().registeredByUserId == existing().registeredByUserId);
       allow delete: if isAdmin() || isRootAdmin() || (isSignedIn() && existing().registeredByUserId == request.auth.uid);
     }
 

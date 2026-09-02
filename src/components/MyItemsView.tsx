@@ -35,13 +35,10 @@ export const MyItemsView: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<"ALL" | "PERDIDO" | "ENCONTRADO" | "DEVOLVIDO">("ALL");
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Filter items created by current user
+  // Filter items created by current user strictly by real UID
   const myItems = items.filter((it) => {
-    if (isGuest || !isAuthenticated) return false;
-    const isOwnerById = it.registeredByUserId && it.registeredByUserId === currentUser.id;
-    const isOwnerByEmail = currentUser.email && it.contactInfo && it.contactInfo.toLowerCase().includes(currentUser.email.toLowerCase());
-    const isOwnerByName = currentUser.name && it.registeredByName && it.registeredByName.toLowerCase() === currentUser.name.toLowerCase();
-    return isOwnerById || isOwnerByEmail || isOwnerByName;
+    if (isGuest || !isAuthenticated || !currentUser || currentUser.id === "guest") return false;
+    return it.registeredByUserId && it.registeredByUserId === currentUser.id;
   });
 
   const totalRegistered = myItems.length;

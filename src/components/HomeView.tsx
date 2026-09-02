@@ -3,7 +3,6 @@ import { useApp } from "../context/AppContext";
 import { useRouter } from "../context/RouterContext";
 import { ItemCard } from "./ItemCard";
 import { RecentActivityWidget } from "./RecentActivityWidget";
-import { TourGuide } from "./TourGuide";
 import { LostFoundItem } from "../types";
 import { clientSemanticSearch, SemanticSearchResult } from "../lib/apiHelper";
 import { vibrateClick, vibrateWarning, sanitizeQuery } from "../lib/utils";
@@ -60,24 +59,6 @@ export const HomeView: React.FC = () => {
     message: string;
   } | null>(null);
   const [retryCount, setRetryCount] = useState<number>(0);
-  const [isTourOpen, setIsTourOpen] = useState<boolean>(false);
-
-  // Check if tour should auto-open on first visit
-  useEffect(() => {
-    try {
-      const isDismissed =
-        localStorage.getItem("ifpr_achados_tour_completed") === "true" ||
-        localStorage.getItem("ifpr_tour_completed") === "true" ||
-        localStorage.getItem("ifpr_dont_show_tour") === "true";
-      if (!isDismissed) {
-        // Automatically open for first-time users after a brief delay
-        const timer = setTimeout(() => {
-          setIsTourOpen(true);
-        }, 1200);
-        return () => clearTimeout(timer);
-      }
-    } catch (_) {}
-  }, []);
 
   // Quick Semantic Search Prompts for discovery
   const semanticExampleQueries = [
@@ -249,7 +230,7 @@ export const HomeView: React.FC = () => {
               <button
                 onClick={() => {
                   vibrateClick();
-                  setIsTourOpen(true);
+                  window.dispatchEvent(new CustomEvent("open-tour-guide"));
                 }}
                 className="col-span-1 xs:col-span-2 lg:col-span-auto px-3.5 xs:px-4 py-2.5 xs:py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-amber-400 hover:bg-amber-300 text-neutral-900 font-black text-xs sm:text-sm shadow-md transition-all flex items-center justify-center space-x-1.5 border border-amber-300"
                 title="Iniciar Tutorial Passo a Passo do Sistema"
@@ -683,9 +664,6 @@ export const HomeView: React.FC = () => {
           </div>
         </div>
       </section>
-
-      {/* Interactive Tour Guide Modal */}
-      <TourGuide isOpen={isTourOpen} onClose={() => setIsTourOpen(false)} />
     </div>
   );
 };

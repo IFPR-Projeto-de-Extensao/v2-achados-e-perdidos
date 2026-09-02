@@ -93,7 +93,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
   const [sortBy, setSortBy] = useState<"recentes" | "antigos">("recentes");
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [layoutViewMode, setLayoutViewMode] = useState<"ADAPTATIVO" | "CARDS" | "LISTA">("ADAPTATIVO");
-  const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState<boolean>(true);
+  const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState<boolean>(false);
 
   // Debounced search effect with timer cancellation on keystroke & unmount
   useEffect(() => {
@@ -529,6 +529,76 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                 <span className="hidden sm:inline">Limpar</span>
               </button>
             )}
+          </div>
+        </div>
+
+        {/* Category Filter Pills directly visible on main panel */}
+        <div className="space-y-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black uppercase tracking-wider text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+              <Tag className="w-3.5 h-3.5 text-[#00843D]" />
+              <span>Categorias de Objetos</span>
+            </span>
+            {selectedCategory !== "TODAS" && (
+              <button
+                type="button"
+                onClick={() => setSelectedCategory("TODAS")}
+                className="text-[11px] text-[#00843D] dark:text-green-400 font-bold hover:underline cursor-pointer"
+              >
+                Todas as Categorias
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                setSelectedCategory("TODAS");
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer border ${
+                selectedCategory === "TODAS"
+                  ? "bg-[#00843D] text-white border-[#00843D] shadow-xs"
+                  : "bg-neutral-50 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:border-[#00843D]/50"
+              }`}
+            >
+              <span>Todas</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-black/10 dark:bg-white/10 font-bold">
+                {categoryCounts.TODAS}
+              </span>
+            </button>
+
+            {categoriesList.map((cat) => {
+              const IconComp = cat.icon;
+              const isSelected = selectedCategory === cat.name;
+              const count = categoryCounts[cat.name] || 0;
+              return (
+                <button
+                  key={cat.name}
+                  type="button"
+                  onClick={() => {
+                    vibrateClick();
+                    setSelectedCategory(isSelected ? "TODAS" : cat.name);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer border ${
+                    isSelected
+                      ? "bg-[#00843D] text-white border-[#00843D] shadow-xs"
+                      : "bg-neutral-50 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:border-[#00843D]/50"
+                  }`}
+                >
+                  <IconComp className={`w-3.5 h-3.5 ${isSelected ? "text-white" : "text-[#00843D]"}`} />
+                  <span>{cat.name}</span>
+                  {count > 0 && (
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-md font-bold ${
+                      isSelected ? "bg-white/20 text-white" : "bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300"
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { LostFoundItem, UserRole } from "../types";
 import { useApp } from "../context/AppContext";
+import { useRouter } from "../context/RouterContext";
 import { DigitalSignaturePad } from "./DigitalSignaturePad";
 import {
   FileCheck2,
@@ -49,7 +50,8 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { items, currentUser, addToast, updateDocDirectly, logAdminAction, setActiveTab } = useApp();
+  const { items, currentUser, addToast, updateDocDirectly, logAdminAction } = useApp();
+  const { navigate } = useRouter();
 
   const [verificationStatus, setVerificationStatus] = useState<VerificationStatus>("CHECKING");
   const [verificationStep, setVerificationStep] = useState<string>("Iniciando verificação...");
@@ -699,7 +701,7 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    setActiveTab("found");
+                    navigate("/encontrados");
                     onClose();
                   }}
                   className="px-4 py-2.5 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
@@ -711,7 +713,7 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setActiveTab("profile");
+                      navigate("/perfil");
                       onClose();
                     }}
                     className="px-4 py-2.5 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"

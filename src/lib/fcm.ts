@@ -126,13 +126,13 @@ export async function requestFCMPermissionAndToken(currentUser: User): Promise<{
 
     if (messaging) {
       try {
-        // Register service worker if available
+        // Bind to the unified authoritative PWA Service Worker
         let swRegistration: ServiceWorkerRegistration | undefined;
         if ("serviceWorker" in navigator) {
           try {
-            swRegistration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { scope: "/" });
-          } catch (_) {
             swRegistration = await navigator.serviceWorker.ready;
+          } catch (_) {
+            // Non-blocking fallback if SW is in sandbox
           }
         }
 

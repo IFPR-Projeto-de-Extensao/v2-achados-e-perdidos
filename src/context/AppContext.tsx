@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import {
   LostFoundItem,
   User,
@@ -71,7 +71,7 @@ import {
   clearSyncQueue,
 } from "../lib/indexedDB";
 import { clear30DayUptimeRecords } from "../lib/uptimeManager";
-import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeParseDate } from "../lib/utils";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeParseDate, formatPhone, isValidPhone } from "../lib/utils";
 import {
   DEFAULT_MAINTENANCE_MESSAGE,
   STORAGE_KEYS,
@@ -533,8 +533,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => clearInterval(interval);
   }, []);
 
+  // Current User State - initialized with safe guest default, authenticated state driven exclusively by Firebase Auth
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [currentUser, setCurrentUser] = useState<User>(DEFAULT_GUEST_USER);
+  const pendingRegistrationDataRef = useRef<Map<string, Omit<User, "id">>>(new Map());
+
   // Sync System Error Logs for Admin Dashboard Monitoring
   useEffect(() => {
+    if (!firebaseUser || (currentUser?.role !== "ADMIN" && currentUser?.role !== "SERVIDOR")) {
+      setErrorLogsList([]);
+      return;
+    }
     const unsubscribe = onSnapshot(
       collection(db, "error_logs"),
       (snapshot) => {
@@ -549,12 +558,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, []);
-
-
-  // Current User State - initialized with safe guest default, authenticated state driven exclusively by Firebase Auth
-  const [authLoading, setAuthLoading] = useState<boolean>(true);
-  const [currentUser, setCurrentUser] = useState<User>(DEFAULT_GUEST_USER);
+  }, [firebaseUser, currentUser?.role]);
 
   const [allUsers, setAllUsers] = useState<User[]>(() => {
     try {
@@ -856,6 +860,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync Backup Logs from Firestore
   useEffect(() => {
+    if (!firebaseUser || currentUser?.role !== "ADMIN") {
+      setBackupLogs([]);
+      return;
+    }
     const unsubscribe = onSnapshot(
       collection(db, "backup_logs"),
       (snapshot) => {
@@ -870,10 +878,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [firebaseUser, currentUser?.role]);
 
   // Sync Backup Schedule Config from Firestore
   useEffect(() => {
+    if (!firebaseUser || currentUser?.role !== "ADMIN") return;
     const unsubscribe = onSnapshot(
       doc(db, "system", "backup_config"),
       (snapshot) => {
@@ -886,7 +895,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [firebaseUser, currentUser?.role]);
 
   const updateMaintenanceCustomMessage = async (msg: string) => {
     setMaintenanceCustomMessage(msg);
@@ -1401,14 +1410,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [registerTypeSelection, setRegisterTypeSelection] = useState<"PERDIDO" | "ENCONTRADO">("PERDIDO");
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // Authenticated state check: True ONLY when signed into Firebase Auth or valid non-guest user session
+  // Authenticated state check: True ONLY when verified in Firebase Auth and active user profile matches
   const isAuthenticated = Boolean(
-    firebaseUser ||
-      (currentUser &&
-        currentUser.id &&
-        currentUser.id !== DEFAULT_GUEST_USER.id &&
-        currentUser.id !== "guest_visitor" &&
-        !currentUser.id.startsWith("guest"))
+    firebaseUser &&
+      firebaseUser.uid &&
+      currentUser &&
+      currentUser.id !== DEFAULT_GUEST_USER.id &&
+      currentUser.id === firebaseUser.uid
   );
   const isGuest = !isAuthenticated;
 
@@ -1498,26 +1506,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Helper to verify and sync user document in Firestore using uid as primary document key
   const verifyUserInFirestore = async (
     fbUser: FirebaseUser,
-    extraData?: { name?: string; role?: UserRole; avatarUrl?: string }
+    extraData?: { name?: string; role?: UserRole; avatarUrl?: string; phone?: string; courseOrDept?: string; registrationNumber?: string }
   ): Promise<User> => {
     const userEmail = safeToLower(fbUser.email);
     const isRoot = userEmail === "paulocauan39@gmail.com";
     const uidRef = doc(db, "users", fbUser.uid);
+
+    // Check if there is pending registration data for this user to guarantee consistent profile creation
+    const pendingData = userEmail ? pendingRegistrationDataRef.current.get(userEmail) : undefined;
+    if (userEmail && pendingData) {
+      pendingRegistrationDataRef.current.delete(userEmail);
+    }
 
     // 1. Direct check in 'users' collection by fbUser.uid
     try {
       const userSnap = await getDoc(uidRef);
       if (userSnap.exists()) {
         const existingData = userSnap.data() as User;
+        const targetRole: UserRole = isRoot ? "ADMIN" : (pendingData?.role === "ADMIN" ? "ALUNO" : (pendingData?.role || existingData.role || "ALUNO"));
+        const resolvedName = pendingData?.name || existingData.name || fbUser.displayName || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
+        const resolvedAvatar = pendingData?.avatarUrl || existingData.avatarUrl || fbUser.photoURL || extraData?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedName)}`;
+        const resolvedPhone = pendingData?.phone ?? existingData.phone ?? extraData?.phone ?? "";
+        const resolvedCourse = pendingData?.courseOrDept || existingData.courseOrDept || extraData?.courseOrDept || (targetRole === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
+        const resolvedRegistration = pendingData?.registrationNumber || existingData.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
+
         const updatedUser: User = sanitizeFirestoreData({
           ...existingData,
           id: fbUser.uid,
-          email: userEmail || existingData.email,
-          name: fbUser.displayName || extraData?.name || existingData.name || userEmail.split("@")[0] || "Usuário IFPR",
-          role: isRoot ? "ADMIN" : (existingData.role || "ALUNO"),
-          avatarUrl: fbUser.photoURL || extraData?.avatarUrl || existingData.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+          email: userEmail || existingData.email || "",
+          name: resolvedName,
+          role: targetRole,
+          avatarUrl: resolvedAvatar,
+          courseOrDept: resolvedCourse,
+          registrationNumber: resolvedRegistration,
+          phone: resolvedPhone,
+          approvalStatus: existingData.approvalStatus || (isRoot ? "APROVADO" : "PENDENTE"),
         }) as User;
-        await setDoc(uidRef, updatedUser, { merge: true });
+
+        // Only persist if missing critical fields or root admin role upgrade is needed
+        if (
+          !existingData.id ||
+          existingData.id !== fbUser.uid ||
+          (isRoot && existingData.role !== "ADMIN") ||
+          !existingData.email ||
+          (pendingData && pendingData.name !== existingData.name)
+        ) {
+          try {
+            await setDoc(uidRef, updatedUser, { merge: true });
+          } catch (writeErr) {
+            console.warn("Aviso ao sincronizar campos pendentes no perfil:", writeErr);
+          }
+        }
         return updatedUser;
       }
     } catch (e: any) {
@@ -1537,20 +1576,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!querySnap.empty) {
           const legacyDoc = querySnap.docs[0];
           const legacyData = legacyDoc.data() as User;
+          const targetRole: UserRole = isRoot ? "ADMIN" : (pendingData?.role === "ADMIN" ? "ALUNO" : (pendingData?.role || legacyData.role || "ALUNO"));
+          const resolvedName = pendingData?.name || legacyData.name || fbUser.displayName || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
+          const resolvedAvatar = pendingData?.avatarUrl || legacyData.avatarUrl || fbUser.photoURL || extraData?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedName)}`;
+          const resolvedPhone = pendingData?.phone ?? legacyData.phone ?? extraData?.phone ?? "";
+          const resolvedCourse = pendingData?.courseOrDept || legacyData.courseOrDept || extraData?.courseOrDept || (targetRole === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
+          const resolvedRegistration = pendingData?.registrationNumber || legacyData.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
+
           const migratedUser: User = sanitizeFirestoreData({
             ...legacyData,
             id: fbUser.uid,
             email: userEmail,
-            name: fbUser.displayName || extraData?.name || legacyData.name || userEmail.split("@")[0] || "Usuário IFPR",
-            role: isRoot ? "ADMIN" : (legacyData.role || "ALUNO"),
-            avatarUrl: fbUser.photoURL || extraData?.avatarUrl || legacyData.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+            name: resolvedName,
+            role: targetRole,
+            avatarUrl: resolvedAvatar,
+            courseOrDept: resolvedCourse,
+            registrationNumber: resolvedRegistration,
+            phone: resolvedPhone,
+            approvalStatus: legacyData.approvalStatus || (isRoot ? "APROVADO" : "PENDENTE"),
           }) as User;
-          await setDoc(uidRef, migratedUser, { merge: true });
-          if (legacyDoc.id !== fbUser.uid) {
-            try {
+          try {
+            await setDoc(uidRef, migratedUser, { merge: true });
+            if (legacyDoc.id !== fbUser.uid) {
               await deleteDoc(doc(db, "users", legacyDoc.id));
-            } catch (_) {}
-          }
+            }
+          } catch (_) {}
           return migratedUser;
         }
       } catch (e: any) {
@@ -1564,19 +1614,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // 3. Create new user document in Firestore if no previous profile exists
-    const isServidor = extraData?.role === "SERVIDOR" || userEmail.includes("@ifpr.edu.br");
+    const isServidor = pendingData?.role === "SERVIDOR" || extraData?.role === "SERVIDOR" || userEmail.includes("@ifpr.edu.br");
     const isAcademicEmail = userEmail.endsWith("@estudantes.ifpr.edu.br") || userEmail.endsWith("@estudante.ifpr.edu.br") || userEmail.endsWith("@ifpr.edu.br");
     const defaultApprovalStatus = (isAcademicEmail && !isRoot) ? "PENDENTE" : "APROVADO";
 
+    const resolvedRole: UserRole = isRoot ? "ADMIN" : (pendingData?.role === "ADMIN" ? "ALUNO" : (pendingData?.role || extraData?.role || (isServidor ? "SERVIDOR" : "ALUNO")));
+    const resolvedName = pendingData?.name || fbUser.displayName || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
+    const resolvedCourse = pendingData?.courseOrDept || extraData?.courseOrDept || (resolvedRole === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
+    const resolvedRegistration = pendingData?.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
+    const resolvedPhone = pendingData?.phone ?? extraData?.phone ?? "";
+    const resolvedAvatar = pendingData?.avatarUrl || fbUser.photoURL || extraData?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedName)}`;
+
     const newUser: User = sanitizeFirestoreData({
       id: fbUser.uid,
-      name: fbUser.displayName || extraData?.name || userEmail.split("@")[0] || "Usuário IFPR",
+      name: resolvedName,
       email: userEmail,
-      role: isRoot ? "ADMIN" : (extraData?.role || (isServidor ? "SERVIDOR" : "ALUNO")),
-      courseOrDept: isServidor ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã",
-      registrationNumber: `2026${Math.floor(10000 + Math.random() * 90000)}`,
+      role: resolvedRole,
+      courseOrDept: resolvedCourse,
+      registrationNumber: resolvedRegistration,
+      phone: resolvedPhone,
       approvalStatus: defaultApprovalStatus,
-      avatarUrl: fbUser.photoURL || extraData?.avatarUrl || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
+      avatarUrl: resolvedAvatar,
     }) as User;
 
     try {
@@ -1628,24 +1686,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return;
       }
 
-      // Initial user established directly from Firebase Auth
-      const userEmail = fbUser.email || "";
-      const isRoot = userEmail === "paulocauan39@gmail.com";
-      const isServidor = userEmail.includes("@ifpr.edu.br");
-      const initialAuthUser: User = {
-        id: fbUser.uid,
-        name: fbUser.displayName || userEmail.split("@")[0] || "Usuário IFPR",
-        email: userEmail,
-        role: isRoot ? "ADMIN" : (isServidor ? "SERVIDOR" : "ALUNO"),
-        courseOrDept: isServidor ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã",
-        registrationNumber: `2026${fbUser.uid.substring(0, 5)}`,
-        approvalStatus: "APROVADO",
-        avatarUrl: fbUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-      };
-      setCurrentUser(initialAuthUser);
-      setAuthLoading(false);
+      setAuthLoading(true);
 
-      // Asynchronously fetch/sync full Firestore user profile
+      // Asynchronously fetch/sync full Firestore user profile before finishing auth loading
       try {
         const verified = await verifyAndSyncUserDoc(fbUser);
         if (verified) {
@@ -1667,6 +1710,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         );
       } catch (profileErr) {
         console.warn("Aviso ao sincronizar perfil do Firestore:", profileErr);
+        const userEmail = safeToLower(fbUser.email);
+        const isRoot = userEmail === "paulocauan39@gmail.com";
+        const isServidor = userEmail.includes("@ifpr.edu.br");
+        const fallbackUser: User = {
+          id: fbUser.uid,
+          name: fbUser.displayName || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR"),
+          email: userEmail,
+          role: isRoot ? "ADMIN" : (isServidor ? "SERVIDOR" : "ALUNO"),
+          courseOrDept: isServidor ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã",
+          registrationNumber: `2026${fbUser.uid.substring(0, 6)}`,
+          approvalStatus: isRoot ? "APROVADO" : "PENDENTE",
+          avatarUrl: fbUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+        };
+        setCurrentUser(fallbackUser);
+      } finally {
+        setAuthLoading(false);
       }
     });
 
@@ -1678,6 +1737,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync Users from Firestore
   useEffect(() => {
+    if (!firebaseUser) {
+      setAllUsers([]);
+      return;
+    }
     const unsubscribe = onSnapshot(
       collection(db, "users"),
       (snapshot) => {
@@ -1721,7 +1784,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [firebaseUser]);
 
   // Sync Items from Firestore with Offline IndexedDB Resilience & Background Queue Processor
   useEffect(() => {
@@ -1747,7 +1810,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const loadedItems: LostFoundItem[] = snapshot.docs.map((d) => d.data() as LostFoundItem);
           // Sort by creation date safely
           loadedItems.sort((a, b) => (safeParseDate(b.createdAt || b.date)?.getTime() || 0) - (safeParseDate(a.createdAt || a.date)?.getTime() || 0));
-          if (isMounted) setItems(loadedItems);
+          if (isMounted) {
+            setItems(loadedItems);
+            setSelectedItemForDetail((prev) => {
+              if (!prev) return null;
+              const updated = loadedItems.find((it) => it.id === prev.id);
+              return updated || prev;
+            });
+          }
           saveItemsToIndexedDB(loadedItems).catch((e) => console.warn("Aviso ao persistir itens no IndexedDB:", e));
         }
       },
@@ -1801,6 +1871,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync Claims from Firestore
   useEffect(() => {
+    if (!firebaseUser) {
+      setClaims([]);
+      return;
+    }
     const unsubscribe = onSnapshot(
       collection(db, "claims"),
       async (snapshot) => {
@@ -1816,7 +1890,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [firebaseUser]);
 
   // Track seen notification IDs to only alert on newly arriving real-time notifications
   const initialNotifsLoadedRef = React.useRef(false);
@@ -1934,6 +2008,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync Activity Logs from Firestore
   useEffect(() => {
+    if (!firebaseUser || (currentUser?.role !== "ADMIN" && currentUser?.role !== "SERVIDOR")) {
+      setActivityLogs([]);
+      return;
+    }
     const unsubscribe = onSnapshot(
       collection(db, "activity_logs"),
       async (snapshot) => {
@@ -1950,10 +2028,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [firebaseUser, currentUser?.role]);
 
   // Sync System Audit Logs from Firestore (Immutable Audit Trail)
   useEffect(() => {
+    if (!firebaseUser || currentUser?.role !== "ADMIN") {
+      setSystemAuditLogs([]);
+      return;
+    }
     const unsubscribe = onSnapshot(
       collection(db, "audit_logs"),
       async (snapshot) => {
@@ -1968,7 +2050,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [firebaseUser, currentUser?.role]);
 
   const recordAuditLog = async (entry: {
     objectId: string;
@@ -2396,35 +2478,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     userData: Omit<User, "id">
   ) => {
     const cleanEmail = safeToLower(email);
-    if (!cleanEmail || !pass || !userData.name) {
+    const trimmedName = userData.name?.trim() || "";
+    const cleanPass = pass?.trim() || "";
+
+    if (!cleanEmail || !cleanPass || !trimmedName) {
       addToast("Preencha todos os campos obrigatórios (Nome, E-mail e Senha).", "error");
       throw new Error("Campos obrigatórios ausentes.");
+    }
+
+    if (cleanPass.length < 6) {
+      addToast("A senha deve ter no mínimo 6 caracteres.", "warning");
+      throw new Error("A senha deve ter no mínimo 6 caracteres.");
+    }
+
+    if (userData.phone && userData.phone.trim() && !isValidPhone(userData.phone)) {
+      addToast("Número de telefone inválido.", "warning");
+      throw new Error("Telefone inválido. Informe o DDD e o número completo (ex: (43) 99876-5432).");
     }
 
     const isAcademic = cleanEmail.endsWith("@estudantes.ifpr.edu.br") || cleanEmail.endsWith("@estudante.ifpr.edu.br") || cleanEmail.endsWith("@ifpr.edu.br");
     const isAdminEmail = cleanEmail === "paulocauan39@gmail.com";
     const statusVal = (isAcademic && !isAdminEmail) ? "PENDENTE" : "APROVADO";
 
+    const isServidor = userData.role === "SERVIDOR" || cleanEmail.includes("@ifpr.edu.br");
+    const resolvedRole: UserRole = isAdminEmail ? "ADMIN" : (userData.role === "ADMIN" ? "ALUNO" : (userData.role || (isServidor ? "SERVIDOR" : "ALUNO")));
+    const resolvedCourse = userData.courseOrDept?.trim() || (resolvedRole === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
+    const resolvedPhone = userData.phone && userData.phone.trim() ? formatPhone(userData.phone.trim()) : "";
+    const resolvedAvatar = userData.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(trimmedName)}`;
+
+    // Store in pending registration ref to guarantee atomic consistency during onAuthStateChanged
+    pendingRegistrationDataRef.current.set(cleanEmail, {
+      ...userData,
+      name: trimmedName,
+      email: cleanEmail,
+      role: resolvedRole,
+      courseOrDept: resolvedCourse,
+      phone: resolvedPhone,
+      approvalStatus: statusVal,
+      avatarUrl: resolvedAvatar,
+    });
+
     try {
-      const res = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+      const res = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
       const newUserObj: User = {
         id: res.user.uid,
-        name: userData.name.trim(),
+        name: trimmedName,
         email: cleanEmail,
-        // Prevent arbitrary self-elevation to ADMIN on registration unless root admin
-        role: isAdminEmail ? "ADMIN" : (userData.role === "ADMIN" ? "ALUNO" : (userData.role || "ALUNO")),
-        courseOrDept: userData.courseOrDept?.trim() || "IFPR Campus Ivaiporã",
-        registrationNumber: userData.registrationNumber?.trim() || `2026${Math.floor(10000 + Math.random() * 90000)}`,
-        phone: userData.phone?.trim() || "",
+        role: resolvedRole,
+        courseOrDept: resolvedCourse,
+        registrationNumber: userData.registrationNumber?.trim() || `2026${res.user.uid.substring(0, 6)}`,
+        phone: resolvedPhone,
         approvalStatus: statusVal,
-        avatarUrl: userData.avatarUrl || `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
+        avatarUrl: resolvedAvatar,
       };
 
       await setDoc(doc(db, "users", newUserObj.id), newUserObj, { merge: true });
       setCurrentUser(newUserObj);
       setAllUsers((prev) => [...prev.filter((u) => u && safeToLower(u.email) !== cleanEmail), newUserObj]);
-      addToast(`Cadastro concluído com sucesso! Bem-vindo(a), ${newUserObj.name}.`, "success");
     } catch (e: any) {
+      pendingRegistrationDataRef.current.delete(cleanEmail);
       console.warn("Erro no cadastro no Firebase Auth:", e);
       const parsed = handleAuthError(e, { addToast });
       throw new Error(parsed.userMessage);
@@ -2549,12 +2661,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error("É necessário fazer login para cadastrar um item.");
     }
 
-    const uniqueNum = Math.floor(100 + Math.random() * 900);
-    const newItemId = `ifpr-${uniqueNum}`;
-    const safeTitle = String(itemData.title ?? "ITEM").substring(0, 10).toUpperCase().replace(/\s+/g, "");
-    const qrCodeId = `QR-IFPR-${uniqueNum}-${safeTitle}`;
+    // Strict input validations
+    if (!itemData.title || !itemData.title.trim()) {
+      throw new Error("O título do objeto é obrigatório.");
+    }
+    if (!itemData.description || !itemData.description.trim()) {
+      throw new Error("A descrição do objeto é obrigatória.");
+    }
+    if (!itemData.location || !itemData.location.trim()) {
+      throw new Error("O local do objeto é obrigatório.");
+    }
+    if (!itemData.type || (itemData.type !== "PERDIDO" && itemData.type !== "ENCONTRADO")) {
+      throw new Error("O tipo do objeto deve ser PERDIDO ou ENCONTRADO.");
+    }
 
-    const taskId = `upload-task-${Date.now()}-${uniqueNum}`;
+    const uniqueTimestamp = Date.now().toString(36).toUpperCase();
+    const uniqueRand = Math.floor(100 + Math.random() * 900);
+    const newItemId = `ifpr-${uniqueTimestamp}-${uniqueRand}`;
+    const safeTitle = String(itemData.title ?? "ITEM").substring(0, 10).toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const qrCodeId = `QR-IFPR-${uniqueTimestamp}-${safeTitle || "ITEM"}`;
+
+    const taskId = `upload-task-${Date.now()}-${uniqueRand}`;
     const initialUploadTask: UploadTaskStatus = {
       id: taskId,
       itemId: newItemId,
@@ -2896,19 +3023,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateItemStatus = async (id: string, status: ItemStatus) => {
+    // 🔒 Security Guard: Only authenticated users can change status
+    if (isGuest || !auth.currentUser) {
+      setAuthModalOpen(true);
+      addToast("É necessário fazer login para alterar o status do objeto.", "warning");
+      throw new Error("Autenticação necessária para alterar o status.");
+    }
+
     const existing = items.find((i) => i.id === id);
+    if (!existing) {
+      addToast("Objeto não encontrado no sistema.", "error");
+      throw new Error("Objeto não encontrado.");
+    }
+
+    // 🔒 Authorization Check: Only creator or Staff/Admin can change status
+    const isOwner = Boolean(
+      (auth.currentUser && existing.registeredByUserId === auth.currentUser.uid) ||
+      (currentUser && currentUser.id !== DEFAULT_GUEST_USER.id && existing.registeredByUserId === currentUser.id)
+    );
+    const isStaffOrAdmin =
+      currentUser?.role === "ADMIN" ||
+      currentUser?.role === "SERVIDOR" ||
+      auth.currentUser?.email === "paulocauan39@gmail.com";
+
+    if (!isOwner && !isStaffOrAdmin) {
+      addToast("Você não possui permissão para alterar o status deste pertence.", "error");
+      throw new Error("Permissão negada para alteração de status.");
+    }
+
+    const effectiveUserId = auth.currentUser.uid;
+    const effectiveUserName = currentUser?.name || auth.currentUser.displayName || "Usuário IFPR";
+    const effectiveUserRole: UserRole = currentUser?.role || (auth.currentUser.email === "paulocauan39@gmail.com" ? "ADMIN" : "ALUNO");
+
     const existingHistory = existing?.history || existing?.historyLogs || [];
     const isResolved = status === "DEVOLVIDO" || status === "ENCERRADO";
 
     const newHistLog: ItemHistoryLog = {
       id: `hist-${Date.now()}`,
       action: `Status alterado para ${status}`,
-      actorId: currentUser.id,
-      actorName: currentUser.name,
-      actorRole: currentUser.role,
-      userId: currentUser.id,
-      userName: currentUser.name,
-      userRole: currentUser.role,
+      actorId: effectiveUserId,
+      actorName: effectiveUserName,
+      actorRole: effectiveUserRole,
+      userId: effectiveUserId,
+      userName: effectiveUserName,
+      userRole: effectiveUserRole,
       timestamp: new Date().toISOString(),
       details: `Status do objeto alterado de ${existing?.status || "N/A"} para ${status}.`,
     };
@@ -2922,6 +3080,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await updateDoc(doc(db, "items", id), updates);
+
+      // Immediately update local state
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === id
+            ? { ...it, status, resolutionDate: isResolved ? new Date().toISOString() : undefined, history: [...existingHistory, newHistLog] }
+            : it
+        )
+      );
       
       const statusTxId = `TX-STAT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
       await recordAuditLog({
@@ -2936,10 +3103,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         transactionId: statusTxId,
       });
 
-      await logAdminAction(
-        "STATUS_OVERRIDE",
-        `Alterou o status do objeto #${id} para '${status}'`
-      );
+      if (isStaffOrAdmin) {
+        await logAdminAction(
+          "STATUS_OVERRIDE",
+          `Alterou o status do objeto #${id} para '${status}'`
+        );
+      }
       addToast(`Status do objeto atualizado para: ${status.replace("_", " ")}`, "info");
 
       // Automated email notification when marked as DEVOLVIDO
@@ -2958,7 +3127,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               qrCodeId: existing.qrCodeId,
               location: existing.location,
               category: existing.category,
-              resolutionNotes: `Devolução finalizada no sistema por ${currentUser.name}.`,
+              resolutionNotes: `Devolução finalizada no sistema por ${effectiveUserName}.`,
             }),
           },
           () => ({ success: true })
@@ -2966,43 +3135,93 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `items/${id}`);
+      throw e;
     }
   };
 
   const updateItemData = async (id: string, updatedFields: Partial<LostFoundItem>) => {
+    // 🔒 Security Guard: Only authenticated users can update items
+    if (isGuest || !auth.currentUser) {
+      setAuthModalOpen(true);
+      addToast("É necessário fazer login para editar informações do objeto.", "warning");
+      throw new Error("Autenticação necessária para editar o item.");
+    }
+
     const existing = items.find((i) => i.id === id);
+    if (!existing) {
+      addToast("Objeto não encontrado no sistema.", "error");
+      throw new Error("Objeto não encontrado.");
+    }
+
+    // 🔒 Authorization Check: Only creator or Staff/Admin can edit item
+    const isOwner = Boolean(
+      (auth.currentUser && existing.registeredByUserId === auth.currentUser.uid) ||
+      (currentUser && currentUser.id !== DEFAULT_GUEST_USER.id && existing.registeredByUserId === currentUser.id)
+    );
+    const isStaffOrAdmin =
+      currentUser?.role === "ADMIN" ||
+      currentUser?.role === "SERVIDOR" ||
+      auth.currentUser?.email === "paulocauan39@gmail.com";
+
+    if (!isOwner && !isStaffOrAdmin) {
+      addToast("Você não possui permissão para editar os dados deste pertence.", "error");
+      throw new Error("Permissão negada: apenas o autor ou servidores/administradores podem editar este item.");
+    }
+
+    const effectiveUserId = auth.currentUser.uid;
+    const effectiveUserName = currentUser?.name || auth.currentUser.displayName || "Usuário IFPR";
+    const effectiveUserRole: UserRole = currentUser?.role || (auth.currentUser.email === "paulocauan39@gmail.com" ? "ADMIN" : "ALUNO");
+
     const existingHistory = existing?.history || [];
     const newHistLog: ItemHistoryLog = {
       id: `hist-${Date.now()}`,
       action: "Alteração da ocorrência",
-      actorId: currentUser.id,
-      actorName: currentUser.name,
-      actorRole: currentUser.role,
-      userId: currentUser.id,
-      userName: currentUser.name,
-      userRole: currentUser.role,
+      actorId: effectiveUserId,
+      actorName: effectiveUserName,
+      actorRole: effectiveUserRole,
+      userId: effectiveUserId,
+      userName: effectiveUserName,
+      userRole: effectiveUserRole,
       timestamp: new Date().toISOString(),
       details: "Dados da ocorrência foram atualizados no sistema.",
     };
 
+    const safeUpdates = { ...updatedFields };
+    delete (safeUpdates as any).id;
+    delete (safeUpdates as any).registeredByUserId;
+    delete (safeUpdates as any).registeredByRole;
+    delete (safeUpdates as any).createdAt;
+    if (!isStaffOrAdmin) {
+      delete (safeUpdates as any).status;
+    }
+
     const mergedData = sanitizeFirestoreData({
-      ...updatedFields,
-      lastEditedByUserId: currentUser.id,
-      lastEditedByName: currentUser.name,
-      lastEditedByRole: currentUser.role,
+      ...safeUpdates,
+      lastEditedByUserId: effectiveUserId,
+      lastEditedByName: effectiveUserName,
+      lastEditedByRole: effectiveUserRole,
       lastEditedAt: new Date().toISOString(),
       history: [...existingHistory, newHistLog],
     });
 
     try {
       await updateDoc(doc(db, "items", id), mergedData);
+
+      // Update local state immediately
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === id
+            ? { ...it, ...safeUpdates, history: [...existingHistory, newHistLog], lastEditedAt: mergedData.lastEditedAt }
+            : it
+        )
+      );
       
       const editTxId = `TX-EDIT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
       const fieldsList = Object.keys(updatedFields).join(", ");
       await recordAuditLog({
         objectId: id,
         objectType: "ITEM",
-        objectTitle: existing?.title || id,
+        objectTitle: updatedFields.title || existing?.title || id,
         action: "EDIT_OCORRENCIA",
         fieldChanged: fieldsList || "dados_gerais",
         oldValue: existing?.title || "Valores anteriores",
@@ -3011,13 +3230,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         transactionId: editTxId,
       });
 
-      await logAdminAction(
-        "EDIT_OCORRENCIA",
-        `Atualizou os dados da ocorrência #${id} por ${currentUser.name} (${currentUser.role})`
-      );
+      if (isStaffOrAdmin) {
+        await logAdminAction(
+          "EDIT_OCORRENCIA",
+          `Atualizou os dados da ocorrência #${id} por ${effectiveUserName} (${effectiveUserRole})`
+        );
+      }
       addToast("Ocorrência atualizada com sucesso!", "success");
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `items/${id}`);
+      throw e;
     }
   };
 
@@ -3025,6 +3247,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     itemId: string,
     returnData: ItemReturnData
   ) => {
+    // 🔒 Security Guard: Only Staff / Admin can register returns
+    if (isGuest || !auth.currentUser) {
+      setAuthModalOpen(true);
+      addToast("É necessário fazer login como servidor ou administrador para registrar devoluções.", "warning");
+      throw new Error("Autenticação necessária.");
+    }
+
+    const isStaffOrAdmin =
+      currentUser?.role === "ADMIN" ||
+      currentUser?.role === "SERVIDOR" ||
+      auth.currentUser?.email === "paulocauan39@gmail.com";
+
+    if (!isStaffOrAdmin) {
+      addToast("Apenas servidores ou administradores podem registrar a devolução oficial de itens.", "error");
+      throw new Error("Permissão negada para registrar devolução.");
+    }
+
     const existing = items.find((i) => i.id === itemId);
     const existingHistory = existing?.history || [];
     const validationCode = "COMP-IFPR-" + Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -3036,6 +3275,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isDirectlySigned = returnData.signatureType === "IN_PERSON_DEVICE" && !!returnData.signatureDataUrl;
     const isRemoteEmail = returnData.signatureType === "REMOTE_EMAIL";
 
+    const effectiveUserId = auth.currentUser.uid;
+    const effectiveUserName = currentUser?.name || auth.currentUser.displayName || "Servidor IFPR";
+    const effectiveUserRole: UserRole = currentUser?.role || (auth.currentUser.email === "paulocauan39@gmail.com" ? "ADMIN" : "SERVIDOR");
+
     const newHistLog: ItemHistoryLog = {
       id: `hist-${Date.now()}`,
       action: isDirectlySigned
@@ -3043,14 +3286,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         : isRemoteEmail
         ? "Devolução registrada (Aguardando Assinatura por E-mail)"
         : "Devolução registrada",
-      actorId: currentUser.id,
-      actorName: currentUser.name,
-      actorRole: currentUser.role,
-      userId: currentUser.id,
-      userName: currentUser.name,
-      userRole: currentUser.role,
+      actorId: effectiveUserId,
+      actorName: effectiveUserName,
+      actorRole: effectiveUserRole,
+      userId: effectiveUserId,
+      userName: effectiveUserName,
+      userRole: effectiveUserRole,
       timestamp: now.toISOString(),
-      details: `Devolução concluída para ${returnData.recipientName} (${returnData.recipientBond}). Servidor responsável: ${currentUser.name}.${
+      details: `Devolução concluída para ${returnData.recipientName} (${returnData.recipientBond}). Servidor responsável: ${effectiveUserName}.${
         isDirectlySigned ? " Assinatura digital colhida no dispositivo." : isRemoteEmail ? " Link de assinatura enviado por e-mail." : ""
       }`,
     };
@@ -3060,9 +3303,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       resolutionDate: now.toISOString(),
       returnDate,
       returnTime,
-      returnedByUserId: currentUser.id,
-      returnedByName: currentUser.name,
-      returnedByRole: currentUser.role,
+      returnedByUserId: effectiveUserId,
+      returnedByName: effectiveUserName,
+      returnedByRole: effectiveUserRole,
       recipientName: returnData.recipientName,
       recipientEmail: returnData.recipientEmail,
       recipientBond: returnData.recipientBond,
@@ -3080,6 +3323,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await updateDoc(doc(db, "items", itemId), updatePayload);
+
+      // Immediately update local state
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === itemId
+            ? { ...it, ...updatePayload, status: "DEVOLVIDO" }
+            : it
+        )
+      );
       
       const returnTxId = `TX-RET-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
       await recordAuditLog({
@@ -3096,7 +3348,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       await logAdminAction(
         "REGISTRO_DEVOLUCAO",
-        `Registrou a devolução do item #${itemId} (${existing?.title || ""}) para ${returnData.recipientName} (${returnData.recipientBond}). Responsável: ${currentUser.name}`
+        `Registrou a devolução do item #${itemId} (${existing?.title || ""}) para ${returnData.recipientName} (${returnData.recipientBond}). Responsável: ${effectiveUserName}`
       );
       addToast(`Devolução do item #${itemId} registrada com sucesso!`, "success");
 
@@ -3119,7 +3371,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               recipientName: returnData.recipientName,
               signatureLink,
               signatureToken,
-              returnedByName: currentUser.name,
+              returnedByName: effectiveUserName,
             }),
           },
           () => ({ success: true })
@@ -3139,7 +3391,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               qrCodeId: existing?.qrCodeId,
               location: existing?.location,
               category: existing?.category,
-              resolutionNotes: returnData.returnObservations || returnData.observations || `Devolução concluída por ${currentUser.name}`,
+              resolutionNotes: returnData.returnObservations || returnData.observations || `Devolução concluída por ${effectiveUserName}`,
             }),
           },
           () => ({ success: true })
@@ -3147,6 +3399,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `items/${itemId}`);
+      throw e;
     }
   };
 
@@ -3348,26 +3601,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteItem = async (id: string) => {
+    // 🔒 Security Guard: Only authenticated users can delete items
+    if (isGuest || !auth.currentUser) {
+      setAuthModalOpen(true);
+      addToast("É necessário fazer login para excluir um item.", "warning");
+      throw new Error("Autenticação necessária para excluir.");
+    }
+
+    const existing = items.find((i) => i.id === id);
+    if (!existing) {
+      addToast("Objeto não encontrado.", "error");
+      return;
+    }
+
+    // 🔒 Authorization Check: Only creator or Admin can delete
+    const isOwner = Boolean(
+      (auth.currentUser && existing.registeredByUserId === auth.currentUser.uid) ||
+      (currentUser && currentUser.id !== DEFAULT_GUEST_USER.id && existing.registeredByUserId === currentUser.id)
+    );
+    const isAdmin =
+      currentUser?.role === "ADMIN" ||
+      auth.currentUser?.email === "paulocauan39@gmail.com";
+
+    if (!isOwner && !isAdmin) {
+      addToast("Você não possui permissão para excluir este pertence.", "error");
+      throw new Error("Permissão negada para exclusão.");
+    }
+
     try {
       await deleteDoc(doc(db, "items", id));
-      addToast("Objeto removido do Firestore.", "info");
+      setItems((prev) => prev.filter((i) => i.id !== id));
+      addToast("Objeto removido com sucesso.", "info");
+
+      await recordAuditLog({
+        objectId: id,
+        objectType: "ITEM",
+        objectTitle: existing?.title || id,
+        action: "EXCLUSAO_ITEM",
+        fieldChanged: "status",
+        oldValue: existing?.status || "ATIVO",
+        newValue: "EXCLUIDO",
+        details: `Objeto #${id} (${existing?.title || ""}) foi excluído do sistema por ${currentUser?.name || auth.currentUser?.displayName || "Usuário"}.`,
+      });
     } catch (e) {
       handleFirestoreError(e, OperationType.DELETE, `items/${id}`);
+      throw e;
     }
   };
 
   const submitClaim = async (itemId: string, verificationAnswer: string) => {
+    if (isGuest || !auth.currentUser) {
+      setAuthModalOpen(true);
+      addToast("Faça login para solicitar a devolução deste objeto.", "warning");
+      throw new Error("Autenticação necessária para solicitar devolução.");
+    }
+
     const item = items.find((i) => i.id === itemId);
-    if (!item) return;
+    if (!item) {
+      addToast("Objeto não encontrado.", "error");
+      return;
+    }
+
+    const effectiveUserId = auth.currentUser.uid;
+    const effectiveUserName = currentUser?.name || auth.currentUser.displayName || "Usuário IFPR";
+    const effectiveUserEmail = auth.currentUser.email || currentUser?.email || "";
+    const effectiveUserRole: UserRole = currentUser?.role || "ALUNO";
 
     const newClaim: ItemClaim = {
-      id: `claim-${Date.now()}`,
+      id: `claim-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       itemId,
       itemTitle: item.title,
-      claimerId: currentUser.id,
-      claimerName: currentUser.name,
-      claimerEmail: currentUser.email,
-      claimerRole: currentUser.role,
+      claimerId: effectiveUserId,
+      claimerName: effectiveUserName,
+      claimerEmail: effectiveUserEmail,
+      claimerRole: effectiveUserRole,
       verificationAnswer,
       status: "PENDENTE",
       createdAt: new Date().toISOString(),
@@ -3378,10 +3685,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await updateItemStatus(itemId, "EM_ANALISE");
 
       const adminNotif: NotificationItem = {
-        id: `notif-${Date.now()}`,
-        userId: "u3",
+        id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        userId: "all",
+        isGlobal: true,
         title: "Nova Solicitação de Devolução",
-        message: `${currentUser.name} solicitou a devolução de "${item.title}".`,
+        message: `${effectiveUserName} solicitou a devolução de "${item.title}".`,
         timestamp: new Date().toISOString(),
         read: false,
         type: "CLAIM_UPDATE",
@@ -3392,6 +3700,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast("Solicitação salva no Firestore! A equipe do IFPR analisará a comprovação.", "success");
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `claims/${newClaim.id}`);
+      throw e;
     }
   };
 

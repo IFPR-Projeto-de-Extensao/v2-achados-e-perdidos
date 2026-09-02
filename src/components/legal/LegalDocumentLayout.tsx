@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useApp } from "../../context/AppContext";
+import { useRouter } from "../../context/RouterContext";
 import { LegalDocumentData } from "../../data/legalDocumentsData";
 import { LegalSectionRenderer } from "./LegalSectionRenderer";
 import { LegalDocumentDownloadButton } from "./LegalDocumentDownloadButton";
@@ -17,6 +18,7 @@ import {
   Shield,
   Mail,
 } from "lucide-react";
+import { vibrateClick } from "../../lib/utils";
 
 interface LegalDocumentLayoutProps {
   data: LegalDocumentData;
@@ -32,6 +34,7 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
   otherDocumentTab,
 }) => {
   const { setActiveTab } = useApp();
+  const { navigate, goBack } = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeSectionId, setActiveSectionId] = useState<string>("sec-1");
 
@@ -52,10 +55,12 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
   }, [data.title, data.summary]);
 
   const handleBackToSystem = () => {
+    vibrateClick();
     if (typeof window !== "undefined" && window.history.length > 1) {
-      window.history.pushState({}, "", "/");
+      goBack();
+    } else {
+      navigate("/");
     }
-    setActiveTab("home");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -65,10 +70,8 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
 
   const handleOpenOtherDocument = (e?: React.MouseEvent) => {
     if (e) e.preventDefault();
-    if (typeof window !== "undefined") {
-      window.history.pushState({ tab: otherDocumentTab }, "", otherDocumentPath);
-    }
-    setActiveTab(otherDocumentTab);
+    vibrateClick();
+    navigate(otherDocumentPath);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 

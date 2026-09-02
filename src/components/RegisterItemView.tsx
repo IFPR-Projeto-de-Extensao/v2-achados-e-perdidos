@@ -5,7 +5,7 @@ import { useRequireAuth } from "../hooks/useRequireAuth";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
 import { safeFetchJson, clientAnalyzeObject, clientAnalyzeImage } from "../lib/apiHelper";
-import { triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, safeToLower, safeIncludes, safeTextCorpus, sanitizeQuery, getTodayDateString } from "../lib/utils";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, safeToLower, safeIncludes, safeTextCorpus, sanitizeQuery, getTodayDateString, formatPhone, isValidPhone } from "../lib/utils";
 import { compressImage, formatBytes } from "../lib/imageCompression";
 import {
   Sparkles,
@@ -40,6 +40,7 @@ import {
   Lock,
   LogIn,
   ArrowRight,
+  Phone,
 } from "lucide-react";
 
 const DRAFT_STORAGE_KEY = "ifpr_achados_register_draft";
@@ -62,7 +63,7 @@ export const RegisterItemView: React.FC = () => {
     setAuthModalOpen,
   } = useApp();
 
-  const { navigate } = useRouter();
+  const { navigate, goBack } = useRouter();
 
   // Hook institucional de verificação de autenticação (redireciona visitantes não autenticados)
   const { isGuest, requireAuth } = useRequireAuth({
@@ -89,6 +90,9 @@ export const RegisterItemView: React.FC = () => {
   const [location, setLocation] = useState(IFPR_LOCATIONS[0]);
   const [date, setDate] = useState(getTodayDateString());
   const [contactInfo, setContactInfo] = useState(currentUser?.email || "localizamais6@gmail.com");
+  const [contactPhone, setContactPhone] = useState(
+    currentUser?.phone ? formatPhone(currentUser.phone) : ""
+  );
   const [imageUrl, setImageUrl] = useState(
     "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=600&auto=format&fit=crop&q=80"
   );
@@ -562,8 +566,18 @@ export const RegisterItemView: React.FC = () => {
       return;
     }
 
+    if (contactPhone && !isValidPhone(contactPhone)) {
+      addToast("Telefone de contato inválido. Informe o DDD e o número completo no formato (XX) 9XXXX-XXXX.", "error");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
+      const fullContact = [
+        contactPhone.trim() ? `WhatsApp: ${contactPhone.trim()}` : "",
+        contactInfo.trim() ? `Ref: ${contactInfo.trim()}` : "",
+      ].filter(Boolean).join(" | ") || currentUser?.email || "Contato Institucional IFPR";
+
       const res = await addItem({
         title: title.trim(),
         category,
@@ -575,7 +589,7 @@ export const RegisterItemView: React.FC = () => {
         location: location.trim(),
         date,
         imageUrl,
-        contactInfo: contactInfo.trim(),
+        contactInfo: fullContact,
       });
 
       // Clear saved draft on successful submission
@@ -644,7 +658,9 @@ export const RegisterItemView: React.FC = () => {
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
             <button
               id="btn-guest-login-to-register"
+              type="button"
               onClick={() => {
+                vibrateClick();
                 requireAuth(type);
               }}
               className="flex-1 inline-flex items-center justify-center gap-2 py-3.5 px-6 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-bold text-sm sm:text-base shadow-lg shadow-emerald-700/20 active:scale-[0.98] transition-all cursor-pointer"
@@ -653,10 +669,32 @@ export const RegisterItemView: React.FC = () => {
             </button>
             <button
               id="btn-guest-back-to-lost"
-              onClick={() => setActiveTab("lost")}
-              className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold text-sm transition-all cursor-pointer"
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                navigate("/perdidos");
+              }}
+              className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold text-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
             >
-              Explorar Itens
+              <PackageSearch className="w-4 h-4 text-[#00843D]" />
+              <span>Explorar Itens</span>
+            </button>
+            <button
+              id="btn-guest-close-to-home"
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                if (window.history.length > 1) {
+                  goBack();
+                } else {
+                  navigate("/");
+                }
+              }}
+              className="py-3.5 px-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-400 font-bold text-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              title="Fechar e retornar"
+            >
+              <X className="w-4 h-4" />
+              <span>Fechar</span>
             </button>
           </div>
         </div>
@@ -678,12 +716,12 @@ export const RegisterItemView: React.FC = () => {
             </p>
           </div>
 
-          {/* Auto-save draft status indicator */}
-          <div className="flex items-center space-x-2 shrink-0">
+          {/* Auto-save draft status indicator and Close Button */}
+          <div className="flex items-center space-x-2 shrink-0 self-end sm:self-auto">
             {isSavingDraft ? (
               <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 text-[11px] font-bold border border-neutral-200 dark:border-neutral-700 animate-pulse">
                 <Save className="w-3.5 h-3.5 animate-spin text-[#00843D]" />
-                <span>Salvando rascunho...</span>
+                <span>Salvando...</span>
               </span>
             ) : draftSavedAt ? (
               <span
@@ -691,7 +729,7 @@ export const RegisterItemView: React.FC = () => {
                 className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold border border-emerald-500/20"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Rascunho salvo no navegador</span>
+                <span className="hidden sm:inline">Rascunho salvo</span>
               </span>
             ) : null}
 
@@ -700,12 +738,30 @@ export const RegisterItemView: React.FC = () => {
                 type="button"
                 onClick={handleClearDraft}
                 title="Descartar rascunho e limpar campos"
-                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-bold text-red-600 dark:text-red-400 hover:bg-red-500/10 border border-red-500/20 transition-colors"
+                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-500/10 border border-red-500/20 transition-colors"
               >
-                <Trash2 className="w-3 h-3" />
+                <Trash2 className="w-3.5 h-3.5" />
                 <span>Limpar</span>
               </button>
             )}
+
+            <button
+              id="btn-header-close-register"
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                if (window.history.length > 1) {
+                  goBack();
+                } else {
+                  navigate("/");
+                }
+              }}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-bold transition-all border border-neutral-200 dark:border-neutral-700 cursor-pointer"
+              title="Fechar formulário e voltar"
+            >
+              <X className="w-4 h-4" />
+              <span>Fechar</span>
+            </button>
           </div>
         </div>
       </div>
@@ -1236,25 +1292,54 @@ export const RegisterItemView: React.FC = () => {
           </div>
         </div>
 
-        {/* Contato de Referência */}
-        <div>
-          <label
-            htmlFor="contact-input"
-            className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
-          >
-            Informações de Contato / Local de Guarda <span className="text-red-500" aria-hidden="true">*</span>
-          </label>
-          <input
-            id="contact-input"
-            type="text"
-            required
-            aria-required="true"
-            aria-label="Informações para contato ou localização do objeto"
-            value={contactInfo}
-            onChange={(e) => setContactInfo(e.target.value)}
-            placeholder="Ex: Deixado na Guarita da Portaria Principal ou lucas.santos@estudante.ifpr.edu.br"
-            className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
-          />
+        {/* Contato de Referência e Telefone */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <div>
+            <label
+              htmlFor="contact-phone-input"
+              className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
+            >
+              Telefone / WhatsApp de Contato
+            </label>
+            <div className="relative">
+              <Phone className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />
+              <input
+                id="contact-phone-input"
+                type="text"
+                aria-label="Telefone ou WhatsApp para contato"
+                value={contactPhone}
+                onChange={(e) => setContactPhone(formatPhone(e.target.value))}
+                maxLength={15}
+                placeholder="(43) 99876-5432"
+                className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
+              />
+            </div>
+            {contactPhone && !isValidPhone(contactPhone) && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 font-medium">
+                ⚠️ Digite o número completo com DDD (ex: (43) 99876-5432).
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label
+              htmlFor="contact-input"
+              className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
+            >
+              E-mail / Ponto de Guarda <span className="text-red-500" aria-hidden="true">*</span>
+            </label>
+            <input
+              id="contact-input"
+              type="text"
+              required
+              aria-required="true"
+              aria-label="E-mail ou ponto onde o objeto se encontra guardado"
+              value={contactInfo}
+              onChange={(e) => setContactInfo(e.target.value)}
+              placeholder="Ex: Guarita da Portaria Principal ou email@ifpr.edu.br"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
+            />
+          </div>
         </div>
 
         {/* Offline Status Advisory */}
@@ -1270,19 +1355,28 @@ export const RegisterItemView: React.FC = () => {
         {/* Submit Actions */}
         <div className="pt-4 flex justify-end space-x-3 border-t border-neutral-200 dark:border-neutral-800">
           <button
+            id="btn-cancel-register-form"
             type="button"
             aria-label="Cancelar cadastro e retornar à página inicial"
             disabled={isSubmitting}
-            onClick={() => setActiveTab("home")}
-            className="px-5 py-3 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors focus:ring-2 focus:ring-neutral-400 disabled:opacity-50"
+            onClick={() => {
+              vibrateClick();
+              if (window.history.length > 1) {
+                goBack();
+              } else {
+                navigate("/");
+              }
+            }}
+            className="px-5 py-3 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors focus:ring-2 focus:ring-neutral-400 disabled:opacity-50 cursor-pointer"
           >
             Cancelar
           </button>
           <button
+            id="btn-submit-register-form"
             type="submit"
             disabled={isSubmitting}
             aria-label="Salvar registro do objeto no banco de dados"
-            className="px-6 py-3 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md shadow-[#00843D]/20 transition-all flex items-center space-x-2 focus:ring-2 focus:ring-offset-2 focus:ring-[#00843D] disabled:opacity-75 disabled:cursor-not-allowed"
+            className="px-6 py-3 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md shadow-[#00843D]/20 transition-all flex items-center space-x-2 focus:ring-2 focus:ring-offset-2 focus:ring-[#00843D] disabled:opacity-75 disabled:cursor-not-allowed cursor-pointer"
           >
             {isSubmitting ? (
               <>
@@ -1383,8 +1477,34 @@ export const RegisterItemView: React.FC = () => {
 
       {/* Registration Persistence Feedback Modal */}
       {registrationFeedback && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
-          <div className="bg-white dark:bg-neutral-900 rounded-3xl p-6 sm:p-8 max-w-lg w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-6 text-center animate-in fade-in zoom-in-95 duration-200">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              vibrateClick();
+              setRegistrationFeedback(null);
+              navigate("/");
+            }
+          }}
+        >
+          <div className="relative bg-white dark:bg-neutral-900 rounded-3xl p-6 sm:p-8 max-w-lg w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-6 text-center animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal top-right close X */}
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                setRegistrationFeedback(null);
+                navigate("/");
+              }}
+              className="absolute top-4 right-4 p-2 rounded-full text-neutral-400 hover:text-neutral-700 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+              aria-label="Fechar confirmação"
+              title="Fechar e ir para o Início"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
             {registrationFeedback.status === "CONFIRMED" ? (
               <>
                 <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-3xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center text-[#00843D] dark:text-emerald-400">
@@ -1426,6 +1546,7 @@ export const RegisterItemView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
+                      vibrateClick();
                       setRegistrationFeedback(null);
                       navigate(type === "PERDIDO" ? "/perdidos" : "/encontrados");
                     }}
@@ -1436,6 +1557,7 @@ export const RegisterItemView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
+                      vibrateClick();
                       setRegistrationFeedback(null);
                       setTitle("");
                       setDescription("");
@@ -1447,6 +1569,17 @@ export const RegisterItemView: React.FC = () => {
                     className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold text-xs transition-all cursor-pointer"
                   >
                     Cadastrar Outro
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      vibrateClick();
+                      setRegistrationFeedback(null);
+                      navigate("/");
+                    }}
+                    className="py-3.5 px-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-400 font-bold text-xs transition-all cursor-pointer"
+                  >
+                    Fechar
                   </button>
                 </div>
               </>
@@ -1481,6 +1614,7 @@ export const RegisterItemView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
+                      vibrateClick();
                       setRegistrationFeedback(null);
                       navigate(type === "PERDIDO" ? "/perdidos" : "/encontrados");
                     }}
@@ -1491,7 +1625,9 @@ export const RegisterItemView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => {
+                      vibrateClick();
                       setRegistrationFeedback(null);
+                      navigate("/");
                     }}
                     className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold text-xs transition-all cursor-pointer"
                   >
