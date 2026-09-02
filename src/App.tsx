@@ -43,6 +43,7 @@ import {
 } from "./lib/routeAnimations";
 import { AppRouteKey } from "./lib/routes";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 const MainContent: React.FC = () => {
   const {
@@ -291,6 +292,9 @@ const MainContent: React.FC = () => {
 
       {/* PWA Install Banner */}
       <PWAInstallBanner />
+
+      {/* Vercel Speed Insights */}
+      <SpeedInsights />
 
       {/* Pending User Approval Banner for Academic Users */}
       {currentUser.approvalStatus === "PENDENTE" && (
