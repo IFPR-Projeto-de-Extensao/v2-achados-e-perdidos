@@ -69,8 +69,13 @@ import {
 import { downloadTestBatteryPdf } from "../lib/testBatteryPdfGenerator";
 import { useApp } from "../context/AppContext";
 import { getTodayDateString, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, sanitizeForFirestore } from "../lib/utils";
-import { collection, doc, getDocs, setDoc, deleteDoc, query, orderBy } from "firebase/firestore";
+import { collection, doc, getDocs, setDoc, deleteDoc, query, orderBy, onSnapshot, runTransaction } from "firebase/firestore";
 import { db } from "../lib/firebase";
+import {
+  saveTestCaseResultAtomic,
+  updateTestCaseStatusAtomic,
+  updateTestCaseWithUpdateDoc,
+} from "../lib/testExecutionPersistence";
 import { ParticipantManagerModal } from "./test-battery/ParticipantManagerModal";
 import { TestEvidenceModal } from "./test-battery/TestEvidenceModal";
 import { TestCategoryMetricsChart } from "./test-battery/TestCategoryMetricsChart";
@@ -152,7 +157,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
   // Audit view drawer toggle
   const [showAuditDrawer, setShowAuditDrawer] = useState(false);
 
-  // Load executions from Firestore
+  // Load executions from Firestore (manual fetch)
   const loadExecutionsFromFirestore = async () => {
     try {
       setIsLoading(true);
@@ -168,21 +173,45 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
         if (loaded.length > 0 && !loaded.some((e) => e.id === selectedExecutionId)) {
           setSelectedExecutionId(loaded[0].id);
         }
-      } else {
-        // Save initial battery to Firestore for persistence
-        await setDoc(doc(db, "test_executions", INITIAL_TEST_BATTERIES[0].id), sanitizeForFirestore(INITIAL_TEST_BATTERIES[0]));
-        setExecutions(INITIAL_TEST_BATTERIES);
       }
     } catch (err) {
       console.warn("Utilizando armazenamento local para baterias de teste:", err);
-      setExecutions(INITIAL_TEST_BATTERIES);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Real-time synchronization: listen for live updates from Firestore across all test sessions
   useEffect(() => {
-    loadExecutionsFromFirestore();
+    setIsLoading(true);
+    const testCol = collection(db, "test_executions");
+    const q = query(testCol, orderBy("createdAt", "desc"));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        if (!snap.empty) {
+          const loaded: TestBatteryExecution[] = [];
+          snap.forEach((d) => {
+            loaded.push(d.data() as TestBatteryExecution);
+          });
+          setExecutions(loaded);
+          setSelectedExecutionId((prev) => {
+            if (prev && loaded.some((e) => e.id === prev)) {
+              return prev;
+            }
+            return loaded[0]?.id || prev;
+          });
+        }
+        setIsLoading(false);
+      },
+      (err) => {
+        console.warn("Aviso no listener em tempo real das baterias:", err);
+        setIsLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
   // Active execution object
@@ -298,60 +327,32 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
       return;
     }
 
-    const now = new Date();
     const previousStatus = currentTest.status;
-    const txId = `tx-status-${activeExecution.id}-${testId}-${Date.now()}`;
-    const auditEntry: TestExecutionAuditEntry = {
-      id: `audit-${Date.now()}`,
-      changedAt: now.toISOString(),
-      changedBy: currentUser?.name || "Administrador",
-      changedByEmail: currentUser?.email || "",
-      changeType: "UPDATE_STATUS",
-      description: `Status do teste ${testId} alterado de ${previousStatus} para ${newStatus}.`,
-      previousStatus,
-      newStatus,
-      testId,
-      objectId: testId,
-      transactionId: txId,
-      oldValue: previousStatus,
-      newValue: newStatus,
-      fieldChanged: "status",
-    };
 
-    const updatedTests = activeExecution.tests.map((t) => {
-      if (t.id === testId) {
+    // Optimistically update in local state for instant tactile response
+    setExecutions((prev) =>
+      prev.map((exec) => {
+        if (exec.id !== activeExecution.id) return exec;
         return {
-          ...t,
-          status: newStatus,
-          executedAt: newStatus !== "NAO_EXECUTADO" ? now.toISOString() : undefined,
-          executedBy: newStatus !== "NAO_EXECUTADO" ? currentUser?.name || "Administrador" : undefined,
-          obtainedResult:
-            newStatus === "APROVADO"
-              ? "Comportamento esperado confirmado com persistência validada no backend."
-              : newStatus === "REPROVADO"
-              ? t.obtainedResult && t.obtainedResult !== "Pendente de validação"
-                ? t.obtainedResult
-                : "Comportamento divergente do esperado. Necessária correção técnica."
-              : t.obtainedResult,
+          ...exec,
+          tests: exec.tests.map((t) => (t.id === testId ? { ...t, status: newStatus } : t)),
         };
-      }
-      return t;
+      })
+    );
+
+    // Persist ATOMICALLY in Firestore: prevents overwriting other tests and preserves custom text
+    const res = await updateTestCaseStatusAtomic({
+      batteryId: activeExecution.id,
+      testId,
+      newStatus,
+      currentUser,
     });
 
-    const updatedExecution: TestBatteryExecution = {
-      ...activeExecution,
-      tests: updatedTests,
-      auditTrail: [auditEntry, ...(activeExecution.auditTrail || [])],
-      updatedAt: now.toISOString(),
-    };
-
-    // Update in local state
-    setExecutions((prev) => prev.map((e) => (e.id === updatedExecution.id ? updatedExecution : e)));
-
-    // Persist in Firestore
-    try {
-      await setDoc(doc(db, "test_executions", updatedExecution.id), sanitizeForFirestore(updatedExecution));
+    if (res.success && res.updatedBattery) {
       vibrateSuccess();
+      setExecutions((prev) =>
+        prev.map((e) => (e.id === res.updatedBattery!.id ? res.updatedBattery! : e))
+      );
 
       // Record in immutable audit trail
       recordAuditLog({
@@ -363,10 +364,20 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
         oldValue: previousStatus,
         newValue: newStatus,
         details: `Execução ${activeExecution.id} (${activeExecution.systemVersion}): Status do caso de teste #${testId} alterado de ${previousStatus} para ${newStatus}.`,
-        transactionId: txId,
       }).catch(() => {});
-    } catch (err) {
-      console.error("Erro ao salvar status no Firestore:", err);
+    } else {
+      vibrateWarning();
+      addToast(res.error || "Erro ao salvar status no Firestore. Tente novamente.", "warning");
+      // Rollback to previous status if failed
+      setExecutions((prev) =>
+        prev.map((exec) => {
+          if (exec.id !== activeExecution.id) return exec;
+          return {
+            ...exec,
+            tests: exec.tests.map((t) => (t.id === testId ? { ...t, status: previousStatus } : t)),
+          };
+        })
+      );
     }
   };
 
@@ -691,7 +702,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     }
   };
 
-  // Save Detailed Test Evidence
+  // Save Detailed Test Evidence (Atomic Firestore persistence)
   const handleSaveTestEvidence = async (
     testId: string,
     obtainedResult: string,
@@ -707,60 +718,38 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     assignedToUserId?: string,
     assignedToName?: string,
     assignedToEmail?: string
-  ) => {
+  ): Promise<{ success: boolean; error?: string }> => {
     vibrateClick();
-    const now = new Date();
     const currentTest = activeExecution.tests.find((t) => t.id === testId);
-    if (!currentTest) return;
+    if (!currentTest) {
+      return { success: false, error: "Caso de teste não encontrado na execução ativa." };
+    }
 
     const txId = evidence.transactionId || `tx-evidence-${activeExecution.id}-${testId}-${Date.now()}`;
-    const auditEntry: TestExecutionAuditEntry = {
-      id: `audit-${Date.now()}`,
-      changedAt: now.toISOString(),
-      changedBy: currentUser?.name || "Administrador",
-      changedByEmail: currentUser?.email || "",
-      changeType: "UPDATE_DETAILS",
-      description: `Evidências e resultado obtido do teste #${testId} atualizados. Status: ${status}.`,
-      testId,
-      objectId: testId,
-      transactionId: txId,
-      oldValue: currentTest.obtainedResult || "Sem resultado",
-      newValue: obtainedResult || "Atualizado",
-      fieldChanged: "evidence_and_results",
-    };
 
-    const updatedTests = activeExecution.tests.map((t) => {
-      if (t.id === testId) {
-        return {
-          ...t,
-          status,
-          obtainedResult: obtainedResult || t.obtainedResult,
-          observations: observations || t.observations,
-          evidence: evidence as TestEvidence,
-          executedAt: t.executedAt || now.toISOString(),
-          executedBy: t.executedBy || currentUser?.name || "Administrador",
-          assignedToUserId: assignedToUserId || t.assignedToUserId,
-          assignedToName: assignedToName || t.assignedToName,
-          assignedToEmail: assignedToEmail || t.assignedToEmail,
-        };
-      }
-      return t;
+    // Execute partial updateDoc in Firestore, writing only the altered fields (tests, auditTrail, updatedAt)
+    const res = await updateTestCaseWithUpdateDoc({
+      batteryId: activeExecution.id,
+      testId,
+      status,
+      obtainedResult,
+      observations,
+      evidence,
+      currentUser,
+      isAdmin,
+      assignedToUserId,
+      assignedToName,
+      assignedToEmail,
     });
 
-    const updatedExecution: TestBatteryExecution = {
-      ...activeExecution,
-      tests: updatedTests,
-      auditTrail: [auditEntry, ...(activeExecution.auditTrail || [])],
-      updatedAt: now.toISOString(),
-    };
-
-    setExecutions((prev) => prev.map((e) => (e.id === updatedExecution.id ? updatedExecution : e)));
-    setEditingTest(null);
-
-    try {
-      await setDoc(doc(db, "test_executions", updatedExecution.id), sanitizeForFirestore(updatedExecution));
+    if (res.success && res.updatedBattery) {
       vibrateSuccess();
-      addToast(`Evidências do teste #${testId} salvas com sucesso!`, "success");
+      addToast(`Evidências do teste #${testId} salvas com sucesso no Firestore!`, "success");
+
+      setExecutions((prev) =>
+        prev.map((e) => (e.id === res.updatedBattery!.id ? res.updatedBattery! : e))
+      );
+      setEditingTest(null);
 
       recordAuditLog({
         objectId: testId,
@@ -773,9 +762,13 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
         details: `Execução ${activeExecution.id}: Evidências e resultado obtido do teste #${testId} atualizados. Status: ${status}.`,
         transactionId: txId,
       }).catch(() => {});
-    } catch (err) {
-      console.error("Erro ao salvar evidências no Firestore:", err);
-      addToast("Erro ao persistir no Firestore. Dados salvos localmente.", "warning");
+
+      return { success: true };
+    } else {
+      vibrateWarning();
+      const msg = res.error || "Erro ao persistir no Firestore. Seus dados foram preservados no formulário.";
+      addToast(msg, "warning");
+      return { success: false, error: msg };
     }
   };
 
@@ -1028,15 +1021,15 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     }
   };
 
-  // Save edited test case from EditTestCaseModal
+  // Save edited test case from EditTestCaseModal (Atomic merge via runTransaction)
   const handleSaveEditedTest = async (updatedTest: TestCaseItem) => {
-    const now = new Date();
+    const nowIso = new Date().toISOString();
     const currentTest = activeExecution.tests.find((t) => t.id === updatedTest.id);
     const txId = `tx-edit-test-${activeExecution.id}-${updatedTest.id}-${Date.now()}`;
 
     const auditEntry: TestExecutionAuditEntry = {
       id: `audit-${Date.now()}`,
-      changedAt: now.toISOString(),
+      changedAt: nowIso,
       changedBy: currentUser?.name || "Administrador",
       changedByEmail: currentUser?.email || "",
       changeType: "UPDATE_DETAILS",
@@ -1049,19 +1042,41 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
       fieldChanged: "test_case",
     };
 
-    const updatedTests = activeExecution.tests.map((t) => (t.id === updatedTest.id ? updatedTest : t));
-
-    const updatedBattery: TestBatteryExecution = {
-      ...activeExecution,
-      tests: updatedTests,
-      auditTrail: [auditEntry, ...(activeExecution.auditTrail || [])],
-      updatedAt: now.toISOString(),
-    };
-
-    setExecutions((prev) => prev.map((e) => (e.id === updatedBattery.id ? updatedBattery : e)));
-
     try {
-      await setDoc(doc(db, "test_executions", updatedBattery.id), sanitizeForFirestore(updatedBattery));
+      const batteryRef = doc(db, "test_executions", activeExecution.id);
+      let updatedBatteryState: TestBatteryExecution | null = null;
+
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(batteryRef);
+        if (!snap.exists()) {
+          throw new Error("Bateria não encontrada no Firestore.");
+        }
+        const fresh = snap.data() as TestBatteryExecution;
+        const freshTests = (fresh.tests || []).map((t) =>
+          t.id === updatedTest.id ? { ...t, ...updatedTest } : t
+        );
+        const nextAuditTrail = [auditEntry, ...(fresh.auditTrail || [])];
+
+        updatedBatteryState = {
+          ...fresh,
+          tests: freshTests,
+          auditTrail: nextAuditTrail,
+          updatedAt: nowIso,
+        };
+
+        transaction.update(batteryRef, sanitizeForFirestore({
+          tests: freshTests,
+          auditTrail: nextAuditTrail,
+          updatedAt: nowIso,
+        }));
+      });
+
+      if (updatedBatteryState) {
+        setExecutions((prev) =>
+          prev.map((e) => (e.id === updatedBatteryState!.id ? updatedBatteryState! : e))
+        );
+      }
+
       vibrateSuccess();
       addToast(`Caso de teste #${updatedTest.id} atualizado com sucesso!`, "success");
 
@@ -1074,8 +1089,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
         details: `Caso de teste #${updatedTest.id} editado na bateria ${activeExecution.id}.`,
         transactionId: txId,
       }).catch(() => {});
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro ao salvar caso de teste editado:", err);
+      addToast("Erro ao salvar alterações no Firestore: " + (err?.message || "Tente novamente"), "warning");
     }
   };
 

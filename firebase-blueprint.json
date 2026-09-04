@@ -248,6 +248,9 @@
     "/test_participants/{participantId}": {
       "schema": { "$ref": "#/entities/TestParticipant" },
       "description": "Registered participants pool for collaborative test batteries"
+    },
+    "/test_error_logs/{logId}": {
+      "description": "Centralized test error logs for recording test persistence issues and failures"
     }
   }
 }

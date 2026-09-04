@@ -601,11 +601,11 @@ export function generateTestBatteryPdf(battery: TestBatteryExecution): {
       valign: "top",
     },
     columnStyles: {
-      0: { cellWidth: 20, fontStyle: "bold" },
-      1: { cellWidth: 25 },
-      2: { cellWidth: 42, fontStyle: "bold" },
-      3: { cellWidth: 45 },
-      4: { cellWidth: 32 },
+      0: { cellWidth: 18, fontStyle: "bold" },
+      1: { cellWidth: 20 },
+      2: { cellWidth: 36, fontStyle: "bold" },
+      3: { cellWidth: 44 },
+      4: { cellWidth: 46 },
       5: { cellWidth: 18, halign: "center", fontStyle: "bold" },
     },
     didParseCell: (data) => {

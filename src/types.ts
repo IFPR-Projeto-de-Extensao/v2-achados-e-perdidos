@@ -588,6 +588,7 @@ export interface TestEvidence {
   url?: string;
   transactionId?: string;
   technicalNotes?: string;
+  updatedAt?: string;
 }
 
 export interface TestCaseHistoryEntry {
