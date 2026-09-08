@@ -24,12 +24,64 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.6",
+    codename: "Offline Search Cache Preview & Dark Mode Contrast Refinement",
+    releaseDate: "08/09/2026",
+    releaseDateTime: "08 de Setembro de 2026 • 20:15 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Aprimoramento do Service Worker customizado (sw-custom.js) com cache dedicado de itens recentes ('localiza-recent-items-v1') permitindo visualização de itens pesquisados mesmo sem conexão com a internet; fallback transparente em IndexedDB e localStorage via recentItemsOfflineService com sincronização de buscas em tempo real; refinamento de contraste e transições suaves do Modo Escuro (Dark Mode) em todos os modais da aplicação e componentes de formulário, em conformidade com as diretrizes de acessibilidade WCAG AA.",
+    additions: [
+      {
+        id: "v196-add-1",
+        title: "Service Worker: Cache Dedicado para Itens Recentes (localiza-recent-items-v1)",
+        description: "Atualização de public/sw-custom.js com cache separado para itens buscados recentemente e respostas de busca, permitindo pré-visualizar cards e detalhes quando offline.",
+        module: "PWA",
+        tag: "Offline & PWA",
+      },
+      {
+        id: "v196-add-2",
+        title: "Serviço de Cache e Recuperação Offline (recentItemsOfflineService.ts)",
+        description: "Módulo especializado para registrar itens visualizados/buscados, deduplicar entradas e fornecer fallback seguro quando o usuário estiver sem conexão à internet.",
+        module: "PWA",
+        tag: "Resiliência Offline",
+      },
+      {
+        id: "v196-add-3",
+        title: "Refinamento do Modo Escuro em Todos os Modais",
+        description: "Padronização de transições suaves de fundo (0.2s), bordas com contraste balanceado (border-neutral-200 dark:border-neutral-800) e backdrop com blur em ItemDetailModal, AuthModal, AIMatchModal, ContactSupportModal, ExportFoundItemsReportModal, KeyboardShortcutsModal, InstallInstructionsModal, QRCodeScannerModal, RemoteSignatureModal e VoiceSearchModal.",
+        module: "GERAL",
+        tag: "Dark Mode & UI",
+      },
+      {
+        id: "v196-add-4",
+        title: "Contraste Aprimorado e Transições em Formulários (index.css)",
+        description: "Definição de regras globais de transição para input, select, textarea e button, contraste WCAG AA para placeholders em modo escuro e anel de foco verde IFPR (#22c55e).",
+        module: "GERAL",
+        tag: "Acessibilidade & CSS",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v196-fix-1",
+        title: "Compatibilidade de Seleção de Itens Offline em ObjectsView",
+        description: "Unificação de cliques em cards e linhas de tabela para utilizar handleItemClick com dados mantidos no activeItemsPool mesmo quando desconectado da rede.",
+        module: "GERAL",
+        tag: "Correção de Navegação",
+      },
+    ],
+    stats: {
+      additionsCount: 4,
+      fixesCount: 1,
+    },
+  },
+  {
     version: "v1.9.5",
     codename: "Centralized Test Error Logging, Debounced Auto-Save & Unsaved Changes Guard",
     releaseDate: "03/09/2026",
     releaseDateTime: "03 de Setembro de 2026 • 21:00 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Implementação de serviço de log de erro centralizado para execuções de teste com persistência dupla (local e Firestore), backup de falha vinculado a testId com ação prioritária de 'Tentar Novamente', detecção de alterações não salvas via window.onbeforeunload comparando estado local e remoto com salvamento de emergência, textareas auto-expansíveis com min-rows: 6 e contadores de caracteres em tempo real abaixo da borda inferior, gancho useDebouncedSave (1,5s) com feedback visual ('Salvando...', 'Salvo', 'Erro') e persistência parcial no Firestore via updateDoc.",
     additions: [
       {

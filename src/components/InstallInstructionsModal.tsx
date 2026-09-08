@@ -71,11 +71,11 @@ export const InstallInstructionsModal: React.FC<InstallInstructionsModalProps> =
       role="dialog"
       aria-modal="true"
       aria-labelledby="install-modal-title"
-      className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 bg-black/65 dark:bg-black/80 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200 transition-all"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg bg-white dark:bg-[#1c1c1c] rounded-3xl p-6 sm:p-7 shadow-2xl border border-gray-200 dark:border-neutral-800 space-y-5 animate-in zoom-in-95 duration-200"
+        className="w-full max-w-lg bg-white dark:bg-[#1c1c1c] rounded-3xl p-6 sm:p-7 shadow-2xl border border-gray-200 dark:border-neutral-800 space-y-5 animate-in zoom-in-95 duration-200 transition-colors"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

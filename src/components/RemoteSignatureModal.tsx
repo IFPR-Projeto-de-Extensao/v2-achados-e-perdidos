@@ -529,8 +529,8 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm overflow-y-auto animate-in fade-in">
-      <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-xl w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 my-8 relative overflow-hidden">
+    <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/80 dark:bg-black/90 backdrop-blur-md overflow-y-auto animate-in fade-in transition-all duration-200">
+      <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-xl w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 my-8 relative overflow-hidden transition-colors duration-200">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
           <div className="flex items-center gap-2.5">

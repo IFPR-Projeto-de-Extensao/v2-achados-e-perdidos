@@ -40,7 +40,13 @@ import {
   Umbrella,
   HelpCircle,
   Mic,
+  WifiOff,
 } from "lucide-react";
+import {
+  cacheSearchedItems,
+  getOfflineRecentItems,
+  cacheSingleItemPreview,
+} from "../lib/recentItemsOfflineService";
 
 interface ObjectsViewProps {
   initialFilterType?: "TODOS" | "PERDIDO" | "ENCONTRADO";
@@ -94,6 +100,43 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [layoutViewMode, setLayoutViewMode] = useState<"ADAPTATIVO" | "CARDS" | "LISTA">("ADAPTATIVO");
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState<boolean>(false);
+
+  // Offline search preview support via Service Worker (sw-custom.js) & local cache
+  const [isOffline, setIsOffline] = useState<boolean>(
+    typeof navigator !== "undefined" ? !navigator.onLine : false
+  );
+  const [offlineRecentItems, setOfflineRecentItems] = useState<LostFoundItem[]>([]);
+  const [offlineCachedCount, setOfflineCachedCount] = useState<number>(0);
+
+  // Monitor online / offline network state and sync with Service Worker
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => {
+      setIsOffline(true);
+      getOfflineRecentItems().then((res) => {
+        setOfflineRecentItems(res.items);
+        setOfflineCachedCount(res.count);
+      });
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("online", handleOnline);
+      window.addEventListener("offline", handleOffline);
+    }
+
+    // Initial check for offline cached items from Service Worker / local storage
+    getOfflineRecentItems().then((res) => {
+      setOfflineRecentItems(res.items);
+      setOfflineCachedCount(res.count);
+    });
+
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("online", handleOnline);
+        window.removeEventListener("offline", handleOffline);
+      }
+    };
+  }, []);
 
   // Debounced search effect with timer cancellation on keystroke & unmount
   useEffect(() => {
@@ -188,24 +231,35 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
 
   const colorsList = ["TODAS", "Verde", "Preto", "Cinza / Prata", "Azul", "Vermelho", "Branco"];
 
+  // Determine active item pool: if online items exist, use them. If offline or items are empty, use offline recent items.
+  const activeItemsPool = useMemo(() => {
+    if (items && items.length > 0) {
+      return items;
+    }
+    if ((isOffline || items.length === 0) && offlineRecentItems.length > 0) {
+      return offlineRecentItems;
+    }
+    return items || [];
+  }, [items, isOffline, offlineRecentItems]);
+
   // Helper counts for badges (dynamic from Firestore synchronized items)
   const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = { TODAS: items.length };
+    const counts: Record<string, number> = { TODAS: activeItemsPool.length };
     categoriesList.forEach((c) => {
-      counts[c.name] = items.filter((i) => i.category === c.name).length;
+      counts[c.name] = activeItemsPool.filter((i) => i.category === c.name).length;
     });
     return counts;
-  }, [items]);
+  }, [activeItemsPool]);
 
   const blockCounts = useMemo(() => {
-    const counts: Record<string, number> = { TODOS: (items || []).length };
+    const counts: Record<string, number> = { TODOS: (activeItemsPool || []).length };
     CAMPUS_BLOCKS.forEach((b) => {
       if (b && b.id !== "TODOS") {
-        counts[b.id] = (items || []).filter((i) => i && safeIncludes(i.location, b.id)).length;
+        counts[b.id] = (activeItemsPool || []).filter((i) => i && safeIncludes(i.location, b.id)).length;
       }
     });
     return counts;
-  }, [items]);
+  }, [activeItemsPool]);
 
   // Filter & Sort Logic (Simultaneous Multi-field Filtering with Firestore data)
   const filteredItems = useMemo(() => {
@@ -215,7 +269,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
     const cleanColor = sanitizeQuery(selectedColor);
     const cleanLocation = sanitizeQuery(selectedLocation);
 
-    return (items || [])
+    return (activeItemsPool || [])
       .filter((item) => {
         if (!item) return false;
 
@@ -303,7 +357,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
         return sortBy === "recentes" ? dateB - dateA : dateA - dateB;
       });
   }, [
-    items,
+    activeItemsPool,
     filterType,
     selectedCategory,
     selectedCampusBlock,
@@ -315,6 +369,19 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
     debouncedSearch,
     sortBy,
   ]);
+
+  // Cache filtered items for offline Service Worker preview (sw-custom.js)
+  useEffect(() => {
+    if (filteredItems && filteredItems.length > 0) {
+      cacheSearchedItems(filteredItems, debouncedSearch);
+      setOfflineCachedCount((prev) => Math.max(prev, filteredItems.length));
+    }
+  }, [filteredItems, debouncedSearch]);
+
+  const handleItemClick = (item: LostFoundItem) => {
+    cacheSingleItemPreview(item);
+    setSelectedItemForDetail(item);
+  };
 
   const activeFiltersCount =
     (search.trim() ? 1 : 0) +
@@ -364,7 +431,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                 : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
             }`}
           >
-            Todos ({items.length})
+            Todos ({activeItemsPool.length})
           </button>
 
           <button
@@ -375,7 +442,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                 : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
             }`}
           >
-            Perdidos ({items.filter((i) => i.type === "PERDIDO").length})
+            Perdidos ({activeItemsPool.filter((i) => i.type === "PERDIDO").length})
           </button>
 
           <button
@@ -386,7 +453,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                 : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
             }`}
           >
-            Encontrados ({items.filter((i) => i.type === "ENCONTRADO").length})
+            Encontrados ({activeItemsPool.filter((i) => i.type === "ENCONTRADO").length})
           </button>
 
           <button
@@ -397,10 +464,35 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                 : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
             }`}
           >
-            Devolvidos ({items.filter((i) => i.status === "DEVOLVIDO").length})
+            Devolvidos ({activeItemsPool.filter((i) => i.status === "DEVOLVIDO").length})
           </button>
         </div>
       </div>
+
+      {/* Service Worker Offline Search Preview Alert Banner */}
+      {(isOffline || items.length === 0) && offlineRecentItems.length > 0 && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0">
+              <WifiOff className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-extrabold text-amber-950 dark:text-amber-100 flex items-center gap-2">
+                <span>Pré-visualização Offline do Service Worker Ativa</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300">
+                  sw-custom.js
+                </span>
+              </p>
+              <p className="text-[11px] text-amber-800/90 dark:text-amber-300/90">
+                Você está sem conexão com a internet. Exibindo {filteredItems.length} {filteredItems.length === 1 ? "item pesquisado recentemente" : "itens pesquisados recentemente"} em cache do Service Worker para consulta imediata.
+              </p>
+            </div>
+          </div>
+          <span className="px-2.5 py-1 rounded-xl bg-amber-500/20 text-amber-900 dark:text-amber-200 text-xs font-mono font-bold shrink-0">
+            {offlineCachedCount} no cache offline
+          </span>
+        </div>
+      )}
 
       {/* ADVANCED FILTER CONTROLS PANEL */}
       <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-5 sm:p-6 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-5">
@@ -1079,7 +1171,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                   {filteredItems.map((item) => (
                     <tr
                       key={item.id}
-                      onClick={() => setSelectedItemForDetail(item)}
+                      onClick={() => handleItemClick(item)}
                       className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 cursor-pointer transition-colors"
                     >
                       <td className="p-4">
@@ -1135,7 +1227,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedItemForDetail(item);
+                            handleItemClick(item);
                           }}
                           className="px-3.5 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-[11px] font-bold shadow-xs transition-all"
                         >
@@ -1161,7 +1253,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
               <ItemCard
                 key={item.id}
                 item={item}
-                onSelect={setSelectedItemForDetail}
+                onSelect={handleItemClick}
                 selectable={isSelectableMode}
                 isSelected={selectedItemIds.includes(item.id)}
                 onToggleSelect={handleToggleSelectItem}
@@ -1181,7 +1273,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
               {filteredItems.map((item) => (
                 <div
                   key={item.id}
-                  onClick={() => setSelectedItemForDetail(item)}
+                  onClick={() => handleItemClick(item)}
                   className="p-4 flex items-center justify-between hover:bg-neutral-50 dark:hover:bg-neutral-800/50 cursor-pointer transition-colors"
                 >
                   <div className="flex items-center space-x-3">

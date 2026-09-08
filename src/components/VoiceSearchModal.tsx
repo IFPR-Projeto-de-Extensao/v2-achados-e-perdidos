@@ -207,7 +207,7 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
       {isOpen && (
         <div
           id="voice-search-modal-backdrop"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/85 backdrop-blur-md transition-all duration-200"
           onClick={(e) => {
             if (e.target === e.currentTarget) onClose();
           }}
@@ -218,7 +218,7 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
             transition={{ duration: 0.2 }}
-            className="w-full max-w-md bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-6 text-center relative overflow-hidden"
+            className="w-full max-w-md bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-6 text-center relative overflow-hidden transition-colors duration-200"
           >
             {/* Background Ambient Glow */}
             <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-48 h-48 bg-[#00843D]/15 dark:bg-[#00843D]/25 blur-3xl rounded-full pointer-events-none" />

@@ -11,8 +11,8 @@ export const AIMatchModal: React.FC = () => {
   const topMatch = matches[0];
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
-      <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 max-w-xl w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-6 animate-in fade-in zoom-in duration-200">
+    <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 dark:bg-black/85 backdrop-blur-md transition-all duration-200">
+      <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 max-w-xl w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-6 animate-in fade-in zoom-in duration-200 transition-colors">
         {/* Top Header */}
         <div className="flex items-start justify-between border-b border-neutral-200 dark:border-neutral-800 pb-4">
           <div className="flex items-center space-x-3">

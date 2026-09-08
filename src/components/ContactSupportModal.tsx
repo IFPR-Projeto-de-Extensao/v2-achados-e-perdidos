@@ -205,12 +205,12 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
   return (
     <div
       id="contact-support-modal"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/70 backdrop-blur-xs animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/70 dark:bg-neutral-950/85 backdrop-blur-md transition-all duration-200 animate-in fade-in"
       role="dialog"
       aria-modal="true"
       aria-labelledby="contact-modal-title"
     >
-      <div className="relative w-full max-w-xl bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-xl bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden flex flex-col max-h-[90vh] transition-colors duration-200">
         {/* Modal Header */}
         <div className="p-5 sm:p-6 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/80 dark:bg-neutral-900/80 flex items-start justify-between">
           <div className="flex items-center space-x-3">
