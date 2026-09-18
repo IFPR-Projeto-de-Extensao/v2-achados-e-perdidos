@@ -134,3 +134,5 @@ export function sanitizeFirestoreData<T extends Record<string, any>>(data: T): R
   }
   return clean;
 }
+
+export const OFFICIAL_DISCORD_INVITE_URL = "https://discord.gg/uV2qUDrHcw";

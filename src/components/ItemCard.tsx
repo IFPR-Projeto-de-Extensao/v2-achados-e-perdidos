@@ -238,24 +238,24 @@ export const ItemCard: React.FC<ItemCardProps> = ({
       </div>
 
       {/* Footer Action */}
-      <div className="px-4 pb-4 pt-1 grid grid-cols-2 gap-2">
+      <div className="px-4 pb-4 pt-1 flex items-center gap-2">
         <button
           type="button"
-          onClick={handleQuickPrintTag}
-          className="flex items-center justify-center space-x-1 py-2 px-2.5 rounded-xl border border-[#00843D]/30 bg-[#00843D]/5 text-[#00843D] dark:text-green-400 font-bold text-xs hover:bg-[#00843D] hover:text-white transition-all shadow-2xs"
-          title="Imprimir Etiqueta Física QR"
+          onClick={() => onSelect(item)}
+          className="flex-1 flex items-center justify-center space-x-1.5 py-2.5 px-3 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white dark:hover:bg-[#00843D] dark:hover:text-white text-neutral-800 dark:text-neutral-200 font-bold text-xs transition-all shadow-2xs cursor-pointer group-hover:bg-[#00843D] group-hover:text-white"
         >
-          <Printer className="w-3.5 h-3.5" />
-          <span>Etiqueta QR</span>
+          <span>Ver Detalhes</span>
+          <ArrowRight className="w-3.5 h-3.5" />
         </button>
 
         <button
           type="button"
-          onClick={() => onSelect(item)}
-          className="flex items-center justify-center space-x-1 py-2 px-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 font-bold text-xs hover:bg-[#00843D] hover:text-white dark:hover:bg-[#00843D] dark:hover:text-white transition-all shadow-2xs"
+          onClick={handleQuickPrintTag}
+          className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:text-[#00843D] hover:border-[#00843D]/50 dark:hover:text-green-400 font-bold text-xs transition-all shadow-2xs cursor-pointer"
+          title="Imprimir Etiqueta Física QR"
+          aria-label="Imprimir Etiqueta Física QR"
         >
-          <span>Detalhes</span>
-          <ArrowRight className="w-3.5 h-3.5" />
+          <Printer className="w-4 h-4" />
         </button>
       </div>
     </motion.div>

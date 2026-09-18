@@ -19,6 +19,7 @@ import { useApp } from "../context/AppContext";
 import { SupportCategory } from "../types";
 import { submitSupportFeedback } from "../lib/supportFeedbackService";
 import { vibrateClick, vibrateSuccess, vibrateWarning } from "../lib/utils";
+import { OFFICIAL_DISCORD_INVITE_URL } from "../lib/constants";
 
 export interface ContactSupportModalProps {
   isOpen: boolean;
@@ -289,14 +290,32 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
                 </button>
               </div>
 
-              {/* Campus Destination Info */}
-              <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-500/20 text-xs text-blue-900 dark:text-blue-200 flex items-center justify-center gap-2 max-w-md mx-auto">
-                <Mail className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                <span>
-                  {language === "pt"
-                    ? "Cópia arquivada para a equipe de suporte: localizamais6@gmail.com"
-                    : "Archived copy to support team: localizamais6@gmail.com"}
-                </span>
+              {/* Campus Destination Info & Official Discord */}
+              <div className="space-y-2 max-w-md mx-auto">
+                <div className="p-3 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-500/20 text-xs text-blue-900 dark:text-blue-200 flex items-center justify-center gap-2">
+                  <Mail className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <span>
+                    {language === "pt"
+                      ? "Cópia arquivada para a equipe de suporte: localizamais6@gmail.com"
+                      : "Archived copy to support team: localizamais6@gmail.com"}
+                  </span>
+                </div>
+
+                <a
+                  id="success-discord-link"
+                  href={OFFICIAL_DISCORD_INVITE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-500/30 text-xs text-indigo-900 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 flex items-center justify-center gap-2 transition-all font-semibold"
+                >
+                  <MessageSquare className="w-4 h-4 text-[#5865F2] shrink-0" />
+                  <span>
+                    {language === "pt"
+                      ? "Acessar Servidor Oficial do Discord do IFPR"
+                      : "Access Official IFPR Discord Server"}
+                  </span>
+                  <ExternalLink className="w-3.5 h-3.5 text-[#5865F2]" />
+                </a>
               </div>
 
               <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -487,18 +506,32 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
 
               {/* Form Action Buttons */}
               <div className="pt-3 border-t border-neutral-200 dark:border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-                {/* Direct email app fallback */}
-                <a
-                  id="direct-mailto-link"
-                  href={generateMailtoUrl()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 hover:text-[#00843D] dark:hover:text-green-400 transition-colors flex items-center space-x-1.5"
-                >
-                  <Mail className="w-3.5 h-3.5" />
-                  <span>{t("contactDirectMailBtn", "Abrir no Meu Aplicativo de E-mail")}</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
+                {/* Direct email app fallback & Discord link */}
+                <div className="flex flex-wrap items-center gap-3">
+                  <a
+                    id="direct-mailto-link"
+                    href={generateMailtoUrl()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 hover:text-[#00843D] dark:hover:text-green-400 transition-colors flex items-center space-x-1.5"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    <span>{t("contactDirectMailBtn", "Abrir no Meu Aplicativo de E-mail")}</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+
+                  <a
+                    id="modal-direct-discord-link"
+                    href={OFFICIAL_DISCORD_INVITE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-semibold text-[#5865F2] hover:text-[#4752c4] transition-colors flex items-center space-x-1.5"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                    <span>{language === "pt" ? "Comunidade no Discord" : "Discord Community"}</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
 
                 {/* Submit button */}
                 <button

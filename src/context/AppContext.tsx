@@ -1735,12 +1735,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // Sync Users from Firestore
+  // Sync Users from Firestore (Least Privilege: Only Admins and Servidores query the full directory)
   useEffect(() => {
     if (!firebaseUser) {
       setAllUsers([]);
       return;
     }
+
+    const email = safeToLower(firebaseUser.email);
+    const isRoot = email === "paulocauan39@gmail.com";
+    const isAcademicServidor =
+      email.endsWith("@ifpr.edu.br") &&
+      !email.includes("@aluno.ifpr.edu.br") &&
+      !email.includes("@escola.ifpr.edu.br");
+    const isPrivileged =
+      isRoot ||
+      currentUser?.role === "ADMIN" ||
+      currentUser?.role === "SERVIDOR" ||
+      isAcademicServidor;
+
+    // Ordinary students and non-privileged users do not harvest the users collection
+    if (!isPrivileged) {
+      setAllUsers(currentUser ? [currentUser] : []);
+      return;
+    }
+
     const unsubscribe = onSnapshot(
       collection(db, "users"),
       (snapshot) => {
@@ -1752,25 +1771,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           snapshot.docs.forEach((d) => {
             const data = d.data() as User;
             const uid = d.id;
-            const email = safeToLower(data.email);
+            const userEmail = safeToLower(data.email);
             if (!uid) return;
             // Ignore legacy mock doc u-paulocauan if another document exists or if fake
-            if (uid.startsWith("u-") && email === "paulocauan39@gmail.com") {
+            if (uid.startsWith("u-") && userEmail === "paulocauan39@gmail.com") {
               return;
             }
             const userObj: User = {
               ...data,
               id: uid,
-              email: email || data.email,
-              role: (email === "paulocauan39@gmail.com" ? "ADMIN" : (data.role || "ALUNO")),
+              email: userEmail || data.email,
+              role: (userEmail === "paulocauan39@gmail.com" ? "ADMIN" : (data.role || "ALUNO")),
             };
-            if (email && usersMap.has(email)) {
-              const existing = usersMap.get(email)!;
+            if (userEmail && usersMap.has(userEmail)) {
+              const existing = usersMap.get(userEmail)!;
               if (existing.id.startsWith("usr_") || existing.id.startsWith("u-")) {
-                usersMap.set(email, userObj);
+                usersMap.set(userEmail, userObj);
               }
-            } else if (email) {
-              usersMap.set(email, userObj);
+            } else if (userEmail) {
+              usersMap.set(userEmail, userObj);
             } else {
               usersMap.set(uid, userObj);
             }
@@ -1784,7 +1803,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [firebaseUser]);
+  }, [firebaseUser, currentUser?.role]);
 
   // Sync Items from Firestore with Offline IndexedDB Resilience & Background Queue Processor
   useEffect(() => {
@@ -1898,11 +1917,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync Notifications from Firestore
   useEffect(() => {
+    // Unauthenticated visitors do not have access to notifications
+    if (!firebaseUser) {
+      setNotifications([]);
+      return;
+    }
+
     // Determine query scope: Admins can view all notifications for oversight;
     // non-admin users only listen to notifications addressed to their UID or broadcast targets.
     const isAdminUser = currentUser?.role === "ADMIN";
     const currentUid = currentUser?.id && currentUser.id !== DEFAULT_GUEST_USER.id ? currentUser.id : null;
-    const fbUid = firebaseUser?.uid || null;
+    const fbUid = firebaseUser.uid;
 
     let notifsQuery;
     if (isAdminUser) {
@@ -2066,7 +2091,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }): Promise<SystemAuditLog> => {
     const now = new Date();
     const txId = entry.transactionId || `TX-${entry.objectType}-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    const actor = entry.actorOverride || currentUser;
+    
+    // Strict identity binding: prioritize real authenticated Firebase user to prevent identity spoofing
+    const realAuthUid = auth.currentUser?.uid;
+    const realAuthEmail = auth.currentUser?.email;
+    const effectiveRole: UserRole = (currentUser?.role as UserRole) || (realAuthEmail === "paulocauan39@gmail.com" ? "ADMIN" : "ALUNO");
 
     const auditLogDoc: SystemAuditLog = {
       id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -2075,10 +2104,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       objectType: entry.objectType,
       objectTitle: entry.objectTitle || entry.objectId,
       action: entry.action,
-      actorId: actor.id || "sistema-ifpr",
-      actorName: actor.name || "Sistema IFPR",
-      actorEmail: actor.email || "localizamais6@gmail.com",
-      actorRole: (actor.role as UserRole) || "ALUNO",
+      actorId: realAuthUid || currentUser?.id || "sistema-ifpr",
+      actorName: currentUser?.name || auth.currentUser?.displayName || "Sistema IFPR",
+      actorEmail: realAuthEmail || currentUser?.email || "localizamais6@gmail.com",
+      actorRole: effectiveRole,
       timestamp: now.toISOString(),
       fieldChanged: entry.fieldChanged,
       oldValue: entry.oldValue !== undefined && entry.oldValue !== null ? String(entry.oldValue) : undefined,
@@ -2095,11 +2124,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn("Aviso ao salvar log de auditoria no Firestore:", err);
     }
 
-    // Also update activity_logs for backward compatibility
+    // Also update activity_logs for backward compatibility with synchronized actor fields
     try {
-      const actLog: ActivityLog = {
+      const actLog: Record<string, any> = {
         id: auditLogDoc.id,
         adminId: auditLogDoc.actorId,
+        actorId: auditLogDoc.actorId,
+        actorRole: auditLogDoc.actorRole,
         adminName: auditLogDoc.actorName,
         action: auditLogDoc.action,
         transactionId: auditLogDoc.transactionId,
@@ -2961,10 +2992,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             relatedItemId: newItem.id,
           };
 
-          try {
-            await setDoc(doc(db, "notifications", counterpartNotif.id), sanitizeFirestoreData(counterpartNotif));
-          } catch (e) {
-            handleFirestoreError(e, OperationType.WRITE, `notifications/${counterpartNotif.id}`);
+          // Institutional accounts (Admin/Servidor) can persist counterpart notifications directly;
+          // for regular users, the backend route /api/fcm/send-match-alert securely creates the record via Admin SDK.
+          if (currentUser?.role === "ADMIN" || currentUser?.role === "SERVIDOR") {
+            try {
+              await setDoc(doc(db, "notifications", counterpartNotif.id), sanitizeFirestoreData(counterpartNotif));
+            } catch (e) {
+              handleFirestoreError(e, OperationType.WRITE, `notifications/${counterpartNotif.id}`);
+            }
           }
 
           // Trigger server push notification dispatch & audit trail
@@ -3684,18 +3719,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await setDoc(doc(db, "claims", newClaim.id), sanitizeFirestoreData(newClaim));
       await updateItemStatus(itemId, "EM_ANALISE");
 
-      const adminNotif: NotificationItem = {
+      const claimerNotif: NotificationItem = {
         id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        userId: "all",
-        isGlobal: true,
-        title: "Nova Solicitação de Devolução",
-        message: `${effectiveUserName} solicitou a devolução de "${item.title}".`,
+        userId: effectiveUserId,
+        isGlobal: false,
+        title: "Solicitação de Devolução Registrada",
+        message: `Sua solicitação de devolução para "${item.title}" foi enviada com sucesso e está em análise pela equipe do IFPR.`,
         timestamp: new Date().toISOString(),
         read: false,
         type: "CLAIM_UPDATE",
         relatedItemId: itemId,
       };
-      await setDoc(doc(db, "notifications", adminNotif.id), sanitizeFirestoreData(adminNotif));
+      await setDoc(doc(db, "notifications", claimerNotif.id), sanitizeFirestoreData(claimerNotif));
 
       addToast("Solicitação salva no Firestore! A equipe do IFPR analisará a comprovação.", "success");
     } catch (e) {

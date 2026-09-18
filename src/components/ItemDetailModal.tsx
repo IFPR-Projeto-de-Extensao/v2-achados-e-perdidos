@@ -1044,7 +1044,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     setIsSendingEmail(true);
     try {
       const targetUser = allUsers.find((u) => u.email === recipientEmail);
-      const targetUserId = targetUser?.id || item.registeredByUserId || "all";
+      const targetUserId = targetUser?.id || (item.registeredByUserId && item.registeredByUserId !== "guest_visitor" ? item.registeredByUserId : null);
+      if (!targetUserId || targetUserId === "all") {
+        addToast("Não foi possível identificar o destinatário específico associado a este item.", "error");
+        setIsSendingEmail(false);
+        return;
+      }
       await sendNotificationToUser(
         targetUserId,
         emailSubject,
@@ -1599,8 +1604,86 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               </div>
             )}
 
+            {/* Action Area: Primary Action & Operational Controls */}
+            <div className="pt-2 space-y-2.5 border-t border-neutral-200 dark:border-neutral-800">
+              {/* Primary User Action: Claim Ownership */}
+              {item.status !== "DEVOLVIDO" && item.status !== "ENCERRADO" && (
+                <button
+                  onClick={() => setClaimModalOpen(true)}
+                  className="w-full py-3 px-4 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-sm shadow-md shadow-[#00843D]/20 transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                >
+                  <ShieldCheck className="w-5 h-5" />
+                  <span>Solicitar Este Objeto (Reclamar Posse)</span>
+                </button>
+              )}
+
+              {/* Operational Actions for Servidores and Admins */}
+              {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && item.status !== "DEVOLVIDO" && item.status !== "ENCERRADO" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setReturnModalOpen(true)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Registrar Devolução Formal</span>
+                  </button>
+
+                  <button
+                    onClick={() => setDestinationModalOpen(true)}
+                    className="w-full py-2.5 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-900 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs"
+                  >
+                    <PackageCheck className="w-4 h-4" />
+                    <span>Registrar Destinação</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Admin Only: Reopen Return Button if item was already returned */}
+              {currentUser.role === "ADMIN" && item.status === "DEVOLVIDO" && (
+                <button
+                  onClick={() => setReopenModalOpen(true)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer shadow-xs"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>[Admin] Reabrir Devolução (Corrigir Erro)</span>
+                </button>
+              )}
+
+              {/* Grouped Secondary Actions */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                <button
+                  onClick={() => setEmailModalOpen(true)}
+                  className="w-full py-2 px-3 rounded-xl border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5 text-[#00843D]" />
+                  <span>Enviar Mensagem</span>
+                </button>
+
+                {isAuthorizedToEdit && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditTitle(item.title);
+                      setEditDescription(item.description);
+                      setEditCategory(item.category);
+                      setEditLocation(item.location);
+                      setEditColor(item.color || "");
+                      setEditBrand(item.brand || "");
+                      setEditContactInfo(item.contactInfo || "");
+                      setEditItemModalOpen(true);
+                    }}
+                    className="w-full py-2 px-3 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
+                    title="Editar dados e informações do objeto"
+                  >
+                    <Edit className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    <span>Editar Informações</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Comments Section */}
-            <div className="space-y-3 pt-2 border-t border-neutral-200 dark:border-neutral-800">
+            <div className="space-y-3 pt-3 border-t border-neutral-200 dark:border-neutral-800">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-bold text-neutral-900 dark:text-white flex items-center gap-1.5 uppercase tracking-wider">
                   <MessageSquare className="w-4 h-4 text-[#00843D]" /> Perguntas & Comentários da Comunidade ({itemComments.length})
@@ -1648,7 +1731,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <button
                   type="submit"
                   disabled={isPostingComment}
-                  className="px-3.5 py-2 rounded-xl bg-[#00843D] text-white font-bold text-xs hover:bg-[#006e33] transition-colors shrink-0 flex items-center gap-1"
+                  className="px-3.5 py-2 rounded-xl bg-[#00843D] text-white font-bold text-xs hover:bg-[#006e33] transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>Enviar</span>
@@ -1708,93 +1791,6 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="pt-2 space-y-2">
-              {item.status !== "DEVOLVIDO" && item.status !== "ENCERRADO" && (
-                <button
-                  onClick={() => setClaimModalOpen(true)}
-                  className="w-full py-3 px-4 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-sm shadow-md shadow-[#00843D]/20 transition-all flex items-center justify-center space-x-2 cursor-pointer"
-                >
-                  <ShieldCheck className="w-5 h-5" />
-                  <span>Solicitar Este Objeto (Reclamar Posse)</span>
-                </button>
-              )}
-
-              {/* Institutional Notification / Contact Button */}
-              <button
-                onClick={() => setEmailModalOpen(true)}
-                className="w-full py-2.5 px-4 rounded-xl border border-[#00843D]/30 bg-[#00843D]/10 hover:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer"
-              >
-                <Send className="w-4 h-4 text-[#00843D]" />
-                <span>Enviar Notificação / Mensagem sobre o Objeto</span>
-              </button>
-
-              {/* Authorized Users (Owner, Servidor, Admin): Edit Item Button */}
-              {isAuthorizedToEdit && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditTitle(item.title);
-                    setEditDescription(item.description);
-                    setEditCategory(item.category);
-                    setEditLocation(item.location);
-                    setEditColor(item.color || "");
-                    setEditBrand(item.brand || "");
-                    setEditContactInfo(item.contactInfo || "");
-                    setEditItemModalOpen(true);
-                  }}
-                  className="w-full py-2.5 px-4 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer"
-                  title="Editar dados e informações do objeto"
-                >
-                  <Edit className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                  <span>Editar Informações do Objeto</span>
-                </button>
-              )}
-
-              {/* Generate Official Printable Item Summary / Campus Report PDF Button */}
-              <button
-                type="button"
-                onClick={handleGenerateItemSummaryPDF}
-                className="w-full py-2.5 px-4 rounded-xl border border-[#00843D]/30 bg-[#00843D]/10 hover:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer"
-                title="Gerar Laudo / Relatório Oficial em PDF (jsPDF)"
-              >
-                <FileText className="w-4 h-4 text-[#00843D]" />
-                <span>Gerar Relatório Oficial do Campus (Ficha em PDF)</span>
-              </button>
-
-              {/* Servidor / Admin Privileges: Formal Devolution Flow */}
-              {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && item.status !== "DEVOLVIDO" && item.status !== "ENCERRADO" && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                  <button
-                    onClick={() => setReturnModalOpen(true)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    <span>Registrar Devolução Formal</span>
-                  </button>
-
-                  <button
-                    onClick={() => setDestinationModalOpen(true)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-900 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs"
-                  >
-                    <PackageCheck className="w-4 h-4" />
-                    <span>Registrar Destinação</span>
-                  </button>
-                </div>
-              )}
-
-              {/* Admin Only: Reopen Return Button if item was already returned */}
-              {currentUser.role === "ADMIN" && item.status === "DEVOLVIDO" && (
-                <button
-                  onClick={() => setReopenModalOpen(true)}
-                  className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer shadow-xs"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  <span>[Admin] Reabrir Devolução (Corrigir Erro)</span>
-                </button>
-              )}
             </div>
           </div>
         </div>

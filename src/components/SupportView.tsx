@@ -23,8 +23,9 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { vibrateClick, vibrateSuccess, vibrateWarning } from "../lib/utils";
+import { OFFICIAL_DISCORD_INVITE_URL } from "../lib/constants";
 
-const IFPR_IVAIPORA_DISCORD_INVITE = "https://discord.com/invite/nXwU7fKq6N";
+export const IFPR_IVAIPORA_DISCORD_INVITE = OFFICIAL_DISCORD_INVITE_URL;
 
 interface SupportViewProps {
   initialTab?: "faq" | "feedback" | "bug";

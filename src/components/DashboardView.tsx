@@ -16,7 +16,7 @@ import { AIEfficiencyReportView } from "./AIEfficiencyReportView";
 import { CustodyRemindersView } from "./CustodyRemindersView";
 import { DigitalReturnsD3Chart } from "./DigitalReturnsD3Chart";
 import { ExportFoundItemsReportModal } from "./ExportFoundItemsReportModal";
-import { db, traceFirebasePerformance } from "../lib/firebase";
+import { auth, db, traceFirebasePerformance } from "../lib/firebase";
 import { collection, query, limit, getDocs } from "firebase/firestore";
 import {
   BarChart,
@@ -80,6 +80,7 @@ import {
   FileCheck2,
   ShieldCheck,
   Shuffle,
+  Settings,
 } from "lucide-react";
 
 export const DashboardView: React.FC = () => {
@@ -706,7 +707,17 @@ export const DashboardView: React.FC = () => {
     vibrateClick();
     setIsExportingMonitoringJSON(true);
     try {
-      const res = await fetch("/api/monitoring/export-logs");
+      let token = "";
+      if (auth.currentUser) {
+        try {
+          token = await auth.currentUser.getIdToken();
+        } catch (_) {}
+      }
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      const res = await fetch("/api/monitoring/export-logs", { headers });
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
       }
@@ -1590,218 +1601,319 @@ export const DashboardView: React.FC = () => {
             </div>
           ) : (
             <>
-              {/* Admin Navigation Sub-Tabs Bar */}
-              <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-4 border border-neutral-200 dark:border-neutral-800 shadow-xs flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={() => setAdminSubTab("users")}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
-                      adminSubTab === "users"
-                        ? "bg-purple-600 text-white shadow-md"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                    }`}
-                  >
-                    <Users className="w-4 h-4" />
-                    <span>Usuários & Controle</span>
-                  </button>
+              {/* Admin Navigation Categorized Hierarchy */}
+              <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-5 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-3">
+                {/* Level 1: Context Categories */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 dark:border-neutral-800 pb-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {[
+                      {
+                        id: "users_access",
+                        label: "Usuários & Acesso",
+                        icon: Users,
+                        tabs: ["users", "approvals"],
+                        badge: (allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length,
+                      },
+                      {
+                        id: "security_audit",
+                        label: "Segurança & Auditoria",
+                        icon: Shield,
+                        tabs: ["audit", "health", "backups"],
+                      },
+                      {
+                        id: "custody_returns",
+                        label: "Custódia & Devoluções",
+                        icon: PackageCheck,
+                        tabs: ["custody_reminders", "digital_returns"],
+                        badge: itemsOver90DaysCount,
+                      },
+                      {
+                        id: "quality_tests",
+                        label: "Qualidade & Testes",
+                        icon: ShieldCheck,
+                        tabs: ["test_batteries", "test_distribution"],
+                      },
+                      {
+                        id: "system_docs",
+                        label: "Sistema & Relatórios",
+                        icon: Settings,
+                        tabs: ["documents", "project_settings", "ai_efficiency", "versions"],
+                      },
+                    ].map((cat) => {
+                      const Icon = cat.icon;
+                      const isCatActive = cat.tabs.includes(adminSubTab);
+                      return (
+                        <button
+                          key={cat.id}
+                          onClick={() => {
+                            vibrateClick();
+                            if (!isCatActive) {
+                              setAdminSubTab(cat.tabs[0] as any);
+                            }
+                          }}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer border ${
+                            isCatActive
+                              ? "bg-neutral-900 text-white border-neutral-900 dark:bg-white dark:text-neutral-900 dark:border-white shadow-xs"
+                              : "bg-neutral-50 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-400 border-neutral-200/80 dark:border-neutral-700 hover:border-neutral-400"
+                          }`}
+                        >
+                          <Icon className="w-3.5 h-3.5" />
+                          <span>{cat.label}</span>
+                          {cat.badge && cat.badge > 0 ? (
+                            <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-black animate-pulse">
+                              {cat.badge}
+                            </span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
 
-                  <button
-                    onClick={() => setAdminSubTab("audit")}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
-                      adminSubTab === "audit"
-                        ? "bg-indigo-600 text-white shadow-md"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                    }`}
-                  >
-                    <History className="w-4 h-4" />
-                    <span>Auditoria & Logs</span>
-                  </button>
-
-                  <button
-                    onClick={() => setAdminSubTab("health")}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
-                      adminSubTab === "health"
-                        ? "bg-emerald-600 text-white shadow-md"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                    }`}
-                  >
-                    <Activity className="w-4 h-4" />
-                    <span>Saúde do Sistema</span>
-                  </button>
-
-                  <button
-                    onClick={() => setAdminSubTab("approvals")}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
-                      adminSubTab === "approvals"
-                        ? "bg-blue-600 text-white shadow-md"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                    }`}
-                  >
-                    <GraduationCap className="w-4 h-4" />
-                    <span>Aprovação (@ifpr)</span>
-                    {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black animate-pulse">
-                        {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length}
-                      </span>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => setAdminSubTab("backups")}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
-                      adminSubTab === "backups"
-                        ? "bg-amber-600 text-white shadow-md"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                    }`}
-                  >
-                    <HardDrive className="w-4 h-4" />
-                    <span>Backups & Auditoria</span>
-                  </button>
-
-                  <button
-                    onClick={() => setAdminSubTab("documents")}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
-                      adminSubTab === "documents"
-                        ? "bg-emerald-600 text-white shadow-md"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                    }`}
-                  >
-                    <FileText className="w-4 h-4" />
-                    <span>Documentos PDF</span>
-                  </button>
-
-                  <button
-                    onClick={() => setAdminSubTab("project_settings")}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
-                      adminSubTab === "project_settings"
-                        ? "bg-teal-600 text-white shadow-md"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                    }`}
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    <span>Dados do Projeto</span>
-                  </button>
-
-                  <button
-                    onClick={() => setAdminSubTab("ai_efficiency")}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
-                      adminSubTab === "ai_efficiency"
-                        ? "bg-purple-700 text-white shadow-md"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                    }`}
-                  >
-                    <Sparkles className="w-4 h-4 text-amber-300" />
-                    <span>Eficiência da IA</span>
-                  </button>
-
-                  <button
-                    onClick={() => setAdminSubTab("custody_reminders")}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
-                      adminSubTab === "custody_reminders"
-                        ? "bg-amber-600 text-white shadow-md"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                    }`}
-                  >
-                    <AlertTriangle className="w-4 h-4 text-amber-400" />
-                    <span>Lembretes (+90 Dias)</span>
-                    {itemsOver90DaysCount > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-black animate-pulse">
-                        {itemsOver90DaysCount}
-                      </span>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => setAdminSubTab("digital_returns")}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
-                      adminSubTab === "digital_returns"
-                        ? "bg-[#00843D] text-white shadow-md"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                    }`}
-                  >
-                    <FileCheck2 className="w-4 h-4 text-emerald-400" />
-                    <span>Métricas Devoluções (D3)</span>
-                    {digitalReturnedItemsCount > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 text-[10px] font-black">
-                        {digitalReturnedItemsCount}
-                      </span>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={() => setAdminSubTab("test_batteries")}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
-                      adminSubTab === "test_batteries"
-                        ? "bg-purple-600 text-white shadow-md"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                    }`}
-                  >
-                    <ShieldCheck className="w-4 h-4 text-amber-300" />
-                    <span>Bateria de Testes QA</span>
-                  </button>
-
-                  <button
-                    id="btn-tab-test-distribution"
-                    onClick={() => setAdminSubTab("test_distribution")}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
-                      adminSubTab === "test_distribution"
-                        ? "bg-emerald-600 text-white shadow-md"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                    }`}
-                  >
-                    <Shuffle className="w-4 h-4 text-emerald-300" />
-                    <span>Distribuição de Testes</span>
-                  </button>
-
-                  <button
-                    onClick={() => setAdminSubTab("versions")}
-                    className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center space-x-2 ${
-                      adminSubTab === "versions"
-                        ? "bg-[#00843D] text-white shadow-md"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                    }`}
-                  >
-                    <GitBranch className="w-4 h-4" />
-                    <span>Versões & Changelog</span>
-                  </button>
+                  {/* System Maintenance Control */}
+                  <div className="flex items-center space-x-2 shrink-0">
+                    <button
+                      onClick={toggleMaintenanceMode}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-1.5 cursor-pointer border ${
+                        maintenanceMode
+                          ? "bg-amber-500 text-black border-amber-600 animate-pulse shadow-xs"
+                          : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-amber-500 hover:text-black hover:border-amber-500"
+                      }`}
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                      <span>{maintenanceMode ? "Manutenção ATIVA" : "Modo Manutenção"}</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={toggleMaintenanceMode}
-                    className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center space-x-1.5 ${
-                      maintenanceMode
-                        ? "bg-amber-500 text-black animate-pulse shadow-sm"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-amber-500 hover:text-black"
-                    }`}
-                  >
-                    <ShieldAlert className="w-3.5 h-3.5" />
-                    <span>{maintenanceMode ? "Manutenção ATIVA" : "Modo Manutenção"}</span>
-                  </button>
+                {/* Level 2: Specific Sub-Tabs of Active Category */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Category: Users & Access */}
+                    {(adminSubTab === "users" || adminSubTab === "approvals") && (
+                      <>
+                        <button
+                          onClick={() => setAdminSubTab("users")}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "users"
+                              ? "bg-purple-600 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                          <span>Usuários & Controle</span>
+                        </button>
 
-                  <button
-                    onClick={() => {
-                      vibrateClick();
-                      const firstStudent = (allUsers || []).find((u) => u && u.role === "ALUNO") || allUsers[0];
-                      setNotifyModalUser(firstStudent || null);
-                      setIsBroadcastNotification(false);
-                      setNotifyTitle("Aviso Institucional - Achados e Perdidos");
-                      setNotifyMessage("Olá! Informamos que há uma atualização referente aos seus registros no sistema do IFPR.");
-                      setNotifyRelatedItemId("");
-                    }}
-                    className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black transition-all flex items-center space-x-1.5 shadow-sm cursor-pointer"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Notificar Alunos</span>
-                  </button>
+                        <button
+                          onClick={() => setAdminSubTab("approvals")}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "approvals"
+                              ? "bg-blue-600 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          <GraduationCap className="w-3.5 h-3.5" />
+                          <span>Aprovação (@ifpr)</span>
+                          {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length > 0 && (
+                            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-black animate-pulse">
+                              {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length}
+                            </span>
+                          )}
+                        </button>
+                      </>
+                    )}
 
-                  <button
-                    onClick={() => setIsAddingUserOpen(true)}
-                    className="px-3.5 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-black transition-all flex items-center space-x-1 shadow-sm"
-                  >
-                    <UserCheck className="w-3.5 h-3.5" />
-                    <span>+ Usuário</span>
-                  </button>
+                    {/* Category: Security & Audit */}
+                    {(adminSubTab === "audit" || adminSubTab === "health" || adminSubTab === "backups") && (
+                      <>
+                        <button
+                          onClick={() => setAdminSubTab("audit")}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "audit"
+                              ? "bg-indigo-600 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          <History className="w-3.5 h-3.5" />
+                          <span>Auditoria & Logs</span>
+                        </button>
+
+                        <button
+                          onClick={() => setAdminSubTab("health")}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "health"
+                              ? "bg-emerald-600 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          <Activity className="w-3.5 h-3.5" />
+                          <span>Saúde do Sistema</span>
+                        </button>
+
+                        <button
+                          onClick={() => setAdminSubTab("backups")}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "backups"
+                              ? "bg-amber-600 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          <HardDrive className="w-3.5 h-3.5" />
+                          <span>Backups & Segurança</span>
+                        </button>
+                      </>
+                    )}
+
+                    {/* Category: Custody & Returns */}
+                    {(adminSubTab === "custody_reminders" || adminSubTab === "digital_returns") && (
+                      <>
+                        <button
+                          onClick={() => setAdminSubTab("custody_reminders")}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "custody_reminders"
+                              ? "bg-amber-600 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Lembretes (+90 Dias)</span>
+                          {itemsOver90DaysCount > 0 && (
+                            <span className="px-1.5 py-0.2 rounded-full bg-red-500 text-white text-[10px] font-black animate-pulse">
+                              {itemsOver90DaysCount}
+                            </span>
+                          )}
+                        </button>
+
+                        <button
+                          onClick={() => setAdminSubTab("digital_returns")}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "digital_returns"
+                              ? "bg-[#00843D] text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          <FileCheck2 className="w-3.5 h-3.5 text-emerald-300" />
+                          <span>Métricas Devoluções (D3)</span>
+                          {digitalReturnedItemsCount > 0 && (
+                            <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 text-[10px] font-black">
+                              {digitalReturnedItemsCount}
+                            </span>
+                          )}
+                        </button>
+                      </>
+                    )}
+
+                    {/* Category: Quality & Tests */}
+                    {(adminSubTab === "test_batteries" || adminSubTab === "test_distribution") && (
+                      <>
+                        <button
+                          onClick={() => setAdminSubTab("test_batteries")}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "test_batteries"
+                              ? "bg-purple-600 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5 text-amber-300" />
+                          <span>Bateria de Testes QA</span>
+                        </button>
+
+                        <button
+                          id="btn-tab-test-distribution"
+                          onClick={() => setAdminSubTab("test_distribution")}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "test_distribution"
+                              ? "bg-emerald-600 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          <Shuffle className="w-3.5 h-3.5 text-emerald-300" />
+                          <span>Distribuição de Testes</span>
+                        </button>
+                      </>
+                    )}
+
+                    {/* Category: System & Reports */}
+                    {(adminSubTab === "documents" || adminSubTab === "project_settings" || adminSubTab === "ai_efficiency" || adminSubTab === "versions") && (
+                      <>
+                        <button
+                          onClick={() => setAdminSubTab("documents")}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "documents"
+                              ? "bg-emerald-600 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Documentos PDF</span>
+                        </button>
+
+                        <button
+                          onClick={() => setAdminSubTab("project_settings")}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "project_settings"
+                              ? "bg-teal-600 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Dados do Projeto</span>
+                        </button>
+
+                        <button
+                          onClick={() => setAdminSubTab("ai_efficiency")}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "ai_efficiency"
+                              ? "bg-purple-700 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          <span>Eficiência da IA</span>
+                        </button>
+
+                        <button
+                          onClick={() => setAdminSubTab("versions")}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "versions"
+                              ? "bg-[#00843D] text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          <GitBranch className="w-3.5 h-3.5" />
+                          <span>Versões & Changelog</span>
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Contextual Actions (only when in Users & Access) */}
+                  {(adminSubTab === "users" || adminSubTab === "approvals") && (
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => {
+                          vibrateClick();
+                          const firstStudent = (allUsers || []).find((u) => u && u.role === "ALUNO") || allUsers[0];
+                          setNotifyModalUser(firstStudent || null);
+                          setIsBroadcastNotification(false);
+                          setNotifyTitle("Aviso Institucional - Achados e Perdidos");
+                          setNotifyMessage("Olá! Informamos que há uma atualização referente aos seus registros no sistema do IFPR.");
+                          setNotifyRelatedItemId("");
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all flex items-center space-x-1.5 shadow-xs cursor-pointer"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Notificar Alunos</span>
+                      </button>
+
+                      <button
+                        onClick={() => setIsAddingUserOpen(true)}
+                        className="px-3.5 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold transition-all flex items-center space-x-1 shadow-xs cursor-pointer"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        <span>+ Usuário</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

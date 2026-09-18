@@ -94,4 +94,16 @@ describe("Localiza+ System Diagnostics - Feedback, Items & Discord Routing", () 
 
     expect(canCreate).toBe(true);
   });
+
+  it("should configure the official project Discord server invite URL", async () => {
+    const { OFFICIAL_DISCORD_INVITE_URL } = await import("./constants");
+    const { OFFICIAL_DISCORD_INVITE_URL: sharedDiscordUrl } = await import("./shared-constants");
+    const { IFPR_IVAIPORA_DISCORD_INVITE } = await import("../components/SupportView");
+
+    const expectedUrl = "https://discord.gg/uV2qUDrHcw";
+    expect(OFFICIAL_DISCORD_INVITE_URL).toBe(expectedUrl);
+    expect(sharedDiscordUrl).toBe(expectedUrl);
+    expect(IFPR_IVAIPORA_DISCORD_INVITE).toBe(expectedUrl);
+    expect(OFFICIAL_DISCORD_INVITE_URL).not.toContain("nXwU7fKq6N");
+  });
 });

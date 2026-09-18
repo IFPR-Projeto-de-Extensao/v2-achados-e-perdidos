@@ -69,3 +69,5 @@ export const CAMPUS_LOCATIONS = [
 
 export const DEFAULT_MAINTENANCE_MESSAGE =
   "Estamos efetuando uma manutenção preventiva no banco de dados do Achados & Perdidos do IFPR. As consultas e registros estão temporariamente pausados. Por favor, volte em instantes!";
+
+export const OFFICIAL_DISCORD_INVITE_URL = "https://discord.gg/uV2qUDrHcw";

@@ -590,16 +590,16 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                 vibrateClick();
                 setIsAdvancedFiltersOpen(!isAdvancedFiltersOpen);
               }}
-              className={`flex-1 md:flex-none px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center space-x-2 cursor-pointer border ${
+              className={`flex-1 md:flex-none px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-center space-x-2 cursor-pointer border ${
                 isAdvancedFiltersOpen
                   ? "bg-[#00843D] text-white border-[#00843D] shadow-xs"
-                  : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-700 hover:bg-neutral-200"
+                  : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-700"
               }`}
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>Painel de Filtros Avançados</span>
+              <span>Filtros Avançados</span>
               {activeFiltersCount > 0 && (
-                <span className="ml-1 px-2 py-0.5 text-[10px] rounded-full bg-white/20 text-white font-extrabold">
+                <span className="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-white/20 text-white font-extrabold">
                   {activeFiltersCount}
                 </span>
               )}
@@ -704,83 +704,12 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
               transition={{ duration: 0.25 }}
               className="space-y-5 pt-3 border-t border-neutral-100 dark:border-neutral-800 overflow-hidden"
             >
-              {/* 1. Categorias do Objeto */}
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black uppercase tracking-wider text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
-                    <Tag className="w-3.5 h-3.5 text-[#00843D]" />
-                    <span>1. Filtrar por Categoria ({categoriesList.length + 1})</span>
-                  </span>
-                  {selectedCategory !== "TODAS" && (
-                    <button
-                      onClick={() => setSelectedCategory("TODAS")}
-                      className="text-[11px] text-[#00843D] dark:text-green-400 font-bold hover:underline cursor-pointer"
-                    >
-                      Ver todas
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      vibrateClick();
-                      setSelectedCategory("TODAS");
-                    }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer border ${
-                      selectedCategory === "TODAS"
-                        ? "bg-[#00843D] text-white border-[#00843D] shadow-xs"
-                        : "bg-neutral-50 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:border-[#00843D]/50"
-                    }`}
-                  >
-                    <span>Todas as Categorias</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-black/10 dark:bg-white/10 font-bold">
-                      {categoryCounts.TODAS}
-                    </span>
-                  </button>
-
-                  {categoriesList.map((cat) => {
-                    const IconComp = cat.icon;
-                    const isSelected = selectedCategory === cat.name;
-                    const count = categoryCounts[cat.name] || 0;
-                    return (
-                      <button
-                        key={cat.name}
-                        type="button"
-                        onClick={() => {
-                          vibrateClick();
-                          setSelectedCategory(isSelected ? "TODAS" : cat.name);
-                        }}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer border ${
-                          isSelected
-                            ? "bg-[#00843D] text-white border-[#00843D] shadow-xs"
-                            : "bg-neutral-50 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:border-[#00843D]/50"
-                        }`}
-                      >
-                        <IconComp className={`w-3.5 h-3.5 ${isSelected ? "text-white" : "text-[#00843D]"}`} />
-                        <span>{cat.name}</span>
-                        <span
-                          className={`text-[10px] px-1.5 py-0.2 rounded-md font-bold ${
-                            isSelected
-                              ? "bg-white/20 text-white"
-                              : "bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400"
-                          }`}
-                        >
-                          {count}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 2. Bloco do Campus Ivaiporã */}
+              {/* 1. Bloco do Campus Ivaiporã */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-black uppercase tracking-wider text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
                     <Building2 className="w-3.5 h-3.5 text-[#00843D]" />
-                    <span>2. Filtrar por Bloco do Campus Ivaiporã</span>
+                    <span>1. Bloco do Campus Ivaiporã</span>
                   </span>
                   {selectedCampusBlock !== "TODOS" && (
                     <button
@@ -828,12 +757,12 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                 </div>
               </div>
 
-              {/* 3. Período de Tempo e Data */}
+              {/* 2. Período de Tempo e Data */}
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start bg-neutral-50 dark:bg-neutral-900/60 p-4 rounded-2xl border border-neutral-200/80 dark:border-neutral-800">
                 <div className="lg:col-span-7 space-y-2">
                   <span className="text-xs font-black uppercase tracking-wider text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-[#00843D]" />
-                    <span>3. Período de Tempo</span>
+                    <span>2. Período de Tempo</span>
                   </span>
 
                   <div className="flex flex-wrap gap-1.5">
@@ -901,7 +830,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                 </div>
               </div>
 
-              {/* 4. Local Específico e Cor */}
+              {/* 3. Local Específico e Cor */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
                 {/* Specific Location Dropdown */}
                 <div className="space-y-1">

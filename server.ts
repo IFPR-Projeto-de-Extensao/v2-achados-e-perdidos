@@ -560,6 +560,22 @@ app.post(["/api/admin/master-wipe", "/admin/master-wipe"], requireAuth, requireA
         timestamp: new Date().toISOString(),
         ip: req.ip || req.socket.remoteAddress,
       });
+
+      await firestore.collection("audit_logs").add({
+        id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        transactionId: `TX-WIPE-${Date.now().toString(36).toUpperCase()}`,
+        objectId: "SYSTEM_DATABASE",
+        objectType: "SYSTEM",
+        objectTitle: "Master Wipe Geral",
+        action: "MASTER_WIPE",
+        actorId: adminUid,
+        actorName: "Administrador TI",
+        actorEmail: adminEmail,
+        actorRole: "ADMIN",
+        timestamp: new Date().toISOString(),
+        details: `Master Wipe executado no servidor pelo Admin ${adminEmail}. Coleções excluídas: ${JSON.stringify(deletedCounts)}`,
+        immutable: true,
+      });
     }
 
     logAIAudit({
@@ -1343,6 +1359,27 @@ app.post(["/api/fcm/send-match-alert", "/fcm/send-match-alert"], requireAuth, ge
         matchScore: String(matchScore || 85),
       },
     };
+
+    // Securely persist counterpart notification directly via Admin Firestore
+    const adminDb = getAdminFirestore();
+    if (adminDb && targetUserId) {
+      try {
+        const notifId = `notif-match-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        await adminDb.collection("notifications").doc(notifId).set({
+          id: notifId,
+          userId: targetUserId,
+          title: payload.title,
+          message: payload.body,
+          timestamp: new Date().toISOString(),
+          read: false,
+          type: "MATCH",
+          relatedItemId: newRegisteredItem.id,
+          isGlobal: false,
+        });
+      } catch (firestoreErr) {
+        console.error("Erro ao salvar notificação de correspondência no Firestore:", firestoreErr);
+      }
+    }
 
     logAIAudit({
       userId,
@@ -2263,7 +2300,7 @@ app.get(["/api/ai/audit-logs", "/ai/audit-logs"], requireAuth, requireAdmin, (_r
 });
 
 // Endpoint to export comprehensive monitoring & performance diagnostic logs
-app.get(["/api/monitoring/export-logs", "/monitoring/export-logs"], (req, res) => {
+app.get(["/api/monitoring/export-logs", "/monitoring/export-logs"], requireAuth, requireAdmin, (req, res) => {
   try {
     const memory = process.memoryUsage();
     const payload = {
@@ -2600,6 +2637,26 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], a
         details: `Assinatura digital autenticada e baixa de devolução concluída para o objeto #${itemId} (${itemData.title || ""}) pelo receptor ${effectiveSignerName} (${effectiveSignerBond}). Código de validação: ${validationCode}`,
         timestamp: nowIso,
       });
+
+      const auditLogId = `audit-sig-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+      await adminDb.collection("audit_logs").doc(auditLogId).set({
+        id: auditLogId,
+        transactionId: `TX-RET-${Date.now().toString(36).toUpperCase()}`,
+        objectId: itemId,
+        objectType: "RETURN",
+        objectTitle: itemData.title || itemId,
+        action: "REGISTRO_DEVOLUCAO",
+        actorId: "token-auth-system",
+        actorName: `${effectiveSignerName} (${effectiveSignerBond})`,
+        actorEmail: signerEmail || itemData.recipientEmail || "",
+        actorRole: effectiveSignerBond === "Servidor" ? "SERVIDOR" : "ALUNO",
+        timestamp: nowIso,
+        fieldChanged: "status_devolucao",
+        oldValue: itemData.status || "ENCONTRADO",
+        newValue: "DEVOLVIDO",
+        details: `Assinatura digital autenticada e baixa de devolução concluída para o objeto #${itemId} (${itemData.title || ""}) pelo receptor ${effectiveSignerName} (${effectiveSignerBond}). Código de validação: ${validationCode}`,
+        immutable: true,
+      });
     } catch (actErr) {
       console.warn("[Signature Server] Aviso ao gravar activity_log no Firestore:", actErr);
     }
@@ -2786,9 +2843,35 @@ async function startServer() {
 
       const { createServer: createViteServer } = await import("vite");
       const vite = await createViteServer({
-        server: { middlewareMode: true, hmr: process.env.DISABLE_HMR === "true" ? false : true },
+        server: { middlewareMode: true, hmr: false },
         appType: "spa",
       });
+
+      // Intercept /@vite/client in container sandbox to eliminate failing websocket connections and [vite] console alarms
+      app.get("/@vite/client", async (_req, res, next) => {
+        try {
+          const result = await vite.transformRequest("/@vite/client");
+          if (result && typeof result.code === "string") {
+            let code = result.code;
+            code = `function __createSafeWS() { return { addEventListener(){}, removeEventListener(){}, send(){}, close(){}, readyState: 3 }; }\n` + code;
+            code = code.replaceAll("new WebSocket(", "__createSafeWS(");
+            code = code.replace(/console\.error\(\s*`\[vite\][\s\S]*?`\s*\);/g, "/* suppressed */");
+            code = code.replace(/console\.error\(`\[vite\][^`]*`\);/g, "/* suppressed */");
+            code = code.replace(/error:\s*\(err\)\s*=>\s*console\.error\(\s*("[^"]*vite[^"]*"|'[^']*vite[^']*')\s*,\s*err\)/g, "error: () => {}");
+            code = code.replaceAll("[vite]", "[dev]");
+
+            res.set({
+              "Content-Type": "application/javascript",
+              "Cache-Control": "no-cache",
+            });
+            return res.send(code);
+          }
+        } catch {
+          // Fallback to standard vite middleware
+        }
+        next();
+      });
+
       app.use(vite.middlewares);
     } catch (viteErr) {
       console.warn("[Vite Middleware Warning] Could not load Vite dev server:", viteErr);

@@ -1,5 +1,5 @@
 import { SupportCategory, SupportFeedbackTicket, UserRole } from "../types";
-import { db } from "./firebase";
+import { auth, db } from "./firebase";
 import { sanitizeFirestoreData } from "./shared-constants";
 import { doc, setDoc } from "firebase/firestore";
 
@@ -95,15 +95,19 @@ export async function submitSupportFeedback(
     // 4. Resilient secondary save to Firestore support_tickets (non-blocking)
     if (db) {
       try {
+        const authUser = auth.currentUser;
+        const effectiveUserId = authUser ? authUser.uid : payload.userId;
+        const effectiveUserEmail = authUser?.email ? authUser.email : trimmedEmail;
+
         const ticketData: SupportFeedbackTicket = {
           id: `ticket_${confirmedProtocol}`,
           name: trimmedName,
-          email: trimmedEmail,
+          email: effectiveUserEmail,
           category: payload.category || "FEEDBACK",
           subject: trimmedSubject,
           message: trimmedMessage,
           priority: payload.priority || "MEDIA",
-          userId: payload.userId,
+          userId: effectiveUserId,
           userRole: payload.userRole,
           createdAt: timestamp,
           status: "NOVO",

@@ -2,22 +2,32 @@
 <html lang="pt-BR">
   <head>
     <script>
-      // Suppress benign Vite HMR websocket connection errors in sandboxed preview environments where HMR is disabled
+      // Suppress benign Vite development/HMR websocket notices in sandboxed preview environments where HMR is disabled by platform
       (function() {
-        if (typeof window !== 'undefined' && window.console && window.console.error) {
-          var _origErr = window.console.error;
-          window.console.error = function() {
-            var firstArg = arguments[0];
-            if (
-              typeof firstArg === 'string' &&
-              (firstArg.indexOf('[vite] failed to connect to websocket') !== -1 ||
-               firstArg.indexOf('[vite] connecting...') !== -1 ||
-               (firstArg.indexOf('[vite]') !== -1 && firstArg.indexOf('websocket') !== -1))
-            ) {
-              return;
+        if (typeof window !== 'undefined' && window.console) {
+          var methods = ['error', 'warn', 'info', 'debug', 'log'];
+          for (var i = 0; i < methods.length; i++) {
+            (function(m) {
+              var orig = window.console[m];
+              if (typeof orig === 'function') {
+                window.console[m] = function() {
+                  var first = arguments[0];
+                  if (typeof first === 'string' && (first.indexOf('[vite]') !== -1 || first.indexOf('[dev]') !== -1)) {
+                    return;
+                  }
+                  return orig.apply(window.console, arguments);
+                };
+              }
+            })(methods[i]);
+          }
+
+          window.addEventListener('error', function(event) {
+            if (event && ((event.message && typeof event.message === 'string' && (event.message.indexOf('[vite]') !== -1 || event.message.indexOf('[dev]') !== -1)) ||
+                          (event.filename && typeof event.filename === 'string' && event.filename.indexOf('/@vite/client') !== -1))) {
+              if (typeof event.preventDefault === 'function') event.preventDefault();
+              if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
             }
-            return _origErr.apply(window.console, arguments);
-          };
+          }, true);
         }
       })();
     </script>

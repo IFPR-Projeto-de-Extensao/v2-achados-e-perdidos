@@ -7,6 +7,7 @@ import { vibrateClick } from "../lib/utils";
 import { usePWA } from "../hooks/usePWA";
 import { SupportCategory } from "../types";
 import { ContactSupportModal } from "./ContactSupportModal";
+import { OFFICIAL_DISCORD_INVITE_URL } from "../lib/constants";
 
 export const Footer: React.FC = () => {
   const { language, setLanguage, t } = useApp();
@@ -151,9 +152,25 @@ export const Footer: React.FC = () => {
                 </Link>
               </li>
               <li>
-                <a href="https://ivaipora.ifpr.edu.br" target="_blank" rel="noopener noreferrer" className="hover:text-[#00843D] transition-colors flex items-center space-x-1">
+                <a
+                  href="https://ivaipora.ifpr.edu.br"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-[#00843D] transition-colors flex items-center space-x-1"
+                >
                   <Globe className="w-3.5 h-3.5" />
                   <span>Portal IFPR Campus Ivaiporã</span>
+                </a>
+              </li>
+              <li>
+                <a
+                  href={OFFICIAL_DISCORD_INVITE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-[#5865F2] dark:hover:text-[#7983f5] transition-colors flex items-center space-x-1.5 text-left font-medium"
+                >
+                  <MessageSquarePlus className="w-3.5 h-3.5 text-[#5865F2] shrink-0" />
+                  <span>{language === "pt" ? "Discord Oficial do IFPR" : "Official IFPR Discord"}</span>
                 </a>
               </li>
               <li>
