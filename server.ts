@@ -480,6 +480,60 @@ app.get(["/api/system/config", "/system/config"], (req: Request, res: Response) 
   }
 });
 
+// =================================================================
+// Auth Compensation Endpoint for Failed Registrations
+// Prevents newly created Auth accounts from becoming orphaned if Firestore creation fails
+// =================================================================
+app.post(
+  ["/api/auth/compensate-failed-registration", "/auth/compensate-failed-registration"],
+  generalRateLimiter,
+  async (req: Request, res: Response) => {
+    const { uid, email } = req.body || {};
+    if (!uid || typeof uid !== "string") {
+      return res.status(400).json({ success: false, error: "UID obrigatório para compensação." });
+    }
+
+    try {
+      const adminAuth = getAdminAuth();
+      const adminFirestore = getAdminFirestore();
+
+      if (!adminAuth) {
+        return res.status(503).json({ success: false, error: "Admin Auth indisponível para compensação." });
+      }
+
+      // 1. Fetch user to verify creation time
+      const userRecord = await adminAuth.getUser(uid);
+      const creationTime = new Date(userRecord.metadata.creationTime).getTime();
+      const now = Date.now();
+      const elapsedMs = now - creationTime;
+
+      // Only compensate recently created accounts (within last 3 minutes) to prevent accidental deletion of existing accounts
+      if (elapsedMs > 3 * 60 * 1000) {
+        console.warn(`[Compensation Rejected] Tentativa de compensação em conta antiga (${uid}, criada há ${Math.round(elapsedMs / 1000)}s). Abortando.`);
+        return res.status(403).json({ success: false, error: "Compensação permitida apenas para cadastros recém-criados." });
+      }
+
+      // 2. Verify that NO document exists in Firestore /users/{uid}
+      if (adminFirestore) {
+        const docSnap = await adminFirestore.collection("users").doc(uid).get();
+        if (docSnap.exists) {
+          console.warn(`[Compensation Rejected] Documento Firestore /users/${uid} já existe. Não compensar.`);
+          return res.status(409).json({ success: false, error: "Usuário já possui documento no Firestore." });
+        }
+      }
+
+      // 3. Delete the orphaned newly created account
+      await adminAuth.deleteUser(uid);
+      console.log(`[Compensation Success] Conta órfã recém-criada ${uid} (${email || userRecord.email}) removida do Firebase Auth com sucesso.`);
+
+      return res.json({ success: true, message: "Compensação realizada com sucesso." });
+    } catch (err: any) {
+      console.error(`[Compensation Error] Erro ao compensar conta ${uid}:`, err);
+      return res.status(500).json({ success: false, error: err?.message || "Erro interno na compensação." });
+    }
+  }
+);
+
 app.post(["/api/system/config", "/system/config"], requireAdmin, (req: Request, res: Response) => {
   try {
     if (!req.body || typeof req.body !== "object") {

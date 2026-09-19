@@ -19,6 +19,7 @@ export type ItemCategory =
   | "Outros";
 
 export type UserRole = "ALUNO" | "SERVIDOR" | "ADMIN";
+export type ApprovalStatus = "APROVADO" | "PENDENTE" | "REJEITADO";
 
 export interface User {
   id: string;
@@ -29,7 +30,7 @@ export interface User {
   registrationNumber: string; // Matrícula
   avatarUrl: string;
   phone?: string;
-  approvalStatus?: "APROVADO" | "PENDENTE" | "REJEITADO";
+  approvalStatus?: ApprovalStatus;
   reputationScore?: number;
 }
 

@@ -7,6 +7,7 @@ import {
   ItemStatus,
   AIMatchResult,
   UserRole,
+  ApprovalStatus,
   ItemComment,
   ActivityLog,
   BackupLog,
@@ -96,6 +97,42 @@ import {
   playNotificationChime,
   setupFCMForegroundListener,
 } from "../lib/fcm";
+
+export interface InstitutionalRoleDetermination {
+  role: UserRole;
+  isInstitutional: boolean;
+  label: string;
+}
+
+export function determineInstitutionalRole(email: string): InstitutionalRoleDetermination {
+  const cleanEmail = safeToLower(email).trim();
+  if (cleanEmail === "paulocauan39@gmail.com") {
+    return {
+      role: "ADMIN",
+      isInstitutional: true,
+      label: "Administrador Geral",
+    };
+  }
+  if (cleanEmail.endsWith("@estudantes.ifpr.edu.br") || cleanEmail.endsWith("@estudante.ifpr.edu.br")) {
+    return {
+      role: "ALUNO",
+      isInstitutional: true,
+      label: "Estudante IFPR (Aluno)",
+    };
+  }
+  if (cleanEmail.endsWith("@ifpr.edu.br")) {
+    return {
+      role: "SERVIDOR",
+      isInstitutional: true,
+      label: "Servidor IFPR (Docente / TAE)",
+    };
+  }
+  return {
+    role: "ALUNO",
+    isInstitutional: false,
+    label: "Não Institucional",
+  };
+}
 
 interface Toast {
   id: string;
@@ -1631,16 +1668,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // 3. Create new user document in Firestore if no previous profile exists
-    const isServidor = pendingData?.role === "SERVIDOR" || extraData?.role === "SERVIDOR" || userEmail.includes("@ifpr.edu.br");
-    const isAcademicEmail = userEmail.endsWith("@estudantes.ifpr.edu.br") || userEmail.endsWith("@estudante.ifpr.edu.br") || userEmail.endsWith("@ifpr.edu.br");
-    const defaultApprovalStatus = (isAcademicEmail && !isRoot) ? "PENDENTE" : "APROVADO";
+    const institutionalCheck = determineInstitutionalRole(userEmail);
+    if (!institutionalCheck.isInstitutional) {
+      console.warn(`[Acesso Restrito]: E-mail ${userEmail} não pertence a um domínio institucional autorizado. Rejeitando criação no Firestore.`);
+      try {
+        await signOut(auth);
+      } catch (_) {}
+      addToast("Acesso restrito: utilize seu e-mail institucional do IFPR (@estudantes.ifpr.edu.br ou @ifpr.edu.br).", "error");
+      throw new Error("Acesso não autorizado: Domínio de e-mail não institucional.");
+    }
 
-    const resolvedRole: UserRole = isRoot ? "ADMIN" : (pendingData?.role === "ADMIN" ? "ALUNO" : (pendingData?.role || extraData?.role || (isServidor ? "SERVIDOR" : "ALUNO")));
-    const resolvedName = pendingData?.name || fbUser.displayName || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
+    const defaultApprovalStatus: ApprovalStatus = isRoot ? "APROVADO" : "PENDENTE";
+    const resolvedRole: UserRole = institutionalCheck.role;
+    const resolvedName = fbUser.displayName || pendingData?.name || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
     const resolvedCourse = pendingData?.courseOrDept || extraData?.courseOrDept || (resolvedRole === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
     const resolvedRegistration = pendingData?.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
     const resolvedPhone = pendingData?.phone ?? extraData?.phone ?? "";
-    const resolvedAvatar = pendingData?.avatarUrl || fbUser.photoURL || extraData?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedName)}`;
+    const resolvedAvatar = fbUser.photoURL || pendingData?.avatarUrl || extraData?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedName)}`;
 
     const newUser: User = sanitizeFirestoreData({
       id: fbUser.uid,
@@ -1663,6 +1707,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         console.error("Erro ao gravar novo registro no Firestore:", err);
       }
+      throw err;
     }
     return newUser;
   };
@@ -1727,20 +1772,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         );
       } catch (profileErr) {
         console.warn("Aviso ao sincronizar perfil do Firestore:", profileErr);
-        const userEmail = safeToLower(fbUser.email);
-        const isRoot = userEmail === "paulocauan39@gmail.com";
-        const isServidor = userEmail.includes("@ifpr.edu.br");
-        const fallbackUser: User = {
-          id: fbUser.uid,
-          name: fbUser.displayName || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR"),
-          email: userEmail,
-          role: isRoot ? "ADMIN" : (isServidor ? "SERVIDOR" : "ALUNO"),
-          courseOrDept: isServidor ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã",
-          registrationNumber: `2026${fbUser.uid.substring(0, 6)}`,
-          approvalStatus: isRoot ? "APROVADO" : "PENDENTE",
-          avatarUrl: fbUser.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-        };
-        setCurrentUser(fallbackUser);
+        // Reset to guest user to prevent unauthenticated/rejected access
+        setCurrentUser(DEFAULT_GUEST_USER);
       } finally {
         setAuthLoading(false);
       }
@@ -2548,12 +2581,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error("Telefone inválido. Informe o DDD e o número completo (ex: (43) 99876-5432).");
     }
 
-    const isAcademic = cleanEmail.endsWith("@estudantes.ifpr.edu.br") || cleanEmail.endsWith("@estudante.ifpr.edu.br") || cleanEmail.endsWith("@ifpr.edu.br");
-    const isAdminEmail = cleanEmail === "paulocauan39@gmail.com";
-    const statusVal = (isAcademic && !isAdminEmail) ? "PENDENTE" : "APROVADO";
+    const institutionalCheck = determineInstitutionalRole(cleanEmail);
+    if (!institutionalCheck.isInstitutional) {
+      addToast("Cadastro restrito: utilize seu e-mail institucional (@estudantes.ifpr.edu.br ou @ifpr.edu.br).", "error");
+      throw new Error("Cadastro restrito: utilize seu e-mail institucional (@estudantes.ifpr.edu.br ou @ifpr.edu.br).");
+    }
 
-    const isServidor = userData.role === "SERVIDOR" || cleanEmail.includes("@ifpr.edu.br");
-    const resolvedRole: UserRole = isAdminEmail ? "ADMIN" : (userData.role === "ADMIN" ? "ALUNO" : (userData.role || (isServidor ? "SERVIDOR" : "ALUNO")));
+    const resolvedRole: UserRole = institutionalCheck.role;
+    const statusVal: ApprovalStatus = institutionalCheck.role === "ADMIN" ? "APROVADO" : "PENDENTE";
     const resolvedCourse = userData.courseOrDept?.trim() || (resolvedRole === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
     const resolvedPhone = userData.phone && userData.phone.trim() ? formatPhone(userData.phone.trim()) : "";
     const resolvedAvatar = userData.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(trimmedName)}`;
@@ -2570,8 +2605,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       avatarUrl: resolvedAvatar,
     });
 
+    let newlyCreatedAuthUser: FirebaseUser | null = null;
+
     try {
       const res = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
+      newlyCreatedAuthUser = res.user;
 
       // Trigger official Firebase email verification
       try {
@@ -2599,7 +2637,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast("Conta criada com sucesso! Enviamos um link de confirmação para o seu e-mail.", "info");
     } catch (e: any) {
       pendingRegistrationDataRef.current.delete(cleanEmail);
-      console.warn("Erro no cadastro no Firebase Auth:", e);
+      console.error("[Cadastro]: Erro no fluxo de criação de usuário:", e);
+
+      // COMPENSATING TRANSACTION: If the auth account was newly created in this operation but Firestore failed,
+      // roll back by deleting the newly created Auth user so it doesn't become an orphan account!
+      if (newlyCreatedAuthUser) {
+        console.warn("[Compensação Ativa]: Removendo conta Auth recém-criada após falha na persistência no Firestore...");
+        try {
+          await newlyCreatedAuthUser.delete();
+          console.log("[Compensação Concluída]: Conta Auth removida via client.");
+        } catch (delErr: any) {
+          console.warn("[Compensação Client Falhou]: Acionando endpoint de compensação no servidor...", delErr);
+          try {
+            await fetch("/api/auth/compensate-failed-registration", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ uid: newlyCreatedAuthUser.uid, email: cleanEmail }),
+            });
+            console.log("[Compensação Backend Concluída]: Conta Auth removida via Admin SDK.");
+          } catch (backendErr) {
+            console.error("[Compensação Erro Crítico]: Falha ao acionar compensação no backend:", backendErr);
+          }
+        }
+      }
+
       const parsed = handleAuthError(e, { addToast });
       throw new Error(parsed.userMessage);
     }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { X, Mail, Lock, User as UserIcon, Shield, GraduationCap, Building2, Phone, FileText, Sparkles, LogIn, UserPlus, LogOut, AlertTriangle, Check, Copy } from "lucide-react";
-import { useApp } from "../context/AppContext";
+import { X, Mail, Lock, User as UserIcon, Shield, ShieldCheck, GraduationCap, Building2, Phone, FileText, Sparkles, LogIn, UserPlus, LogOut, AlertTriangle, Check, Copy } from "lucide-react";
+import { useApp, determineInstitutionalRole } from "../context/AppContext";
 import { useRouter } from "../context/RouterContext";
 import { UserRole } from "../types";
 import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, formatPhone, isValidPhone } from "../lib/utils";
@@ -39,10 +39,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [regName, setRegName] = useState("");
   const [regEmail, setRegEmail] = useState("");
   const [regPassword, setRegPassword] = useState("");
-  const [regRole, setRegRole] = useState<UserRole>("ALUNO");
   const [regCourseOrDept, setRegCourseOrDept] = useState("Técnico em Informática - Campus Ivaiporã");
   const [regMatricula, setRegMatricula] = useState("");
   const [regPhone, setRegPhone] = useState("");
+
+  const regRoleDetermination = determineInstitutionalRole(regEmail);
 
   // Close modal on Escape key
   useEffect(() => {
@@ -123,13 +124,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       return;
     }
 
+    const roleDetermination = determineInstitutionalRole(cleanEmail);
+    if (!roleDetermination.isInstitutional) {
+      setErrorMsg("Apenas e-mails institucionais (@estudantes.ifpr.edu.br ou @ifpr.edu.br) são permitidos para novos cadastros.");
+      addToast("Apenas e-mails institucionais (@estudantes.ifpr.edu.br ou @ifpr.edu.br) são permitidos.", "warning");
+      return;
+    }
+
+    const assignedRole = roleDetermination.role;
+
     setLoading(true);
     try {
       await registerWithEmailPassword(cleanEmail, cleanPass, {
         name: trimmedName,
         email: cleanEmail,
-        role: regRole,
-        courseOrDept: regCourseOrDept.trim() || (regRole === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã"),
+        role: assignedRole,
+        courseOrDept: regCourseOrDept.trim() || (assignedRole === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã"),
         registrationNumber: regMatricula.trim() || `2026${Math.floor(10000 + Math.random() * 90000)}`,
         phone: cleanPhone ? formatPhone(cleanPhone) : "",
         avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(trimmedName)}`,
@@ -519,27 +529,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 </div>
               </div>
 
-              {/* Vínculo Institucional / Role */}
-              <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                  Vínculo no IFPR Campus Ivaiporã *
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(["ALUNO", "SERVIDOR", "ADMIN"] as UserRole[]).map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setRegRole(r)}
-                      className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
-                        regRole === r
-                          ? "bg-[#00843D] text-white border-[#00843D]"
-                          : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700"
-                      }`}
-                    >
-                      {r === "ALUNO" ? "Aluno" : r === "SERVIDOR" ? "Servidor" : "Secretaria/Admin"}
-                    </button>
-                  ))}
+              {/* Vínculo Institucional Identificado Automaticamente */}
+              <div className="p-3 rounded-2xl border transition-all duration-200 bg-neutral-50 dark:bg-neutral-800/60 border-neutral-200 dark:border-neutral-700/60">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className={`w-4 h-4 ${regRoleDetermination.isInstitutional ? "text-[#00843D]" : "text-neutral-400"}`} />
+                    <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                      Vínculo Institucional
+                    </span>
+                  </div>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                    regRoleDetermination.isInstitutional
+                      ? "bg-[#00843D]/10 text-[#00843D] dark:bg-[#00843D]/20 dark:text-emerald-400 border border-[#00843D]/30"
+                      : "bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400"
+                  }`}>
+                    {regRoleDetermination.isInstitutional ? regRoleDetermination.label : "Aguardando E-mail Institucional"}
+                  </span>
                 </div>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">
+                  O perfil é definido automaticamente pelo domínio: <span className="font-mono text-[10px] text-neutral-700 dark:text-neutral-300">@estudantes.ifpr.edu.br</span> (Aluno) ou <span className="font-mono text-[10px] text-neutral-700 dark:text-neutral-300">@ifpr.edu.br</span> (Servidor).
+                </p>
               </div>
 
               <div>

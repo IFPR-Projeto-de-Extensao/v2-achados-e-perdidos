@@ -24,12 +24,71 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.13",
+    codename: "Institutional User Reconciliation & Atomic Registration Guard",
+    releaseDate: "19/09/2026",
+    releaseDateTime: "19 de Setembro de 2026 • 11:30 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Diagnóstico completo e resolução da divergência de usuários entre o Firebase Authentication e a coleção /users do Firestore. Implementação de provisão institucional com status PENDENTE para contas acadêmicas órfãs, remoção da seleção manual de perfil no cadastro, determinação estrita e automática de vínculo (ALUNO/SERVIDOR) baseada no domínio institucional IFPR, transação compensatória atômica para impedir contas órfãs caso a gravação no Firestore falhe, e validação com bateria completa de 15 testes de integração.",
+    additions: [
+      {
+        id: "v1913-add-1",
+        title: "Determinação Automática e Estrita de Vínculo por Domínio",
+        description: "Atribuição automática de ALUNO (@estudantes.ifpr.edu.br) e SERVIDOR (@ifpr.edu.br) sem intervenção manual do usuário no formulário de cadastro, bloqueando autodeclaração de privilégios e impedindo qualquer usuário comum de selecionar ADMIN.",
+        module: "AUTH",
+        tag: "Segurança & Controle de Acesso",
+      },
+      {
+        id: "v1913-add-2",
+        title: "Transação Compensatória Atômica contra Contas Órfãs",
+        description: "Mecanismo de reversão imediata: caso a gravação do documento no Firestore seja rejeitada ou falhe após a criação no Firebase Authentication, a conta recém-criada é cancelada de forma limpa via cliente ou endpoint administrativo (/api/auth/compensate-failed-registration).",
+        module: "AUTH",
+        tag: "Integridade de Dados",
+      },
+      {
+        id: "v1913-add-3",
+        title: "Provisão de Contas Acadêmicas Órfãs e Status PENDENTE",
+        description: "Reconciliação e provisão dos usuários acadêmicos no Firestore com papel correto e status PENDENTE conforme as Firestore Security Rules, assegurando consistência na exibição do Painel Administrativo.",
+        module: "FIRESTORE",
+        tag: "Reconciliação Firestore",
+      },
+      {
+        id: "v1913-add-4",
+        title: "Bateria de 15 Cenários de Teste de Autenticação",
+        description: "Testes automatizados cobrindo cadastro de alunos e servidores, rejeição de domínios externos, bloqueio de autoatribuição de admin, preservação de usuários existentes, compensação e integridade do Dashboard.",
+        module: "AUTH",
+        tag: "Qualidade & Testes",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1913-fix-1",
+        title: "Correção da Causa Raiz de Contas Órfãs no Firestore",
+        description: "Eliminada a causa raiz onde cadastros antigos tentavam gravar status APROVADO para usuários comuns, violando as regras do Firestore e deixando contas no Authentication sem documento correspondente.",
+        module: "FIRESTORE",
+        tag: "Correção de Fluxo",
+      },
+      {
+        id: "v1913-fix-2",
+        title: "Remoção de Seleção Manual de Vínculo no Formulário",
+        description: "Substituídos os botões manuais de 'Aluno | Servidor | Secretaria/Admin' em AuthModal por um badge informativo dinâmico que reflete com precisão o vínculo institucional identificado a partir do e-mail digitado.",
+        module: "AUTH",
+        tag: "Interface de Autenticação",
+      },
+    ],
+    stats: {
+      additionsCount: 4,
+      fixesCount: 2,
+    },
+  },
+  {
     version: "v1.9.12",
     codename: "Mandatory Email Verification & Account Ownership Guard",
     releaseDate: "19/09/2026",
     releaseDateTime: "19 de Setembro de 2026 • 09:10 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Implementação da verificação obrigatória de e-mail para contas criadas via e-mail e senha no Firebase Authentication, exigindo confirmação de acesso à caixa de entrada antes de liberar operações no sistema. Inclui tela dedicada (/verificar-email), reenvio seguro com cooldown, sincronização em tempo real de status, interceptação de rotas protegidas no frontend e backend, e endurecimento das regras de segurança no Firestore (firestore.rules).",
     additions: [
       {
