@@ -49,6 +49,8 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  sendEmailVerification,
+  reload,
   GoogleAuthProvider,
   User as FirebaseUser,
 } from "firebase/auth";
@@ -129,6 +131,10 @@ interface AppContextType {
   isAuthLoading: boolean;
   isAuthenticated: boolean;
   isGuest: boolean;
+  isEmailVerified: boolean;
+  isEmailVerificationRequired: boolean;
+  checkVerificationStatus: () => Promise<boolean>;
+  resendVerificationEmail: () => Promise<void>;
   pendingPostLoginAction: PendingPostLoginAction | null;
   setPendingPostLoginAction: (action: PendingPostLoginAction | null) => void;
   requestAuthForRegistration: (
@@ -1410,13 +1416,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [registerTypeSelection, setRegisterTypeSelection] = useState<"PERDIDO" | "ENCONTRADO">("PERDIDO");
   const [toasts, setToasts] = useState<Toast[]>([]);
 
-  // Authenticated state check: True ONLY when verified in Firebase Auth and active user profile matches
+  // Email verification status: check provider and emailVerified directly from Firebase Auth
+  const isEmailVerified = Boolean(firebaseUser?.emailVerified);
+
+  const isEmailVerificationRequired = Boolean(
+    firebaseUser &&
+      !firebaseUser.emailVerified &&
+      (firebaseUser.providerData.some((p) => p.providerId === "password") ||
+        firebaseUser.providerData.length === 0)
+  );
+
+  // Authenticated state check: True ONLY when verified in Firebase Auth, profile matches, and email verification is fulfilled
   const isAuthenticated = Boolean(
     firebaseUser &&
       firebaseUser.uid &&
       currentUser &&
       currentUser.id !== DEFAULT_GUEST_USER.id &&
-      currentUser.id === firebaseUser.uid
+      currentUser.id === firebaseUser.uid &&
+      !isEmailVerificationRequired
   );
   const isGuest = !isAuthenticated;
 
@@ -2495,7 +2512,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         try { await setDoc(doc(db, "users", res.user.uid), loggedUser, { merge: true }); } catch (_) {}
       }
       setCurrentUser(loggedUser);
-      addToast(`Bem-vindo de volta, ${loggedUser.name}! Login efetuado com sucesso.`, "success");
+      if (!res.user.emailVerified) {
+        addToast("Seu e-mail ainda não foi verificado. Por favor, confirme o endereço em sua caixa de entrada para liberar o acesso.", "warning");
+      } else {
+        addToast(`Bem-vindo de volta, ${loggedUser.name}! Login efetuado com sucesso.`, "success");
+      }
     } catch (e: any) {
       console.warn("Erro no login por e-mail/senha:", e);
       const parsed = handleAuthError(e, { addToast });
@@ -2551,6 +2572,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       const res = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
+
+      // Trigger official Firebase email verification
+      try {
+        await sendEmailVerification(res.user);
+        sessionStorage.setItem("ifpr_last_email_verification_sent", String(Date.now()));
+      } catch (verifySendErr: any) {
+        console.warn("[Email Verification Send Notice]:", verifySendErr);
+      }
+
       const newUserObj: User = {
         id: res.user.uid,
         name: trimmedName,
@@ -2566,11 +2596,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await setDoc(doc(db, "users", newUserObj.id), newUserObj, { merge: true });
       setCurrentUser(newUserObj);
       setAllUsers((prev) => [...prev.filter((u) => u && safeToLower(u.email) !== cleanEmail), newUserObj]);
+      addToast("Conta criada com sucesso! Enviamos um link de confirmação para o seu e-mail.", "info");
     } catch (e: any) {
       pendingRegistrationDataRef.current.delete(cleanEmail);
       console.warn("Erro no cadastro no Firebase Auth:", e);
       const parsed = handleAuthError(e, { addToast });
       throw new Error(parsed.userMessage);
+    }
+  };
+
+  const checkVerificationStatus = async (): Promise<boolean> => {
+    if (!auth.currentUser) {
+      addToast("Nenhum usuário conectado.", "warning");
+      return false;
+    }
+
+    try {
+      await reload(auth.currentUser);
+      const updatedUser = auth.currentUser;
+      setFirebaseUser({ ...updatedUser } as FirebaseUser);
+
+      if (updatedUser.emailVerified) {
+        vibrateSuccess();
+        addToast("E-mail verificado com sucesso! Acesso ao Localiza+ liberado.", "success");
+        return true;
+      } else {
+        vibrateWarning();
+        addToast("Seu e-mail ainda não consta como verificado. Certifique-se de clicar no link enviado para o seu e-mail (verifique também o Spam).", "warning");
+        return false;
+      }
+    } catch (err: any) {
+      console.error("[Email Verification Check Error]:", err);
+      handleAuthError(err, { addToast });
+      return false;
+    }
+  };
+
+  const resendVerificationEmail = async (): Promise<void> => {
+    if (!auth.currentUser) {
+      addToast("Nenhum usuário conectado.", "warning");
+      return;
+    }
+
+    const lastSentStr = sessionStorage.getItem("ifpr_last_email_verification_sent");
+    const now = Date.now();
+    if (lastSentStr) {
+      const elapsed = Math.floor((now - parseInt(lastSentStr, 10)) / 1000);
+      if (elapsed < 60) {
+        const remaining = 60 - elapsed;
+        addToast(`Aguarde ${remaining}s antes de solicitar um novo e-mail de verificação.`, "warning");
+        return;
+      }
+    }
+
+    try {
+      await sendEmailVerification(auth.currentUser);
+      sessionStorage.setItem("ifpr_last_email_verification_sent", String(now));
+      vibrateSuccess();
+      addToast(`E-mail de verificação reenviado para ${auth.currentUser.email}. Verifique a caixa de entrada e o spam.`, "success");
+    } catch (err: any) {
+      console.error("[Resend Verification Error]:", err);
+      if (err?.code === "auth/too-many-requests") {
+        addToast("Muitas solicitações recentes. O Firebase bloqueou temporariamente novos envios. Aguarde alguns minutos.", "error");
+      } else {
+        handleAuthError(err, { addToast });
+      }
     }
   };
 
@@ -3841,6 +3931,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAuthLoading: authLoading,
         isAuthenticated,
         isGuest,
+        isEmailVerified,
+        isEmailVerificationRequired,
+        checkVerificationStatus,
+        resendVerificationEmail,
         pendingPostLoginAction,
         setPendingPostLoginAction,
         requestAuthForRegistration,

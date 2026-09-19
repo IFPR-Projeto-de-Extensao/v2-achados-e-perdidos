@@ -17,6 +17,7 @@ export const ROUTES = {
   SUPPORT_FEEDBACK: "/suporte/feedback",
   SUPPORT_BUG: "/suporte/relatar-bug",
   AI_ANALYZER: "/analisador-ia",
+  VERIFY_EMAIL: "/verificar-email",
   ADMIN: "/admin",
   ADMIN_DASHBOARD: "/admin/dashboard",
   ADMIN_USERS: "/admin/usuarios",
@@ -43,6 +44,7 @@ export type AppRouteKey =
   | "support_feedback"
   | "support_bug"
   | "image_analyzer"
+  | "verify_email"
   | "admin"
   | "privacy_policy"
   | "terms_of_use"
@@ -176,6 +178,15 @@ export function parseCurrentRoute(pathname: string, search: string = ""): Parsed
     cleanPath === "/analisar-fotos"
   ) {
     return { pathname: "/analisador-ia", routeKey: "image_analyzer", searchParams: searchParamsObj, itemId, qrCodeId };
+  }
+
+  if (
+    cleanPath === "/verificar-email" ||
+    cleanPath === "/verificar" ||
+    cleanPath === "/confirmar-email" ||
+    cleanPath === "/email-verification"
+  ) {
+    return { pathname: "/verificar-email", routeKey: "verify_email", searchParams: searchParamsObj, itemId, qrCodeId };
   }
 
   // Admin routes & sub-routes

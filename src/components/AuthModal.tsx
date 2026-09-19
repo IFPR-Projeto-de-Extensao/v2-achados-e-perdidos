@@ -5,6 +5,7 @@ import { useRouter } from "../context/RouterContext";
 import { UserRole } from "../types";
 import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, formatPhone, isValidPhone } from "../lib/utils";
 import { parseAuthError, handleAuthError } from "../lib/authErrorHandler";
+import { auth } from "../lib/firebase";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -73,8 +74,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     try {
       await loginWithEmailPassword(cleanEmail, cleanPass);
       vibrateSuccess();
-      addToast("Login realizado com sucesso!", "success");
       onClose();
+      if (auth.currentUser && !auth.currentUser.emailVerified) {
+        navigate("/verificar-email");
+      }
     } catch (err: any) {
       console.error("[Email Auth Error]", err);
       vibrateWarning();
@@ -132,8 +135,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(trimmedName)}`,
       });
       vibrateSuccess();
-      addToast("Cadastro concluído com sucesso!", "success");
       onClose();
+      navigate("/verificar-email");
     } catch (err: any) {
       console.error("[Register Error]", err);
       vibrateWarning();

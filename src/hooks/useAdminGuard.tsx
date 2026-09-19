@@ -39,6 +39,7 @@ export function useAdminGuard(options: UseAdminGuardOptions = {}): AdminGuardSta
     currentUser,
     isAuthLoading,
     authLoading,
+    isEmailVerificationRequired,
     addToast,
   } = useApp();
 
@@ -53,11 +54,19 @@ export function useAdminGuard(options: UseAdminGuardOptions = {}): AdminGuardSta
   } = options;
 
   const effectiveLoading = isAuthLoading || authLoading;
-  const isAdmin = currentUser && currentUser.role === "ADMIN";
+  const isAdmin = currentUser && currentUser.role === "ADMIN" && !isEmailVerificationRequired;
   const authorized = !effectiveLoading && Boolean(isAdmin);
 
   useEffect(() => {
     if (effectiveLoading) return;
+
+    if (isEmailVerificationRequired && autoRedirect && !hasRedirectedRef.current) {
+      hasRedirectedRef.current = true;
+      vibrateWarning();
+      addToast("Seu e-mail precisa ser verificado antes de acessar o Painel Administrativo.", "warning");
+      navigate("/verificar-email", { replace: true });
+      return;
+    }
 
     if (!isAdmin && autoRedirect && !hasRedirectedRef.current) {
       hasRedirectedRef.current = true;
@@ -69,7 +78,7 @@ export function useAdminGuard(options: UseAdminGuardOptions = {}): AdminGuardSta
 
       navigate(redirectTo, { replace: true });
     }
-  }, [effectiveLoading, isAdmin, autoRedirect, redirectTo, showToast, customToastMessage, addToast, navigate]);
+  }, [effectiveLoading, isAdmin, isEmailVerificationRequired, autoRedirect, redirectTo, showToast, customToastMessage, addToast, navigate]);
 
   return {
     isAdmin: Boolean(isAdmin),

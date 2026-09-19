@@ -18,6 +18,10 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
     function hasAdminClaim() {
       return isSignedIn() && 
              (request.auth.token.role == 'ADMIN' || 
@@ -135,10 +139,10 @@ service cloud.firestore {
       allow get: if true;
       allow list: if true;
 
-      // Creation: ONLY Authenticated users with their real UID:
+      // Creation: ONLY Authenticated users with verified email and real UID:
       // - Author ID must match request.auth.uid
       // - Cannot falsify author role as ADMIN or SERVIDOR unless possessing real credentials
-      allow create: if isSignedIn() && 
+      allow create: if isEmailVerified() && 
                     incoming().registeredByUserId == request.auth.uid && 
                     (
                       incoming().registeredByRole == 'ALUNO' ||
@@ -164,7 +168,7 @@ service cloud.firestore {
     match /found_items/{itemId} {
       allow get: if true;
       allow list: if true;
-      allow create: if isSignedIn() && 
+      allow create: if isEmailVerified() && 
                     incoming().registeredByUserId == request.auth.uid && 
                     (
                       incoming().registeredByRole == 'ALUNO' ||
@@ -186,7 +190,7 @@ service cloud.firestore {
     match /lost_items/{itemId} {
       allow get: if true;
       allow list: if true;
-      allow create: if isSignedIn() && 
+      allow create: if isEmailVerified() && 
                     incoming().registeredByUserId == request.auth.uid && 
                     (
                       incoming().registeredByRole == 'ALUNO' ||
@@ -219,8 +223,8 @@ service cloud.firestore {
       );
       allow list: if isSignedIn() && (isServidor() || isAdmin() || resource.data.claimerId == request.auth.uid);
 
-      // Create: Authenticated user making a claim with their own real user id
-      allow create: if isSignedIn() && incoming().claimerId == request.auth.uid;
+      // Create: Authenticated user making a claim with their own real user id and verified email
+      allow create: if isEmailVerified() && incoming().claimerId == request.auth.uid;
 
       // Update: Admin/Servidor can change claim status/notes;
       // Claimer can update ONLY while status is 'PENDENTE', and CANNOT modify claimerId, itemId, or self-approve

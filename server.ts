@@ -313,14 +313,24 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
       auditId: unauthAudit.id,
     });
   }
+
+  // Mandatory email verification security check
+  if (req.authUser.email_verified !== true) {
+    return res.status(403).json({
+      success: false,
+      error: "E-mail não verificado. É obrigatório confirmar seu endereço de e-mail antes de acessar os recursos do Localiza+.",
+      code: "AUTH_EMAIL_NOT_VERIFIED",
+    });
+  }
+
   next();
 }
 
 function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  if (!req.authUser || !req.authUser.isAdmin) {
+  if (!req.authUser || !req.authUser.isAdmin || req.authUser.email_verified !== true) {
     return res.status(403).json({
       success: false,
-      error: "Acesso negado. Apenas administradores autorizados do IFPR podem executar esta operação.",
+      error: "Acesso negado. Apenas administradores autorizados do IFPR com e-mail verificado podem executar esta operação.",
     });
   }
   next();

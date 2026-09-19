@@ -24,12 +24,116 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.12",
+    codename: "Mandatory Email Verification & Account Ownership Guard",
+    releaseDate: "19/09/2026",
+    releaseDateTime: "19 de Setembro de 2026 • 09:10 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Implementação da verificação obrigatória de e-mail para contas criadas via e-mail e senha no Firebase Authentication, exigindo confirmação de acesso à caixa de entrada antes de liberar operações no sistema. Inclui tela dedicada (/verificar-email), reenvio seguro com cooldown, sincronização em tempo real de status, interceptação de rotas protegidas no frontend e backend, e endurecimento das regras de segurança no Firestore (firestore.rules).",
+    additions: [
+      {
+        id: "v1912-add-1",
+        title: "Verificação Obrigatória de E-mail no Cadastro com Senha",
+        description: "Disparo automático de sendEmailVerification() no momento do cadastro com e-mail e senha e validação contínua da propriedade emailVerified do Firebase Authentication.",
+        module: "AUTH",
+        tag: "Segurança & Autenticação",
+      },
+      {
+        id: "v1912-add-2",
+        title: "Tela e Fluxo Interativo de Confirmação (/verificar-email)",
+        description: "Interface intuitiva com checagem instantânea de status via reload(), reenvio com intervalo de proteção contra spam (cooldown de 60s), banner de alerta no topo e opção para logout ou troca de e-mail.",
+        module: "AUTH",
+        tag: "Experiência do Usuário",
+      },
+      {
+        id: "v1912-add-3",
+        title: "Proteção de Rotas no Frontend e APIs no Backend",
+        description: "Bloqueio de acesso a rotas administrativas e ações protegidas para contas não verificadas, com validação de email_verified nas rotas da API em server.ts e no hook useAdminGuard.",
+        module: "AUTH",
+        tag: "Controle de Acesso",
+      },
+      {
+        id: "v1912-add-4",
+        title: "Endurecimento das Regras no Firestore (firestore.rules)",
+        description: "Adicionada função auxiliar isEmailVerified() exigindo request.auth.token.email_verified == true para criação de itens perdidos, encontrados e registro de solicitações de devolução.",
+        module: "FIRESTORE",
+        tag: "Regras de Segurança",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1912-fix-1",
+        title: "Bloqueio de Contas com E-mails Não Comprovados ou Inexistentes",
+        description: "Eliminada a brecha que permitia a usuários acessarem o sistema com endereços de e-mail aleatórios sem comprovação prévia de posse da caixa postal.",
+        module: "AUTH",
+        tag: "Correção de Segurança",
+      },
+      {
+        id: "v1912-fix-2",
+        title: "Compatibilidade Preservada com Provedores OAuth (Google)",
+        description: "Garantido que contas autenticadas via Google continuem operando normalmente sem bloqueios indevidos quando o e-mail já estiver validado pelo provedor institucional.",
+        module: "AUTH",
+        tag: "Integração & Confiabilidade",
+      },
+    ],
+    stats: {
+      additionsCount: 4,
+      fixesCount: 2,
+    },
+  },
+  {
+    version: "v1.9.11",
+    codename: "Compact Navigation Bar & Desktop Hierarchy Engine",
+    releaseDate: "19/09/2026",
+    releaseDateTime: "19 de Setembro de 2026 • 08:35 BRT",
+    type: "PATCH",
+    isCurrent: false,
+    summary: "Otimização e simplificação visual da barra superior (Navbar) para desktop e dispositivos móveis via seletores .navbar-main-container, .navbar-icons-group e .user-profile-widget, eliminando quebras de linha em textos, reduzindo altura e espaçamentos, padronizando o alinhamento vertical dos utilitários (QR Code, Notificações, Tema), compactando o widget de perfil de usuário com exibição exclusiva de avatar e nome (movendo o cargo para tooltip) e preservando integralmente todas as rotas e funções.",
+    additions: [
+      {
+        id: "v1911-add-1",
+        title: "Barra Superior Compacta com Linha Única (.navbar-main-container)",
+        description: "Aplicação de whitespace-nowrap em todos os itens de navegação, redução da altura do cabeçalho (h-13/h-14) e otimização do padding horizontal para garantir exibição contínua sem quebras de linha em resoluções desktop padrão.",
+        module: "GERAL",
+        tag: "Interface & Navegação",
+      },
+      {
+        id: "v1911-add-2",
+        title: "Alinhamento Uniforme dos Ícones Utilitários (.navbar-icons-group)",
+        description: "Padronização dimensional dos botões de ação rápida (Suporte, QR Code, Notificações e Tema) em dimensões consistentes (w-8 h-8), com alinhamento vertical perfeito com os links de texto e espaçamento uniforme.",
+        module: "GERAL",
+        tag: "Usabilidade & Hierarquia",
+      },
+      {
+        id: "v1911-add-3",
+        title: "Widget de Perfil Compacto com Cargo em Tooltip (.user-profile-widget)",
+        description: "Reestruturação do bloco de usuário para exibir apenas o avatar e o primeiro nome na barra superior, transferindo informações extras de perfil e cargo/função para tooltip detalhado, minimizando a largura ocupada sem perda de dados.",
+        module: "GERAL",
+        tag: "Design & UX",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1911-fix-1",
+        title: "Eliminação da Quebra de Linha e Sobrecarga Visual no Header",
+        description: "Resolução do problema de botões quebrando em duas linhas e disputa de foco visual entre elementos secundários e a navegação primária da barra superior.",
+        module: "GERAL",
+        tag: "Correção Visual",
+      },
+    ],
+    stats: {
+      additionsCount: 3,
+      fixesCount: 1,
+    },
+  },
+  {
     version: "v1.9.10",
     codename: "Visual Hierarchy & Interface Simplification Engine",
     releaseDate: "17/09/2026",
     releaseDateTime: "17 de Setembro de 2026 • 12:00 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Refatoração visual e de usabilidade do Localiza+ para eliminar poluição visual, estabelecer hierarquia clara de ações e otimizar fluxos de usuário sem remover funcionalidades ou alterar regras de negócio. Abrange a simplificação do rodapé dos cards de itens, unificação e desduplicação dos filtros de ocorrências, organização de ações primárias e secundárias no modal de detalhes e estruturação do painel administrativo em dois níveis contextuais limpos.",
     additions: [
       {

@@ -16,6 +16,7 @@ import { SupportView } from "./components/SupportView";
 import { ImageAnalyzerView } from "./components/ImageAnalyzerView";
 import { PrivacyPolicyView } from "./components/PrivacyPolicyView";
 import { TermsOfUseView } from "./components/TermsOfUseView";
+import { EmailVerificationView } from "./components/EmailVerificationView";
 import { NotFoundView } from "./components/NotFoundView";
 import { ItemDetailModal } from "./components/ItemDetailModal";
 import { QRCodeScannerModal } from "./components/QRCodeScannerModal";
@@ -58,6 +59,7 @@ const MainContent: React.FC = () => {
     currentUser,
     items,
     requestAuthForRegistration,
+    isEmailVerificationRequired,
   } = useApp();
 
   const { routeKey, pathname, searchParams, navigate } = useRouter();
@@ -244,6 +246,24 @@ const MainContent: React.FC = () => {
 
   // Render view based on routeKey
   const renderCurrentView = () => {
+    if (routeKey === "verify_email") {
+      return <EmailVerificationView />;
+    }
+
+    if (isEmailVerificationRequired) {
+      if (
+        routeKey === "privacy_policy" ||
+        routeKey === "terms_of_use" ||
+        routeKey === "support" ||
+        routeKey === "support_feedback" ||
+        routeKey === "support_bug"
+      ) {
+        // Allow public legal and support documentation
+      } else {
+        return <EmailVerificationView />;
+      }
+    }
+
     switch (routeKey) {
       case "home":
         return <HomeView />;
@@ -291,6 +311,19 @@ const MainContent: React.FC = () => {
 
       {/* PWA Install Banner */}
       <PWAInstallBanner />
+
+      {/* Mandatory Email Verification Alert Banner */}
+      {isEmailVerificationRequired && (
+        <div className="bg-amber-600 dark:bg-amber-700 text-white px-4 py-2.5 text-xs font-bold text-center flex flex-wrap items-center justify-center gap-2 shadow-sm border-b border-amber-500">
+          <span>⚠️ Seu e-mail ainda não foi verificado. Confirme o endereço para liberar o acesso ao sistema.</span>
+          <button
+            onClick={() => navigate("/verificar-email")}
+            className="underline hover:text-amber-100 font-extrabold ml-1 uppercase text-[11px]"
+          >
+            Verificar Agora →
+          </button>
+        </div>
+      )}
 
       {/* Pending User Approval Banner for Academic Users */}
       {currentUser.approvalStatus === "PENDENTE" && (
