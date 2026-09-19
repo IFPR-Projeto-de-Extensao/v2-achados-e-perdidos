@@ -4,6 +4,7 @@ import { useRouter } from "../context/RouterContext";
 import { useRequireAuth } from "../hooks/useRequireAuth";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
+import { auth } from "../lib/firebase";
 import { safeFetchJson, clientAnalyzeObject, clientAnalyzeImage } from "../lib/apiHelper";
 import { triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, safeToLower, safeIncludes, safeTextCorpus, sanitizeQuery, getTodayDateString, formatPhone, isValidPhone } from "../lib/utils";
 import { compressImage, formatBytes } from "../lib/imageCompression";
@@ -380,20 +381,27 @@ export const RegisterItemView: React.FC = () => {
       return;
     }
 
+    if (!auth.currentUser) {
+      addToast("Faça login com sua conta institucional para utilizar o Extrator Inteligente.", "error");
+      return;
+    }
+
     setIsAnalyzingAI(true);
     try {
-      const data = await safeFetchJson(
-        "/api/ai/analyze-object",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ promptText: aiPrompt }),
+      const idToken = await auth.currentUser.getIdToken();
+      const res = await fetch("/api/ai/analyze-object", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
         },
-        () => ({
-          success: true,
-          extracted: clientAnalyzeObject(aiPrompt),
-        })
-      );
+        body: JSON.stringify({ promptText: aiPrompt }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || `Erro ${res.status}: Não foi possível processar a extração com Gemini.`);
+      }
 
       if (data.success && data.extracted) {
         const { title: aiTitle, category: aiCat, color: aiColor, brand: aiBrand, location: aiLoc, description: aiDesc } = data.extracted;
@@ -414,18 +422,13 @@ export const RegisterItemView: React.FC = () => {
           if (foundLoc) setLocation(foundLoc);
         }
 
-        addToast("IA extraiu os detalhes com sucesso e preencheu o formulário!", "success");
+        addToast("IA Gemini extraiu os detalhes com sucesso e preencheu o formulário!", "success");
+      } else {
+        throw new Error("Resposta da IA não continha os dados esperados.");
       }
-    } catch (err) {
-      console.warn("Aviso ao chamar IA de extração:", err);
-      // Fallback auto fill
-      const extracted = clientAnalyzeObject(aiPrompt);
-      setTitle(extracted.title);
-      setCategory(extracted.category as ItemCategory);
-      setColor(extracted.color);
-      setBrand(extracted.brand);
-      setDescription(extracted.description);
-      addToast("Formulário preenchido com assistente de inteligência!", "success");
+    } catch (err: any) {
+      console.error("Erro ao chamar IA de extração:", err);
+      addToast(err.message || "Falha na comunicação com o Gemini. Preencha os campos manualmente.", "error");
     } finally {
       setIsAnalyzingAI(false);
     }
@@ -482,22 +485,29 @@ export const RegisterItemView: React.FC = () => {
     }
   };
 
-  // Analyze image with Gemini 3.1 Pro
+  // Analyze image with Gemini
   const analyzeImageWithGemini = async (base64Data: string) => {
+    if (!auth.currentUser) {
+      addToast("Faça login com sua conta institucional para utilizar a análise de foto com Gemini.", "error");
+      return;
+    }
+
     setIsAnalyzingImage(true);
     try {
-      const data = await safeFetchJson(
-        "/api/ai/analyze-image",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ imageBase64: base64Data }),
+      const idToken = await auth.currentUser.getIdToken();
+      const res = await fetch("/api/ai/analyze-image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
         },
-        () => ({
-          success: true,
-          analysis: clientAnalyzeImage("Foto enviada no formulário de cadastro"),
-        })
-      );
+        body: JSON.stringify({ imageBase64: base64Data }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || `Erro ${res.status}: Falha na análise visual com Gemini.`);
+      }
 
       if (data.success && data.analysis) {
         const a = data.analysis;
@@ -516,14 +526,13 @@ export const RegisterItemView: React.FC = () => {
             }`
           );
         }
-        addToast("IA analisou a imagem e preencheu o formulário com sucesso!", "success");
+        addToast("IA Gemini analisou a foto e preencheu o formulário com sucesso!", "success");
+      } else {
+        throw new Error("Resposta da análise de foto não continha os dados esperados.");
       }
-    } catch (err) {
-      console.warn("Aviso na visão Gemini:", err);
-      const a = clientAnalyzeImage();
-      setTitle(a.title);
-      setDescription(a.description);
-      addToast("Imagem associada ao pertencente!", "success");
+    } catch (err: any) {
+      console.error("Erro na visão Gemini:", err);
+      addToast(err.message || "Não foi possível analisar a foto com Gemini. Preencha os campos manualmente.", "error");
     } finally {
       setIsAnalyzingImage(false);
     }

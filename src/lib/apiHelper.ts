@@ -1,6 +1,5 @@
 import { LostFoundItem, ItemCategory } from "../types";
 import { IFPR_LOCATIONS } from "../data/mockData";
-import { GoogleGenAI } from "@google/genai";
 import { safeToLower, safeIncludes, safeTextCorpus, sanitizeQuery } from "./utils";
 
 export interface AIAnalysisResult {
@@ -60,17 +59,6 @@ export async function safeFetchJson<T>(
     console.warn(`[API Notice] Instabilidade na rede em ${url}. Utilizando assistente inteligente cliente:`, err);
     return await fallbackGenerator();
   }
-}
-
-// Client-Side Gemini Initialization if API key is provided
-function getClientGemini(): GoogleGenAI | null {
-  try {
-    const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-    if (apiKey) {
-      return new GoogleGenAI({ apiKey });
-    }
-  } catch (_) {}
-  return null;
 }
 
 // Client-Side Smart Analysis for Text Prompts
@@ -134,14 +122,40 @@ export function clientAnalyzeObject(promptText: string): AIExtractedObject {
   }
   if (!title) title = "Objeto Achado/Perdido";
 
+  const rawDetails = String(promptText ?? "").trim() || "Objeto verificado e cadastrado no Achados e Perdidos do IFPR Campus Ivaiporã.";
+  const organizedDescription = `• Categoria: ${category}\n• Cor: ${color}\n• Marca: ${brand}\n• Local no Campus: ${location}\n• Detalhes do Objeto: ${rawDetails}`;
+
   return {
     title: title.charAt(0).toUpperCase() + title.slice(1),
     category,
     color,
     brand,
     location,
-    description: String(promptText ?? "").trim() || "Objeto registrado no Achados e Perdidos do IFPR Campus Ivaiporã.",
+    description: organizedDescription,
   };
+}
+
+// Client helper for dispatching potential match notification emails
+export async function sendMatchEmailAlert(params: {
+  targetUserId?: string;
+  targetEmail?: string;
+  matchScore: number;
+  newItem: any;
+  counterpartItem: any;
+  matchedFeatures?: string[];
+  reason?: string;
+  currentUserEmail?: string;
+  currentUserName?: string;
+}): Promise<{ success: boolean; status: string; message?: string; details?: string }> {
+  return safeFetchJson<{ success: boolean; status: string; message?: string; details?: string }>(
+    "/api/notifications/send-match-email",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    },
+    () => ({ success: true, status: "OFFLINE_FALLBACK", message: "Alerta registrado (modo offline / fallback)." })
+  );
 }
 
 // Client-Side Smart Fallback for Vision/Image Analysis

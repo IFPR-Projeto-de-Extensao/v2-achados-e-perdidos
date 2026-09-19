@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
+import nodemailer, { Transporter } from "nodemailer";
 import { GoogleGenAI, Type } from "@google/genai";
 import { getApps, initializeApp, cert, App } from "firebase-admin/app";
 import { getAuth, Auth } from "firebase-admin/auth";
@@ -807,40 +808,39 @@ app.post(["/api/ai/analyze-object", "/ai/analyze-object"], requireAuth, aiRateLi
     const ai = getGenAIClient();
 
     if (!ai) {
-      // Fallback inteligente caso a chave não esteja definida ainda no ambiente
-      const fallbackExtracted = {
-        title: cleanPrompt.slice(0, 30) || "Objeto Cadastrado",
-        category: "Outros",
-        color: "Não especificada",
-        brand: "Desconhecida",
-        location: "Campus IFPR",
-        description: cleanPrompt || "Objeto cadastrado sem descrição adicional.",
-      };
-
       logAIAudit({
         userId,
         userEmail,
         userRole,
         endpoint: "/api/ai/analyze-object",
         action: "EXTRACT_OBJECT_DETAILS",
-        status: "SUCCESS",
-        modelUsed: "local-fallback-engine",
+        status: "FAILED",
+        modelUsed: "gemini-3.8-flash",
         promptSnippet: cleanPrompt.substring(0, 100),
-        details: { hasImage: !!imageBase64, isFallback: true },
+        details: { error: "GEMINI_API_KEY não configurada no servidor." },
         ip: req.ip || req.socket.remoteAddress,
       });
 
-      return res.json({
-        success: true,
-        extracted: fallbackExtracted,
-        fallback: true,
+      return res.status(503).json({
+        success: false,
+        error: "A API do Google Gemini não está configurada no ambiente do servidor.",
       });
     }
 
-    const systemInstruction = `Você é um assistente especialista do sistema Achados e Perdidos do Instituto Federal do Paraná (IFPR) - Campus Ivaiporã.
-Sua missão é analisar um relato livre ou imagem de um objeto perdido/encontrado no campus Ivaiporã e extrair dados estruturados em JSON.
-Categorias válidas disponíveis: "Eletrônicos", "Documentos & Cartões", "Roupas & Calçados", "Chaves", "Material Escolar & Livros", "Acessórios & Bijuterias", "Garrafas & Marmitas", "Guarda-chuvas", "Outros".
-Preencha todos os campos da melhor forma possível. Se um campo não puder ser identificado, utilize "Não informado".
+    const systemInstruction = `Você é um assistente especialista de Inteligência Artificial do sistema Achados e Perdidos do Instituto Federal do Paraná (IFPR) - Campus Ivaiporã.
+Sua missão é analisar o relato e/ou imagem do objeto no campus Ivaiporã e extrair com máxima precisão os seguintes dados estruturados em JSON:
+1. title: Título claro, objetivo e conciso para o objeto (ex: "Garrafa Térmica Kouda Verde 750ml", "Calculadora Casio fx-82MS Prata", "Chaveiro com 3 chaves").
+2. category: Categoria obrigatória dentre as válidas: "Eletrônicos", "Documentos & Cartões", "Roupas & Calçados", "Chaves", "Material Escolar & Livros", "Acessórios & Bijuterias", "Garrafas & Marmitas", "Guarda-chuvas", "Outros".
+3. color: Cor principal ou combinação de cores do objeto (ex: "Preto", "Azul Marinho", "Prata e Preto", "Verde").
+4. brand: Marca ou fabricante identificado (ex: "Casio", "Nike", "JBL", "Dell", "Tupperware", "Kouda", "IFPR" ou "Não identificada").
+5. location: Local específico do campus IFPR Ivaiporã identificado no relato (ex: "Refeitório", "Biblioteca", "Bloco A", "Laboratório de Informática B2", "Quadra Poliesportiva", "Pátio Central", "Secretaria Acadêmica", "Entrada Principal"). Se não mencionado, informe "Campus IFPR Ivaiporã".
+6. description: Descrição organizada em tópicos estruturados, formatada com clareza contendo o resumo dos atributos e estado de conservação no formato:
+• Categoria: [Categoria]
+• Cor: [Cor]
+• Marca: [Marca]
+• Local no Campus: [Local]
+• Detalhes e Características: [Detalhamento do objeto e marcas de uso ou conservação]
+
 A resposta DEVE ser estritamente no formato JSON definido no schema.`;
 
     const contents: any[] = [];
@@ -860,7 +860,7 @@ A resposta DEVE ser estritamente no formato JSON definido no schema.`;
         : "Analise esta foto de objeto encontrado/perdido no IFPR e descreva com precisão.",
     });
 
-    const chosenModel = imageBase64 ? "gemini-3.1-pro-preview" : "gemini-3.5-flash";
+    const chosenModel = imageBase64 ? "gemini-3.7-flash" : "gemini-3.8-flash";
 
     const response = await ai.models.generateContent({
       model: chosenModel,
@@ -893,7 +893,7 @@ A resposta DEVE ser estritamente no formato JSON definido no schema.`;
             },
             description: {
               type: Type.STRING,
-              description: "Descrição organizada, concisa e formatada do objeto e seu estado",
+              description: "Descrição organizada com marcadores contendo categoria, cor, marca, local e detalhes",
             },
           },
           required: ["title", "category", "color", "brand", "location", "description"],
@@ -962,33 +962,21 @@ app.post(["/api/ai/analyze-image", "/ai/analyze-image"], requireAuth, aiRateLimi
     }
 
     if (!ai) {
-      const fallbackAnalysis = {
-        title: "Objeto Detectado na Foto",
-        category: "Outros",
-        color: "Análise visual pendente de chave API",
-        brand: "Não identificada",
-        condition: "Bom estado de conservação",
-        distinctiveFeatures: ["Detalhes visíveis na foto"],
-        suggestedSecretHint: "Iniciais ou marcas no verso",
-        description: "Análise realizada com fallback local. Defina GEMINI_API_KEY para visão multimodal avançada.",
-      };
-
       logAIAudit({
         userId,
         userEmail,
         userRole,
         endpoint: "/api/ai/analyze-image",
         action: "VISION_IMAGE_ANALYSIS",
-        status: "SUCCESS",
-        modelUsed: "local-vision-fallback",
-        details: { isFallback: true },
+        status: "FAILED",
+        modelUsed: "gemini-3.7-flash",
+        details: { error: "GEMINI_API_KEY não configurada no servidor." },
         ip: req.ip || req.socket.remoteAddress,
       });
 
-      return res.json({
-        success: true,
-        analysis: fallbackAnalysis,
-        fallback: true,
+      return res.status(503).json({
+        success: false,
+        error: "A API do Google Gemini não está configurada no ambiente do servidor.",
       });
     }
 
@@ -1006,97 +994,80 @@ Examine atentamente:
 5. Categoria oficial ("Eletrônicos", "Documentos & Cartões", "Roupas & Calçados", "Chaves", "Material Escolar & Livros", "Acessórios & Bijuterias", "Garrafas & Marmitas", "Guarda-chuvas", "Outros").
 Retorne um JSON rigorosamente estruturado conforme o schema.`;
 
-    let analysis: any = null;
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.7-flash",
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType,
-                data: cleanBase64,
-              },
+    const response = await ai.models.generateContent({
+      model: "gemini-3.7-flash",
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              mimeType,
+              data: cleanBase64,
             },
-            {
-              text: cleanContext
-                ? `Contexto adicional do usuário: "${cleanContext}". Realize a análise completa da imagem.`
-                : "Analise esta fotografia de objeto com máxima precisão e descreva todos os aspectos para o cadastro no IFPR Ivaiporã.",
+          },
+          {
+            text: cleanContext
+              ? `Contexto adicional do usuário: "${cleanContext}". Realize a análise completa da imagem.`
+              : "Analise esta fotografia de objeto com máxima precisão e descreva todos os aspectos para o cadastro no IFPR Ivaiporã.",
+          },
+        ],
+      },
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            title: {
+              type: Type.STRING,
+              description: "Título resumido e preciso do objeto (ex: Relógio Digital Casio Vintage Prata)",
             },
+            category: {
+              type: Type.STRING,
+              description: "Uma das categorias oficiais do IFPR",
+            },
+            color: {
+              type: Type.STRING,
+              description: "Cores detalhadas identificadas na foto",
+            },
+            brand: {
+              type: Type.STRING,
+              description: "Marca ou fabricante identificado na foto, ou 'Não identificada'",
+            },
+            condition: {
+              type: Type.STRING,
+              description: "Estado aparente de conservação (ex: Novo, Usado com riscos leves, etc)",
+            },
+            distinctiveFeatures: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Lista de marcações, adesivos, riscos, chaveiros ou traços únicos visíveis",
+            },
+            suggestedSecretHint: {
+              type: Type.STRING,
+              description: "Pista ou detalhe não óbvio para confirmação de propriedade (ex: adesivo colado no fundo)",
+            },
+            description: {
+              type: Type.STRING,
+              description: "Descrição visual rica e profissional pronta para o cadastro de achados e perdidos",
+            },
+          },
+          required: [
+            "title",
+            "category",
+            "color",
+            "brand",
+            "condition",
+            "distinctiveFeatures",
+            "suggestedSecretHint",
+            "description",
           ],
         },
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: {
-                type: Type.STRING,
-                description: "Título resumido e preciso do objeto (ex: Relógio Digital Casio Vintage Prata)",
-              },
-              category: {
-                type: Type.STRING,
-                description: "Uma das categorias oficiais do IFPR",
-              },
-              color: {
-                type: Type.STRING,
-                description: "Cores detalhadas identificadas na foto",
-              },
-              brand: {
-                type: Type.STRING,
-                description: "Marca ou fabricante identificado na foto, ou 'Não identificada'",
-              },
-              condition: {
-                type: Type.STRING,
-                description: "Estado aparente de conservação (ex: Novo, Usado com riscos leves, etc)",
-              },
-              distinctiveFeatures: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
-                description: "Lista de marcações, adesivos, riscos, chaveiros ou traços únicos visíveis",
-              },
-              suggestedSecretHint: {
-                type: Type.STRING,
-                description: "Pista ou detalhe não óbvio para confirmação de propriedade (ex: adesivo colado no fundo)",
-              },
-              description: {
-                type: Type.STRING,
-                description: "Descrição visual rica e profissional pronta para o cadastro de achados e perdidos",
-              },
-            },
-            required: [
-              "title",
-              "category",
-              "color",
-              "brand",
-              "condition",
-              "distinctiveFeatures",
-              "suggestedSecretHint",
-              "description",
-            ],
-          },
-        },
-      });
+      },
+    });
 
-      const rawText = response.text || "{}";
-      const cleanJson = rawText.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
-      analysis = JSON.parse(cleanJson || "{}");
-    } catch (modelErr: any) {
-      console.warn("Aviso na chamada do modelo Gemini para visão, usando fallback inteligente:", modelErr?.message);
-      analysis = {
-        title: cleanContext ? `Objeto (${cleanContext.slice(0, 30)})` : "Objeto Identificado na Foto",
-        category: "Outros",
-        color: "Cores da foto",
-        brand: "Não identificada",
-        condition: "Bom estado de conservação",
-        distinctiveFeatures: ["Objeto capturado em foto", "Registro fotográfico no campus IFPR"],
-        suggestedSecretHint: "Conferir detalhes específicos ou marcas internas no momento da retirada",
-        description: cleanContext
-          ? `Objeto catalogado no campus IFPR Ivaiporã: ${cleanContext}`
-          : "Objeto verificado e registrado no sistema Achados e Perdidos do IFPR Campus Ivaiporã.",
-      };
-    }
+    const rawText = response.text || "{}";
+    const cleanJson = rawText.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
+    const analysis = JSON.parse(cleanJson || "{}");
 
     logAIAudit({
       userId,
@@ -1128,12 +1099,15 @@ Retorne um JSON rigorosamente estruturado conforme o schema.`;
       endpoint: "/api/ai/analyze-image",
       action: "VISION_IMAGE_ANALYSIS",
       status: "FAILED",
-      modelUsed: "gemini-3.1-pro-preview",
+      modelUsed: "gemini-3.7-flash",
       details: { error: err.message },
       ip: req.ip || req.socket.remoteAddress,
     });
 
-    res.status(500).json({ error: err.message || "Erro na análise de visão do Gemini Pro." });
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Erro na análise de visão do Gemini.",
+    });
   }
 });
 
@@ -1148,20 +1122,28 @@ app.post(["/api/ai/quick-tag", "/ai/quick-tag"], requireAuth, aiRateLimiter, asy
     const cleanText = typeof text === "string" ? text.substring(0, 500) : "";
     const ai = getGenAIClient();
 
-    if (!cleanText || !ai) {
+    if (!cleanText) {
+      return res.status(400).json({ error: "Texto para geração de tags não fornecido." });
+    }
+
+    if (!ai) {
       logAIAudit({
         userId,
         userEmail,
         userRole,
         endpoint: "/api/ai/quick-tag",
         action: "QUICK_AUTO_TAG",
-        status: "SUCCESS",
-        modelUsed: "fallback",
+        status: "FAILED",
+        modelUsed: "gemini-3.1-flash-lite",
         promptSnippet: cleanText.substring(0, 100),
+        details: { error: "GEMINI_API_KEY não configurada no servidor." },
         ip: req.ip || req.socket.remoteAddress,
       });
 
-      return res.json({ tags: ["Geral"], suggestedCategory: "Outros" });
+      return res.status(503).json({
+        success: false,
+        error: "A API do Google Gemini não está configurada no ambiente do servidor.",
+      });
     }
 
     const response = await ai.models.generateContent({
@@ -1208,7 +1190,10 @@ app.post(["/api/ai/quick-tag", "/ai/quick-tag"], requireAuth, aiRateLimiter, asy
       ip: req.ip || req.socket.remoteAddress,
     });
 
-    return res.json({ tags: ["IFPR"], suggestedCategory: "Outros" });
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Erro ao processar tags automáticas com Gemini.",
+    });
   }
 });
 
@@ -1232,47 +1217,22 @@ app.post(["/api/ai/match-similarity", "/ai/match-similarity"], requireAuth, aiRa
     }
 
     if (!ai) {
-      // Local fallback text matching logic if AI key is pending
-      const simpleMatches = safeCandidates
-        .filter(Boolean)
-        .map((cand: any) => {
-          let score = 0;
-          const candCat = String(cand?.category ?? "").toLowerCase();
-          const newCat = String(newItem?.category ?? "").toLowerCase();
-          const candColor = String(cand?.color ?? "").toLowerCase();
-          const newColor = String(newItem?.color ?? "").toLowerCase();
-          const candBrand = String(cand?.brand ?? "").toLowerCase();
-          const newBrand = String(newItem?.brand ?? "").toLowerCase();
-          const candTitle = String(cand?.title ?? "").toLowerCase();
-          const newTitle = String(newItem?.title ?? "").toLowerCase();
-
-          if (candCat && newCat && candCat === newCat) score += 40;
-          if (candColor && newColor && newColor !== "não informada" && candColor.includes(newColor)) score += 25;
-          if (candBrand && newBrand && newBrand !== "não identificada" && candBrand.includes(newBrand)) score += 25;
-          if (candTitle && newTitle && candTitle.includes(newTitle)) score += 10;
-          return {
-            itemId: cand?.id || "",
-            matchScore: score,
-            reason: score > 50 ? "Categorias e marcas semelhantes encontradas." : "Correspondência parcial.",
-            matchedFeatures: ["Categoria", "Cor"],
-          };
-        })
-        .filter((m: any) => m.matchScore >= 40)
-        .sort((a: any, b: any) => b.matchScore - a.matchScore);
-
       logAIAudit({
         userId,
         userEmail,
         userRole,
         endpoint: "/api/ai/match-similarity",
         action: "MATCH_SIMILARITY",
-        status: "SUCCESS",
-        modelUsed: "local-rule-fallback",
-        details: { candidatesCount: safeCandidates.length, matchedCount: simpleMatches.length, isFallback: true },
+        status: "FAILED",
+        modelUsed: "gemini-3.8-flash",
+        details: { error: "GEMINI_API_KEY não configurada no servidor." },
         ip: req.ip || req.socket.remoteAddress,
       });
 
-      return res.json({ matches: simpleMatches });
+      return res.status(503).json({
+        success: false,
+        error: "A API do Google Gemini não está configurada no ambiente do servidor.",
+      });
     }
 
     const prompt = `Você é um algoritmo de correspondência inteligente do Achados & Perdidos IFPR Campus Ivaiporã.
@@ -1299,72 +1259,40 @@ ${JSON.stringify(safeCandidates.map((c: any) => ({
 Avalie a probabilidade de algum desses objetos pré-cadastrados ser O MESMO objeto ou a contraparte.
 Calcule uma pontuação de similaridade de 0 a 100 para cada um. Retorne apenas os itens com pontuação >= 50.`;
 
-    let parsed = { matches: [] };
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.7-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              matches: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    itemId: { type: Type.STRING },
-                    matchScore: { type: Type.INTEGER, description: "Score de 0 a 100" },
-                    reason: { type: Type.STRING, description: "Explicação em português da semelhança" },
-                    matchedFeatures: {
-                      type: Type.ARRAY,
-                      items: { type: Type.STRING },
-                      description: "Lista de características que bateram (ex: Categoria, Cor, Marca)",
-                    },
+    const response = await ai.models.generateContent({
+      model: "gemini-3.8-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            matches: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  itemId: { type: Type.STRING },
+                  matchScore: { type: Type.INTEGER, description: "Score de 0 a 100" },
+                  reason: { type: Type.STRING, description: "Explicação em português da semelhança" },
+                  matchedFeatures: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                    description: "Lista de características que bateram (ex: Categoria, Cor, Marca)",
                   },
-                  required: ["itemId", "matchScore", "reason", "matchedFeatures"],
                 },
+                required: ["itemId", "matchScore", "reason", "matchedFeatures"],
               },
             },
-            required: ["matches"],
           },
+          required: ["matches"],
         },
-      });
+      },
+    });
 
-      const rawText = response.text || '{"matches":[]}';
-      const cleanJson = rawText.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
-      parsed = JSON.parse(cleanJson || '{"matches":[]}');
-    } catch (modelErr: any) {
-      console.warn("Aviso na chamada do Gemini match-similarity, utilizando cruzamento heurístico:", modelErr?.message);
-      const simpleMatches = safeCandidates
-        .filter(Boolean)
-        .map((cand: any) => {
-          let score = 0;
-          const candCat = String(cand?.category ?? "").toLowerCase();
-          const newCat = String(newItem?.category ?? "").toLowerCase();
-          const candColor = String(cand?.color ?? "").toLowerCase();
-          const newColor = String(newItem?.color ?? "").toLowerCase();
-          const candBrand = String(cand?.brand ?? "").toLowerCase();
-          const newBrand = String(newItem?.brand ?? "").toLowerCase();
-          const candTitle = String(cand?.title ?? "").toLowerCase();
-          const newTitle = String(newItem?.title ?? "").toLowerCase();
-
-          if (candCat && newCat && candCat === newCat) score += 40;
-          if (candColor && newColor && newColor !== "não informada" && candColor.includes(newColor)) score += 25;
-          if (candBrand && newBrand && newBrand !== "não identificada" && candBrand.includes(newBrand)) score += 25;
-          if (candTitle && newTitle && candTitle.includes(newTitle)) score += 10;
-          return {
-            itemId: cand?.id || "",
-            matchScore: score,
-            reason: score >= 50 ? "Categorias e marcas semelhantes identificadas no sistema." : "Correspondência aproximada.",
-            matchedFeatures: ["Categoria", "Cor"],
-          };
-        })
-        .filter((m: any) => m.matchScore >= 40)
-        .sort((a: any, b: any) => b.matchScore - a.matchScore);
-      parsed = { matches: simpleMatches as any };
-    }
+    const rawText = response.text || '{"matches":[]}';
+    const cleanJson = rawText.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "").trim();
+    const parsed = JSON.parse(cleanJson || '{"matches":[]}');
 
     logAIAudit({
       userId,
@@ -1373,7 +1301,7 @@ Calcule uma pontuação de similaridade de 0 a 100 para cada um. Retorne apenas 
       endpoint: "/api/ai/match-similarity",
       action: "MATCH_SIMILARITY",
       status: "SUCCESS",
-      modelUsed: "gemini-3.7-flash",
+      modelUsed: "gemini-3.8-flash",
       details: {
         referenceTitle: newItem.title,
         candidatesCount: safeCandidates.length,
@@ -1445,6 +1373,34 @@ app.post(["/api/fcm/send-match-alert", "/fcm/send-match-alert"], requireAuth, ge
       }
     }
 
+    // Also dispatch email notification to the target user if their account/email exists
+    if (adminDb && targetUserId) {
+      try {
+        let recipientEmail = "";
+        let recipientName = "";
+        const userDoc = await adminDb.collection("users").doc(targetUserId).get();
+        if (userDoc.exists) {
+          const udata = userDoc.data();
+          recipientEmail = udata?.email || "";
+          recipientName = udata?.name || "";
+        }
+
+        if (recipientEmail) {
+          sendMatchNotificationEmail({
+            recipientEmail,
+            recipientName,
+            matchScore: matchScore || 85,
+            newRegisteredItem,
+            counterpartItem: userLostItem,
+            matchedFeatures,
+            reason: `Identificado pelo sistema inteligente de correspondência do IFPR com ${matchScore || 85}% de similaridade.`,
+          }).catch((mailErr) => console.error("Erro no envio assíncrono de e-mail de match:", mailErr));
+        }
+      } catch (userLookupErr) {
+        console.warn("Aviso ao buscar dados do usuário para e-mail de match:", userLookupErr);
+      }
+    }
+
     logAIAudit({
       userId,
       userEmail,
@@ -1464,13 +1420,361 @@ app.post(["/api/fcm/send-match-alert", "/fcm/send-match-alert"], requireAuth, ge
 
     return res.json({
       success: true,
-      message: "Alerta Push FCM processado e registrado com sucesso.",
+      message: "Alerta Push FCM e e-mail de correspondência processados com sucesso.",
       notification: payload,
     });
   } catch (error: any) {
     console.error("Erro no envio de push FCM:", error);
     return res.status(500).json({ error: error.message || "Erro no servidor ao despachar push FCM." });
   }
+});
+
+// =================================================================
+// Email Notification Service for Potential Matches
+// =================================================================
+
+interface MatchEmailPayload {
+  recipientEmail: string;
+  recipientName?: string;
+  matchScore: number;
+  newRegisteredItem: {
+    id: string;
+    title: string;
+    type: "PERDIDO" | "ENCONTRADO";
+    category: string;
+    color?: string;
+    brand?: string;
+    location: string;
+    description: string;
+    date?: string;
+  };
+  counterpartItem: {
+    id: string;
+    title: string;
+    type: "PERDIDO" | "ENCONTRADO";
+    category: string;
+    color?: string;
+    brand?: string;
+    location: string;
+    description: string;
+  };
+  matchedFeatures?: string[];
+  reason?: string;
+}
+
+function getEmailTransporter(): Transporter | null {
+  const host = process.env.SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || "587", 10);
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+  const secure = process.env.SMTP_SECURE === "true" || port === 465;
+
+  if (!host || !user || !pass) {
+    return null;
+  }
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+  });
+}
+
+export async function sendMatchNotificationEmail(payload: MatchEmailPayload): Promise<{
+  success: boolean;
+  status: "SENT" | "PENDING_SMTP_CONFIG" | "ERROR";
+  messageId?: string;
+  details?: string;
+}> {
+  const { recipientEmail, recipientName, matchScore, newRegisteredItem, counterpartItem, matchedFeatures, reason } = payload;
+  const adminDb = getAdminFirestore();
+  const logId = `email-match-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  const timestamp = new Date().toISOString();
+
+  const subject = `[IFPR Achados & Perdidos] Encontramos objetos semelhantes! (${matchScore}% de compatibilidade)`;
+
+  const htmlContent = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f6f8; color: #1e293b; }
+    .container { max-width: 600px; margin: 24px auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+    .header { background: linear-gradient(135deg, #00843D 0%, #005a2b 100%); padding: 32px 24px; text-align: center; color: #ffffff; }
+    .header h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+    .header p { margin: 6px 0 0 0; font-size: 13px; opacity: 0.9; }
+    .badge { display: inline-block; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4); padding: 5px 16px; border-radius: 999px; font-size: 13px; font-weight: bold; margin-top: 14px; }
+    .content { padding: 28px 24px; }
+    .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+    .card h3 { margin: 0 0 10px 0; font-size: 15px; color: #0f172a; }
+    .item-grid { display: grid; grid-template-columns: 1fr; gap: 8px; font-size: 13px; }
+    .item-prop { display: flex; justify-content: space-between; border-bottom: 1px dashed #cbd5e1; padding-bottom: 4px; }
+    .item-prop span:first-child { color: #64748b; font-weight: 500; }
+    .item-prop span:last-child { color: #0f172a; font-weight: 600; }
+    .ai-box { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 12px; padding: 16px; margin: 20px 0; }
+    .ai-box h4 { margin: 0 0 6px 0; font-size: 13px; color: #065f46; font-weight: 700; }
+    .ai-box p { margin: 0; font-size: 12px; color: #047857; line-height: 1.5; }
+    .features-pill { display: inline-block; background: #d1fae5; color: #065f46; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 6px; margin: 2px; }
+    .cta-button { display: block; width: fit-content; margin: 24px auto; background: #00843D; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; font-size: 14px; text-align: center; }
+    .footer { padding: 20px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>IFPR Campus Ivaiporã • Achados & Perdidos</h1>
+      <p>Sistema Oficial de Gestão e Localização de Pertences</p>
+      <div class="badge">Encontramos objetos semelhantes! (${matchScore}% de compatibilidade)</div>
+    </div>
+    <div class="content">
+      <p style="font-size: 14px; line-height: 1.6; margin-top: 0;">
+        Olá <strong>${recipientName || recipientEmail}</strong>,
+      </p>
+      <p style="font-size: 13px; line-height: 1.6; color: #475569;">
+        O motor de Inteligência Artificial do <strong>Localiza+ / IFPR Achados & Perdidos</strong> identificou uma potencial correspondência de alta relevância (<strong>${matchScore}%</strong>) com um pertence registrado no campus.
+      </p>
+
+      <div class="card">
+        <h3>🔍 Objeto Cadastrado Recentemente</h3>
+        <div class="item-grid">
+          <div class="item-prop"><span>Título:</span><span>${newRegisteredItem.title}</span></div>
+          <div class="item-prop"><span>Tipo:</span><span>${newRegisteredItem.type}</span></div>
+          <div class="item-prop"><span>Categoria:</span><span>${newRegisteredItem.category}</span></div>
+          <div class="item-prop"><span>Cor:</span><span>${newRegisteredItem.color || "Não informada"}</span></div>
+          <div class="item-prop"><span>Marca:</span><span>${newRegisteredItem.brand || "Desconhecida"}</span></div>
+          <div class="item-prop"><span>Local no Campus:</span><span>${newRegisteredItem.location}</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>📦 Objeto Relacionado no Sistema</h3>
+        <div class="item-grid">
+          <div class="item-prop"><span>Título:</span><span>${counterpartItem.title}</span></div>
+          <div class="item-prop"><span>Tipo:</span><span>${counterpartItem.type}</span></div>
+          <div class="item-prop"><span>Categoria:</span><span>${counterpartItem.category}</span></div>
+          <div class="item-prop"><span>Local no Campus:</span><span>${counterpartItem.location}</span></div>
+        </div>
+      </div>
+
+      <div class="ai-box">
+        <h4>🤖 Análise de Similaridade Textual (IA Gemini)</h4>
+        <p>${reason || "Características coincidentes de categoria, modelo, cor e local detectadas pela IA."}</p>
+        ${matchedFeatures && matchedFeatures.length > 0 ? `
+          <div style="margin-top: 8px;">
+            ${matchedFeatures.map((f: string) => `<span class="features-pill">${f}</span>`).join(" ")}
+          </div>
+        ` : ""}
+      </div>
+
+      <a href="https://ais-dev-mbimq2qicgl3xitodqasxp-531286486641.us-west2.run.app" class="cta-button">
+        Acessar Localiza+ para Verificar Pertence
+      </a>
+
+      <p style="font-size: 12px; color: #64748b; line-height: 1.5; margin-bottom: 0;">
+        Caso este pertence seja o seu, dirija-se ao setor responsável do campus com um documento oficial ou entre em contato pelo sistema para efetuar a retirada segura.
+      </p>
+    </div>
+    <div class="footer">
+      Instituto Federal do Paraná • Campus Ivaiporã<br>
+      Rodovia PR-466 - Ivaiporã/PR • Contato: localizamais6@gmail.com<br>
+      Mensagem enviada automaticamente pelo sistema Localiza+.
+    </div>
+  </div>
+</body>
+</html>
+  `;
+
+  const transporter = getEmailTransporter();
+
+  if (!transporter) {
+    console.log(`[Email Service Notice] SMTP_HOST/SMTP_USER não configurados no ambiente. Registrando despacho no Firestore e auditoria para ${recipientEmail}.`);
+    
+    if (adminDb) {
+      try {
+        await adminDb.collection("email_notifications").doc(logId).set({
+          id: logId,
+          recipientEmail,
+          recipientName: recipientName || null,
+          subject,
+          matchScore,
+          newItemId: newRegisteredItem.id,
+          counterpartItemId: counterpartItem.id,
+          status: "PENDING_SMTP_CONFIG",
+          timestamp,
+          reason: reason || null,
+          matchedFeatures: matchedFeatures || [],
+        });
+      } catch (e) {
+        console.warn("[Firestore Log Warning] Não foi possível persistir email_notification:", e);
+      }
+    }
+
+    return {
+      success: true,
+      status: "PENDING_SMTP_CONFIG",
+      details: "Notificação registrada no log do Firestore. Para envio SMTP em produção, configure as variáveis SMTP_* no painel de segredos.",
+    };
+  }
+
+  try {
+    const fromAddress = process.env.SMTP_FROM || `"IFPR Achados & Perdidos" <${process.env.SMTP_USER}>`;
+    const info = await transporter.sendMail({
+      from: fromAddress,
+      to: recipientEmail,
+      subject,
+      html: htmlContent,
+    });
+
+    console.log(`[Email Service Success] E-mail de correspondência enviado com sucesso para ${recipientEmail}. MessageId: ${info.messageId}`);
+
+    if (adminDb) {
+      try {
+        await adminDb.collection("email_notifications").doc(logId).set({
+          id: logId,
+          recipientEmail,
+          recipientName: recipientName || null,
+          subject,
+          matchScore,
+          newItemId: newRegisteredItem.id,
+          counterpartItemId: counterpartItem.id,
+          status: "SENT",
+          messageId: info.messageId,
+          timestamp,
+          reason: reason || null,
+          matchedFeatures: matchedFeatures || [],
+        });
+      } catch (e) {
+        console.warn("[Firestore Log Warning] Não foi possível persistir email_notification:", e);
+      }
+    }
+
+    return {
+      success: true,
+      status: "SENT",
+      messageId: info.messageId,
+    };
+  } catch (error: any) {
+    console.error(`[Email Service Error] Falha ao enviar e-mail para ${recipientEmail}:`, error);
+
+    if (adminDb) {
+      try {
+        await adminDb.collection("email_notifications").doc(logId).set({
+          id: logId,
+          recipientEmail,
+          recipientName: recipientName || null,
+          subject,
+          matchScore,
+          newItemId: newRegisteredItem.id,
+          counterpartItemId: counterpartItem.id,
+          status: "ERROR",
+          error: error?.message || String(error),
+          timestamp,
+        });
+      } catch (_) {}
+    }
+
+    return {
+      success: false,
+      status: "ERROR",
+      details: error?.message || "Erro no envio do e-mail SMTP",
+    };
+  }
+}
+
+// Endpoint to send potential match notification email
+app.post(["/api/notifications/send-match-email", "/notifications/send-match-email"], requireAuth, generalRateLimiter, async (req, res) => {
+  const userId = req.authUser!.uid;
+  const userEmail = req.authUser?.email;
+  const userRole = req.authUser?.role;
+
+  try {
+    const { targetUserId, targetEmail, matchScore, newItem, counterpartItem, matchedFeatures, reason, currentUserEmail, currentUserName } = req.body;
+
+    if (!newItem || !counterpartItem) {
+      return res.status(400).json({ error: "Dados incompletos do objeto ou contraparte para envio de e-mail." });
+    }
+
+    let recipientEmail = String(targetEmail || "").trim();
+    let recipientName = "";
+
+    const adminDb = getAdminFirestore();
+    if (!recipientEmail && targetUserId && adminDb) {
+      try {
+        const udoc = await adminDb.collection("users").doc(targetUserId).get();
+        if (udoc.exists) {
+          const udata = udoc.data();
+          recipientEmail = udata?.email || "";
+          recipientName = udata?.name || "";
+        }
+      } catch (err) {
+        console.warn("Erro ao buscar e-mail do usuário no Firestore:", err);
+      }
+    }
+
+    if (!recipientEmail) {
+      // If counterpart user email couldn't be resolved, fallback to notifying currentUser if requested
+      recipientEmail = currentUserEmail || userEmail || "";
+      recipientName = currentUserName || "";
+    }
+
+    if (!recipientEmail) {
+      return res.status(400).json({ error: "Nenhum endereço de e-mail destinatário foi localizado para este alerta." });
+    }
+
+    const emailResult = await sendMatchNotificationEmail({
+      recipientEmail,
+      recipientName,
+      matchScore: Number(matchScore) || 80,
+      newRegisteredItem: newItem,
+      counterpartItem,
+      matchedFeatures,
+      reason,
+    });
+
+    logAIAudit({
+      userId,
+      userEmail,
+      userRole,
+      endpoint: "/api/notifications/send-match-email",
+      action: "MATCH_EMAIL_DISPATCH",
+      status: emailResult.success ? "SUCCESS" : "FAILED",
+      details: {
+        recipientEmail,
+        status: emailResult.status,
+        matchScore,
+        newItemId: newItem.id,
+        counterpartItemId: counterpartItem.id,
+      },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
+    return res.json({
+      success: emailResult.success,
+      status: emailResult.status,
+      message: emailResult.status === "SENT" 
+        ? `E-mail de notificação enviado com sucesso para ${recipientEmail}.`
+        : `Alerta registrado com sucesso. (Status: ${emailResult.status})`,
+      details: emailResult.details,
+    });
+  } catch (error: any) {
+    console.error("Erro no endpoint send-match-email:", error);
+    return res.status(500).json({ error: error.message || "Erro interno ao processar e-mail de correspondência." });
+  }
+});
+
+// Endpoint to check email service status
+app.get(["/api/notifications/email-status", "/notifications/email-status"], requireAuth, async (req, res) => {
+  const isConfigured = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+  return res.json({
+    success: true,
+    smtpConfigured: isConfigured,
+    provider: process.env.SMTP_HOST ? process.env.SMTP_HOST.split(".")[1] || "Custom SMTP" : "Não configurado",
+    host: process.env.SMTP_HOST || null,
+    port: process.env.SMTP_PORT || "587",
+    from: process.env.SMTP_FROM || (process.env.SMTP_USER ? `"IFPR Achados & Perdidos" <${process.env.SMTP_USER}>` : null),
+  });
 });
 
 // Support & User Feedback Submission Endpoint (Direct Campus Team Dispatch & Discord Webhook Forwarding)
@@ -2192,67 +2496,22 @@ app.post(["/api/gemini/semantic-search", "/gemini/semantic-search"], requireAuth
     }
 
     if (!ai) {
-      // Local fallback semantic search when Gemini key is not configured
-      const qLower = cleanQuery.toLowerCase();
-      const qWords = qLower.split(/\s+/).filter((w: string) => w.length > 2);
-
-      const localResults = safeCandidates
-        .filter(Boolean)
-        .map((item: any) => {
-          let score = 0;
-          const title = String(item?.title ?? "").toLowerCase();
-          const desc = String(item?.description ?? "").toLowerCase();
-          const loc = String(item?.location ?? "").toLowerCase();
-          const cat = String(item?.category ?? "").toLowerCase();
-          const color = String(item?.color ?? "").toLowerCase();
-          const brand = String(item?.brand ?? "").toLowerCase();
-          const textCorpus = `${title} ${desc} ${loc} ${cat} ${color} ${brand}`;
-          const matchedWords: string[] = [];
-
-          qWords.forEach((word: string) => {
-            if (textCorpus.includes(word)) {
-              score += 25;
-              matchedWords.push(word);
-            }
-          });
-
-          // Spatial proximity heuristics
-          if (qLower.includes("biblioteca") && loc.includes("biblioteca")) score += 30;
-          if (qLower.includes("refeitório") && loc.includes("refeitório")) score += 30;
-          if (qLower.includes("bloco") && loc.includes("bloco")) score += 25;
-          if (qLower.includes("ginásio") && loc.includes("ginásio")) score += 30;
-          if (qLower.includes("portaria") && loc.includes("portaria")) score += 30;
-
-          return {
-            itemId: item?.id || "",
-            relevanceScore: Math.min(100, score),
-            explanation: matchedWords.length > 0
-              ? `Correspondência textual e de localização encontrada para: ${matchedWords.join(", ")}.`
-              : "Correspondência aproximada.",
-            highlightKeywords: matchedWords,
-          };
-        })
-        .filter((r: any) => r.relevanceScore >= 25)
-        .sort((a: any, b: any) => b.relevanceScore - a.relevanceScore);
-
       logAIAudit({
         userId,
         userEmail,
         userRole,
         endpoint: "/api/gemini/semantic-search",
         action: "SEMANTIC_SEARCH",
-        status: "SUCCESS",
-        modelUsed: "local-semantic-fallback",
+        status: "FAILED",
+        modelUsed: "gemini-3.7-flash",
         promptSnippet: cleanQuery,
-        details: { candidatesCount: safeCandidates.length, resultsCount: localResults.length, isFallback: true },
+        details: { error: "GEMINI_API_KEY não configurada no servidor." },
         ip: req.ip || req.socket.remoteAddress,
       });
 
-      return res.json({
-        success: true,
-        results: localResults,
-        modelUsed: "local-semantic-fallback",
-        totalCandidates: safeCandidates.length,
+      return res.status(503).json({
+        success: false,
+        error: "A API do Google Gemini não está configurada no ambiente do servidor.",
       });
     }
 

@@ -26,7 +26,7 @@ import {
 import { DEFAULT_DOCUMENT_TEMPLATES } from "../lib/defaultDocumentTemplates";
 import { DEFAULT_PROJECT_SETTINGS } from "../lib/projectSettingsConstants";
 import { INITIAL_ITEMS, MOCK_NOTIFICATIONS, MOCK_CLAIMS, MOCK_COMMENTS, MOCK_ACTIVITY_LOGS } from "../data/mockData";
-import { safeFetchJson, clientMatchSimilarity } from "../lib/apiHelper";
+import { safeFetchJson, clientMatchSimilarity, sendMatchEmailAlert } from "../lib/apiHelper";
 import { compressImage } from "../lib/imageCompression";
 import {
   collection,
@@ -295,6 +295,7 @@ interface AppContextType {
   deleteGeneratedDocument: (docId: string) => Promise<void>;
   saveProjectSettings: (settings: ProjectSettings) => Promise<void>;
   resetProjectSettingsToDefault: () => Promise<void>;
+  suggestMatchesForItem: (targetItem: LostFoundItem) => Promise<AIMatchResult[]>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -3179,7 +3180,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const newNotif: NotificationItem = {
         id: `notif-${Date.now()}`,
         userId: currentUser.id,
-        title: "Correspondência de IA Identificada!",
+        title: "Encontramos objetos semelhantes.",
         message: `A IA encontrou ${topMatch.matchScore}% de similaridade com: ${topMatch.matchedItem.title} (${topMatch.matchedItem.location})`,
         timestamp: new Date().toISOString(),
         read: false,
@@ -3191,21 +3192,101 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (e) {
         handleFirestoreError(e, OperationType.WRITE, `notifications/${newNotif.id}`);
       }
+
+      // Display system notification and toast
+      addToast("Encontramos objetos semelhantes.", "info");
       setAiMatchAlert({ newItem, matches: aiMatches });
 
       displayWebPushNotification(
-        "IFPR Achados & Perdidos • Alerta de Correspondência",
-        `Objeto compatível encontrado (${topMatch.matchScore}%): ${topMatch.matchedItem.title} (${topMatch.matchedItem.location})`,
+        "Encontramos objetos semelhantes.",
+        `A IA encontrou ${topMatch.matchScore}% de similaridade com: ${topMatch.matchedItem.title} (${topMatch.matchedItem.location})`,
         {
           url: `/?item=${topMatch.matchedItem.id}`,
           itemId: topMatch.matchedItem.id,
           matchScore: topMatch.matchScore,
         }
       );
+
+      // Dispatch real email notifications to counterpart owners and registering user
+      for (const match of aiMatches) {
+        try {
+          sendMatchEmailAlert({
+            targetUserId: match.matchedItem.registeredByUserId,
+            targetEmail: match.matchedItem.contactInfo,
+            matchScore: match.matchScore,
+            newItem: {
+              id: newItem.id,
+              title: newItem.title,
+              type: newItem.type,
+              category: newItem.category,
+              color: newItem.color,
+              brand: newItem.brand,
+              location: newItem.location,
+              description: newItem.description,
+              date: newItem.date,
+            },
+            counterpartItem: {
+              id: match.matchedItem.id,
+              title: match.matchedItem.title,
+              type: match.matchedItem.type,
+              category: match.matchedItem.category,
+              color: match.matchedItem.color,
+              brand: match.matchedItem.brand,
+              location: match.matchedItem.location,
+              description: match.matchedItem.description,
+            },
+            matchedFeatures: match.matchedFeatures,
+            reason: match.reason,
+            currentUserEmail: currentUser?.email,
+            currentUserName: currentUser?.name,
+          }).catch((mailErr) => console.warn("Aviso ao despachar e-mail de correspondência:", mailErr));
+        } catch (_) {}
+      }
     }
 
     addToast(`Objeto "${newItem.title}" cadastrado com sucesso no Firestore!`, "success");
     return { newItem, matches: aiMatches, persistenceStatus: "CONFIRMED", isOffline: false };
+  };
+
+  const suggestMatchesForItem = async (targetItem: LostFoundItem): Promise<AIMatchResult[]> => {
+    const counterpartType = targetItem.type === "PERDIDO" ? "ENCONTRADO" : "PERDIDO";
+    const candidates = items.filter(
+      (it) => it.type === counterpartType && it.id !== targetItem.id && it.status !== "DEVOLVIDO" && it.status !== "ENCERRADO"
+    );
+    if (candidates.length === 0) return [];
+
+    try {
+      const aiRes = await safeFetchJson(
+        "/api/ai/match-similarity",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            newItem: targetItem,
+            candidateItems: candidates.slice(0, 20),
+          }),
+        },
+        () => ({ matches: clientMatchSimilarity(targetItem, candidates.slice(0, 20)) })
+      );
+
+      const rawMatches = Array.isArray(aiRes?.matches) ? aiRes.matches : [];
+      return rawMatches
+        .map((m: any) => {
+          const found = candidates.find((c) => c.id === m.itemId);
+          return found
+            ? {
+                matchedItem: found,
+                matchScore: m.matchScore,
+                reason: m.reason || "Semelhança identificada pela IA",
+                matchedFeatures: m.matchedFeatures || [],
+              }
+            : null;
+        })
+        .filter(Boolean) as AIMatchResult[];
+    } catch (err) {
+      console.error("Erro ao sugerir correspondências:", err);
+      return [];
+    }
   };
 
   const updateItemStatus = async (id: string, status: ItemStatus) => {
@@ -4085,6 +4166,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteGeneratedDocument,
         saveProjectSettings,
         resetProjectSettingsToDefault,
+        suggestMatchesForItem,
       }}
     >
       {children}

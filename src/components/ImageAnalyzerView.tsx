@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { ItemCategory, LostFoundItem } from "../types";
+import { auth } from "../lib/firebase";
 import { safeFetchJson, clientAnalyzeImage, clientMatchSimilarity } from "../lib/apiHelper";
 import {
   Sparkles,
@@ -177,43 +178,46 @@ export const ImageAnalyzerView: React.FC = () => {
       return;
     }
 
+    if (!auth.currentUser) {
+      addToast("Faça login com sua conta institucional para analisar fotos com o Gemini.", "error");
+      return;
+    }
+
     setIsAnalyzing(true);
     setAnalysis(null);
     setDatabaseMatches([]);
 
     try {
-      const data = await safeFetchJson(
-        "/api/ai/analyze-image",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            imageBase64: selectedImage,
-            customContext,
-          }),
+      const idToken = await auth.currentUser.getIdToken();
+      const res = await fetch("/api/ai/analyze-image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
         },
-        () => ({
-          success: true,
-          analysis: clientAnalyzeImage(customContext || "Análise de Imagem"),
-        })
-      );
+        body: JSON.stringify({
+          imageBase64: selectedImage,
+          customContext,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || `Erro ${res.status}: Falha ao analisar foto com Gemini.`);
+      }
 
       if (data.success && data.analysis) {
         setAnalysis(data.analysis);
-        addToast("Foto analisada com sucesso pela Inteligência Artificial!", "success");
+        addToast("Foto analisada com sucesso pela Inteligência Artificial Gemini!", "success");
 
         // Automatically trigger a database check in background
         performDbMatching(data.analysis);
       } else {
-        const fallback = clientAnalyzeImage(customContext);
-        setAnalysis(fallback);
-        performDbMatching(fallback);
+        throw new Error("Não foi possível extrair dados da imagem via Gemini.");
       }
     } catch (err: any) {
-      console.warn("Aviso ao analisar foto:", err);
-      const fallback = clientAnalyzeImage(customContext);
-      setAnalysis(fallback);
-      performDbMatching(fallback);
+      console.error("Erro ao analisar foto:", err);
+      addToast(err.message || "Falha na análise da imagem pelo Gemini.", "error");
     } finally {
       setIsAnalyzing(false);
     }
@@ -222,6 +226,7 @@ export const ImageAnalyzerView: React.FC = () => {
   // Perform database match using AI analysis result
   const performDbMatching = async (analyzedData: AIAnalysisResult) => {
     if (!items || items.length === 0) return;
+    if (!auth.currentUser) return;
     setIsSearchingDb(true);
 
     try {
@@ -246,18 +251,24 @@ export const ImageAnalyzerView: React.FC = () => {
         type: "ENCONTRADO" as const,
       };
 
-      const matchRes = await safeFetchJson(
-        "/api/ai/match-similarity",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            newItem: newItemObj,
-            candidateItems: candidateList,
-          }),
+      const idToken = await auth.currentUser.getIdToken();
+      const res = await fetch("/api/ai/match-similarity", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
         },
-        () => clientMatchSimilarity(newItemObj, items)
-      );
+        body: JSON.stringify({
+          newItem: newItemObj,
+          candidateItems: candidateList,
+        }),
+      });
+
+      const matchRes = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.warn("Aviso na busca por similaridade Gemini:", matchRes.error);
+        return;
+      }
 
       if (matchRes.matches && matchRes.matches.length > 0) {
         const enriched = matchRes.matches

@@ -24,12 +24,78 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.14",
+    codename: "Gemini AI Real Integration & Elimination of Mock Fallbacks",
+    releaseDate: "19/09/2026",
+    releaseDateTime: "19 de Setembro de 2026 • 15:50 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Reestruturação e consolidação integral da integração com a API Google Gemini no backend Express e no frontend React. Eliminação completa de fallbacks silenciosos e dados simulados/mockados nas rotas /api/ai/analyze-image, /api/ai/analyze-object e /api/ai/match-similarity. Uso estrito do Secret GEMINI_API_KEY no servidor através do SDK oficial @google/genai, remoção de referências à chave no cliente, e propagação transparente de erros reais e autenticação institucional com feedback claro ao usuário.",
+    additions: [
+      {
+        id: "v1914-add-1",
+        title: "Integração Real e Segura com Google Gemini no Backend",
+        description: "Chamadas diretas aos modelos oficiais gemini-3.7-flash (visão computacional de fotos) e gemini-3.8-flash (extração textual e cruzamento de similaridade) através do SDK @google/genai, mantendo o Secret GEMINI_API_KEY protegido exclusivamente no servidor.",
+        module: "IA_GEMINI",
+        tag: "Inteligência Artificial",
+      },
+      {
+        id: "v1914-add-2",
+        title: "Propagação Transparente de Erros sem Mascaramento",
+        description: "Tratamento de status HTTP 503 (serviço não configurado) e 500 (erro da API) no frontend, informando claramente ao usuário quando houver indisponibilidade ou ausência da chave, em conformidade com as regras mestras do sistema.",
+        module: "IA_GEMINI",
+        tag: "Confiabilidade & Transparência",
+      },
+      {
+        id: "v1914-add-3",
+        title: "Auditoria Centralizada de Operações de IA",
+        description: "Registro detalhado das chamadas de extração de objetos, análise de fotos e similaridade no endpoint de auditoria interna, com usuário, papel, modelo e status da operação.",
+        module: "IA_GEMINI",
+        tag: "Segurança & Auditoria",
+      },
+      {
+        id: "v1914-add-4",
+        title: "Suíte de Testes Automatizada para o Fluxo Real do Gemini",
+        description: "Criação do script scripts/test-gemini-suite.ts validando autenticação, rejeição 401 para anônimos, 403 para e-mails não confirmados, contrato candidateItems, ausência de mocks e segurança do Secret no frontend com 100% de aprovação.",
+        module: "IA_GEMINI",
+        tag: "Testes & Qualidade",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1914-fix-1",
+        title: "Remoção de Mocks e Fallbacks Ocultos de IA",
+        description: "Eliminados os blocos de fallback e dados fictícios que retornavam respostas pré-definidas em caso de erro da API Gemini no backend e nas views RegisterItemView e ImageAnalyzerView.",
+        module: "IA_GEMINI",
+        tag: "Correção de Fluxo",
+      },
+      {
+        id: "v1914-fix-2",
+        title: "Correção do Payload de Similaridade no AppContext",
+        description: "Ajustada a estrutura de envio do método suggestMatchesForItem para utilizar candidateItems conforme a assinatura esperada pelo endpoint /api/ai/match-similarity.",
+        module: "IA_GEMINI",
+        tag: "Correção de Contrato de API",
+      },
+      {
+        id: "v1914-fix-3",
+        title: "Remoção de VITE_GEMINI_API_KEY e Instanciação Client-Side",
+        description: "Removida a função getClientGemini e a importação do SDK no bundle frontend em apiHelper.ts, prevenindo qualquer risco de exposição de chaves no navegador.",
+        module: "IA_GEMINI",
+        tag: "Segurança",
+      },
+    ],
+    stats: {
+      additionsCount: 4,
+      fixesCount: 3,
+    },
+  },
+  {
     version: "v1.9.13",
     codename: "Institutional User Reconciliation & Atomic Registration Guard",
     releaseDate: "19/09/2026",
     releaseDateTime: "19 de Setembro de 2026 • 11:30 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Diagnóstico completo e resolução da divergência de usuários entre o Firebase Authentication e a coleção /users do Firestore. Implementação de provisão institucional com status PENDENTE para contas acadêmicas órfãs, remoção da seleção manual de perfil no cadastro, determinação estrita e automática de vínculo (ALUNO/SERVIDOR) baseada no domínio institucional IFPR, transação compensatória atômica para impedir contas órfãs caso a gravação no Firestore falhe, e validação com bateria completa de 15 testes de integração.",
     additions: [
       {
