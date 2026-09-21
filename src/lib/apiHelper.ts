@@ -307,3 +307,50 @@ export async function clientSemanticSearch(
   );
 }
 
+export interface AICategorySuggestion {
+  success: boolean;
+  suggestedCategory: ItemCategory;
+  confidenceScore: number;
+  confidenceLevel: "HIGH" | "MEDIUM" | "LOW";
+  reasoning: string;
+  autoFillRecommended: boolean;
+}
+
+export async function requestCategorySuggestion(
+  title: string,
+  description: string
+): Promise<AICategorySuggestion> {
+  const cleanTitle = (title || "").trim();
+  const cleanDesc = (description || "").trim();
+
+  if (!cleanTitle && !cleanDesc) {
+    throw new Error("Título ou descrição devem ser informados.");
+  }
+
+  return safeFetchJson<AICategorySuggestion>(
+    "/api/ai/suggest-category",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: cleanTitle,
+        description: cleanDesc,
+      }),
+    },
+    () => {
+      // Client-side fallback analyzer
+      const combined = `${cleanTitle} ${cleanDesc}`;
+      const analyzed = clientAnalyzeObject(combined);
+      return {
+        success: true,
+        suggestedCategory: (analyzed.category as ItemCategory) || "Outros",
+        confidenceScore: 75,
+        confidenceLevel: "MEDIUM",
+        reasoning: `Identificado com base no vocabulário institucional para "${cleanTitle || cleanDesc}".`,
+        autoFillRecommended: false,
+      };
+    }
+  );
+}
+
+

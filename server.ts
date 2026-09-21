@@ -1111,6 +1111,169 @@ Retorne um JSON rigorosamente estruturado conforme o schema.`;
   }
 });
 
+// AI Endpoint: Análise e sugestão inteligente de categoria com base em título e descrição
+app.post(["/api/ai/suggest-category", "/ai/suggest-category"], requireAuth, aiRateLimiter, async (req, res) => {
+  const userId = req.authUser!.uid;
+  const userEmail = req.authUser?.email;
+  const userRole = req.authUser?.role;
+
+  try {
+    const { title, description } = req.body;
+    const cleanTitle = typeof title === "string" ? title.trim().substring(0, 300) : "";
+    const cleanDescription = typeof description === "string" ? description.trim().substring(0, 2000) : "";
+    const ai = getGenAIClient();
+
+    if (!cleanTitle && !cleanDescription) {
+      return res.status(400).json({
+        success: false,
+        error: "Título ou descrição necessários para sugerir a categoria.",
+      });
+    }
+
+    if (!ai) {
+      logAIAudit({
+        userId,
+        userEmail,
+        userRole,
+        endpoint: "/api/ai/suggest-category",
+        action: "SUGGEST_CATEGORY",
+        status: "FAILED",
+        modelUsed: "gemini-3.1-flash-lite",
+        promptSnippet: `Título: ${cleanTitle} | Desc: ${cleanDescription.substring(0, 100)}`,
+        details: { error: "GEMINI_API_KEY não configurada no servidor." },
+        ip: req.ip || req.socket.remoteAddress,
+      });
+
+      return res.status(503).json({
+        success: false,
+        error: "A API do Google Gemini não está configurada no ambiente do servidor.",
+      });
+    }
+
+    const systemInstruction = `Você é o classificador especialista de categorias do sistema Achados e Perdidos do IFPR Campus Ivaiporã.
+Sua única responsabilidade é analisar o título e/ou descrição de um objeto cadastrado e indicar a categoria mais provável dentre as opções estritas permitidas pelo sistema.
+
+Categorias permitidas:
+- "Eletrônicos" (celulares, fones, calculadoras, notebooks, carregadores, pendrives, cabos, smartwatches, caixas de som)
+- "Documentos & Cartões" (RG, CPF, CNH, cartão de estudante, carteirinha de transporte, crachás, cartões bancários, certidões)
+- "Roupas & Calçados" (casacos, blusas, uniformes, camisetas, calças, tênis, sapatos, chinelos, bonés, toucas, meias)
+- "Chaves" (chaves de casa, chaves de moto/carro, chaveiros, tags de acesso, cadeados)
+- "Material Escolar & Livros" (cadernos, estojos, livros didáticos, apostilas, canetas, réguas, pastas, mochilas escolares)
+- "Acessórios & Bijuterias" (óculos de grau/sol, relógios de pulso comuns, anéis, colares, pulseiras, brincos, carteiras, bolsas)
+- "Garrafas & Marmitas" (garrafas térmicas, copos Stanley/Kouda, squeezes, potes plásticos, marmitas, talheres)
+- "Guarda-chuvas" (sombrinhas, guarda-chuvas, capas de chuva)
+- "Outros" (objetos esportivos diversos, brinquedos, ferramentas, itens não contemplados)
+
+Calcule:
+1. suggestedCategory: uma das 9 categorias acima exatamente como grafada.
+2. confidenceScore: pontuação de 0 a 100 refletindo o quão certo você está (ex: 95 para "Garrafa Kouda", 90 para "Calculadora Casio", 60 para descrições vagas).
+3. confidenceLevel: "HIGH" se score >= 85, "MEDIUM" se score entre 65 e 84, "LOW" se score < 65.
+4. reasoning: uma frase curta e objetiva em português explicando o motivo da classificação.
+5. autoFillRecommended: booleano verdadeiro se confidenceLevel for "HIGH" (score >= 85).`;
+
+    const promptText = `Título do Objeto: "${cleanTitle}"\nDescrição do Objeto: "${cleanDescription}"\nAnalise e classifique na categoria correta.`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-flash-lite",
+      contents: promptText,
+      config: {
+        systemInstruction,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            suggestedCategory: {
+              type: Type.STRING,
+              description: "Categoria sugerida exatamente dentre as 9 permitidas",
+            },
+            confidenceScore: {
+              type: Type.INTEGER,
+              description: "Score de 0 a 100",
+            },
+            confidenceLevel: {
+              type: Type.STRING,
+              description: "HIGH, MEDIUM ou LOW",
+            },
+            reasoning: {
+              type: Type.STRING,
+              description: "Motivo sucinto da sugestão",
+            },
+            autoFillRecommended: {
+              type: Type.BOOLEAN,
+              description: "Verdadeiro se confiança for alta (>= 85)",
+            },
+          },
+          required: ["suggestedCategory", "confidenceScore", "confidenceLevel", "reasoning", "autoFillRecommended"],
+        },
+      },
+    });
+
+    const parsedResult = JSON.parse(response.text || "{}");
+
+    // Validação estrita contra a lista oficial
+    const validCategories = [
+      "Eletrônicos",
+      "Documentos & Cartões",
+      "Roupas & Calçados",
+      "Chaves",
+      "Material Escolar & Livros",
+      "Acessórios & Bijuterias",
+      "Garrafas & Marmitas",
+      "Guarda-chuvas",
+      "Outros",
+    ];
+
+    if (!validCategories.includes(parsedResult.suggestedCategory)) {
+      parsedResult.suggestedCategory = "Outros";
+      parsedResult.confidenceScore = Math.min(parsedResult.confidenceScore || 50, 50);
+      parsedResult.confidenceLevel = "LOW";
+      parsedResult.autoFillRecommended = false;
+    }
+
+    logAIAudit({
+      userId,
+      userEmail,
+      userRole,
+      endpoint: "/api/ai/suggest-category",
+      action: "SUGGEST_CATEGORY",
+      status: "SUCCESS",
+      modelUsed: "gemini-3.1-flash-lite",
+      promptSnippet: `Título: ${cleanTitle} | Desc: ${cleanDescription.substring(0, 100)}`,
+      details: {
+        suggestedCategory: parsedResult.suggestedCategory,
+        confidenceScore: parsedResult.confidenceScore,
+        confidenceLevel: parsedResult.confidenceLevel,
+        autoFillRecommended: parsedResult.autoFillRecommended,
+      },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
+    return res.json({
+      success: true,
+      ...parsedResult,
+    });
+  } catch (err: any) {
+    console.error("Erro no endpoint /api/ai/suggest-category:", err);
+
+    logAIAudit({
+      userId,
+      userEmail,
+      userRole,
+      endpoint: "/api/ai/suggest-category",
+      action: "SUGGEST_CATEGORY",
+      status: "FAILED",
+      modelUsed: "gemini-3.1-flash-lite",
+      details: { error: err.message },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Erro ao sugerir categoria com Gemini.",
+    });
+  }
+});
+
 // AI Endpoint Fast Query Expansion / Quick Auto-Tagging using gemini-3.1-flash-lite
 app.post(["/api/ai/quick-tag", "/ai/quick-tag"], requireAuth, aiRateLimiter, async (req, res) => {
   const userId = req.authUser!.uid;

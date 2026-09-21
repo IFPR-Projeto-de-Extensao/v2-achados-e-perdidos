@@ -166,7 +166,7 @@ describe("Notification Security Audit & Isolation Engine (13 Mandatory Scenarios
     const createRuleMatch = rulesContent.match(/allow create: if isSignedIn\(\) && \([\s\S]*?\);/)?.[0];
     expect(createRuleMatch).toBeDefined();
     expect(createRuleMatch).toContain("isAdmin() ||");
-    expect(createRuleMatch).toContain("isServidor() ||");
+    expect(createRuleMatch).toMatch(/isServidor\(\)/);
     expect(createRuleMatch).toContain("incoming().userId == request.auth.uid");
   });
 
@@ -183,7 +183,7 @@ describe("Notification Security Audit & Isolation Engine (13 Mandatory Scenarios
   // 8. Administrador / Servidor criando notificação institucional (PERMITIDO)
   // =========================================================================
   it("Cenário 8: Administrador / Servidor criando notificação institucional ou broadcast deve ser PERMITIDO", () => {
-    expect(rulesContent).toContain("allow create: if isSignedIn() && (\n        isAdmin() || \n        isServidor() ||");
+    expect(rulesContent).toMatch(/allow create: if isSignedIn\(\) && \(\s*isAdmin\(\) \|\|\s*\(isServidor\(\) && isAccountActive\(\)\)/);
   });
 
   // =========================================================================

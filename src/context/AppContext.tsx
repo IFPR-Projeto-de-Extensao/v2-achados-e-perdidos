@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from "r
 import {
   LostFoundItem,
   User,
+  AccountStatus,
   NotificationItem,
   ItemClaim,
   ItemStatus,
@@ -106,6 +107,15 @@ export interface InstitutionalRoleDetermination {
 
 export function determineInstitutionalRole(email: string): InstitutionalRoleDetermination {
   const cleanEmail = safeToLower(email).trim();
+  if (!cleanEmail || !cleanEmail.includes("@")) {
+    return {
+      role: "INTRUSO",
+      isInstitutional: false,
+      label: "Usuário externo",
+    };
+  }
+
+  // Superadmin whitelist
   if (cleanEmail === "paulocauan39@gmail.com") {
     return {
       role: "ADMIN",
@@ -113,24 +123,45 @@ export function determineInstitutionalRole(email: string): InstitutionalRoleDete
       label: "Administrador Geral",
     };
   }
-  if (cleanEmail.endsWith("@estudantes.ifpr.edu.br") || cleanEmail.endsWith("@estudante.ifpr.edu.br")) {
+
+  const atIdx = cleanEmail.lastIndexOf("@");
+  const domain = cleanEmail.substring(atIdx + 1);
+
+  // 1. Aluno: @estudantes.ifpr.edu.br (and variants @estudante.ifpr.edu.br, @aluno.ifpr.edu.br)
+  if (
+    domain === "estudantes.ifpr.edu.br" ||
+    domain === "estudante.ifpr.edu.br" ||
+    domain === "aluno.ifpr.edu.br" ||
+    domain.endsWith(".estudantes.ifpr.edu.br") ||
+    domain.endsWith(".estudante.ifpr.edu.br") ||
+    domain.endsWith(".aluno.ifpr.edu.br")
+  ) {
     return {
       role: "ALUNO",
       isInstitutional: true,
       label: "Estudante IFPR (Aluno)",
     };
   }
-  if (cleanEmail.endsWith("@ifpr.edu.br")) {
+
+  // 2. Servidor: @ifpr.edu.br or subdomains like @reitoria.ifpr.edu.br, @ivaipora.ifpr.edu.br, etc.
+  if (
+    (domain === "ifpr.edu.br" || domain.endsWith(".ifpr.edu.br")) &&
+    !domain.includes("estudante") &&
+    !domain.includes("aluno") &&
+    !domain.includes("escola")
+  ) {
     return {
       role: "SERVIDOR",
       isInstitutional: true,
       label: "Servidor IFPR (Docente / TAE)",
     };
   }
+
+  // 3. Qualquer outro domínio -> Intruso / Usuário externo
   return {
-    role: "ALUNO",
+    role: "INTRUSO",
     isInstitutional: false,
-    label: "Não Institucional",
+    label: "Usuário externo",
   };
 }
 
@@ -152,6 +183,12 @@ interface AppContextType {
   setCurrentUser: (user: User) => void;
   allUsers: User[];
   updateUserRole: (targetUserId: string, newRole: UserRole) => Promise<void>;
+  updateUserStatus: (
+    targetUserId: string,
+    newStatus: AccountStatus,
+    reason?: string,
+    suspendedUntil?: string
+  ) => Promise<void>;
   deleteUser: (targetUserId: string) => Promise<void>;
   switchUserRole: (role: UserRole) => void;
   loginWithGoogle: () => Promise<void>;
@@ -2797,6 +2834,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateUserStatus = async (
+    targetUserId: string,
+    newStatus: AccountStatus,
+    reason?: string,
+    suspendedUntil?: string
+  ) => {
+    if (!targetUserId) {
+      addToast("ID de usuário inválido.", "error");
+      return;
+    }
+
+    if (currentUser.role !== "ADMIN") {
+      addToast("Apenas Administradores têm permissão para alterar o status de contas.", "error");
+      return;
+    }
+
+    if (targetUserId === currentUser.id && newStatus !== "active") {
+      addToast("Você não pode suspender ou banir sua própria conta de administrador.", "error");
+      return;
+    }
+
+    const targetUser = allUsers.find((u) => u.id === targetUserId);
+    const nowIso = new Date().toISOString();
+
+    const updatePayload: Partial<User> = {
+      status: newStatus,
+      statusUpdatedAt: nowIso,
+      statusUpdatedBy: currentUser.name || currentUser.email || "Administrador",
+      statusChangedAt: nowIso,
+      statusChangedBy: currentUser.id,
+      statusChangedByName: currentUser.name || currentUser.email || "Administrador",
+      statusChangedByEmail: currentUser.email || "",
+      statusReason: reason?.trim() || undefined,
+      suspendedUntil: newStatus === "suspended" ? suspendedUntil : undefined,
+    };
+
+    try {
+      const userRef = doc(db, "users", targetUserId);
+      await setDoc(userRef, sanitizeFirestoreData(updatePayload), { merge: true });
+
+      setAllUsers((prev) =>
+        prev.map((u) => (u.id === targetUserId ? { ...u, ...updatePayload } : u))
+      );
+
+      if (currentUser.id === targetUserId) {
+        setCurrentUser((prev) => ({ ...prev, ...updatePayload }));
+      }
+
+      const actionType =
+        newStatus === "suspended"
+          ? "SUSPENSAO_CONTA"
+          : newStatus === "banned"
+          ? "BANIMENTO_CONTA"
+          : "REATIVACAO_CONTA";
+
+      await recordAuditLog({
+        objectId: targetUserId,
+        objectType: "USER",
+        objectTitle: targetUser?.name || targetUserId,
+        action: actionType,
+        fieldChanged: "status",
+        oldValue: targetUser?.status || "active",
+        newValue: newStatus,
+        details: `Status do usuário '${targetUser?.name || targetUserId}' (${targetUser?.email || ""}) alterado de '${targetUser?.status || "active"}' para '${newStatus}'. Motivo: ${reason || "Não informado"}${suspendedUntil ? ` | Até: ${suspendedUntil}` : ""}`,
+      });
+
+      await logAdminAction(
+        actionType as any,
+        `Alterou status da conta de '${targetUser?.name || targetUserId}' para '${newStatus}'. Motivo: ${reason || "Não informado"}`
+      );
+
+      const statusLabels: Record<AccountStatus, string> = {
+        active: "reativada",
+        suspended: "suspensa",
+        banned: "banida",
+      };
+
+      addToast(`Conta do usuário '${targetUser?.name || targetUserId}' ${statusLabels[newStatus]} com sucesso!`, "success");
+    } catch (e: any) {
+      console.error("Erro ao alterar status do usuário no Firestore:", e);
+      addToast("Erro ao gravar alteração de status no banco de dados.", "error");
+      throw e;
+    }
+  };
+
   const deleteUser = async (targetUserId: string) => {
     if (!targetUserId) return;
     if (currentUser.role !== "ADMIN") {
@@ -4061,6 +4183,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentUser,
         allUsers,
         updateUserRole,
+        updateUserStatus,
         deleteUser,
         switchUserRole,
         loginWithGoogle,

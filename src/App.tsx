@@ -37,6 +37,7 @@ import { savePerformanceMetricLog } from "./lib/offlineDb";
 import { parseQrCodeOrUrl, findItemInList, fetchItemFromFirestore } from "./lib/qrCodeUtils";
 import { DEFAULT_MAINTENANCE_MESSAGE } from "./lib/shared-constants";
 import { Breadcrumbs } from "./components/Breadcrumbs";
+import { AccountStatusBanner } from "./components/AccountStatusBanner";
 import {
   determineTransitionType,
   getRouteAnimationVariants,
@@ -365,6 +366,9 @@ const MainContent: React.FC = () => {
 
       {/* Top Navbar */}
       <Navbar />
+
+      {/* Account Status Alert Banner (Suspended / Banned Accounts) */}
+      <AccountStatusBanner user={currentUser} />
 
       {/* Main View Container with dynamic Breadcrumbs and route hierarchy transitions */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 xs:px-4 sm:px-6 lg:px-8 pt-3 xs:pt-4 sm:pt-6 pb-24 sm:pb-20 lg:pb-12">

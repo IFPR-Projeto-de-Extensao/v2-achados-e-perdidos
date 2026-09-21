@@ -18,8 +18,9 @@ export type ItemCategory =
   | "Guarda-chuvas"
   | "Outros";
 
-export type UserRole = "ALUNO" | "SERVIDOR" | "ADMIN";
+export type UserRole = "ALUNO" | "SERVIDOR" | "ADMIN" | "INTRUSO";
 export type ApprovalStatus = "APROVADO" | "PENDENTE" | "REJEITADO";
+export type AccountStatus = "active" | "suspended" | "banned";
 
 export interface User {
   id: string;
@@ -32,6 +33,15 @@ export interface User {
   phone?: string;
   approvalStatus?: ApprovalStatus;
   reputationScore?: number;
+  status?: AccountStatus;
+  statusReason?: string;
+  statusUpdatedAt?: string;
+  statusUpdatedBy?: string;
+  statusChangedAt?: string;
+  statusChangedBy?: string;
+  statusChangedByName?: string;
+  statusChangedByEmail?: string;
+  suspendedUntil?: string;
 }
 
 export interface ItemHistoryLog {
@@ -292,6 +302,10 @@ export interface ActivityLog {
     | "EXCLUSAO_USUARIO"
     | "MODO_MANUTENCAO"
     | "ALTERACAO_PERMISSAO"
+    | "STATUS_CONTA_USUARIO"
+    | "SUSPENSAO_USUARIO"
+    | "BANIMENTO_USUARIO"
+    | "REATIVACAO_USUARIO"
     | "STATUS_OVERRIDE"
     | "RESET_SISTEMA"
     | "NOVO_USUARIO"

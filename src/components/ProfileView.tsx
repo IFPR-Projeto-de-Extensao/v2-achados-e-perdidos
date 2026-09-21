@@ -4,6 +4,7 @@ import { ItemCard } from "./ItemCard";
 import { formatDate, formatDateTime, vibrateClick, formatPhone, isValidPhone } from "../lib/utils";
 import { UserRole, BadgeTier } from "../types";
 import { calculateUserReputation } from "../lib/reputationSystem";
+import { resolveAccountStatus, formatAccountStatusDetails } from "../lib/accountStatusUtils";
 import {
   User as UserIcon,
   GraduationCap,
@@ -38,6 +39,8 @@ import {
   Moon,
   ChevronDown,
   ChevronUp,
+  ShieldAlert,
+  AlertOctagon,
 } from "lucide-react";
 
 export const ProfileView: React.FC = () => {
@@ -216,6 +219,7 @@ export const ProfileView: React.FC = () => {
                     <option value="ALUNO" className="bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white">ALUNO</option>
                     <option value="SERVIDOR" className="bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white">SERVIDOR</option>
                     <option value="ADMIN" className="bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white">ADMIN</option>
+                    <option value="INTRUSO" className="bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white">Usuário externo</option>
                   </select>
                 </div>
               ) : (
@@ -226,9 +230,23 @@ export const ProfileView: React.FC = () => {
                   title="Somente Administradores do IFPR podem alterar perfis e permissões"
                 >
                   <Lock className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Função: {currentUser.role}</span>
+                  <span>Função: {currentUser.role === "INTRUSO" ? "Usuário externo" : currentUser.role}</span>
                 </button>
               )}
+
+              {/* Account Status Badge */}
+              {(() => {
+                const statusInfo = formatAccountStatusDetails(currentUser);
+                return (
+                  <div
+                    className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold ${statusInfo.badgeClass}`}
+                    title={statusInfo.description}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${statusInfo.dotClass}`} />
+                    <span>Conta: {statusInfo.label}</span>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

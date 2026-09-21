@@ -3,7 +3,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useApp } from "../context/AppContext";
 import { formatDate, formatDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeIncludes, sanitizeQuery } from "../lib/utils";
-import { UserRole, ActivityLog, BackupScheduleConfig } from "../types";
+import { UserRole, User, AccountStatus, ActivityLog, BackupScheduleConfig } from "../types";
 import { AppUptimeMonitor } from "./AppUptimeMonitor";
 import { MonthlyItemsD3Chart } from "./MonthlyItemsD3Chart";
 import { WeeklyFlowD3Chart } from "./WeeklyFlowD3Chart";
@@ -16,6 +16,9 @@ import { AIEfficiencyReportView } from "./AIEfficiencyReportView";
 import { CustodyRemindersView } from "./CustodyRemindersView";
 import { DigitalReturnsD3Chart } from "./DigitalReturnsD3Chart";
 import { ExportFoundItemsReportModal } from "./ExportFoundItemsReportModal";
+import { ManageUserStatusModal } from "./ManageUserStatusModal";
+import { AccountManagementView } from "./AccountManagementView";
+import { resolveAccountStatus, formatAccountStatusDetails } from "../lib/accountStatusUtils";
 import { auth, db, traceFirebasePerformance } from "../lib/firebase";
 import { collection, query, limit, getDocs } from "firebase/firestore";
 import {
@@ -81,6 +84,8 @@ import {
   ShieldCheck,
   Shuffle,
   Settings,
+  Ban,
+  UserMinus,
 } from "lucide-react";
 
 export const DashboardView: React.FC = () => {
@@ -89,6 +94,7 @@ export const DashboardView: React.FC = () => {
     currentUser,
     allUsers,
     updateUserRole,
+    updateUserStatus,
     deleteUser,
     updateItemStatus,
     setQrScannerOpen,
@@ -143,8 +149,10 @@ export const DashboardView: React.FC = () => {
 
   // Admin user management state
   const [userRoleFilter, setUserRoleFilter] = useState<"ALL" | "ALUNO" | "SERVIDOR" | "ADMIN">("ALL");
+  const [userStatusFilter, setUserStatusFilter] = useState<"ALL" | "active" | "suspended" | "banned">("ALL");
   const [userSearchText, setUserSearchText] = useState("");
   const [userToDelete, setUserToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [userForStatusModal, setUserForStatusModal] = useState<User | null>(null);
   const [isAddingUserOpen, setIsAddingUserOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isClearLogsConfirmOpen, setIsClearLogsConfirmOpen] = useState(false);
@@ -171,7 +179,7 @@ export const DashboardView: React.FC = () => {
 
   // Admin Sub-Tab State
   const [adminSubTab, setAdminSubTab] = useState<
-    "users" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "test_batteries" | "test_distribution" | "ai_efficiency" | "custody_reminders" | "digital_returns"
+    "users" | "accounts" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "test_batteries" | "test_distribution" | "ai_efficiency" | "custody_reminders" | "digital_returns"
   >("users");
 
   // Items returned with digital signature count
@@ -1611,7 +1619,7 @@ export const DashboardView: React.FC = () => {
                         id: "users_access",
                         label: "Usuários & Acesso",
                         icon: Users,
-                        tabs: ["users", "approvals"],
+                        tabs: ["accounts", "users", "approvals"],
                         badge: (allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length,
                       },
                       {
@@ -1689,8 +1697,20 @@ export const DashboardView: React.FC = () => {
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                   <div className="flex flex-wrap items-center gap-2">
                     {/* Category: Users & Access */}
-                    {(adminSubTab === "users" || adminSubTab === "approvals") && (
+                    {(adminSubTab === "accounts" || adminSubTab === "users" || adminSubTab === "approvals") && (
                       <>
+                        <button
+                          onClick={() => setAdminSubTab("accounts")}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "accounts"
+                              ? "bg-emerald-600 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          <ShieldAlert className="w-3.5 h-3.5 text-emerald-300" />
+                          <span>Gestão de Contas (Status)</span>
+                        </button>
+
                         <button
                           onClick={() => setAdminSubTab("users")}
                           className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
@@ -1700,7 +1720,7 @@ export const DashboardView: React.FC = () => {
                           }`}
                         >
                           <Users className="w-3.5 h-3.5" />
-                          <span>Usuários & Controle</span>
+                          <span>Usuários & Permissões</span>
                         </button>
 
                         <button
@@ -1917,6 +1937,13 @@ export const DashboardView: React.FC = () => {
                 </div>
               </div>
 
+              {/* TAB 0: ACCOUNT STATUS MANAGEMENT */}
+              {adminSubTab === "accounts" && (
+                <div className="space-y-6">
+                  <AccountManagementView />
+                </div>
+              )}
+
               {/* TAB 1: USERS & CONTROLS */}
               {adminSubTab === "users" && (
                 <div className="space-y-6">
@@ -2007,35 +2034,74 @@ export const DashboardView: React.FC = () => {
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           onClick={() => setUserRoleFilter("ALL")}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                            userRoleFilter === "ALL" ? "bg-[#00843D] text-white" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            userRoleFilter === "ALL" ? "bg-[#00843D] text-white shadow-xs" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
                           }`}
                         >
                           Todos ({allUsers.length})
                         </button>
                         <button
                           onClick={() => setUserRoleFilter("ALUNO")}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                            userRoleFilter === "ALUNO" ? "bg-emerald-600 text-white" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            userRoleFilter === "ALUNO" ? "bg-emerald-600 text-white shadow-xs" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
                           }`}
                         >
                           Alunos ({(allUsers || []).filter((u) => u && u.role === "ALUNO").length})
                         </button>
                         <button
                           onClick={() => setUserRoleFilter("SERVIDOR")}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                            userRoleFilter === "SERVIDOR" ? "bg-blue-600 text-white" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            userRoleFilter === "SERVIDOR" ? "bg-blue-600 text-white shadow-xs" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
                           }`}
                         >
                           Servidores ({(allUsers || []).filter((u) => u && u.role === "SERVIDOR").length})
                         </button>
                         <button
                           onClick={() => setUserRoleFilter("ADMIN")}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                            userRoleFilter === "ADMIN" ? "bg-purple-600 text-white" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            userRoleFilter === "ADMIN" ? "bg-purple-600 text-white shadow-xs" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
                           }`}
                         >
                           Admins ({(allUsers || []).filter((u) => u && u.role === "ADMIN").length})
+                        </button>
+
+                        <div className="h-4 w-px bg-neutral-300 dark:bg-neutral-700 hidden sm:block mx-1" />
+
+                        {/* Status Quick Filters */}
+                        <button
+                          onClick={() => setUserStatusFilter("active")}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                            userStatusFilter === "active"
+                              ? "bg-emerald-600 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-emerald-700 dark:text-emerald-400"
+                          }`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block mr-1" />
+                          <span>Ativos ({(allUsers || []).filter((u) => resolveAccountStatus(u).status === "active").length})</span>
+                        </button>
+
+                        <button
+                          onClick={() => setUserStatusFilter("suspended")}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                            userStatusFilter === "suspended"
+                              ? "bg-amber-600 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-amber-700 dark:text-amber-400"
+                          }`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block mr-1" />
+                          <span>Suspensos ({(allUsers || []).filter((u) => resolveAccountStatus(u).status === "suspended").length})</span>
+                        </button>
+
+                        <button
+                          onClick={() => setUserStatusFilter("banned")}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                            userStatusFilter === "banned"
+                              ? "bg-red-600 text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-red-700 dark:text-red-400"
+                          }`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block mr-1" />
+                          <span>Banidos ({(allUsers || []).filter((u) => resolveAccountStatus(u).status === "banned").length})</span>
                         </button>
                       </div>
 
@@ -2045,7 +2111,7 @@ export const DashboardView: React.FC = () => {
                           type="text"
                           value={userSearchText}
                           onChange={(e) => setUserSearchText(e?.target?.value ?? "")}
-                          placeholder="Buscar por nome ou e-mail..."
+                          placeholder="Buscar por nome, e-mail, matrícula..."
                           className="pl-8 pr-3 py-1.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs outline-none w-full md:w-64"
                         />
                       </div>
@@ -2060,6 +2126,7 @@ export const DashboardView: React.FC = () => {
                             <th className="p-3.5">Curso / Setor</th>
                             <th className="p-3.5">Matrícula</th>
                             <th className="p-3.5">Permissão (Função)</th>
+                            <th className="p-3.5">Status da Conta</th>
                             <th className="p-3.5 rounded-r-xl text-right">Ação</th>
                           </tr>
                         </thead>
@@ -2068,89 +2135,130 @@ export const DashboardView: React.FC = () => {
                             .filter((u) => {
                               if (!u) return false;
                               const matchRole = userRoleFilter === "ALL" || u.role === userRoleFilter;
+                              const resolvedStatus = resolveAccountStatus(u).status;
+                              const matchStatus = userStatusFilter === "ALL" || resolvedStatus === userStatusFilter;
                               const uq = sanitizeQuery(userSearchText);
                               const matchQuery =
                                 !uq ||
                                 safeIncludes(u.name, uq) ||
                                 safeIncludes(u.email, uq) ||
                                 safeIncludes(u.registrationNumber, uq) ||
-                                safeIncludes(u.courseOrDept, uq);
-                              return matchRole && matchQuery;
+                                safeIncludes(u.courseOrDept, uq) ||
+                                safeIncludes(u.statusReason, uq);
+                              return matchRole && matchStatus && matchQuery;
                             })
-                            .map((u, index) => (
-                              <tr key={u.id || `user-${u.email}-${index}`} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
-                                <td className="p-3.5 font-bold text-neutral-900 dark:text-white">
-                                  <div className="flex items-center space-x-2.5">
-                                    <img
-                                      src={u.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"}
-                                      alt=""
-                                      className="w-8 h-8 rounded-full object-cover shrink-0 border border-neutral-200 dark:border-neutral-700"
-                                    />
-                                    <div className="flex flex-col">
-                                      <span className="font-bold">{u.name}</span>
-                                      {u.id === currentUser.id && (
-                                        <span className="text-[9px] text-[#00843D] dark:text-green-400 font-extrabold">(Sua Conta)</span>
-                                      )}
+                            .map((u, index) => {
+                              const statusDetails = formatAccountStatusDetails(u);
+                              return (
+                                <tr key={u.id || `user-${u.email}-${index}`} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
+                                  <td className="p-3.5 font-bold text-neutral-900 dark:text-white">
+                                    <div className="flex items-center space-x-2.5">
+                                      <img
+                                        src={u.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"}
+                                        alt=""
+                                        className="w-8 h-8 rounded-full object-cover shrink-0 border border-neutral-200 dark:border-neutral-700"
+                                      />
+                                      <div className="flex flex-col">
+                                        <span className="font-bold">{u.name}</span>
+                                        {u.id === currentUser.id && (
+                                          <span className="text-[9px] text-[#00843D] dark:text-green-400 font-extrabold">(Sua Conta)</span>
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                </td>
-                                <td className="p-3.5 font-mono text-neutral-600 dark:text-neutral-300">{u.email}</td>
-                                <td className="p-3.5 text-neutral-600 dark:text-neutral-300">{u.courseOrDept}</td>
-                                <td className="p-3.5 font-mono text-neutral-500">{u.registrationNumber || "N/A"}</td>
-                                <td className="p-3.5">
-                                  <select
-                                    value={u.role}
-                                    onChange={async (e) => {
-                                      const newRole = e.target.value as UserRole;
-                                      await updateUserRole(u.id, newRole);
-                                      await logAdminAction(
-                                        "ALTERACAO_PERMISSAO",
-                                        `Alterou o perfil de '${u.name}' para a permissão ${newRole}.`
-                                      );
-                                    }}
-                                    className={`py-1.5 px-3 rounded-xl text-xs font-bold border outline-none cursor-pointer ${
-                                      u.role === "ADMIN"
-                                        ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30"
-                                        : u.role === "SERVIDOR"
-                                        ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
-                                        : "bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30"
-                                    }`}
-                                  >
-                                    <option value="ALUNO">ALUNO (Discente)</option>
-                                    <option value="SERVIDOR">SERVIDOR (Docente/TAE)</option>
-                                    <option value="ADMIN">ADMIN (TI)</option>
-                                  </select>
-                                </td>
-                                <td className="p-3.5 text-right whitespace-nowrap">
-                                  <button
-                                    type="button"
-                                    title={`Enviar notificação direta para ${u.name}`}
-                                    onClick={() => {
-                                      vibrateClick();
-                                      setNotifyModalUser(u);
-                                      setIsBroadcastNotification(false);
-                                      setNotifyTitle("Aviso Institucional - Achados e Perdidos");
-                                      setNotifyMessage(`Olá, ${u.name}. Informamos que há uma atualização sobre o Achados & Perdidos para você.`);
-                                      setNotifyRelatedItemId("");
-                                    }}
-                                    className="p-2 rounded-xl bg-purple-500/10 text-purple-600 hover:bg-purple-600 hover:text-white border border-purple-500/20 transition-all mr-1.5 inline-flex items-center justify-center cursor-pointer"
-                                  >
-                                    <Bell className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    disabled={u.id === currentUser.id}
-                                    onClick={() => setUserToDelete({ id: u.id, name: u.name })}
-                                    className={`p-2 rounded-xl border transition-all inline-flex items-center justify-center ${
-                                      u.id === currentUser.id
-                                        ? "opacity-30 cursor-not-allowed bg-neutral-100 text-neutral-400 border-neutral-200"
-                                        : "bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white border-red-500/20 cursor-pointer"
-                                    }`}
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
+                                  </td>
+                                  <td className="p-3.5 font-mono text-neutral-600 dark:text-neutral-300">{u.email}</td>
+                                  <td className="p-3.5 text-neutral-600 dark:text-neutral-300">{u.courseOrDept}</td>
+                                  <td className="p-3.5 font-mono text-neutral-500">{u.registrationNumber || "N/A"}</td>
+                                  <td className="p-3.5">
+                                    <select
+                                      value={u.role}
+                                      onChange={async (e) => {
+                                        const newRole = e.target.value as UserRole;
+                                        await updateUserRole(u.id, newRole);
+                                        await logAdminAction(
+                                          "ALTERACAO_PERMISSAO",
+                                          `Alterou o perfil de '${u.name}' para a permissão ${newRole}.`
+                                        );
+                                      }}
+                                      className={`py-1.5 px-3 rounded-xl text-xs font-bold border outline-none cursor-pointer ${
+                                        u.role === "ADMIN"
+                                          ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30"
+                                          : u.role === "SERVIDOR"
+                                          ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                                          : u.role === "INTRUSO"
+                                          ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                                          : "bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30"
+                                      }`}
+                                    >
+                                      <option value="ALUNO">ALUNO (Discente)</option>
+                                      <option value="SERVIDOR">SERVIDOR (Docente/TAE)</option>
+                                      <option value="ADMIN">ADMIN (TI)</option>
+                                      <option value="INTRUSO">USUÁRIO EXTERNO (Intruso)</option>
+                                    </select>
+                                  </td>
+                                  <td className="p-3.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        vibrateClick();
+                                        setUserForStatusModal(u);
+                                      }}
+                                      title="Clique para gerenciar o status desta conta (Suspender/Banir/Reativar)"
+                                      className={`inline-flex flex-col items-start gap-0.5 px-2.5 py-1 rounded-xl border text-[11px] font-extrabold cursor-pointer transition-all hover:scale-105 ${statusDetails.badgeClass}`}
+                                    >
+                                      <span className="flex items-center space-x-1.5">
+                                        <span className={`w-1.5 h-1.5 rounded-full ${statusDetails.dotClass}`} />
+                                        <span>{statusDetails.label}</span>
+                                      </span>
+                                      {u.status === "suspended" && u.suspendedUntil && (
+                                        <span className="text-[9px] font-normal opacity-80">
+                                          Até {new Date(u.suspendedUntil).toLocaleDateString("pt-BR")}
+                                        </span>
+                                      )}
+                                    </button>
+                                  </td>
+                                  <td className="p-3.5 text-right whitespace-nowrap">
+                                    <button
+                                      type="button"
+                                      title={`Gerenciar Status da Conta de ${u.name}`}
+                                      onClick={() => {
+                                        vibrateClick();
+                                        setUserForStatusModal(u);
+                                      }}
+                                      className="p-2 rounded-xl bg-amber-500/10 text-amber-600 hover:bg-amber-600 hover:text-white border border-amber-500/20 transition-all mr-1.5 inline-flex items-center justify-center cursor-pointer"
+                                    >
+                                      <ShieldAlert className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title={`Enviar notificação direta para ${u.name}`}
+                                      onClick={() => {
+                                        vibrateClick();
+                                        setNotifyModalUser(u);
+                                        setIsBroadcastNotification(false);
+                                        setNotifyTitle("Aviso Institucional - Achados e Perdidos");
+                                        setNotifyMessage(`Olá, ${u.name}. Informamos que há uma atualização sobre o Achados & Perdidos para você.`);
+                                        setNotifyRelatedItemId("");
+                                      }}
+                                      className="p-2 rounded-xl bg-purple-500/10 text-purple-600 hover:bg-purple-600 hover:text-white border border-purple-500/20 transition-all mr-1.5 inline-flex items-center justify-center cursor-pointer"
+                                    >
+                                      <Bell className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      disabled={u.id === currentUser.id}
+                                      onClick={() => setUserToDelete({ id: u.id, name: u.name })}
+                                      className={`p-2 rounded-xl border transition-all inline-flex items-center justify-center ${
+                                        u.id === currentUser.id
+                                          ? "opacity-30 cursor-not-allowed bg-neutral-100 text-neutral-400 border-neutral-200"
+                                          : "bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white border-red-500/20 cursor-pointer"
+                                      }`}
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                         </tbody>
                       </table>
                     </div>
@@ -3572,6 +3680,18 @@ export const DashboardView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Manage User Status (Suspend / Ban / Reactivate) Modal */}
+      <ManageUserStatusModal
+        isOpen={Boolean(userForStatusModal)}
+        user={userForStatusModal}
+        onClose={() => setUserForStatusModal(null)}
+        onUpdateStatus={async (targetUserId, newStatus, reason, suspendedUntil) => {
+          await updateUserStatus(targetUserId, newStatus, reason, suspendedUntil);
+          setUserForStatusModal(null);
+        }}
+        currentAdminId={currentUser.id}
+      />
 
       {/* Export Official Found Items Accountability PDF Report Modal */}
       <ExportFoundItemsReportModal

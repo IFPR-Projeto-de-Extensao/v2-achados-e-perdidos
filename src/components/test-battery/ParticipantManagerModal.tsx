@@ -10,7 +10,7 @@ import {
   UserCheck,
   ArrowRight,
 } from "lucide-react";
-import { TestBatteryExecution, TestParticipant, User } from "../../types";
+import { TestBatteryExecution, TestParticipant, User, UserRole } from "../../types";
 import { vibrateClick, vibrateSuccess, vibrateWarning } from "../../lib/utils";
 
 interface ParticipantManagerModalProps {
@@ -37,7 +37,7 @@ export const ParticipantManagerModal: React.FC<ParticipantManagerModalProps> = (
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [customName, setCustomName] = useState<string>("");
   const [customEmail, setCustomEmail] = useState<string>("");
-  const [customRole, setCustomRole] = useState<"ALUNO" | "SERVIDOR" | "ADMIN">("ALUNO");
+  const [customRole, setCustomRole] = useState<UserRole>("ALUNO");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSubTab, setActiveSubTab] = useState<"LIST" | "ADD">("LIST");
 
@@ -349,7 +349,7 @@ export const ParticipantManagerModal: React.FC<ParticipantManagerModalProps> = (
                   <label className="text-xs font-bold text-neutral-500 uppercase">Perfil Global no Campus</label>
                   <select
                     value={customRole}
-                    onChange={(e) => setCustomRole(e.target.value as any)}
+                    onChange={(e) => setCustomRole(e.target.value as UserRole)}
                     className={`w-full text-xs font-semibold px-3 py-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
                       darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
                     }`}
@@ -357,6 +357,7 @@ export const ParticipantManagerModal: React.FC<ParticipantManagerModalProps> = (
                     <option value="ALUNO">Discente / Bolsista (ALUNO)</option>
                     <option value="SERVIDOR">Servidor / TAE (SERVIDOR)</option>
                     <option value="ADMIN">Administrador de TI (ADMIN)</option>
+                    <option value="INTRUSO">Usuário externo (INTRUSO)</option>
                   </select>
                 </div>
 

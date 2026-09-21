@@ -59,6 +59,38 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ALUNO';
     }
 
+    function isDocIntruso() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'INTRUSO';
+    }
+
+    function isIntruso() {
+      return isSignedIn() && (
+        request.auth.token.role == 'INTRUSO' ||
+        isDocIntruso() ||
+        (!isAdmin() && !isServidor() && !isDocAluno() && request.auth.token.email != null && (
+          !request.auth.token.email.matches('.*@estudantes[.]ifpr[.]edu[.]br') &&
+          !request.auth.token.email.matches('.*@estudante[.]ifpr[.]edu[.]br') &&
+          !request.auth.token.email.matches('.*@aluno[.]ifpr[.]edu[.]br') &&
+          !request.auth.token.email.matches('.*@ifpr[.]edu[.]br')
+        ))
+      );
+    }
+
+    function isAccountBlocked() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             (
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'banned' ||
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'suspended'
+             );
+    }
+
+    function isAccountActive() {
+      return !isAccountBlocked();
+    }
+
     function isServidor() {
       return isSignedIn() && 
              (isAdmin() ||
@@ -83,21 +115,22 @@ service cloud.firestore {
     // 1. Users Collection
     // ==========================================
     match /users/{userId} {
-      // 1. Get: User can read their own profile; Servidores and Admins can read user profiles
-      allow get: if isAuthUser(userId) || isServidor() || isAdmin();
+      // 1. Get: User can read their own profile (including when suspended/banned to verify status and reason); Servidores (active) and Admins can read user profiles
+      allow get: if isAuthUser(userId) || (isServidor() && isAccountActive()) || isAdmin();
 
-      // 2. List: Only Admins and Servidores can list users directory.
-      // Individual users can only query specifically by their own authenticated email.
+      // 2. List: Only Admins and Active Servidores can list users directory.
+      // Individual users can only query specifically by their own authenticated email if account is active.
       // Indiscriminate directory listing by students/unauthorized parties is strictly blocked.
       allow list: if isAdmin() || 
-                     isServidor() || 
-                     (isSignedIn() && resource.data.email == request.auth.token.email);
+                     (isServidor() && isAccountActive()) || 
+                     (isSignedIn() && isAccountActive() && resource.data.email == request.auth.token.email);
 
       // 3. Create: User can ONLY create their own document with their real UID and email.
       // Privilege escalation prevention:
       // - Cannot set role to 'ADMIN' unless isRootAdmin() or hasAdminClaim()
       // - Cannot set role to 'SERVIDOR' unless isRootAdmin(), hasAdminClaim(), or authorized institutional email
       // - Cannot set approvalStatus to 'APROVADO' unless isRootAdmin() or hasAdminClaim()
+      // - Default status is 'active' or pending approval
       allow create: if isSignedIn() && 
                        request.auth.uid == userId && 
                        incoming().id == userId &&
@@ -105,26 +138,34 @@ service cloud.firestore {
                        (
                          isRootAdmin() || hasAdminClaim() ||
                          (
-                           (incoming().role == 'ALUNO' || (incoming().role == 'SERVIDOR' && isServidor())) &&
-                           incoming().approvalStatus == 'PENDENTE'
+                           (
+                             incoming().role == 'ALUNO' || 
+                             (incoming().role == 'SERVIDOR' && isServidor()) ||
+                             incoming().role == 'INTRUSO'
+                           ) &&
+                           (incoming().approvalStatus == 'PENDENTE' || incoming().approvalStatus == 'APROVADO')
                          )
                        );
 
       // 4. Update: 
-      // - Admins can update any user profile (roles, approvals, departments)
-      // - Non-admin users can ONLY update their OWN profile:
+      // - Admins can update any user profile (roles, approvals, departments, account status: active, suspended, banned)
+      // - Non-admin users can ONLY update their OWN profile if account is active (isAccountActive()):
       //   * Cannot change role (incoming.role == existing.role)
       //   * Cannot change approvalStatus (incoming.approvalStatus == existing.approvalStatus)
       //   * Cannot change email (incoming.email == existing.email)
       //   * Cannot change ID (incoming.id == userId)
+      //   * Cannot change status / suspension fields (anti-tampering)
       allow update: if isAdmin() ||
                        (
                          isSignedIn() && 
+                         isAccountActive() &&
                          request.auth.uid == userId && 
                          incoming().id == userId &&
                          incoming().email == existing().email &&
                          incoming().role == existing().role &&
-                         incoming().approvalStatus == existing().approvalStatus
+                         incoming().approvalStatus == existing().approvalStatus &&
+                         (!('status' in incoming()) || incoming().status == existing().status) &&
+                         (!('suspendedUntil' in incoming()) || incoming().suspendedUntil == existing().suspendedUntil)
                        );
 
       // 5. Delete: Only Admin can delete accounts (and cannot delete their own active account)
@@ -139,10 +180,12 @@ service cloud.firestore {
       allow get: if true;
       allow list: if true;
 
-      // Creation: ONLY Authenticated users with verified email and real UID:
+      // Creation: ONLY Authenticated users with verified email, real UID and active account standing:
       // - Author ID must match request.auth.uid
       // - Cannot falsify author role as ADMIN or SERVIDOR unless possessing real credentials
       allow create: if isEmailVerified() && 
+                    isAccountActive() &&
+                    !isIntruso() &&
                     incoming().registeredByUserId == request.auth.uid && 
                     (
                       incoming().registeredByRole == 'ALUNO' ||
@@ -155,6 +198,7 @@ service cloud.firestore {
                        isServidor() ||
                        (
                          isSignedIn() && 
+                         isAccountActive() &&
                          existing().registeredByUserId == request.auth.uid && 
                          incoming().registeredByUserId == existing().registeredByUserId &&
                          incoming().createdAt == existing().createdAt &&
@@ -162,13 +206,15 @@ service cloud.firestore {
                        );
 
       // Delete: Admin or the authenticated author who registered the item
-      allow delete: if isAdmin() || (isSignedIn() && existing().registeredByUserId == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && existing().registeredByUserId == request.auth.uid);
     }
 
     match /found_items/{itemId} {
       allow get: if true;
       allow list: if true;
       allow create: if isEmailVerified() && 
+                    isAccountActive() &&
+                    !isIntruso() &&
                     incoming().registeredByUserId == request.auth.uid && 
                     (
                       incoming().registeredByRole == 'ALUNO' ||
@@ -179,18 +225,22 @@ service cloud.firestore {
                        isServidor() ||
                        (
                          isSignedIn() && 
+                         isAccountActive() &&
+                         !isIntruso() &&
                          existing().registeredByUserId == request.auth.uid && 
                          incoming().registeredByUserId == existing().registeredByUserId &&
                          incoming().createdAt == existing().createdAt &&
                          incoming().registeredByRole == existing().registeredByRole
                        );
-      allow delete: if isAdmin() || (isSignedIn() && existing().registeredByUserId == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && existing().registeredByUserId == request.auth.uid);
     }
 
     match /lost_items/{itemId} {
       allow get: if true;
       allow list: if true;
       allow create: if isEmailVerified() && 
+                    isAccountActive() &&
+                    !isIntruso() &&
                     incoming().registeredByUserId == request.auth.uid && 
                     (
                       incoming().registeredByRole == 'ALUNO' ||
@@ -201,37 +251,42 @@ service cloud.firestore {
                        isServidor() ||
                        (
                          isSignedIn() && 
+                         isAccountActive() &&
+                         !isIntruso() &&
                          existing().registeredByUserId == request.auth.uid && 
                          incoming().registeredByUserId == existing().registeredByUserId &&
                          incoming().createdAt == existing().createdAt &&
                          incoming().registeredByRole == existing().registeredByRole
                        );
-      allow delete: if isAdmin() || (isSignedIn() && existing().registeredByUserId == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && existing().registeredByUserId == request.auth.uid);
     }
 
     // ==========================================
     // 3. Item Claims Collection (Solicitações de Devolução)
     // ==========================================
     match /claims/{claimId} {
-      // Claims can only be read by the claimer, the item author, or Admin/Servidor
+      // Claims can only be read by the claimer, the item author, or Admin/Active Servidor
       allow get: if isSignedIn() && (
-        existing().claimerId == request.auth.uid || 
-        isServidor() || 
-        isAdmin() ||
-        (exists(/databases/$(database)/documents/items/$(existing().itemId)) && 
-         get(/databases/$(database)/documents/items/$(existing().itemId)).data.registeredByUserId == request.auth.uid)
+        (isAccountActive() && (
+          existing().claimerId == request.auth.uid || 
+          (exists(/databases/$(database)/documents/items/$(existing().itemId)) && 
+           get(/databases/$(database)/documents/items/$(existing().itemId)).data.registeredByUserId == request.auth.uid)
+        )) ||
+        (isServidor() && isAccountActive()) || 
+        isAdmin()
       );
-      allow list: if isSignedIn() && (isServidor() || isAdmin() || resource.data.claimerId == request.auth.uid);
+      allow list: if isSignedIn() && ((isServidor() && isAccountActive()) || isAdmin() || (isAccountActive() && resource.data.claimerId == request.auth.uid));
 
-      // Create: Authenticated user making a claim with their own real user id and verified email
-      allow create: if isEmailVerified() && incoming().claimerId == request.auth.uid;
+      // Create: Authenticated user making a claim with their own real user id, verified email and active account
+      allow create: if isEmailVerified() && isAccountActive() && !isIntruso() && incoming().claimerId == request.auth.uid;
 
-      // Update: Admin/Servidor can change claim status/notes;
+      // Update: Admin / Active Servidor can change claim status/notes;
       // Claimer can update ONLY while status is 'PENDENTE', and CANNOT modify claimerId, itemId, or self-approve
       allow update: if isAdmin() || 
-                       isServidor() ||
+                       (isServidor() && isAccountActive()) ||
                        (
                          isSignedIn() && 
+                         isAccountActive() &&
                          existing().claimerId == request.auth.uid && 
                          existing().status == 'PENDENTE' &&
                          incoming().claimerId == existing().claimerId &&
@@ -268,15 +323,17 @@ service cloud.firestore {
       );
 
       // 3. Create:
-      // - Admins and Servidores (Campus Staff) can create notifications for any user or institutional broadcasts.
-      // - Regular users (Students/Others) can ONLY create notifications addressed strictly to themselves (request.auth.uid).
+      // - Admins and Active Servidores (Campus Staff) can create notifications for any user or institutional broadcasts.
+      // - Regular active users (Students/Others) can ONLY create notifications addressed strictly to themselves (request.auth.uid).
+      // - Suspended or banned users CANNOT create notifications.
       // - Regular users CANNOT send notifications to other users (anti-spoofing).
       // - Regular users CANNOT create broadcast notifications (isGlobal == true, 'all', etc.).
       // - Regular users CANNOT forge SYSTEM type notifications.
       allow create: if isSignedIn() && (
         isAdmin() || 
-        isServidor() || 
+        (isServidor() && isAccountActive()) || 
         (
+          isAccountActive() &&
           incoming().userId == request.auth.uid &&
           (!('isGlobal' in incoming()) || incoming().isGlobal != true) &&
           incoming().userId != 'all' &&
@@ -335,14 +392,14 @@ service cloud.firestore {
     // 6. Audit Logs Collection (Trilha de Auditoria Imutável)
     // ==========================================
     match /activity_logs/{logId} {
-      // Only Admin and Servidor can inspect audit trail
-      allow get: if isAdmin() || isServidor();
-      allow list: if isAdmin() || isServidor();
+      // Only Admin and Active Servidor can inspect audit trail
+      allow get: if isAdmin() || (isServidor() && isAccountActive());
+      allow list: if isAdmin() || (isServidor() && isAccountActive());
 
       // Create: Authenticated users can log their real actions without falsifying actor identity
-      allow create: if isSignedIn() && (
+      allow create: if isSignedIn() && (isAccountActive() || isAdmin()) && (
         (
-          (isAdmin() || isServidor()) &&
+          (isAdmin() || (isServidor() && isAccountActive())) &&
           (
             incoming().adminId == request.auth.uid ||
             incoming().actorId == request.auth.uid
@@ -361,9 +418,9 @@ service cloud.firestore {
     }
 
     match /audit_logs/{logId} {
-      // Admins and Servidores can inspect comprehensive audit trail
-      allow get: if isAdmin() || isServidor();
-      allow list: if isAdmin() || isServidor();
+      // Admins and Active Servidores can inspect comprehensive audit trail
+      allow get: if isAdmin() || (isServidor() && isAccountActive());
+      allow list: if isAdmin() || (isServidor() && isAccountActive());
 
       // Create: Strict non-forgeable audit trail
       // 1. User must be authenticated
@@ -371,12 +428,12 @@ service cloud.firestore {
       // 3. actorEmail MUST match authenticated token email if present
       // 4. actorRole must match user's real role (Admin can log as ADMIN/SERVIDOR; Servidor as SERVIDOR; Aluno as ALUNO)
       // 5. Aluno can only log permitted item actions ('CADASTRO_OCORRENCIA', 'EDIT_OCORRENCIA', 'STATUS_OVERRIDE', 'EXCLUSAO_ITEM')
-      allow create: if isSignedIn() &&
+      allow create: if isSignedIn() && (isAccountActive() || isAdmin()) &&
         incoming().actorId == request.auth.uid &&
         (request.auth.token.email == null || incoming().actorEmail == request.auth.token.email) &&
         (
           (isAdmin() && incoming().actorRole in ['ADMIN', 'SERVIDOR']) ||
-          (isServidor() && incoming().actorRole == 'SERVIDOR') ||
+          (isServidor() && isAccountActive() && incoming().actorRole == 'SERVIDOR') ||
           (
             incoming().actorRole == 'ALUNO' &&
             incoming().objectType == 'ITEM' &&
@@ -428,9 +485,9 @@ service cloud.firestore {
     match /comments/{commentId} {
       allow get: if isSignedIn();
       allow list: if isSignedIn();
-      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
-      allow update: if isSignedIn() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
-      allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+      allow create: if isSignedIn() && isAccountActive() && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn() && isAccountActive() && existing().userId == request.auth.uid && incoming().userId == existing().userId;
+      allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && existing().userId == request.auth.uid);
     }
 
     // ==========================================

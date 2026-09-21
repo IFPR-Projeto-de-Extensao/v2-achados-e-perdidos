@@ -5,7 +5,8 @@ import { useRequireAuth } from "../hooks/useRequireAuth";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
 import { auth } from "../lib/firebase";
-import { safeFetchJson, clientAnalyzeObject, clientAnalyzeImage } from "../lib/apiHelper";
+import { isAccountBlocked, resolveAccountStatus } from "../lib/accountStatusUtils";
+import { safeFetchJson, clientAnalyzeObject, clientAnalyzeImage, requestCategorySuggestion, AICategorySuggestion } from "../lib/apiHelper";
 import { triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, safeToLower, safeIncludes, safeTextCorpus, sanitizeQuery, getTodayDateString, formatPhone, isValidPhone } from "../lib/utils";
 import { compressImage, formatBytes } from "../lib/imageCompression";
 import {
@@ -113,6 +114,55 @@ export const RegisterItemView: React.FC = () => {
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // AI Category Suggestion State
+  const [isSuggestingCategory, setIsSuggestingCategory] = useState(false);
+  const [categorySuggestion, setCategorySuggestion] = useState<AICategorySuggestion | null>(null);
+  const [hasManuallySelectedCategory, setHasManuallySelectedCategory] = useState(false);
+  const [categoryAutoFilled, setCategoryAutoFilled] = useState(false);
+  const lastAnalyzedTextRef = useRef<string>("");
+
+  // Debounced AI Category Suggestion Effect
+  useEffect(() => {
+    const cleanT = (title || "").trim();
+    const cleanD = (description || "").trim();
+    const combined = `${cleanT} | ${cleanD}`.trim();
+
+    // Only analyze if there's meaningful text (at least 3 characters)
+    if (cleanT.length < 3 && cleanD.length < 6) {
+      setCategorySuggestion(null);
+      return;
+    }
+
+    // Skip if unchanged
+    if (combined === lastAnalyzedTextRef.current) {
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      lastAnalyzedTextRef.current = combined;
+      setIsSuggestingCategory(true);
+      try {
+        const result = await requestCategorySuggestion(cleanT, cleanD);
+        if (result && result.success && result.suggestedCategory) {
+          setCategorySuggestion(result);
+
+          // Auto-fill if confidence is high and user has not explicitly picked a different category manually
+          if (result.autoFillRecommended && !hasManuallySelectedCategory) {
+            setCategory(result.suggestedCategory);
+            setCategoryAutoFilled(true);
+          }
+        }
+      } catch (err) {
+        console.warn("Aviso ao sugerir categoria:", err);
+      } finally {
+        setIsSuggestingCategory(false);
+      }
+    }, 850);
+
+    return () => clearTimeout(timer);
+  }, [title, description, hasManuallySelectedCategory]);
+
+
   // Restore Draft on Mount
   useEffect(() => {
     try {
@@ -187,6 +237,10 @@ export const RegisterItemView: React.FC = () => {
     setImageUrl("https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=600&auto=format&fit=crop&q=80");
     setDraftRestored(false);
     setDraftSavedAt(null);
+    setCategorySuggestion(null);
+    setHasManuallySelectedCategory(false);
+    setCategoryAutoFilled(false);
+    lastAnalyzedTextRef.current = "";
     addToast("Rascunho descartado e formulário redefinido com sucesso.", "info");
   };
 
@@ -548,6 +602,17 @@ export const RegisterItemView: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     vibrateCritical();
+
+    // Check if current account is suspended or banned
+    if (isAccountBlocked(currentUser)) {
+      const resolved = resolveAccountStatus(currentUser);
+      if (resolved.status === "banned") {
+        addToast(`Ação Bloqueada: Sua conta foi banida permanentemente do Localiza+. Motivo: ${currentUser?.statusReason || "Violação das diretrizes institucionais"}.`, "error");
+      } else {
+        addToast(`Ação Bloqueada: Sua conta está temporariamente suspensa. Motivo: ${currentUser?.statusReason || "Suspensão administrativa"}.`, "warning");
+      }
+      return;
+    }
 
     // Strict Auth Verification for Visitors
     if (isGuest) {
@@ -931,18 +996,32 @@ export const RegisterItemView: React.FC = () => {
 
           {/* Categoria */}
           <div>
-            <label
-              htmlFor="category-input"
-              className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
-            >
-              Categoria <span className="text-red-500" aria-hidden="true">*</span>
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label
+                htmlFor="category-input"
+                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+              >
+                Categoria <span className="text-red-500" aria-hidden="true">*</span>
+              </label>
+
+              {isSuggestingCategory && (
+                <span className="flex items-center space-x-1 text-[10px] font-semibold text-[#00843D] dark:text-[#38a169] animate-pulse">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>IA analisando categoria...</span>
+                </span>
+              )}
+            </div>
+
             <select
               id="category-input"
               aria-required="true"
               aria-label="Categoria do objeto"
               value={category}
-              onChange={(e) => setCategory(e.target.value as ItemCategory)}
+              onChange={(e) => {
+                setCategory(e.target.value as ItemCategory);
+                setHasManuallySelectedCategory(true);
+                setCategoryAutoFilled(false);
+              }}
               className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
             >
               {categoriesList.map((cat) => (
@@ -951,6 +1030,43 @@ export const RegisterItemView: React.FC = () => {
                 </option>
               ))}
             </select>
+
+            {/* AI Suggestion Chip / Auto-fill Badge */}
+            {categorySuggestion && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                {categoryAutoFilled && category === categorySuggestion.suggestedCategory ? (
+                  <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-300 font-medium">
+                    <Sparkles className="w-3 h-3 text-[#00843D] flex-shrink-0" />
+                    <span>
+                      Preenchido por IA: <strong>{categorySuggestion.suggestedCategory}</strong> ({categorySuggestion.confidenceScore}% de certeza)
+                    </span>
+                  </div>
+                ) : category !== categorySuggestion.suggestedCategory ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      vibrateClick();
+                      setCategory(categorySuggestion.suggestedCategory);
+                      setCategoryAutoFilled(true);
+                      setHasManuallySelectedCategory(false);
+                      addToast(`Categoria alterada para "${categorySuggestion.suggestedCategory}" conforme sugestão da IA!`, "success");
+                    }}
+                    className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300 transition-colors font-medium text-left"
+                    title={categorySuggestion.reasoning}
+                  >
+                    <Sparkles className="w-3 h-3 text-amber-600 flex-shrink-0" />
+                    <span>
+                      Sugestão da IA: <strong>{categorySuggestion.suggestedCategory}</strong> ({categorySuggestion.confidenceScore}%) — <u>Aplicar</u>
+                    </span>
+                  </button>
+                ) : (
+                  <div className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800 text-[10px] text-neutral-600 dark:text-neutral-400">
+                    <CheckCircle2 className="w-3 h-3 text-[#00843D]" />
+                    <span>Confirmado com a IA ({categorySuggestion.confidenceScore}% de certeza)</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Cor */}

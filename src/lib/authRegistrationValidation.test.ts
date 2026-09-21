@@ -21,13 +21,15 @@ describe("Bateria de Testes: Fluxo de Autenticação e Registro Institucional Lo
   });
 
   // Cenário 3: Domínio externo rejeitado
-  it("Cenário 3: Domínio externo (ex: gmail, outlook, yahoo) é marcado como não-institucional e rejeitado", () => {
+  it("Cenário 3: Domínio externo (ex: gmail, outlook, yahoo) é marcado como não-institucional e classificado como Usuário externo (INTRUSO)", () => {
     const external1 = determineInstitutionalRole("usuario.aleatorio@gmail.com");
     expect(external1.isInstitutional).toBe(false);
-    expect(external1.label).toBe("Não Institucional");
+    expect(external1.role).toBe("INTRUSO");
+    expect(external1.label).toBe("Usuário externo");
 
     const external2 = determineInstitutionalRole("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@gmail.com");
     expect(external2.isInstitutional).toBe(false);
+    expect(external2.role).toBe("INTRUSO");
   });
 
   // Cenário 4: Role determinado automaticamente pelo domínio
