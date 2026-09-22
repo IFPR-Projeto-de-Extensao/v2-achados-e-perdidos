@@ -1,65 +1,73 @@
 import { describe, it, expect } from "vitest";
-import { determineInstitutionalRole } from "../context/AppContext";
+import { determineInstitutionalRole, previewInstitutionalRole } from "../context/AppContext";
 import { sanitizeUserList } from "./shared-constants";
 import { User, UserRole } from "../types";
 
 describe("Bateria de Testes: Fluxo de Autenticação e Registro Institucional Localiza+", () => {
   // Cenário 1: Cadastro institucional de aluno
-  it("Cenário 1: Cadastro institucional de aluno (@estudantes.ifpr.edu.br) determina role ALUNO e vínculo institucional válido", () => {
-    const res = determineInstitutionalRole("20251iva10030099@estudantes.ifpr.edu.br");
+  it("Cenário 1: Cadastro institucional de aluno (@estudantes.ifpr.edu.br) determina role ALUNO e vínculo institucional válido quando verificado", () => {
+    const res = determineInstitutionalRole("20251iva10030099@estudantes.ifpr.edu.br", true);
     expect(res.isInstitutional).toBe(true);
     expect(res.role).toBe("ALUNO");
     expect(res.label).toBe("Estudante IFPR (Aluno)");
+
+    const preview = previewInstitutionalRole("20251iva10030099@estudantes.ifpr.edu.br");
+    expect(preview.isInstitutional).toBe(true);
+    expect(preview.role).toBe("ALUNO");
   });
 
   // Cenário 2: Cadastro institucional de servidor
-  it("Cenário 2: Cadastro institucional de servidor (@ifpr.edu.br) determina role SERVIDOR", () => {
-    const res = determineInstitutionalRole("professor.teste@ifpr.edu.br");
+  it("Cenário 2: Cadastro institucional de servidor (@ifpr.edu.br) determina role SERVIDOR quando verificado", () => {
+    const res = determineInstitutionalRole("professor.teste@ifpr.edu.br", true);
     expect(res.isInstitutional).toBe(true);
     expect(res.role).toBe("SERVIDOR");
     expect(res.label).toBe("Servidor IFPR (Docente / TAE)");
+
+    const preview = previewInstitutionalRole("professor.teste@ifpr.edu.br");
+    expect(preview.isInstitutional).toBe(true);
+    expect(preview.role).toBe("SERVIDOR");
   });
 
   // Cenário 3: Domínio externo rejeitado
   it("Cenário 3: Domínio externo (ex: gmail, outlook, yahoo) é marcado como não-institucional e classificado como Usuário externo (INTRUSO)", () => {
-    const external1 = determineInstitutionalRole("usuario.aleatorio@gmail.com");
+    const external1 = previewInstitutionalRole("usuario.aleatorio@gmail.com");
     expect(external1.isInstitutional).toBe(false);
     expect(external1.role).toBe("INTRUSO");
     expect(external1.label).toBe("Usuário externo");
 
-    const external2 = determineInstitutionalRole("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@gmail.com");
+    const external2 = previewInstitutionalRole("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@gmail.com");
     expect(external2.isInstitutional).toBe(false);
     expect(external2.role).toBe("INTRUSO");
   });
 
   // Cenário 4: Role determinado automaticamente pelo domínio
-  it("Cenário 4: Role é determinado estritamente pelo domínio do e-mail institucional", () => {
-    const aluno = determineInstitutionalRole("aluno@estudantes.ifpr.edu.br");
+  it("Cenário 4: Role é determinado estritamente pelo domínio do e-mail institucional quando verificado", () => {
+    const aluno = determineInstitutionalRole("aluno@estudantes.ifpr.edu.br", true);
     expect(aluno.role).toBe("ALUNO");
 
-    const servidor = determineInstitutionalRole("docente@ifpr.edu.br");
+    const servidor = determineInstitutionalRole("docente@ifpr.edu.br", true);
     expect(servidor.role).toBe("SERVIDOR");
   });
 
   // Cenário 5: Usuário não pode escolher ADMIN
   it("Cenário 5: Usuário não pode obter ADMIN via domínio acadêmico ou manipulação de formulário", () => {
-    const aluno = determineInstitutionalRole("aluno.esperto@estudantes.ifpr.edu.br");
+    const aluno = determineInstitutionalRole("aluno.esperto@estudantes.ifpr.edu.br", true);
     expect(aluno.role).not.toBe("ADMIN");
     expect(aluno.role).toBe("ALUNO");
 
-    const servidor = determineInstitutionalRole("servidor.comum@ifpr.edu.br");
+    const servidor = determineInstitutionalRole("servidor.comum@ifpr.edu.br", true);
     expect(servidor.role).not.toBe("ADMIN");
     expect(servidor.role).toBe("SERVIDOR");
 
     // Apenas e-mail do root admin é reconhecido como ADMIN
-    const root = determineInstitutionalRole("paulocauan39@gmail.com");
+    const root = determineInstitutionalRole("paulocauan39@gmail.com", true);
     expect(root.role).toBe("ADMIN");
   });
 
   // Cenário 6: Novo usuário não-admin deve receber status PENDENTE
   it("Cenário 6: Novo cadastro institucional não-admin deve receber status inicial PENDENTE", () => {
     const cleanEmail = "20251iva10030099@estudantes.ifpr.edu.br";
-    const determination = determineInstitutionalRole(cleanEmail);
+    const determination = previewInstitutionalRole(cleanEmail);
     const initialStatus = determination.role === "ADMIN" ? "APROVADO" : "PENDENTE";
     expect(initialStatus).toBe("PENDENTE");
   });
@@ -101,7 +109,7 @@ describe("Bateria de Testes: Fluxo de Autenticação e Registro Institucional Lo
   // Cenário 9: Usuário Google institucional é provisionado corretamente
   it("Cenário 9: Usuário Google institucional (@estudantes.ifpr.edu.br) é reconhecido com role ALUNO", () => {
     const googleUserEmail = "20251iva10030012@estudantes.ifpr.edu.br";
-    const determination = determineInstitutionalRole(googleUserEmail);
+    const determination = determineInstitutionalRole(googleUserEmail, true);
     expect(determination.isInstitutional).toBe(true);
     expect(determination.role).toBe("ALUNO");
   });

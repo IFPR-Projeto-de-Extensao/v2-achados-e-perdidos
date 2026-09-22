@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { X, Mail, Lock, User as UserIcon, Shield, ShieldCheck, GraduationCap, Building2, Phone, FileText, Sparkles, LogIn, UserPlus, LogOut, AlertTriangle, Check, Copy } from "lucide-react";
-import { useApp, determineInstitutionalRole } from "../context/AppContext";
+import { useApp, previewInstitutionalRole } from "../context/AppContext";
 import { useRouter } from "../context/RouterContext";
 import { UserRole } from "../types";
 import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, formatPhone, isValidPhone } from "../lib/utils";
@@ -43,7 +43,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [regMatricula, setRegMatricula] = useState("");
   const [regPhone, setRegPhone] = useState("");
 
-  const regRoleDetermination = determineInstitutionalRole(regEmail);
+  const regRoleDetermination = previewInstitutionalRole(regEmail);
 
   // Close modal on Escape key
   useEffect(() => {
@@ -124,7 +124,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       return;
     }
 
-    const roleDetermination = determineInstitutionalRole(cleanEmail);
+    const roleDetermination = previewInstitutionalRole(cleanEmail);
     if (!roleDetermination.isInstitutional) {
       setErrorMsg("Apenas e-mails institucionais (@estudantes.ifpr.edu.br ou @ifpr.edu.br) são permitidos para novos cadastros.");
       addToast("Apenas e-mails institucionais (@estudantes.ifpr.edu.br ou @ifpr.edu.br) são permitidos.", "warning");

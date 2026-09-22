@@ -24,12 +24,86 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.19",
+    codename: "Zero-Trust Email Verification Gate & Auth/Authz Complete Hardening",
+    releaseDate: "22/09/2026",
+    releaseDateTime: "22 de Setembro de 2026 • 15:40 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Revisão completa do fluxo de autenticação e autorização do Localiza+ com arquitetura Zero-Trust: toda conta recém-criada permanece como INTRUSO (sem privilégios institucionais) até que o e-mail seja efetivamente verificado no Firebase Authentication (emailVerified === true). Enrijecimento rigoroso de firestore.rules para bloquear criação de itens, reivindicações e alterações sensíveis para contas não verificadas, promoção automática de papel institucional pós-confirmação e suíte completa de testes de segurança cobrindo todos os cenários A-H.",
+    additions: [
+      {
+        id: "v1919-add-1",
+        title: "Arquitetura Zero-Trust na Criação de Contas",
+        description: "Toda nova conta cadastrada inicia estritamente com o papel 'INTRUSO' (sem permissões de Aluno ou Servidor), independentemente do domínio de e-mail fornecido, até a efetiva verificação do e-mail no Firebase Auth.",
+        module: "AUTH",
+        tag: "Zero-Trust & Autenticação",
+      },
+      {
+        id: "v1919-add-2",
+        title: "Promoção Segura de Vínculo Institucional Pós-Verificação",
+        description: "Implementação da promoção de papel institucional (ALUNO ou SERVIDOR) executada exclusivamente após verificação real (emailVerified === true) no verifyUserInFirestore e checkVerificationStatus.",
+        module: "AUTH",
+        tag: "Governança de Identidade",
+      },
+      {
+        id: "v1919-add-3",
+        title: "Hardening de Regras Firestore Rules com isEmailVerified()",
+        description: "Enrijecimento das regras de segurança no Firestore exigindo verificação de e-mail (request.auth.token.email_verified == true) em todas as operações restritas e permitindo atualização de papel de INTRUSO para ALUNO/SERVIDOR apenas quando verificado.",
+        module: "FIRESTORE",
+        tag: "Regras de Segurança",
+      },
+      {
+        id: "v1919-add-4",
+        title: "Suíte de Testes Automatizados de Autenticação (Cenários A-H)",
+        description: "Criação de testes unitários abrangentes cobrindo os 8 cenários de segurança: contas não verificadas de alunos e servidores, contas verificadas, e-mails externos, superadmin e determinação de papel pré-cadastro.",
+        module: "GERAL",
+        tag: "Qualidade & Testes",
+      },
+    ],
+    bugFixes: [],
+    stats: {
+      additionsCount: 4,
+      fixesCount: 0,
+    },
+  },
+  {
+    version: "v1.9.18",
+    codename: "Motion/React Dynamic Entrance & Fluid Transition Engine",
+    releaseDate: "21/09/2026",
+    releaseDateTime: "21 de Setembro de 2026 • 15:25 BRT",
+    type: "PATCH",
+    isCurrent: false,
+    summary: "Adição de transições fluidas de entrada (fade-in e slide-up) com motion/react nos cards de catálogo de itens da ObjectsView, visualização em lista e modo tablet responsivo, proporcionando navegação suave, refinada e agradável com escalonamento (stagger) e animação de reposicionamento dinâmico (layout position).",
+    additions: [
+      {
+        id: "v1918-add-1",
+        title: "Efeitos de Entrada Fade-In e Slide-Up nos Cards de Itens",
+        description: "Configuração de animações com motion/react na ObjectsView e ItemCard com easing customizado [0.16, 1, 0.3, 1], translado vertical sutil (y: 18 -> y: 0), fade de opacidade e atraso escalonado (stagger) proporcional ao índice do item.",
+        module: "GERAL",
+        tag: "UI & Animações",
+      },
+      {
+        id: "v1918-add-2",
+        title: "Animação de Reposicionamento Fluido com AnimatePresence",
+        description: "Integração do AnimatePresence mode='popLayout' e layout='position' no grid de cards e tabelas, garantindo transições contínuas ao alternar filtros, categorias, blocos do campus ou modos de visualização.",
+        module: "GERAL",
+        tag: "Experiência de Navegação",
+      },
+    ],
+    bugFixes: [],
+    stats: {
+      additionsCount: 2,
+      fixesCount: 0,
+    },
+  },
+  {
     version: "v1.9.17",
     codename: "Institutional Domain Classification & External User Security Hardening",
     releaseDate: "21/09/2026",
     releaseDateTime: "21 de Setembro de 2026 • 15:20 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Implementação completa e segura do sistema de classificação automática de usuários por domínio institucional no Localiza+ IFPR Campus Ivaiporã. Inclui reconhecimento estrito de e-mails de estudantes (@estudantes.ifpr.edu.br e variantes como ALUNO), servidores (@ifpr.edu.br e subdomínios como SERVIDOR) e atribuição da role INTRUSO (apresentado como 'Usuário externo' na interface) para domínios externos e comerciais (Gmail, Outlook, Hotmail, etc.). Assegura proteções em nível de Firestore Rules (bloqueio de criação e manipulação de itens/claims para usuários externos), dropdown administrativo com controle de perfil e registro de auditoria transparente para cada alteração, apoiado por suíte completa de testes com 15 cenários de validação.",
     additions: [
       {

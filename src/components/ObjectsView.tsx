@@ -1097,98 +1097,112 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                  {filteredItems.map((item) => (
-                    <tr
-                      key={item.id}
-                      onClick={() => handleItemClick(item)}
-                      className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 cursor-pointer transition-colors"
-                    >
-                      <td className="p-4">
-                        <div className="flex items-center space-x-3">
-                          <img
-                            src={item.imageUrl}
-                            alt={item.title}
-                            loading="lazy"
-                            decoding="async"
-                            className="w-10 h-10 rounded-xl object-cover border border-neutral-200 dark:border-neutral-700"
-                          />
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <p className="font-bold text-neutral-900 dark:text-white text-xs">{item.title}</p>
-                              {isItemNew(item) && (
-                                <span
-                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-600 text-white border border-emerald-400 shadow-2xs"
-                                  title="Cadastrado nas últimas 24 horas"
-                                >
-                                  <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
-                                  Novo
-                                </span>
-                              )}
+                  <AnimatePresence mode="popLayout">
+                    {filteredItems.map((item, idx) => (
+                      <motion.tr
+                        key={item.id}
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{
+                          duration: 0.25,
+                          ease: [0.16, 1, 0.3, 1],
+                          delay: Math.min(idx * 0.025, 0.2),
+                        }}
+                        onClick={() => handleItemClick(item)}
+                        className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 cursor-pointer transition-colors"
+                      >
+                        <td className="p-4">
+                          <div className="flex items-center space-x-3">
+                            <img
+                              src={item.imageUrl}
+                              alt={item.title}
+                              loading="lazy"
+                              decoding="async"
+                              className="w-10 h-10 rounded-xl object-cover border border-neutral-200 dark:border-neutral-700"
+                            />
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <p className="font-bold text-neutral-900 dark:text-white text-xs">{item.title}</p>
+                                {isItemNew(item) && (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-600 text-white border border-emerald-400 shadow-2xs"
+                                    title="Cadastrado nas últimas 24 horas"
+                                  >
+                                    <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
+                                    Novo
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-neutral-400 font-mono">ID: {item.id}</p>
                             </div>
-                            <p className="text-[11px] text-neutral-400 font-mono">ID: {item.id}</p>
                           </div>
-                        </div>
-                      </td>
-                      <td className="p-4 font-semibold text-neutral-700 dark:text-neutral-300">
-                        {item.category}
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center space-x-2">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                              item.type === "PERDIDO"
-                                ? "bg-red-500/10 text-red-600 border border-red-500/20"
-                                : "bg-green-500/10 text-green-600 border border-green-500/20"
-                            }`}
+                        </td>
+                        <td className="p-4 font-semibold text-neutral-700 dark:text-neutral-300">
+                          {item.category}
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center space-x-2">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                item.type === "PERDIDO"
+                                  ? "bg-red-500/10 text-red-600 border border-red-500/20"
+                                  : "bg-green-500/10 text-green-600 border border-green-500/20"
+                              }`}
+                            >
+                              {item.type}
+                            </span>
+                            <span className="text-[11px] font-bold text-neutral-500">{item.status}</span>
+                          </div>
+                        </td>
+                        <td className="p-4 text-neutral-600 dark:text-neutral-300 font-medium">
+                          {item.location}
+                        </td>
+                        <td className="p-4 text-neutral-500 font-mono text-[11px]">
+                          {formatDate(item.date)}
+                        </td>
+                        <td className="p-4 text-right">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleItemClick(item);
+                            }}
+                            className="px-3.5 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-[11px] font-bold shadow-xs transition-all"
                           >
-                            {item.type}
-                          </span>
-                          <span className="text-[11px] font-bold text-neutral-500">{item.status}</span>
-                        </div>
-                      </td>
-                      <td className="p-4 text-neutral-600 dark:text-neutral-300 font-medium">
-                        {item.location}
-                      </td>
-                      <td className="p-4 text-neutral-500 font-mono text-[11px]">
-                        {formatDate(item.date)}
-                      </td>
-                      <td className="p-4 text-right">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleItemClick(item);
-                          }}
-                          className="px-3.5 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-[11px] font-bold shadow-xs transition-all"
-                        >
-                          Ver Detalhes
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                            Ver Detalhes
+                          </button>
+                        </td>
+                      </motion.tr>
+                    ))}
+                  </AnimatePresence>
                 </tbody>
               </table>
             </div>
           </div>
         ) : (
           /* RESPONSIVE GRID MODE (grid-cols-1 md:grid-cols-2 lg:grid-cols-3 for 320px mobile to desktop) */
-          <div
+          <motion.div
+            layout
             className={
               layoutViewMode === "CARDS"
                 ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-full min-w-0"
                 : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 md:hidden lg:grid gap-6 w-full max-w-full min-w-0"
             }
           >
-            {filteredItems.map((item) => (
-              <ItemCard
-                key={item.id}
-                item={item}
-                onSelect={handleItemClick}
-                selectable={isSelectableMode}
-                isSelected={selectedItemIds.includes(item.id)}
-                onToggleSelect={handleToggleSelectItem}
-              />
-            ))}
-          </div>
+            <AnimatePresence mode="popLayout">
+              {filteredItems.map((item, idx) => (
+                <ItemCard
+                  key={item.id}
+                  item={item}
+                  index={idx}
+                  onSelect={handleItemClick}
+                  selectable={isSelectableMode}
+                  isSelected={selectedItemIds.includes(item.id)}
+                  onToggleSelect={handleToggleSelectItem}
+                />
+              ))}
+            </AnimatePresence>
+          </motion.div>
         )}
 
         {/* TABLET ONLY LIST ROW (RNF03 Adaptive layout for md: to lg: breakpoint) */}
@@ -1199,63 +1213,73 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
               <span className="text-[10px] font-mono">{filteredItems.length} objetos</span>
             </div>
             <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {filteredItems.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => handleItemClick(item)}
-                  className="p-4 flex items-center justify-between hover:bg-neutral-50 dark:hover:bg-neutral-800/50 cursor-pointer transition-colors"
-                >
-                  <div className="flex items-center space-x-3">
-                    <img
-                      src={item.imageUrl}
-                      alt={item.title}
-                      loading="lazy"
-                      decoding="async"
-                      className="w-12 h-12 rounded-2xl object-cover border border-neutral-200 dark:border-neutral-700"
-                    />
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <h4 className="font-extrabold text-xs text-neutral-900 dark:text-white">
-                          {item.title}
-                        </h4>
-                        {isItemNew(item) && (
-                          <span
-                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-600 text-white border border-emerald-400 shadow-2xs"
-                            title="Cadastrado nas últimas 24 horas"
-                          >
-                            <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
-                            Novo 24h
-                          </span>
-                        )}
+              <AnimatePresence mode="popLayout">
+                {filteredItems.map((item, idx) => (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    transition={{
+                      duration: 0.25,
+                      ease: [0.16, 1, 0.3, 1],
+                      delay: Math.min(idx * 0.025, 0.2),
+                    }}
+                    onClick={() => handleItemClick(item)}
+                    className="p-4 flex items-center justify-between hover:bg-neutral-50 dark:hover:bg-neutral-800/50 cursor-pointer transition-colors"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <img
+                        src={item.imageUrl}
+                        alt={item.title}
+                        loading="lazy"
+                        decoding="async"
+                        className="w-12 h-12 rounded-2xl object-cover border border-neutral-200 dark:border-neutral-700"
+                      />
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <h4 className="font-extrabold text-xs text-neutral-900 dark:text-white">
+                            {item.title}
+                          </h4>
+                          {isItemNew(item) && (
+                            <span
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-600 text-white border border-emerald-400 shadow-2xs"
+                              title="Cadastrado nas últimas 24 horas"
+                            >
+                              <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
+                              Novo 24h
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-neutral-500">
+                          {item.category} • {item.location}
+                        </p>
                       </div>
-                      <p className="text-[11px] text-neutral-500">
-                        {item.category} • {item.location}
-                      </p>
                     </div>
-                  </div>
 
-                  <div className="flex items-center space-x-3">
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
-                        item.type === "PERDIDO"
-                          ? "bg-red-500/10 text-red-600 border border-red-500/20"
-                          : "bg-green-500/10 text-green-600 border border-green-500/20"
-                      }`}
-                    >
-                      {item.type}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedItemForDetail(item);
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-[#00843D] text-white font-bold text-xs"
-                    >
-                      Detalhes
-                    </button>
-                  </div>
-                </div>
-              ))}
+                    <div className="flex items-center space-x-3">
+                      <span
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
+                          item.type === "PERDIDO"
+                            ? "bg-red-500/10 text-red-600 border border-red-500/20"
+                            : "bg-green-500/10 text-green-600 border border-green-500/20"
+                        }`}
+                      >
+                        {item.type}
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedItemForDetail(item);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-[#00843D] text-white font-bold text-xs"
+                      >
+                        Detalhes
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
           </div>
         )}

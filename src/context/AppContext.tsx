@@ -105,7 +105,7 @@ export interface InstitutionalRoleDetermination {
   label: string;
 }
 
-export function determineInstitutionalRole(email: string): InstitutionalRoleDetermination {
+export function previewInstitutionalRole(email: string): InstitutionalRoleDetermination {
   const cleanEmail = safeToLower(email).trim();
   if (!cleanEmail || !cleanEmail.includes("@")) {
     return {
@@ -163,6 +163,38 @@ export function determineInstitutionalRole(email: string): InstitutionalRoleDete
     isInstitutional: false,
     label: "Usuário externo",
   };
+}
+
+export function determineInstitutionalRole(email: string, isEmailVerified: boolean = false): InstitutionalRoleDetermination {
+  const cleanEmail = safeToLower(email).trim();
+  if (!cleanEmail || !cleanEmail.includes("@")) {
+    return {
+      role: "INTRUSO",
+      isInstitutional: false,
+      label: "Usuário externo",
+    };
+  }
+
+  // Superadmin whitelist
+  if (cleanEmail === "paulocauan39@gmail.com") {
+    return {
+      role: "ADMIN",
+      isInstitutional: true,
+      label: "Administrador Geral",
+    };
+  }
+
+  // CRITICAL ZERO-TRUST RULE:
+  // If email is not verified by Firebase Authentication, it MUST NOT receive institutional classification or privileges.
+  if (!isEmailVerified) {
+    return {
+      role: "INTRUSO",
+      isInstitutional: false,
+      label: "Conta não verificada (Externa/Intrusa)",
+    };
+  }
+
+  return previewInstitutionalRole(cleanEmail);
 }
 
 interface Toast {
@@ -1610,16 +1642,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       pendingRegistrationDataRef.current.delete(userEmail);
     }
 
+    const verifiedRoleDetermination = determineInstitutionalRole(userEmail, Boolean(fbUser.emailVerified));
+    const previewDetermination = previewInstitutionalRole(userEmail);
+
     // 1. Direct check in 'users' collection by fbUser.uid
     try {
       const userSnap = await getDoc(uidRef);
       if (userSnap.exists()) {
         const existingData = userSnap.data() as User;
-        const targetRole: UserRole = isRoot ? "ADMIN" : (pendingData?.role === "ADMIN" ? "ALUNO" : (pendingData?.role || existingData.role || "ALUNO"));
+        const targetRole: UserRole = isRoot
+          ? "ADMIN"
+          : (existingData.role === "ADMIN" && existingData.approvalStatus === "APROVADO")
+          ? "ADMIN"
+          : verifiedRoleDetermination.role;
+
         const resolvedName = pendingData?.name || existingData.name || fbUser.displayName || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
         const resolvedAvatar = pendingData?.avatarUrl || existingData.avatarUrl || fbUser.photoURL || extraData?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedName)}`;
         const resolvedPhone = pendingData?.phone ?? existingData.phone ?? extraData?.phone ?? "";
-        const resolvedCourse = pendingData?.courseOrDept || existingData.courseOrDept || extraData?.courseOrDept || (targetRole === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
+        const resolvedCourse = pendingData?.courseOrDept || existingData.courseOrDept || extraData?.courseOrDept || (previewDetermination.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
         const resolvedRegistration = pendingData?.registrationNumber || existingData.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
 
         const updatedUser: User = sanitizeFirestoreData({
@@ -1635,11 +1675,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           approvalStatus: existingData.approvalStatus || (isRoot ? "APROVADO" : "PENDENTE"),
         }) as User;
 
-        // Only persist if missing critical fields or root admin role upgrade is needed
+        // Persist if role changed (e.g. upgraded from INTRUSO to ALUNO/SERVIDOR upon email verification), or missing critical fields
         if (
           !existingData.id ||
           existingData.id !== fbUser.uid ||
-          (isRoot && existingData.role !== "ADMIN") ||
+          existingData.role !== targetRole ||
           !existingData.email ||
           (pendingData && pendingData.name !== existingData.name)
         ) {
@@ -1668,11 +1708,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!querySnap.empty) {
           const legacyDoc = querySnap.docs[0];
           const legacyData = legacyDoc.data() as User;
-          const targetRole: UserRole = isRoot ? "ADMIN" : (pendingData?.role === "ADMIN" ? "ALUNO" : (pendingData?.role || legacyData.role || "ALUNO"));
+          const targetRole: UserRole = isRoot
+            ? "ADMIN"
+            : (legacyData.role === "ADMIN" && legacyData.approvalStatus === "APROVADO")
+            ? "ADMIN"
+            : verifiedRoleDetermination.role;
+
           const resolvedName = pendingData?.name || legacyData.name || fbUser.displayName || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
           const resolvedAvatar = pendingData?.avatarUrl || legacyData.avatarUrl || fbUser.photoURL || extraData?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedName)}`;
           const resolvedPhone = pendingData?.phone ?? legacyData.phone ?? extraData?.phone ?? "";
-          const resolvedCourse = pendingData?.courseOrDept || legacyData.courseOrDept || extraData?.courseOrDept || (targetRole === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
+          const resolvedCourse = pendingData?.courseOrDept || legacyData.courseOrDept || extraData?.courseOrDept || (previewDetermination.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
           const resolvedRegistration = pendingData?.registrationNumber || legacyData.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
 
           const migratedUser: User = sanitizeFirestoreData({
@@ -1706,8 +1751,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // 3. Create new user document in Firestore if no previous profile exists
-    const institutionalCheck = determineInstitutionalRole(userEmail);
-    if (!institutionalCheck.isInstitutional) {
+    if (!previewDetermination.isInstitutional && !isRoot) {
       console.warn(`[Acesso Restrito]: E-mail ${userEmail} não pertence a um domínio institucional autorizado. Rejeitando criação no Firestore.`);
       try {
         await signOut(auth);
@@ -1717,9 +1761,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const defaultApprovalStatus: ApprovalStatus = isRoot ? "APROVADO" : "PENDENTE";
-    const resolvedRole: UserRole = institutionalCheck.role;
+    const resolvedRole: UserRole = isRoot ? "ADMIN" : verifiedRoleDetermination.role;
     const resolvedName = fbUser.displayName || pendingData?.name || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
-    const resolvedCourse = pendingData?.courseOrDept || extraData?.courseOrDept || (resolvedRole === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
+    const resolvedCourse = pendingData?.courseOrDept || extraData?.courseOrDept || (previewDetermination.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
     const resolvedRegistration = pendingData?.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
     const resolvedPhone = pendingData?.phone ?? extraData?.phone ?? "";
     const resolvedAvatar = fbUser.photoURL || pendingData?.avatarUrl || extraData?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedName)}`;
@@ -2619,15 +2663,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error("Telefone inválido. Informe o DDD e o número completo (ex: (43) 99876-5432).");
     }
 
-    const institutionalCheck = determineInstitutionalRole(cleanEmail);
-    if (!institutionalCheck.isInstitutional) {
+    const institutionalPreview = previewInstitutionalRole(cleanEmail);
+    if (!institutionalPreview.isInstitutional) {
       addToast("Cadastro restrito: utilize seu e-mail institucional (@estudantes.ifpr.edu.br ou @ifpr.edu.br).", "error");
       throw new Error("Cadastro restrito: utilize seu e-mail institucional (@estudantes.ifpr.edu.br ou @ifpr.edu.br).");
     }
 
-    const resolvedRole: UserRole = institutionalCheck.role;
-    const statusVal: ApprovalStatus = institutionalCheck.role === "ADMIN" ? "APROVADO" : "PENDENTE";
-    const resolvedCourse = userData.courseOrDept?.trim() || (resolvedRole === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
+    // Zero-Trust: Initial role is INTRUSO until email is verified!
+    const resolvedRole: UserRole = cleanEmail === "paulocauan39@gmail.com" ? "ADMIN" : "INTRUSO";
+    const statusVal: ApprovalStatus = cleanEmail === "paulocauan39@gmail.com" ? "APROVADO" : "PENDENTE";
+    const resolvedCourse = userData.courseOrDept?.trim() || (institutionalPreview.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
     const resolvedPhone = userData.phone && userData.phone.trim() ? formatPhone(userData.phone.trim()) : "";
     const resolvedAvatar = userData.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(trimmedName)}`;
 
@@ -2716,8 +2761,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setFirebaseUser({ ...updatedUser } as FirebaseUser);
 
       if (updatedUser.emailVerified) {
+        const syncedUser = await verifyUserInFirestore(updatedUser);
+        setCurrentUser(syncedUser);
+        setAllUsers((prev) => prev.map((u) => (u.id === syncedUser.id ? syncedUser : u)));
         vibrateSuccess();
-        addToast("E-mail verificado com sucesso! Acesso ao Localiza+ liberado.", "success");
+        addToast("E-mail verificado com sucesso! Vínculo institucional liberado.", "success");
         return true;
       } else {
         vibrateWarning();

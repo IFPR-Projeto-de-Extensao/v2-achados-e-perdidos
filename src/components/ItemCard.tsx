@@ -11,6 +11,7 @@ interface ItemCardProps {
   selectable?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (itemId: string, selected: boolean) => void;
+  index?: number;
 }
 
 export const ItemCard: React.FC<ItemCardProps> = ({
@@ -19,6 +20,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
   selectable = false,
   isSelected = false,
   onToggleSelect,
+  index,
 }) => {
   const getStatusBadge = (status: LostFoundItem["status"], type: LostFoundItem["type"]) => {
     switch (status) {
@@ -124,10 +126,16 @@ export const ItemCard: React.FC<ItemCardProps> = ({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      layout="position"
+      initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -4 }}
-      transition={{ duration: 0.2 }}
+      exit={{ opacity: 0, scale: 0.96, y: -10 }}
+      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+      transition={{
+        duration: 0.32,
+        ease: [0.16, 1, 0.3, 1],
+        delay: index !== undefined ? Math.min(index * 0.035, 0.25) : 0,
+      }}
       className="group bg-white dark:bg-[#1E1E1E] rounded-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden shadow-xs hover:shadow-xl hover:border-[#00843D]/30 dark:hover:border-[#00843D]/50 transition-all flex flex-col justify-between"
     >
       <div>
