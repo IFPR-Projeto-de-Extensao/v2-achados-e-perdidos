@@ -2,6 +2,7 @@
 import { collection, doc, setDoc } from "firebase/firestore";
 import { db, auth } from "./firebase";
 import { saveOfflineErrorLogIndexedDB } from "./indexedDB";
+import { sanitizeForFirestore } from "./utils";
 
 export interface SystemErrorLog {
   id: string;
@@ -32,10 +33,12 @@ export async function logErrorToFirestore(
     typeof navigator !== "undefined" &&
     /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-  const errorMessage = typeof error === "string" ? error : error.message || "Erro desconhecido";
-  const errorStack = typeof error === "object" ? error.stack : undefined;
+  const errorMessage =
+    typeof error === "string" ? error : error?.message || "Erro desconhecido";
+  const errorStack =
+    typeof error === "object" && error !== null ? error.stack : undefined;
 
-  const logData: SystemErrorLog = {
+  const rawLogData: SystemErrorLog = {
     id: `err-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     errorMessage,
     errorStack,
@@ -52,10 +55,17 @@ export async function logErrorToFirestore(
     timestamp: new Date().toISOString(),
   };
 
-  // Always attempt IndexedDB backup first
-  await saveOfflineErrorLogIndexedDB(logData);
+  // Sanitizar dados omitindo campos com undefined para cumprir estritamente as regras da API Firestore
+  const logData = sanitizeForFirestore<SystemErrorLog>(rawLogData);
 
-  // Send to Firestore
+  // Always attempt IndexedDB backup first
+  try {
+    await saveOfflineErrorLogIndexedDB(logData);
+  } catch (idbErr) {
+    console.warn("Aviso ao salvar log no IndexedDB:", idbErr);
+  }
+
+  // Send to Firestore safely
   try {
     const errorRef = doc(collection(db, "error_logs"), logData.id);
     await setDoc(errorRef, logData);

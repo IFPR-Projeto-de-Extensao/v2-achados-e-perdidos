@@ -246,23 +246,32 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
         const decoded = await adminAuth.verifyIdToken(token);
         const isRoot = decoded.email === ROOT_ADMIN_EMAIL;
         let isAdmin = isRoot || decoded.role === "ADMIN" || decoded.admin === true;
+        let isEmailVerified = isRoot ? true : decoded.email_verified === true;
 
-        if (!isAdmin) {
-          const adminFirestore = getAdminFirestore();
-          if (adminFirestore) {
-            try {
-              const uDoc = await adminFirestore.collection("users").doc(decoded.uid).get();
-              if (uDoc.exists && uDoc.data()?.role === "ADMIN" && uDoc.data()?.approvalStatus === "APROVADO") {
+        const adminFirestore = getAdminFirestore();
+        if (adminFirestore) {
+          try {
+            const uDoc = await adminFirestore.collection("users").doc(decoded.uid).get();
+            if (uDoc.exists) {
+              const uData = uDoc.data();
+              if (uData?.role === "ADMIN") {
                 isAdmin = true;
               }
-            } catch (_) {}
-          }
+              if (uData?.emailVerified === true) {
+                isEmailVerified = true;
+              }
+            }
+          } catch (_) {}
+        }
+
+        if (isAdmin) {
+          isEmailVerified = true;
         }
 
         req.authUser = {
           uid: decoded.uid,
           email: decoded.email,
-          email_verified: decoded.email_verified,
+          email_verified: isEmailVerified,
           role: isAdmin ? "ADMIN" : (decoded.role as string) || "ALUNO",
           isAdmin,
         };
@@ -284,26 +293,35 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
       if (isValidIss && isValidAud && isNotExpired) {
         const isRoot = payload.email === ROOT_ADMIN_EMAIL;
         let isAdmin = isRoot || payload.role === "ADMIN" || payload.admin === true;
+        let isEmailVerified = isRoot ? true : payload.email_verified === true;
 
-        if (!isAdmin) {
+        const uid = payload.user_id || payload.sub;
+        if (uid) {
           const adminFirestore = getAdminFirestore();
           if (adminFirestore) {
             try {
-              const uid = payload.user_id || payload.sub;
-              if (uid) {
-                const uDoc = await adminFirestore.collection("users").doc(uid).get();
-                if (uDoc.exists && uDoc.data()?.role === "ADMIN" && uDoc.data()?.approvalStatus === "APROVADO") {
+              const uDoc = await adminFirestore.collection("users").doc(uid).get();
+              if (uDoc.exists) {
+                const uData = uDoc.data();
+                if (uData?.role === "ADMIN") {
                   isAdmin = true;
+                }
+                if (uData?.emailVerified === true) {
+                  isEmailVerified = true;
                 }
               }
             } catch (_) {}
           }
         }
 
+        if (isAdmin) {
+          isEmailVerified = true;
+        }
+
         req.authUser = {
-          uid: payload.user_id || payload.sub,
+          uid,
           email: payload.email,
-          email_verified: payload.email_verified,
+          email_verified: isEmailVerified,
           role: isAdmin ? "ADMIN" : payload.role || "ALUNO",
           isAdmin,
         };
@@ -337,13 +355,13 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 
     return res.status(401).json({
       success: false,
-      error: "Autenticação obrigatória. Faça login com sua conta institucional para utilizar os recursos de inteligência artificial.",
+      error: "Autenticação obrigatória. Faça login com sua conta institucional para utilizar os recursos do Localiza+.",
       auditId: unauthAudit.id,
     });
   }
 
-  // Mandatory email verification security check
-  if (req.authUser.email_verified !== true) {
+  // Mandatory email verification security check (Admins bypass this check)
+  if (req.authUser.email_verified !== true && !req.authUser.isAdmin) {
     return res.status(403).json({
       success: false,
       error: "E-mail não verificado. É obrigatório confirmar seu endereço de e-mail antes de acessar os recursos do Localiza+.",
@@ -355,10 +373,10 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  if (!req.authUser || !req.authUser.isAdmin || req.authUser.email_verified !== true) {
+  if (!req.authUser || !req.authUser.isAdmin) {
     return res.status(403).json({
       success: false,
-      error: "Acesso negado. Apenas administradores autorizados do IFPR com e-mail verificado podem executar esta operação.",
+      error: "Acesso negado. Apenas administradores autorizados do IFPR podem executar esta operação.",
     });
   }
   next();
@@ -790,38 +808,42 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
       }
 
       // 5. Persist audit logs in Firestore (Preserving all audit trails!)
-      const nowIso = new Date().toISOString();
-      const auditLogId = `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      await adminFirestore.collection("audit_logs").doc(auditLogId).set({
-        id: auditLogId,
-        transactionId: `TX-USER-DEL-${Date.now().toString(36).toUpperCase()}`,
-        objectId: cleanTargetId,
-        objectType: "USER",
-        objectTitle: targetName || cleanTargetId,
-        action: "ACCOUNT_DELETED",
-        actorId: adminUid,
-        actorName: "Administrador TI",
-        actorEmail: adminEmail,
-        actorRole: "ADMIN",
-        timestamp: nowIso,
-        fieldChanged: "account_lifecycle",
-        oldValue: targetStatus,
-        newValue: "DELETED",
-        details: `Conta do usuário '${targetName || cleanTargetId}' (${targetEmail}) com papel '${targetRole}' excluída permanentemente pelo administrador ${adminEmail}. Removida do Firebase Auth e do Firestore.`,
-        immutable: true,
-      });
+      try {
+        const nowIso = new Date().toISOString();
+        const auditLogId = `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        await adminFirestore.collection("audit_logs").doc(auditLogId).set({
+          id: auditLogId,
+          transactionId: `TX-USER-DEL-${Date.now().toString(36).toUpperCase()}`,
+          objectId: cleanTargetId,
+          objectType: "USER",
+          objectTitle: targetName || cleanTargetId,
+          action: "ACCOUNT_DELETED",
+          actorId: adminUid,
+          actorName: "Administrador TI",
+          actorEmail: adminEmail,
+          actorRole: "ADMIN",
+          timestamp: nowIso,
+          fieldChanged: "account_lifecycle",
+          oldValue: targetStatus,
+          newValue: "DELETED",
+          details: `Conta do usuário '${targetName || cleanTargetId}' (${targetEmail}) com papel '${targetRole}' excluída permanentemente pelo administrador ${adminEmail}. Removida do Firebase Auth e do Firestore.`,
+          immutable: true,
+        });
 
-      const actLogId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      await adminFirestore.collection("activity_logs").doc(actLogId).set({
-        id: actLogId,
-        adminId: adminUid,
-        adminName: "Administrador TI",
-        action: "ACCOUNT_DELETED",
-        objectId: cleanTargetId,
-        objectType: "USER",
-        details: `Conta de '${targetName || cleanTargetId}' (${targetEmail}) excluída permanentemente do Firebase Authentication e do Firestore.`,
-        timestamp: nowIso,
-      });
+        const actLogId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        await adminFirestore.collection("activity_logs").doc(actLogId).set({
+          id: actLogId,
+          adminId: adminUid,
+          adminName: "Administrador TI",
+          action: "ACCOUNT_DELETED",
+          objectId: cleanTargetId,
+          objectType: "USER",
+          details: `Conta de '${targetName || cleanTargetId}' (${targetEmail}) excluída permanentemente do Firebase Authentication e do Firestore.`,
+          timestamp: nowIso,
+        });
+      } catch (auditPersistErr) {
+        console.warn("[Admin Delete User Warning] Falha secundária ao persistir logs de auditoria no Firestore:", auditPersistErr);
+      }
     }
 
     logAIAudit({

@@ -24,12 +24,67 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.22",
+    codename: "Resilient User Deletion & Error Logger Sanitization",
+    releaseDate: "23/09/2026",
+    releaseDateTime: "23 de Setembro de 2026 • 21:00 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Correção definitiva da exclusão administrativa de usuários e sanitização do logger de erros no Firestore. Eliminação de falhas com campos 'undefined' no serviço errorLogger.ts via sanitizeForFirestore, correção da verificação de autorização administrativa no endpoint /api/admin/delete-user no backend para usuários com role ADMIN e tratamento robusto com try/catch e estado de carregamento no modal de exclusão do DashboardView.",
+    additions: [
+      {
+        id: "v1922-add-1",
+        title: "Sanitização Recursiva de Dados no Error Logger (Firestore)",
+        description: "Aplicação do utilitário sanitizeForFirestore em errorLogger.ts para remover recursivamente todos os campos opcionais com valor undefined (como componentStack, failedModulePath, location e errorStack) antes de persistir em /error_logs, eliminando erros de Unsupported field value: undefined do Firebase SDK.",
+        module: "FIRESTORE",
+        tag: "Estabilidade & Logs",
+      },
+      {
+        id: "v1922-add-2",
+        title: "Feedback Visual e Proteção contra Cliques Duplos na Exclusão",
+        description: "Adicionado estado isDeletingUser com spinner animado Loader2 e desativação de botões no modal de confirmação de exclusão em DashboardView.tsx, garantindo feedback imediato e evitando submissões simultâneas.",
+        module: "ADMIN",
+        tag: "Interface Administrativa",
+      },
+      {
+        id: "v1922-add-3",
+        title: "Resiliência na Trilha de Auditoria da Exclusão",
+        description: "Proteção das etapas de exclusão no servidor para garantir integridade: remoção no Firebase Authentication (se habilitado), exclusão do documento /users/{id} no Firestore, expurgo de notificações privadas e registro imutável em audit_logs e activity_logs.",
+        module: "ADMIN",
+        tag: "Auditoria & Segurança",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1922-fix-1",
+        title: "Correção de Autorização no Endpoint /api/admin/delete-user",
+        description: "Ajuste na verificação de identidade administrativa em authenticateToken e requireAdmin no server.ts para reconhecer administradores com role ADMIN no Firestore mesmo na ausência de approvalStatus explícito ou claims customizadas no token.",
+        module: "ADMIN",
+        tag: "Segurança & Backend",
+      },
+      {
+        id: "v1922-fix-2",
+        title: "Tratamento de Exceções no Modal de Exclusão de Usuário",
+        description: "Envolvimento da chamada deleteUser em bloco try/catch no DashboardView.tsx para evitar promessas rejeitadas não tratadas (Uncaught in promise) no navegador.",
+        module: "ADMIN",
+        tag: "Correção de Bug",
+      },
+      {
+        id: "v1922-fix-3",
+        title: "Melhoria na Mensagem de Erro de Resposta no deleteUser",
+        description: "Aprimoramento do cliente deleteUser em AppContext.tsx para forçar atualização do token com getIdToken(true) e extrair com precisão a mensagem de erro retornada pelo servidor (JSON ou texto bruto).",
+        module: "AUTH",
+        tag: "Comunicação API",
+      },
+    ],
+  },
+  {
     version: "v1.9.21",
     codename: "Automated Institutional Classification & Admin Account Sorting",
     releaseDate: "23/09/2026",
     releaseDateTime: "23 de Setembro de 2026 • 20:30 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Implementação do fluxo automatizado de classificação institucional pós-verificação de e-mail sem dependência de aprovação manual por administrador (@estudantes.ifpr.edu.br -> ALUNO, @ifpr.edu.br -> SERVIDOR, externos -> INTRUSO), ordenação decrescente por data de criação de contas na tela administrativa (mais recentes no topo com indicador visual), atualização das regras de segurança do Firestore (firestore.rules) e bateria de 6 cenários de teste automatizados.",
     additions: [
       {

@@ -86,6 +86,7 @@ import {
   Settings,
   Ban,
   UserMinus,
+  Loader2,
 } from "lucide-react";
 
 export const DashboardView: React.FC = () => {
@@ -152,6 +153,7 @@ export const DashboardView: React.FC = () => {
   const [userStatusFilter, setUserStatusFilter] = useState<"ALL" | "active" | "suspended" | "banned">("ALL");
   const [userSearchText, setUserSearchText] = useState("");
   const [userToDelete, setUserToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
   const [userForStatusModal, setUserForStatusModal] = useState<User | null>(null);
   const [isAddingUserOpen, setIsAddingUserOpen] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
@@ -3442,21 +3444,33 @@ export const DashboardView: React.FC = () => {
             <div className="flex items-center justify-end space-x-3 pt-2">
               <button
                 type="button"
+                disabled={isDeletingUser}
                 onClick={() => setUserToDelete(null)}
-                className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 text-xs font-bold transition-colors"
+                className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="button"
+                disabled={isDeletingUser}
                 onClick={async () => {
-                  await deleteUser(userToDelete.id);
-                  await logAdminAction("EXCLUSAO_USUARIO", `Removeu permanentemente o usuário '${userToDelete.name}' do sistema.`);
-                  setUserToDelete(null);
+                  if (!userToDelete) return;
+                  try {
+                    setIsDeletingUser(true);
+                    vibrateClick();
+                    await deleteUser(userToDelete.id);
+                    vibrateSuccess();
+                    setUserToDelete(null);
+                  } catch (delErr) {
+                    console.error("Falha ao excluir usuário no painel administrativo:", delErr);
+                  } finally {
+                    setIsDeletingUser(false);
+                  }
                 }}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors shadow-xs"
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-xs font-bold transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
               >
-                Sim, Remover Usuário
+                {isDeletingUser && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{isDeletingUser ? "Removendo..." : "Sim, Remover Usuário"}</span>
               </button>
             </div>
           </div>

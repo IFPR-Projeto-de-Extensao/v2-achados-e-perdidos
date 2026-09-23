@@ -3007,7 +3007,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       // 1. Call server-side administrative deletion endpoint (Firebase Admin SDK)
-      const idToken = await auth.currentUser?.getIdToken();
+      const idToken = await auth.currentUser?.getIdToken(true);
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
 
@@ -3022,7 +3022,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         try {
           const errData = await res.json();
           if (errData?.error) errMsg = errData.error;
-        } catch (_) {}
+          else if (errData?.message) errMsg = errData.message;
+        } catch (_) {
+          try {
+            const errText = await res.text();
+            if (errText) errMsg = `Erro do servidor (${res.status}): ${errText.slice(0, 120)}`;
+          } catch (_) {}
+        }
         throw new Error(errMsg);
       }
 
