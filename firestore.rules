@@ -50,8 +50,7 @@ service cloud.firestore {
       return isSignedIn() && 
              isEmailVerified() &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'SERVIDOR' &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'APROVADO';
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'SERVIDOR';
     }
 
     function isDocAluno() {
@@ -181,7 +180,7 @@ service cloud.firestore {
                            (existing().role == 'INTRUSO' && incoming().role == 'ALUNO' && isInstitutionalStudentEmail()) ||
                            (existing().role == 'INTRUSO' && incoming().role == 'SERVIDOR' && isServidor())
                          ) &&
-                         incoming().approvalStatus == existing().approvalStatus &&
+                         (incoming().approvalStatus == existing().approvalStatus || (isEmailVerified() && incoming().approvalStatus == 'APROVADO')) &&
                          (!('status' in incoming()) || incoming().status == existing().status) &&
                          (!('suspendedUntil' in incoming()) || incoming().suspendedUntil == existing().suspendedUntil)
                        );

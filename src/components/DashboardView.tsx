@@ -2647,7 +2647,7 @@ export const DashboardView: React.FC = () => {
                     )}
                   </div>
 
-                  {(allUsers || []).filter((u) => u && (u.approvalStatus === "PENDENTE" || String(u.email ?? "").includes("ifpr.edu.br"))).length === 0 ? (
+                  {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length === 0 ? (
                     <div className="bg-neutral-50 dark:bg-neutral-900/50 rounded-2xl p-6 text-center space-y-2 border border-dashed border-neutral-200 dark:border-neutral-800">
                       <UserCheck className="w-8 h-8 text-emerald-500 mx-auto" />
                       <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
@@ -2665,7 +2665,7 @@ export const DashboardView: React.FC = () => {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {(allUsers || [])
-                          .filter((u) => u && (u.approvalStatus === "PENDENTE" || String(u.email ?? "").includes("ifpr.edu.br")))
+                          .filter((u) => u && u.approvalStatus === "PENDENTE")
                           .map((pendingUser, index) => {
                             const userEmail = String(pendingUser?.email ?? "");
                             const isStudent = userEmail.endsWith("@estudantes.ifpr.edu.br") || userEmail.endsWith("@estudante.ifpr.edu.br");

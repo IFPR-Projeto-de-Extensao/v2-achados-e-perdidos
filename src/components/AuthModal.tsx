@@ -125,12 +125,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     }
 
     const roleDetermination = previewInstitutionalRole(cleanEmail);
-    if (!roleDetermination.isInstitutional) {
-      setErrorMsg("Apenas e-mails institucionais (@estudantes.ifpr.edu.br ou @ifpr.edu.br) são permitidos para novos cadastros.");
-      addToast("Apenas e-mails institucionais (@estudantes.ifpr.edu.br ou @ifpr.edu.br) são permitidos.", "warning");
-      return;
-    }
-
     const assignedRole = roleDetermination.role;
 
     setLoading(true);
@@ -139,7 +133,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         name: trimmedName,
         email: cleanEmail,
         role: assignedRole,
-        courseOrDept: regCourseOrDept.trim() || (assignedRole === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã"),
+        courseOrDept: regCourseOrDept.trim() || (
+          assignedRole === "SERVIDOR"
+            ? "Servidor IFPR Campus Ivaiporã"
+            : assignedRole === "ALUNO"
+            ? "Estudante IFPR Campus Ivaiporã"
+            : "Usuário Externo / Visitante"
+        ),
         registrationNumber: regMatricula.trim() || `2026${Math.floor(10000 + Math.random() * 90000)}`,
         phone: cleanPhone ? formatPhone(cleanPhone) : "",
         avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(trimmedName)}`,
@@ -541,9 +541,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                     regRoleDetermination.isInstitutional
                       ? "bg-[#00843D]/10 text-[#00843D] dark:bg-[#00843D]/20 dark:text-emerald-400 border border-[#00843D]/30"
+                      : regEmail.includes("@")
+                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30"
                       : "bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400"
                   }`}>
-                    {regRoleDetermination.isInstitutional ? regRoleDetermination.label : "Aguardando E-mail Institucional"}
+                    {regRoleDetermination.isInstitutional
+                      ? regRoleDetermination.label
+                      : regEmail.includes("@")
+                      ? "Usuário Externo (INTRUSO)"
+                      : "Aguardando E-mail"}
                   </span>
                 </div>
                 <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">

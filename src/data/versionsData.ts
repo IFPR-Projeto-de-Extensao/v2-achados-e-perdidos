@@ -24,12 +24,130 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.21",
+    codename: "Automated Institutional Classification & Admin Account Sorting",
+    releaseDate: "23/09/2026",
+    releaseDateTime: "23 de Setembro de 2026 • 20:30 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Implementação do fluxo automatizado de classificação institucional pós-verificação de e-mail sem dependência de aprovação manual por administrador (@estudantes.ifpr.edu.br -> ALUNO, @ifpr.edu.br -> SERVIDOR, externos -> INTRUSO), ordenação decrescente por data de criação de contas na tela administrativa (mais recentes no topo com indicador visual), atualização das regras de segurança do Firestore (firestore.rules) e bateria de 6 cenários de teste automatizados.",
+    additions: [
+      {
+        id: "v1921-add-1",
+        title: "Classificação Institucional Automatizada Pós-Verificação",
+        description: "Eliminação do requisito de aprovação manual para papéis institucionais. Ao validar o e-mail, as contas com domínio @estudantes.ifpr.edu.br são automaticamente promovidas a ALUNO e com @ifpr.edu.br a SERVIDOR com approvalStatus APROVADO.",
+        module: "AUTH",
+        tag: "Classificação Institucional",
+      },
+      {
+        id: "v1921-add-2",
+        title: "Ordenação Decrescente de Usuários por Data de Criação Real",
+        description: "Atualização da listagem de usuários no painel administrativo (AccountManagementView) e no listener do Firestore para ordenar rigorosamente por data de criação decrescente (mais recentes no topo), com suporte a fallback de timestamp e selo visual para novas contas.",
+        module: "ADMIN",
+        tag: "Gerenciamento de Usuários",
+      },
+      {
+        id: "v1921-add-3",
+        title: "Atualização das Regras de Segurança no Firestore (firestore.rules)",
+        description: "Ajuste na função isDocServidor() e na regra de atualização de usuários para garantir transição suave para APROVADO mediante comprovação de isEmailVerified() sem intervenção manual prévia.",
+        module: "FIRESTORE",
+        tag: "Regras de Segurança",
+      },
+      {
+        id: "v1921-add-4",
+        title: "Bateria de 6 Testes Obrigatórios de Integração",
+        description: "Criação de suíte completa de testes automatizados em authRegistrationValidation.test.ts validando os 6 cenários solicitados: @estudantes (pré/pós), @ifpr (pós), @gmail (INTRUSO ativo), criação sequencial/ordenação, suspensão institucional e banimento institucional.",
+        module: "GERAL",
+        tag: "Qualidade & Testes",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1921-fix-1",
+        title: "Remoção do Bloqueio de Aprovação Manual em Contas Institucionais",
+        description: "Correção do fluxo de cadastro e sincronização em verifyUserInFirestore e registerWithEmailPassword que forçavam approvalStatus PENDENTE e impediam a liberação imediata pós-confirmação do e-mail.",
+        module: "AUTH",
+        tag: "Fluxo de Cadastro",
+      },
+      {
+        id: "v1921-fix-2",
+        title: "Correção do Filtro de Contas Pendentes no Dashboard",
+        description: "Ajuste no filtro de contas pendentes no DashboardView para não incluir contas institucionais já aprovadas, exibindo apenas contas que realmente aguardam ação manual quando houver.",
+        module: "ADMIN",
+        tag: "Painel Administrativo",
+      },
+    ],
+    stats: {
+      additionsCount: 4,
+      fixesCount: 2,
+    },
+  },
+  {
+    version: "v1.9.20",
+    codename: "Admin Account Deletion API & User Classification Integration",
+    releaseDate: "23/09/2026",
+    releaseDateTime: "23 de Setembro de 2026 • 20:00 BRT",
+    type: "PATCH",
+    isCurrent: false,
+    summary: "Implementação da exclusão administrativa definitiva de contas com endpoint seguro em server.ts (/api/admin/delete-user) integrando Firebase Admin SDK e Firestore, modal dedicado de confirmação permanente preservando trilha forense de auditoria imutável, e correção da classificação por domínio de e-mail permitindo autenticação de domínios externos (@gmail.com) como INTRUSO com status independente (active/suspended/banned).",
+    additions: [
+      {
+        id: "v1920-add-1",
+        title: "Endpoint Administrativo de Exclusão de Contas no Backend Privilegiado",
+        description: "Criação do endpoint /api/admin/delete-user em server.ts que executa adminAuth.deleteUser no Firebase Authentication e adminFirestore.delete no Firestore, com validação de token e verificação do papel ADMIN real no Firestore.",
+        module: "ADMIN",
+        tag: "Segurança & Backend Privilegiado",
+      },
+      {
+        id: "v1920-add-2",
+        title: "Ação Explícita e Modal de Exclusão Permanente de Contas",
+        description: "Implementação de ação explícita 'Excluir' na tabela de gerenciamento de contas (AccountManagementView), distinta de Suspender, Banir e Reativar, acompanhada de modal de confirmação permanente com termo obrigatório e proteção contra autoexclusão.",
+        module: "ADMIN",
+        tag: "Gerenciamento de Usuários",
+      },
+      {
+        id: "v1920-add-3",
+        title: "Desacoplamento e Independência entre Papel (Role) e Status da Conta",
+        description: "Garantia de independência estrutural entre o papel institucional (ALUNO, SERVIDOR, INTRUSO, ADMIN) e o status operacional da conta (active, suspended, banned), permitindo registro e login de usuários externos classificados como INTRUSO e ativos.",
+        module: "AUTH",
+        tag: "Controle de Acesso RBAC",
+      },
+      {
+        id: "v1920-add-4",
+        title: "Suíte de Testes Automatizados para Cenários A a G",
+        description: "Cobertura de testes unitários e de integração em authRegistrationValidation.test.ts cobrindo classificação por domínio, contas externas autenticadas, independência de status, restrições para INTRUSO, contas suspensas/banidas, exclusão segura e logs de ciclo de vida.",
+        module: "GERAL",
+        tag: "Testes & Confiabilidade",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1920-fix-1",
+        title: "Correção na Exclusão Administrativa de Contas de Usuários",
+        description: "Resolução do problema que impedia administradores de excluir contas definitivamente pelo sistema através da migração da exclusão de cliente para o endpoint privilegiado de servidor com Firebase Admin SDK.",
+        module: "ADMIN",
+        tag: "Correção Crítica",
+      },
+      {
+        id: "v1920-fix-2",
+        title: "Correção na Classificação de E-mails Externos no Cadastro",
+        description: "Ajuste na validação de cadastro para não bloquear e-mails externos (@gmail.com, @hotmail.com), atribuindo-lhes corretamente o papel INTRUSO com status ativo e restrições de permissão aplicadas de ponta a ponta.",
+        module: "AUTH",
+        tag: "Autenticação",
+      },
+    ],
+    stats: {
+      additionsCount: 4,
+      fixesCount: 2,
+    },
+  },
+  {
     version: "v1.9.19",
     codename: "Zero-Trust Email Verification Gate & Auth/Authz Complete Hardening",
     releaseDate: "22/09/2026",
     releaseDateTime: "22 de Setembro de 2026 • 15:40 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Revisão completa do fluxo de autenticação e autorização do Localiza+ com arquitetura Zero-Trust: toda conta recém-criada permanece como INTRUSO (sem privilégios institucionais) até que o e-mail seja efetivamente verificado no Firebase Authentication (emailVerified === true). Enrijecimento rigoroso de firestore.rules para bloquear criação de itens, reivindicações e alterações sensíveis para contas não verificadas, promoção automática de papel institucional pós-confirmação e suíte completa de testes de segurança cobrindo todos os cenários A-H.",
     additions: [
       {

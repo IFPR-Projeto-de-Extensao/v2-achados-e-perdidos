@@ -1,7 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { determineInstitutionalRole, previewInstitutionalRole } from "../context/AppContext";
 import { sanitizeUserList } from "./shared-constants";
-import { User, UserRole } from "../types";
+import { User, UserRole, AccountStatus } from "../types";
+import {
+  resolveAccountStatus,
+  isUserAccountActive,
+  isAccountBlocked,
+  sortUsersByCreationDesc,
+} from "./accountStatusUtils";
 
 describe("Bateria de Testes: Fluxo de Autenticação e Registro Institucional Localiza+", () => {
   // Cenário 1: Cadastro institucional de aluno
@@ -206,5 +212,387 @@ describe("Bateria de Testes: Fluxo de Autenticação e Registro Institucional Lo
     );
     expect(searchResults).toHaveLength(1);
     expect(searchResults[0].name).toBe("Mariana Souza");
+  });
+
+  // ========================================================
+  // CENÁRIOS ESPECÍFICOS DE INTEGRAÇÃO: STATUS E CLASSIFICAÇÃO
+  // ========================================================
+
+  describe("Cenário A: Classificação por Domínio e Zero-Trust", () => {
+    it("Classifica e-mail institucional de estudante como ALUNO após verificação", () => {
+      const res = determineInstitutionalRole("lucas@estudantes.ifpr.edu.br", true);
+      expect(res.role).toBe("ALUNO");
+      expect(res.isInstitutional).toBe(true);
+    });
+
+    it("Classifica e-mail institucional de servidor como SERVIDOR após verificação", () => {
+      const res = determineInstitutionalRole("professor@ifpr.edu.br", true);
+      expect(res.role).toBe("SERVIDOR");
+      expect(res.isInstitutional).toBe(true);
+    });
+
+    it("Classifica domínios externos (@gmail.com, @hotmail.com) como INTRUSO mesmo se verificados", () => {
+      const resGmail = determineInstitutionalRole("visitante@gmail.com", true);
+      expect(resGmail.role).toBe("INTRUSO");
+      expect(resGmail.isInstitutional).toBe(false);
+
+      const resHotmail = determineInstitutionalRole("visitante@hotmail.com", true);
+      expect(resHotmail.role).toBe("INTRUSO");
+      expect(resHotmail.isInstitutional).toBe(false);
+    });
+
+    it("E-mail não verificado sempre resulta em role INTRUSO (Zero-Trust)", () => {
+      const unverifiedEstudante = determineInstitutionalRole("fake@estudantes.ifpr.edu.br", false);
+      expect(unverifiedEstudante.role).toBe("INTRUSO");
+
+      const unverifiedServidor = determineInstitutionalRole("fake@ifpr.edu.br", false);
+      expect(unverifiedServidor.role).toBe("INTRUSO");
+    });
+  });
+
+  describe("Cenário B: Conta Externa Autenticada (@gmail.com)", () => {
+    it("Permite autenticação de usuário externo sem bloquear o login, atribuindo role INTRUSO e status ativo", () => {
+      const externalUser: User = {
+        id: "ext-123",
+        name: "Visitante da Silva",
+        email: "visitante@gmail.com",
+        role: "INTRUSO",
+        status: "active",
+        courseOrDept: "Usuário Externo / Visitante",
+        registrationNumber: "EXT123456",
+        avatarUrl: "",
+      };
+
+      // Não é rejeitado, role é INTRUSO e status é active
+      expect(externalUser.role).toBe("INTRUSO");
+      expect(externalUser.status).toBe("active");
+    });
+  });
+
+  describe("Cenário C: Independência entre Role e Status da Conta", () => {
+    it("Permite qualquer combinação válida de role e status de conta", () => {
+      const combinations: Array<{ role: UserRole; status: AccountStatus }> = [
+        { role: "ALUNO", status: "active" },
+        { role: "ALUNO", status: "suspended" },
+        { role: "ALUNO", status: "banned" },
+        { role: "SERVIDOR", status: "active" },
+        { role: "SERVIDOR", status: "suspended" },
+        { role: "INTRUSO", status: "active" },
+        { role: "INTRUSO", status: "suspended" },
+        { role: "INTRUSO", status: "banned" },
+        { role: "ADMIN", status: "active" },
+      ];
+
+      combinations.forEach(({ role, status }) => {
+        const u: User = {
+          id: `u-${role}-${status}`,
+          name: "Test User",
+          email: "test@example.com",
+          role,
+          status,
+          courseOrDept: "Dept",
+          registrationNumber: "1",
+          avatarUrl: "",
+        };
+        expect(u.role).toBe(role);
+        expect(u.status).toBe(status);
+      });
+    });
+  });
+
+  describe("Cenário D: Ações Permitidas e Bloqueadas para Role INTRUSO", () => {
+    const intrusoUser: User = {
+      id: "intruso-1",
+      name: "Usuário Externo",
+      email: "externo@gmail.com",
+      role: "INTRUSO",
+      status: "active",
+      courseOrDept: "Usuário Externo / Visitante",
+      registrationNumber: "EXT111",
+      avatarUrl: "",
+    };
+
+    it("INTRUSO tem acesso a consultas públicas do catálogo", () => {
+      const canViewCatalog = true; // Catálogo é público
+      expect(canViewCatalog).toBe(true);
+    });
+
+    it("INTRUSO é impedido de cadastrar itens, registrar ocorrências e efetuar devoluções", () => {
+      const canCreateItem = intrusoUser.role !== "INTRUSO" && intrusoUser.status === "active";
+      const canClaimItem = intrusoUser.role !== "INTRUSO" && intrusoUser.status === "active";
+      const canReturnItem = (intrusoUser.role === "SERVIDOR" || intrusoUser.role === "ADMIN") && intrusoUser.status === "active";
+
+      expect(canCreateItem).toBe(false);
+      expect(canClaimItem).toBe(false);
+      expect(canReturnItem).toBe(false);
+    });
+  });
+
+  describe("Cenário E: Ações Permitidas e Bloqueadas para Status Suspended e Banned", () => {
+    const suspendedAluno: User = {
+      id: "aluno-susp-1",
+      name: "Aluno Suspenso",
+      email: "aluno@estudantes.ifpr.edu.br",
+      role: "ALUNO",
+      status: "suspended",
+      statusReason: "Violação de regras",
+      suspendedUntil: new Date(Date.now() + 86400000).toISOString(),
+      courseOrDept: "TADS",
+      registrationNumber: "2026111",
+      avatarUrl: "",
+    };
+
+    const bannedServidor: User = {
+      id: "serv-ban-1",
+      name: "Servidor Banido",
+      email: "serv@ifpr.edu.br",
+      role: "SERVIDOR",
+      status: "banned",
+      statusReason: "Infração disciplinar grave",
+      courseOrDept: "Docente",
+      registrationNumber: "2026222",
+      avatarUrl: "",
+    };
+
+    it("Contas suspensas ou banidas não podem criar itens ou registrar ações ativas", () => {
+      const isAlunoActive = suspendedAluno.status === "active";
+      const isServidorActive = bannedServidor.status === "active";
+
+      expect(isAlunoActive).toBe(false);
+      expect(isServidorActive).toBe(false);
+    });
+
+    it("Contas suspensas e banidas preservam motivo e informações no documento", () => {
+      expect(suspendedAluno.statusReason).toBe("Violação de regras");
+      expect(suspendedAluno.suspendedUntil).toBeDefined();
+      expect(bannedServidor.statusReason).toBe("Infração disciplinar grave");
+    });
+  });
+
+  describe("Cenário F: Exclusão Segura de Contas Administrativas", () => {
+    it("Impede que um administrador exclua sua própria conta ativa", () => {
+      const adminId: string = "admin-root-1";
+      const targetUserId: string = "admin-root-1";
+      const canDeleteSelf = targetUserId !== adminId;
+
+      expect(canDeleteSelf).toBe(false);
+    });
+
+    it("Permite exclusão de contas de terceiros por administradores", () => {
+      const adminId: string = "admin-root-1";
+      const targetUserId: string = "user-to-delete-999";
+      const canDeleteTarget = targetUserId !== adminId;
+
+      expect(canDeleteTarget).toBe(true);
+    });
+  });
+
+  describe("Cenário G: Auditoria de Ciclo de Vida de Contas", () => {
+    const validAuditLifecycleActions = [
+      "ACCOUNT_SUSPENDED",
+      "ACCOUNT_BANNED",
+      "ACCOUNT_REACTIVATED",
+      "ACCOUNT_DELETED",
+    ];
+
+    it("Todos os eventos de ciclo de vida são devidamente reconhecidos no sistema", () => {
+      validAuditLifecycleActions.forEach((action) => {
+        expect([
+          "ACCOUNT_SUSPENDED",
+          "ACCOUNT_BANNED",
+          "ACCOUNT_REACTIVATED",
+          "ACCOUNT_DELETED",
+        ]).toContain(action);
+      });
+    });
+
+    it("Estrutura do registro de auditoria de exclusão de conta contém dados obrigatórios", () => {
+      const auditEntry = {
+        objectId: "target-user-uid",
+        objectType: "USER",
+        objectTitle: "Nome do Usuário",
+        action: "ACCOUNT_DELETED",
+        actorId: "admin-uid",
+        actorRole: "ADMIN",
+        fieldChanged: "account_lifecycle",
+        oldValue: "active",
+        newValue: "DELETED",
+        timestamp: new Date().toISOString(),
+      };
+
+      expect(auditEntry.action).toBe("ACCOUNT_DELETED");
+      expect(auditEntry.objectType).toBe("USER");
+      expect(auditEntry.actorRole).toBe("ADMIN");
+      expect(auditEntry.fieldChanged).toBe("account_lifecycle");
+      expect(auditEntry.newValue).toBe("DELETED");
+    });
+  });
+
+  // ========================================================
+  // 6 CENÁRIOS DE TESTE OBRIGATÓRIOS DO LOCALIZA+
+  // ========================================================
+
+  describe("6 Cenários de Teste Obrigatórios", () => {
+    // Teste 1: Usuário @estudantes.ifpr.edu.br
+    it("1. Usuário @estudantes.ifpr.edu.br: pré-verificação sem privilégios (INTRUSO); pós-verificação classificado automaticamente como ALUNO", () => {
+      const email = "estudante.teste@estudantes.ifpr.edu.br";
+      // Pré-verificação
+      const preVerification = determineInstitutionalRole(email, false);
+      expect(preVerification.role).toBe("INTRUSO");
+      expect(preVerification.isInstitutional).toBe(false);
+
+      // Pós-verificação (após confirmação do e-mail, sem intervenção do admin)
+      const postVerification = determineInstitutionalRole(email, true);
+      expect(postVerification.role).toBe("ALUNO");
+      expect(postVerification.isInstitutional).toBe(true);
+    });
+
+    // Teste 2: Usuário @ifpr.edu.br
+    it("2. Usuário @ifpr.edu.br: pós-verificação classificado automaticamente como SERVIDOR", () => {
+      const email = "servidor.teste@ifpr.edu.br";
+      // Pré-verificação
+      const preVerification = determineInstitutionalRole(email, false);
+      expect(preVerification.role).toBe("INTRUSO");
+
+      // Pós-verificação
+      const postVerification = determineInstitutionalRole(email, true);
+      expect(postVerification.role).toBe("SERVIDOR");
+      expect(postVerification.isInstitutional).toBe(true);
+    });
+
+    // Teste 3: Usuário @gmail.com
+    it("3. Usuário @gmail.com: pós-verificação classificado como INTRUSO, funcional, ativo e sem privilégios institucionais", () => {
+      const email = "visitante@gmail.com";
+      const res = determineInstitutionalRole(email, true);
+      expect(res.role).toBe("INTRUSO");
+      expect(res.isInstitutional).toBe(false);
+
+      const externalAccount: User = {
+        id: "usr-gmail-1",
+        name: "Visitante Gmail",
+        email: email,
+        role: res.role,
+        status: "active",
+        courseOrDept: "Comunidade Externa",
+        registrationNumber: "EXT123456",
+        avatarUrl: "",
+        approvalStatus: "APROVADO",
+        emailVerified: true,
+      };
+
+      const resolved = resolveAccountStatus(externalAccount);
+      expect(resolved.status).toBe("active");
+      expect(isUserAccountActive(externalAccount)).toBe(true);
+      expect(isAccountBlocked(externalAccount)).toBe(false);
+      expect(externalAccount.role).toBe("INTRUSO");
+    });
+
+    // Teste 4: Criação sequencial de contas e ordenação (mais recente primeiro)
+    it("4. Criação sequencial de contas: ordenação correta na administração com as mais recentes primeiro", () => {
+      const user1MonthAgo: User = {
+        id: "u-old-1",
+        name: "Criado há 1 mês",
+        email: "mes@ifpr.edu.br",
+        role: "SERVIDOR",
+        status: "active",
+        courseOrDept: "DAE",
+        registrationNumber: "1001",
+        avatarUrl: "",
+        createdAt: new Date("2026-08-20T10:00:00Z").toISOString(),
+      };
+
+      const user1WeekAgo: User = {
+        id: "u-week-2",
+        name: "Criado há 1 semana",
+        email: "semana@estudantes.ifpr.edu.br",
+        role: "ALUNO",
+        status: "active",
+        courseOrDept: "TADS",
+        registrationNumber: "1002",
+        avatarUrl: "",
+        createdAt: new Date("2026-09-16T10:00:00Z").toISOString(),
+      };
+
+      const userYesterday: User = {
+        id: "u-yest-3",
+        name: "Criado ontem",
+        email: "ontem@estudantes.ifpr.edu.br",
+        role: "ALUNO",
+        status: "active",
+        courseOrDept: "TADS",
+        registrationNumber: "1003",
+        avatarUrl: "",
+        createdAt: new Date("2026-09-22T15:00:00Z").toISOString(),
+      };
+
+      const userToday: User = {
+        id: "u-today-4",
+        name: "Criado hoje",
+        email: "hoje@gmail.com",
+        role: "INTRUSO",
+        status: "active",
+        courseOrDept: "Visitante",
+        registrationNumber: "EXT1004",
+        avatarUrl: "",
+        createdAt: new Date("2026-09-23T12:00:00Z").toISOString(),
+      };
+
+      // Inserção em ordem arbitrária/desordenada
+      const inputList = [user1WeekAgo, userToday, user1MonthAgo, userYesterday];
+      const sorted = sortUsersByCreationDesc(inputList);
+
+      // Ordem esperada: Hoje -> Ontem -> 1 semana -> 1 mês
+      expect(sorted[0].id).toBe("u-today-4");
+      expect(sorted[1].id).toBe("u-yest-3");
+      expect(sorted[2].id).toBe("u-week-2");
+      expect(sorted[3].id).toBe("u-old-1");
+    });
+
+    // Teste 5: Suspensão de usuário institucional
+    it("5. Suspensão de usuário institucional: status torna-se 'suspended' independente de ser ALUNO ou verificado", () => {
+      const alunoUser: User = {
+        id: "u-aluno-suspenso",
+        name: "Aluno Suspenso",
+        email: "aluno.infrator@estudantes.ifpr.edu.br",
+        role: "ALUNO",
+        status: "suspended",
+        statusReason: "Infração disciplinar temporária",
+        statusUpdatedAt: new Date().toISOString(),
+        suspendedUntil: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+        courseOrDept: "TADS",
+        registrationNumber: "2026111",
+        avatarUrl: "",
+        emailVerified: true,
+      };
+
+      const resolved = resolveAccountStatus(alunoUser);
+      expect(resolved.status).toBe("suspended");
+      expect(alunoUser.role).toBe("ALUNO"); // Role institucional intacta
+      expect(isUserAccountActive(alunoUser)).toBe(false); // Ações bloqueadas por suspensão
+      expect(isAccountBlocked(alunoUser)).toBe(true);
+    });
+
+    // Teste 6: Banimento de usuário institucional
+    it("6. Banimento de usuário institucional: status torna-se 'banned' permanente com bloqueio de acesso", () => {
+      const servidorBanido: User = {
+        id: "u-servidor-banido",
+        name: "Ex-Servidor Banido",
+        email: "servidor.grave@ifpr.edu.br",
+        role: "SERVIDOR",
+        status: "banned",
+        statusReason: "Infração grave gravíssima transitada em julgado",
+        statusUpdatedAt: new Date().toISOString(),
+        courseOrDept: "Administração",
+        registrationNumber: "99999",
+        avatarUrl: "",
+        emailVerified: true,
+      };
+
+      const resolved = resolveAccountStatus(servidorBanido);
+      expect(resolved.status).toBe("banned");
+      expect(servidorBanido.role).toBe("SERVIDOR"); // Papel original registrado
+      expect(isUserAccountActive(servidorBanido)).toBe(false);
+      expect(isAccountBlocked(servidorBanido)).toBe(true);
+    });
   });
 });

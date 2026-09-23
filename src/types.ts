@@ -42,6 +42,8 @@ export interface User {
   statusChangedByName?: string;
   statusChangedByEmail?: string;
   suspendedUntil?: string;
+  createdAt?: string;
+  emailVerified?: boolean;
 }
 
 export interface ItemHistoryLog {

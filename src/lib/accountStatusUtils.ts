@@ -148,3 +148,45 @@ export function formatAccountStatusDetails(user: Partial<User>): {
       };
   }
 }
+
+/**
+ * Safely extracts a numeric timestamp in milliseconds for sorting users by creation date.
+ * Priority:
+ * 1. user.createdAt (reliable ISO or string date in user document)
+ * 2. statusChangedAt / statusUpdatedAt
+ * 3. 0 if completely absent
+ */
+export function getUserCreationTimestamp(user: Partial<User> | null | undefined): number {
+  if (!user) return 0;
+  if (user.createdAt) {
+    const parsed = Date.parse(user.createdAt);
+    if (!isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  if (user.statusChangedAt) {
+    const parsed = Date.parse(user.statusChangedAt);
+    if (!isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  if (user.statusUpdatedAt) {
+    const parsed = Date.parse(user.statusUpdatedAt);
+    if (!isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Sorts an array of users strictly by creation date, newest first (mais recente -> mais antiga).
+ */
+export function sortUsersByCreationDesc(users: User[]): User[] {
+  return [...users].sort((a, b) => {
+    const timeA = getUserCreationTimestamp(a);
+    const timeB = getUserCreationTimestamp(b);
+    return timeB - timeA;
+  });
+}
+

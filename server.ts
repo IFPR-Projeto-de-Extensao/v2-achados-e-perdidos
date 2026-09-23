@@ -245,7 +245,19 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
       try {
         const decoded = await adminAuth.verifyIdToken(token);
         const isRoot = decoded.email === ROOT_ADMIN_EMAIL;
-        const isAdmin = isRoot || decoded.role === "ADMIN" || decoded.admin === true;
+        let isAdmin = isRoot || decoded.role === "ADMIN" || decoded.admin === true;
+
+        if (!isAdmin) {
+          const adminFirestore = getAdminFirestore();
+          if (adminFirestore) {
+            try {
+              const uDoc = await adminFirestore.collection("users").doc(decoded.uid).get();
+              if (uDoc.exists && uDoc.data()?.role === "ADMIN" && uDoc.data()?.approvalStatus === "APROVADO") {
+                isAdmin = true;
+              }
+            } catch (_) {}
+          }
+        }
 
         req.authUser = {
           uid: decoded.uid,
@@ -270,8 +282,23 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
       const isNotExpired = payload.exp && payload.exp > nowInSec;
 
       if (isValidIss && isValidAud && isNotExpired) {
-        const isRoot = payload.email === ROOT_ADMIN_EMAIL && payload.email_verified === true;
-        const isAdmin = isRoot || payload.role === "ADMIN" || payload.admin === true;
+        const isRoot = payload.email === ROOT_ADMIN_EMAIL;
+        let isAdmin = isRoot || payload.role === "ADMIN" || payload.admin === true;
+
+        if (!isAdmin) {
+          const adminFirestore = getAdminFirestore();
+          if (adminFirestore) {
+            try {
+              const uid = payload.user_id || payload.sub;
+              if (uid) {
+                const uDoc = await adminFirestore.collection("users").doc(uid).get();
+                if (uDoc.exists && uDoc.data()?.role === "ADMIN" && uDoc.data()?.approvalStatus === "APROVADO") {
+                  isAdmin = true;
+                }
+              }
+            } catch (_) {}
+          }
+        }
 
         req.authUser = {
           uid: payload.user_id || payload.sub,
@@ -665,6 +692,159 @@ app.post(["/api/admin/master-wipe", "/admin/master-wipe"], requireAuth, requireA
     return res.status(500).json({
       success: false,
       error: "Falha ao executar limpeza no servidor: " + (wipeErr?.message || String(wipeErr)),
+    });
+  }
+});
+
+// Administrative User Deletion Endpoint (Removes user from Firebase Auth and cleans up Firestore users doc)
+app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const adminUid = req.authUser!.uid;
+  const adminEmail = req.authUser!.email || "root_admin";
+  const { targetUserId } = req.body || {};
+
+  if (!targetUserId || typeof targetUserId !== "string" || !targetUserId.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: "ID do usuário a ser excluído não informado ou inválido.",
+    });
+  }
+
+  const cleanTargetId = targetUserId.trim();
+
+  // Security constraint: Administrator cannot delete their own account
+  if (cleanTargetId === adminUid) {
+    return res.status(403).json({
+      success: false,
+      error: "Operação não permitida: um administrador não pode excluir a própria conta.",
+    });
+  }
+
+  const adminAuth = getAdminAuth();
+  const adminFirestore = getAdminFirestore();
+
+  try {
+    let targetEmail = "";
+    let targetName = "";
+    let targetRole = "ALUNO";
+    let targetStatus = "active";
+
+    // 1. Fetch user data from Firestore for audit trail and verification
+    if (adminFirestore) {
+      try {
+        const userDoc = await adminFirestore.collection("users").doc(cleanTargetId).get();
+        if (userDoc.exists) {
+          const uData = userDoc.data();
+          targetEmail = uData?.email || "";
+          targetName = uData?.name || "";
+          targetRole = uData?.role || "ALUNO";
+          targetStatus = uData?.status || "active";
+        }
+      } catch (fReadErr) {
+        console.warn("[Admin Delete User Warning] Falha ao ler documento do usuário no Firestore:", fReadErr);
+      }
+    }
+
+    // Fallback: fetch from Firebase Auth if not found in Firestore
+    if (!targetEmail && adminAuth) {
+      try {
+        const fbUserRecord = await adminAuth.getUser(cleanTargetId);
+        targetEmail = fbUserRecord.email || "";
+        targetName = fbUserRecord.displayName || targetEmail.split("@")[0] || cleanTargetId;
+      } catch (authLookupErr) {
+        // User may already be removed or not found
+      }
+    }
+
+    // 2. Delete user from Firebase Authentication
+    if (adminAuth) {
+      try {
+        await adminAuth.deleteUser(cleanTargetId);
+        console.log(`[Admin Delete User] Usuário ${cleanTargetId} (${targetEmail}) excluído do Firebase Auth com sucesso.`);
+      } catch (authDelErr: any) {
+        if (authDelErr?.code === "auth/user-not-found") {
+          console.log(`[Admin Delete User] Usuário ${cleanTargetId} já não constava no Firebase Auth.`);
+        } else {
+          console.warn(`[Admin Delete User Warning] Erro ao deletar do Firebase Auth:`, authDelErr);
+        }
+      }
+    }
+
+    // 3. Delete user document from Firestore /users/{cleanTargetId}
+    if (adminFirestore) {
+      await adminFirestore.collection("users").doc(cleanTargetId).delete();
+      console.log(`[Admin Delete User] Documento /users/${cleanTargetId} removido do Firestore.`);
+
+      // 4. Clean up private notifications addressed specifically to this user
+      try {
+        const notifsSnap = await adminFirestore
+          .collection("notifications")
+          .where("userId", "==", cleanTargetId)
+          .get();
+        if (!notifsSnap.empty) {
+          const batch = adminFirestore.batch();
+          notifsSnap.docs.forEach((d) => batch.delete(d.ref));
+          await batch.commit();
+        }
+      } catch (cleanNotifErr) {
+        console.warn("[Admin Delete User Warning] Falha ao limpar notificações privadas do usuário:", cleanNotifErr);
+      }
+
+      // 5. Persist audit logs in Firestore (Preserving all audit trails!)
+      const nowIso = new Date().toISOString();
+      const auditLogId = `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      await adminFirestore.collection("audit_logs").doc(auditLogId).set({
+        id: auditLogId,
+        transactionId: `TX-USER-DEL-${Date.now().toString(36).toUpperCase()}`,
+        objectId: cleanTargetId,
+        objectType: "USER",
+        objectTitle: targetName || cleanTargetId,
+        action: "ACCOUNT_DELETED",
+        actorId: adminUid,
+        actorName: "Administrador TI",
+        actorEmail: adminEmail,
+        actorRole: "ADMIN",
+        timestamp: nowIso,
+        fieldChanged: "account_lifecycle",
+        oldValue: targetStatus,
+        newValue: "DELETED",
+        details: `Conta do usuário '${targetName || cleanTargetId}' (${targetEmail}) com papel '${targetRole}' excluída permanentemente pelo administrador ${adminEmail}. Removida do Firebase Auth e do Firestore.`,
+        immutable: true,
+      });
+
+      const actLogId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      await adminFirestore.collection("activity_logs").doc(actLogId).set({
+        id: actLogId,
+        adminId: adminUid,
+        adminName: "Administrador TI",
+        action: "ACCOUNT_DELETED",
+        objectId: cleanTargetId,
+        objectType: "USER",
+        details: `Conta de '${targetName || cleanTargetId}' (${targetEmail}) excluída permanentemente do Firebase Authentication e do Firestore.`,
+        timestamp: nowIso,
+      });
+    }
+
+    logAIAudit({
+      userId: adminUid,
+      userEmail: adminEmail,
+      userRole: "ADMIN",
+      endpoint: "/api/admin/delete-user",
+      action: "ACCOUNT_DELETED",
+      status: "SUCCESS",
+      details: { targetUserId: cleanTargetId, targetEmail, targetName },
+      ip: req.ip || req.socket.remoteAddress,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Conta do usuário '${targetName || cleanTargetId}' excluída com sucesso do Firebase Authentication e do Firestore.`,
+      targetUserId: cleanTargetId,
+    });
+  } catch (err: any) {
+    console.error("[Admin Delete User Error]:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Erro ao excluir conta do usuário: " + (err?.message || String(err)),
     });
   }
 });

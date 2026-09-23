@@ -26,6 +26,7 @@ import {
 } from "../types";
 import { DEFAULT_DOCUMENT_TEMPLATES } from "../lib/defaultDocumentTemplates";
 import { DEFAULT_PROJECT_SETTINGS } from "../lib/projectSettingsConstants";
+import { sortUsersByCreationDesc } from "../lib/accountStatusUtils";
 import { INITIAL_ITEMS, MOCK_NOTIFICATIONS, MOCK_CLAIMS, MOCK_COMMENTS, MOCK_ACTIVITY_LOGS } from "../data/mockData";
 import { safeFetchJson, clientMatchSimilarity, sendMatchEmailAlert } from "../lib/apiHelper";
 import { compressImage } from "../lib/imageCompression";
@@ -1661,6 +1662,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const resolvedPhone = pendingData?.phone ?? existingData.phone ?? extraData?.phone ?? "";
         const resolvedCourse = pendingData?.courseOrDept || existingData.courseOrDept || extraData?.courseOrDept || (previewDetermination.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
         const resolvedRegistration = pendingData?.registrationNumber || existingData.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
+        const isVerified = Boolean(fbUser.emailVerified);
+        const resolvedApprovalStatus: ApprovalStatus = isRoot
+          ? "APROVADO"
+          : isVerified
+          ? "APROVADO"
+          : (existingData.approvalStatus || "APROVADO");
 
         const updatedUser: User = sanitizeFirestoreData({
           ...existingData,
@@ -1668,11 +1675,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           email: userEmail || existingData.email || "",
           name: resolvedName,
           role: targetRole,
+          status: existingData.status || "active",
           avatarUrl: resolvedAvatar,
           courseOrDept: resolvedCourse,
           registrationNumber: resolvedRegistration,
           phone: resolvedPhone,
-          approvalStatus: existingData.approvalStatus || (isRoot ? "APROVADO" : "PENDENTE"),
+          approvalStatus: resolvedApprovalStatus,
+          createdAt: existingData.createdAt || (fbUser.metadata?.creationTime ? new Date(fbUser.metadata.creationTime).toISOString() : new Date().toISOString()),
+          emailVerified: isVerified,
         }) as User;
 
         // Persist if role changed (e.g. upgraded from INTRUSO to ALUNO/SERVIDOR upon email verification), or missing critical fields
@@ -1681,6 +1691,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           existingData.id !== fbUser.uid ||
           existingData.role !== targetRole ||
           !existingData.email ||
+          existingData.emailVerified !== isVerified ||
+          (isVerified && existingData.approvalStatus !== "APROVADO") ||
+          !existingData.createdAt ||
           (pendingData && pendingData.name !== existingData.name)
         ) {
           try {
@@ -1719,6 +1732,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const resolvedPhone = pendingData?.phone ?? legacyData.phone ?? extraData?.phone ?? "";
           const resolvedCourse = pendingData?.courseOrDept || legacyData.courseOrDept || extraData?.courseOrDept || (previewDetermination.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
           const resolvedRegistration = pendingData?.registrationNumber || legacyData.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
+          const isVerified = Boolean(fbUser.emailVerified);
+          const resolvedApprovalStatus: ApprovalStatus = isRoot
+            ? "APROVADO"
+            : isVerified
+            ? "APROVADO"
+            : (legacyData.approvalStatus || "APROVADO");
 
           const migratedUser: User = sanitizeFirestoreData({
             ...legacyData,
@@ -1726,11 +1745,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             email: userEmail,
             name: resolvedName,
             role: targetRole,
+            status: legacyData.status || "active",
             avatarUrl: resolvedAvatar,
             courseOrDept: resolvedCourse,
             registrationNumber: resolvedRegistration,
             phone: resolvedPhone,
-            approvalStatus: legacyData.approvalStatus || (isRoot ? "APROVADO" : "PENDENTE"),
+            approvalStatus: resolvedApprovalStatus,
+            createdAt: legacyData.createdAt || (fbUser.metadata?.creationTime ? new Date(fbUser.metadata.creationTime).toISOString() : new Date().toISOString()),
+            emailVerified: isVerified,
           }) as User;
           try {
             await setDoc(uidRef, migratedUser, { merge: true });
@@ -1751,20 +1773,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // 3. Create new user document in Firestore if no previous profile exists
-    if (!previewDetermination.isInstitutional && !isRoot) {
-      console.warn(`[Acesso Restrito]: E-mail ${userEmail} não pertence a um domínio institucional autorizado. Rejeitando criação no Firestore.`);
-      try {
-        await signOut(auth);
-      } catch (_) {}
-      addToast("Acesso restrito: utilize seu e-mail institucional do IFPR (@estudantes.ifpr.edu.br ou @ifpr.edu.br).", "error");
-      throw new Error("Acesso não autorizado: Domínio de e-mail não institucional.");
-    }
-
-    const defaultApprovalStatus: ApprovalStatus = isRoot ? "APROVADO" : "PENDENTE";
+    // External users (@gmail.com, etc.) are allowed, classified as INTRUSO with active status and restricted permissions
+    const isVerified = Boolean(fbUser.emailVerified);
     const resolvedRole: UserRole = isRoot ? "ADMIN" : verifiedRoleDetermination.role;
-    const resolvedName = fbUser.displayName || pendingData?.name || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
-    const resolvedCourse = pendingData?.courseOrDept || extraData?.courseOrDept || (previewDetermination.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
-    const resolvedRegistration = pendingData?.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
+    const defaultApprovalStatus: ApprovalStatus = "APROVADO";
+    const resolvedName = fbUser.displayName || pendingData?.name || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário");
+    const resolvedCourse = pendingData?.courseOrDept || extraData?.courseOrDept || (
+      previewDetermination.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" :
+      previewDetermination.role === "ALUNO" ? "Estudante IFPR Campus Ivaiporã" :
+      "Usuário Externo / Comunidade"
+    );
+    const resolvedRegistration = pendingData?.registrationNumber || extraData?.registrationNumber || `EXT${fbUser.uid.substring(0, 6)}`;
     const resolvedPhone = pendingData?.phone ?? extraData?.phone ?? "";
     const resolvedAvatar = fbUser.photoURL || pendingData?.avatarUrl || extraData?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedName)}`;
 
@@ -1773,11 +1792,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       name: resolvedName,
       email: userEmail,
       role: resolvedRole,
+      status: "active",
       courseOrDept: resolvedCourse,
       registrationNumber: resolvedRegistration,
       phone: resolvedPhone,
       approvalStatus: defaultApprovalStatus,
       avatarUrl: resolvedAvatar,
+      createdAt: fbUser.metadata?.creationTime ? new Date(fbUser.metadata.creationTime).toISOString() : new Date().toISOString(),
+      emailVerified: isVerified,
     }) as User;
 
     try {
@@ -1926,7 +1948,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               usersMap.set(uid, userObj);
             }
           });
-          const loadedUsers = Array.from(usersMap.values());
+          const loadedUsers = sortUsersByCreationDesc(Array.from(usersMap.values()));
           setAllUsers(loadedUsers);
         }
       },
@@ -2609,28 +2631,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       const res = await signInWithEmailAndPassword(auth, cleanEmail, pass);
-      const userSnap = await getDoc(doc(db, "users", res.user.uid));
-      let loggedUser: User;
-      if (userSnap.exists()) {
-        loggedUser = userSnap.data() as User;
-      } else {
-        const isAdminEmail = cleanEmail === "paulocauan39@gmail.com";
-        loggedUser = {
-          id: res.user.uid,
-          name: res.user.displayName || cleanEmail.split("@")[0],
-          email: cleanEmail,
-          role: isAdminEmail ? "ADMIN" : "ALUNO",
-          courseOrDept: "Campus Ivaiporã",
-          registrationNumber: res.user.uid.substring(0, 10),
-          avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
-        };
-        try { await setDoc(doc(db, "users", res.user.uid), loggedUser, { merge: true }); } catch (_) {}
-      }
-      setCurrentUser(loggedUser);
+      const syncedUser = await verifyUserInFirestore(res.user);
+      setCurrentUser(syncedUser);
       if (!res.user.emailVerified) {
         addToast("Seu e-mail ainda não foi verificado. Por favor, confirme o endereço em sua caixa de entrada para liberar o acesso.", "warning");
       } else {
-        addToast(`Bem-vindo de volta, ${loggedUser.name}! Login efetuado com sucesso.`, "success");
+        addToast(`Bem-vindo de volta, ${syncedUser.name}! Login efetuado com sucesso.`, "success");
       }
     } catch (e: any) {
       console.warn("Erro no login por e-mail/senha:", e);
@@ -2664,15 +2670,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const institutionalPreview = previewInstitutionalRole(cleanEmail);
-    if (!institutionalPreview.isInstitutional) {
-      addToast("Cadastro restrito: utilize seu e-mail institucional (@estudantes.ifpr.edu.br ou @ifpr.edu.br).", "error");
-      throw new Error("Cadastro restrito: utilize seu e-mail institucional (@estudantes.ifpr.edu.br ou @ifpr.edu.br).");
-    }
+    const isRoot = cleanEmail === "paulocauan39@gmail.com";
 
-    // Zero-Trust: Initial role is INTRUSO until email is verified!
-    const resolvedRole: UserRole = cleanEmail === "paulocauan39@gmail.com" ? "ADMIN" : "INTRUSO";
-    const statusVal: ApprovalStatus = cleanEmail === "paulocauan39@gmail.com" ? "APROVADO" : "PENDENTE";
-    const resolvedCourse = userData.courseOrDept?.trim() || (institutionalPreview.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
+    // Zero-Trust: Initial role is INTRUSO until email is verified (unless root admin)
+    const resolvedRole: UserRole = isRoot ? "ADMIN" : "INTRUSO";
+    const statusVal: ApprovalStatus = "APROVADO";
+    const resolvedCourse = userData.courseOrDept?.trim() || (
+      institutionalPreview.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" :
+      institutionalPreview.role === "ALUNO" ? "Estudante IFPR Campus Ivaiporã" :
+      "Usuário Externo / Comunidade"
+    );
     const resolvedPhone = userData.phone && userData.phone.trim() ? formatPhone(userData.phone.trim()) : "";
     const resolvedAvatar = userData.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(trimmedName)}`;
 
@@ -2702,21 +2709,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         console.warn("[Email Verification Send Notice]:", verifySendErr);
       }
 
+      const creationTimeIso = res.user.metadata?.creationTime
+        ? new Date(res.user.metadata.creationTime).toISOString()
+        : new Date().toISOString();
+
       const newUserObj: User = {
         id: res.user.uid,
         name: trimmedName,
         email: cleanEmail,
         role: resolvedRole,
+        status: "active",
         courseOrDept: resolvedCourse,
         registrationNumber: userData.registrationNumber?.trim() || `2026${res.user.uid.substring(0, 6)}`,
         phone: resolvedPhone,
         approvalStatus: statusVal,
         avatarUrl: resolvedAvatar,
+        createdAt: creationTimeIso,
+        emailVerified: false,
       };
 
       await setDoc(doc(db, "users", newUserObj.id), newUserObj, { merge: true });
       setCurrentUser(newUserObj);
-      setAllUsers((prev) => [...prev.filter((u) => u && safeToLower(u.email) !== cleanEmail), newUserObj]);
+      setAllUsers((prev) =>
+        sortUsersByCreationDesc([
+          newUserObj,
+          ...prev.filter((u) => u && safeToLower(u.email) !== cleanEmail),
+        ])
+      );
       addToast("Conta criada com sucesso! Enviamos um link de confirmação para o seu e-mail.", "info");
     } catch (e: any) {
       pendingRegistrationDataRef.current.delete(cleanEmail);
@@ -2763,7 +2782,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (updatedUser.emailVerified) {
         const syncedUser = await verifyUserInFirestore(updatedUser);
         setCurrentUser(syncedUser);
-        setAllUsers((prev) => prev.map((u) => (u.id === syncedUser.id ? syncedUser : u)));
+        setAllUsers((prev) =>
+          sortUsersByCreationDesc(prev.map((u) => (u.id === syncedUser.id ? syncedUser : u)))
+        );
         vibrateSuccess();
         addToast("E-mail verificado com sucesso! Vínculo institucional liberado.", "success");
         return true;
@@ -2932,10 +2953,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const actionType =
         newStatus === "suspended"
-          ? "SUSPENSAO_CONTA"
+          ? "ACCOUNT_SUSPENDED"
           : newStatus === "banned"
-          ? "BANIMENTO_CONTA"
-          : "REATIVACAO_CONTA";
+          ? "ACCOUNT_BANNED"
+          : "ACCOUNT_REACTIVATED";
 
       await recordAuditLog({
         objectId: targetUserId,
@@ -2975,17 +2996,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (targetUserId === currentUser.id) {
-      addToast("Você não pode remover sua própria conta de administrador ativa.", "error");
+      addToast("Operação não permitida: Você não pode remover sua própria conta de administrador ativa.", "error");
       return;
     }
 
+    const targetUser = allUsers.find((u) => u.id === targetUserId);
+    const targetName = targetUser?.name || targetUserId;
+    const targetEmail = targetUser?.email || "";
+    const previousStatus = targetUser?.status || "active";
+
     try {
-      await deleteDoc(doc(db, "users", targetUserId));
+      // 1. Call server-side administrative deletion endpoint (Firebase Admin SDK)
+      const idToken = await auth.currentUser?.getIdToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+
+      const res = await fetch("/api/admin/delete-user", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ targetUserId }),
+      });
+
+      if (!res.ok) {
+        let errMsg = "Falha ao excluir usuário no servidor.";
+        try {
+          const errData = await res.json();
+          if (errData?.error) errMsg = errData.error;
+        } catch (_) {}
+        throw new Error(errMsg);
+      }
+
+      // 2. Client-side Firestore doc cleanup if still cached/present
+      try {
+        await deleteDoc(doc(db, "users", targetUserId));
+      } catch (_) {}
+
+      // 3. Update local state
       setAllUsers((prev) => prev.filter((u) => u.id !== targetUserId));
-      addToast("Usuário removido com sucesso do sistema!", "success");
+
+      // 4. Record audit logs for traceability
+      await recordAuditLog({
+        objectId: targetUserId,
+        objectType: "USER",
+        objectTitle: targetName,
+        action: "ACCOUNT_DELETED",
+        fieldChanged: "account_lifecycle",
+        oldValue: previousStatus,
+        newValue: "DELETED",
+        details: `Conta do usuário '${targetName}' (${targetEmail}) excluída permanentemente pelo administrador ${currentUser.name || currentUser.email}. Removida do Firebase Authentication e do Firestore.`,
+      });
+
+      await logAdminAction(
+        "ACCOUNT_DELETED" as any,
+        `Excluiu permanentemente a conta de '${targetName}' (${targetEmail}) do Firebase Authentication e Firestore.`
+      );
+
+      addToast(`Conta de '${targetName}' excluída definitivamente com sucesso!`, "success");
     } catch (e: any) {
-      console.error("Erro ao remover usuário do Firestore:", e);
-      addToast("Erro ao remover usuário do banco de dados.", "error");
+      console.error("Erro ao excluir conta do usuário:", e);
+      addToast(`Erro ao excluir conta: ${e?.message || "Operação não autorizada"}`, "error");
       throw e;
     }
   };

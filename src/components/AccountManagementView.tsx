@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
 import { User, AccountStatus, UserRole } from "../types";
-import { resolveAccountStatus, formatAccountStatusDetails } from "../lib/accountStatusUtils";
+import { resolveAccountStatus, formatAccountStatusDetails, sortUsersByCreationDesc } from "../lib/accountStatusUtils";
 import { ManageUserStatusModal } from "./ManageUserStatusModal";
 import { vibrateClick, vibrateSuccess, safeIncludes, sanitizeQuery } from "../lib/utils";
 import {
@@ -15,33 +15,42 @@ import {
   CheckCircle2,
   Filter,
   Shield,
+  Trash2,
+  AlertOctagon,
+  X,
+  Loader2,
 } from "lucide-react";
 
 export const AccountManagementView: React.FC = () => {
-  const { allUsers, currentUser, updateUserStatus, updateUserRole, addToast } = useApp();
+  const { allUsers, currentUser, updateUserStatus, updateUserRole, deleteUser, addToast } = useApp();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | AccountStatus>("ALL");
   const [selectedUserForStatusModal, setSelectedUserForStatusModal] = useState<User | null>(null);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteConfirmationChecked, setDeleteConfirmationChecked] = useState(false);
   const [isReactivatingId, setIsReactivatingId] = useState<string | null>(null);
   const [isUpdatingRoleId, setIsUpdatingRoleId] = useState<string | null>(null);
 
-  // Filter real users list
-  const filteredUsers = (allUsers || []).filter((u) => {
-    if (!u) return false;
-    const resolved = resolveAccountStatus(u);
-    const matchStatus = statusFilter === "ALL" || resolved.status === statusFilter;
+  // Filter and sort real users list: newest created accounts first (mais recente -> mais antiga)
+  const filteredUsers = sortUsersByCreationDesc(
+    (allUsers || []).filter((u) => {
+      if (!u) return false;
+      const resolved = resolveAccountStatus(u);
+      const matchStatus = statusFilter === "ALL" || resolved.status === statusFilter;
 
-    const q = sanitizeQuery(searchQuery);
-    const matchQuery =
-      !q ||
-      safeIncludes(u.name, q) ||
-      safeIncludes(u.email, q) ||
-      safeIncludes(u.registrationNumber, q) ||
-      safeIncludes(u.courseOrDept, q);
+      const q = sanitizeQuery(searchQuery);
+      const matchQuery =
+        !q ||
+        safeIncludes(u.name, q) ||
+        safeIncludes(u.email, q) ||
+        safeIncludes(u.registrationNumber, q) ||
+        safeIncludes(u.courseOrDept, q);
 
-    return matchStatus && matchQuery;
-  });
+      return matchStatus && matchQuery;
+    })
+  );
 
   const activeCount = (allUsers || []).filter((u) => resolveAccountStatus(u).status === "active").length;
   const suspendedCount = (allUsers || []).filter((u) => resolveAccountStatus(u).status === "suspended").length;
@@ -58,6 +67,22 @@ export const AccountManagementView: React.FC = () => {
       console.error("Erro ao reativar conta:", err);
     } finally {
       setIsReactivatingId(null);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!userToDelete || userToDelete.id === currentUser.id) return;
+    try {
+      setIsDeleting(true);
+      vibrateClick();
+      await deleteUser(userToDelete.id);
+      vibrateSuccess();
+      setUserToDelete(null);
+      setDeleteConfirmationChecked(false);
+    } catch (err) {
+      console.error("Erro ao excluir conta:", err);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -227,10 +252,16 @@ export const AccountManagementView: React.FC = () => {
                                   (Você)
                                 </span>
                               )}
+                              {u.createdAt && (Date.now() - new Date(u.createdAt).getTime() < 48 * 3600 * 1000) && (
+                                <span className="px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[9px] font-extrabold uppercase tracking-wider">
+                                  Novo
+                                </span>
+                              )}
                             </p>
                             <p className="text-[10px] text-neutral-400">
                               {u.courseOrDept || "IFPR Campus Ivaiporã"}
                               {u.registrationNumber ? ` • Matrícula: ${u.registrationNumber}` : ""}
+                              {u.createdAt ? ` • Cadastro: ${new Date(u.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""}
                             </p>
                           </div>
                         </div>
@@ -388,6 +419,21 @@ export const AccountManagementView: React.FC = () => {
                                 <span>Reativar Conta</span>
                               </button>
                             )}
+
+                            {/* Explicit Action: Excluir Conta (Distinct from Suspender, Banir, Reativar) */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                vibrateClick();
+                                setUserToDelete(u);
+                                setDeleteConfirmationChecked(false);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-neutral-100 hover:bg-red-50 text-neutral-600 hover:text-red-700 dark:bg-neutral-800 dark:hover:bg-red-950/40 dark:text-neutral-300 dark:hover:text-red-300 border border-neutral-300 dark:border-neutral-700 hover:border-red-400 text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer"
+                              title="Excluir conta definitivamente do Firebase Authentication e do Firestore"
+                            >
+                              <Trash2 className="w-3 h-3 text-red-500" />
+                              <span>Excluir</span>
+                            </button>
                           </div>
                         )}
                       </td>
@@ -409,6 +455,123 @@ export const AccountManagementView: React.FC = () => {
           onUpdateStatus={updateUserStatus}
           currentAdminId={currentUser.id}
         />
+      )}
+
+      {/* Permanent Deletion Confirmation Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl border border-red-200 dark:border-red-900/60 shadow-2xl max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="p-6 bg-red-50 dark:bg-red-950/40 border-b border-red-100 dark:border-red-900/50 flex items-start justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="p-3 rounded-2xl bg-red-600 text-white shadow-md">
+                  <AlertOctagon className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-red-900 dark:text-red-200">
+                    Excluir Conta Permanentemente
+                  </h3>
+                  <p className="text-xs text-red-700 dark:text-red-300/80">
+                    Ação administrativa irreversível e definitiva
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => {
+                  setUserToDelete(null);
+                  setDeleteConfirmationChecked(false);
+                }}
+                className="p-1.5 rounded-xl hover:bg-red-200/50 dark:hover:bg-red-900/40 text-red-700 dark:text-red-300 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700/60 space-y-2">
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-neutral-500 font-medium">Nome:</span>
+                  <span className="font-bold text-neutral-900 dark:text-white">{userToDelete.name}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-neutral-500 font-medium">E-mail:</span>
+                  <span className="font-mono text-neutral-800 dark:text-neutral-200">{userToDelete.email}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-neutral-500 font-medium">Perfil / Papel:</span>
+                  <span className="font-bold text-neutral-800 dark:text-neutral-200">{userToDelete.role}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-neutral-500 font-medium">Matrícula:</span>
+                  <span className="font-mono text-neutral-800 dark:text-neutral-200">{userToDelete.registrationNumber || "N/A"}</span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs leading-relaxed space-y-2">
+                <div className="font-black flex items-center space-x-1.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span>Impacto da Exclusão:</span>
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-[11px]">
+                  <li>A conta será <strong>excluída permanentemente</strong> do Firebase Authentication.</li>
+                  <li>O documento do usuário será <strong>removido</strong> do Firestore (<span className="font-mono">/users/{userToDelete.id}</span>).</li>
+                  <li>Notificações privadas vinculadas ao usuário serão limpas.</li>
+                  <li><strong>Histórico de auditoria é preservado:</strong> Registros anteriores de rastreabilidade são mantidos intactos.</li>
+                </ul>
+              </div>
+
+              {/* Checkbox confirmation */}
+              <label className="flex items-start space-x-3 p-3 rounded-2xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800/40 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={deleteConfirmationChecked}
+                  onChange={(e) => setDeleteConfirmationChecked(e.target.checked)}
+                  disabled={isDeleting}
+                  className="mt-0.5 rounded text-red-600 focus:ring-red-500 w-4 h-4 cursor-pointer"
+                />
+                <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                  Estou ciente de que esta ação é permanente, irreversível e remove o acesso do usuário ao sistema.
+                </span>
+              </label>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-neutral-50 dark:bg-neutral-800/50 border-t border-neutral-200 dark:border-neutral-700 flex items-center justify-end space-x-3">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => {
+                  setUserToDelete(null);
+                  setDeleteConfirmationChecked(false);
+                }}
+                className="px-4 py-2 rounded-xl border border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!deleteConfirmationChecked || isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-all flex items-center space-x-2 shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Excluindo permanentemente...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Excluir Definitivamente</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
