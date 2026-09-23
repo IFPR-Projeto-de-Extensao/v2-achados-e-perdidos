@@ -24,12 +24,60 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.23",
+    codename: "Transparent Error Exposure & Deletion Pipeline Hardening",
+    releaseDate: "23/09/2026",
+    releaseDateTime: "23 de Setembro de 2026 • 21:40 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Rastreamento completo do fluxo de exclusão de usuários e eliminação definitiva do mascaramento de erros técnicos. Diagnóstico do erro na leitura de streams no cliente (res.text() após res.json() causando stream already read e forçando texto genérico), estruturação de logs detalhados no backend em server.ts para capturar códigos reais do Firebase Admin e resiliência na ordem de execução com integridade entre Auth, Firestore e auditoria.",
+    additions: [
+      {
+        id: "v1923-add-1",
+        title: "Exposição Estruturada de Erros Reais no Backend",
+        description: "Adicionado registro com console.error em server.ts capturando código e mensagem originais das APIs do Firebase (como auth/internal-error, auth/user-not-found, firestore/permission-denied) com contexto seguro sem expor tokens ou credenciais.",
+        module: "ADMIN",
+        tag: "Backend & Logs",
+      },
+      {
+        id: "v1923-add-2",
+        title: "Consumo Seguro de Stream HTTP no deleteUser (AppContext)",
+        description: "Reestruturação da leitura da resposta HTTP no deleteUser para ler res.text() primeiro e converter com JSON.parse(), eliminando a exceção 'body stream already read' e propagando a mensagem e código reais para a interface e console.",
+        module: "AUTH",
+        tag: "Cliente & API",
+      },
+      {
+        id: "v1923-add-3",
+        title: "Isolamento e Resiliência na Ordem de Operações de Exclusão",
+        description: "Encapsulamento protegido da remoção no Firestore dentro do endpoint /api/admin/delete-user para garantir que falhas de IAM no servidor não impeçam a sincronização limpa do ciclo de vida da conta e das notificações.",
+        module: "FIRESTORE",
+        tag: "Resiliência",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1923-fix-1",
+        title: "Eliminação da Mensagem Genérica 'Falha ao excluir usuário no servidor'",
+        description: "Correção do fluxo de tratamento de erro no AppContext.tsx que recorria à mensagem estática padrão mesmo quando o servidor retornava detalhes úteis de status HTTP ou objeto de erro formatado.",
+        module: "ADMIN",
+        tag: "Correção de Bug",
+      },
+      {
+        id: "v1923-fix-2",
+        title: "Tratamento de Exceções não Capturadas no Firestore Delete do Backend",
+        description: "Envolvimento da chamada adminFirestore.collection('users').doc().delete() em try/catch com log específico de erro, prevenindo que erros 7 PERMISSION_DENIED no backend quebrem abruptamente o endpoint.",
+        module: "FIRESTORE",
+        tag: "Correção de Erro",
+      },
+    ],
+  },
+  {
     version: "v1.9.22",
     codename: "Resilient User Deletion & Error Logger Sanitization",
     releaseDate: "23/09/2026",
     releaseDateTime: "23 de Setembro de 2026 • 21:00 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Correção definitiva da exclusão administrativa de usuários e sanitização do logger de erros no Firestore. Eliminação de falhas com campos 'undefined' no serviço errorLogger.ts via sanitizeForFirestore, correção da verificação de autorização administrativa no endpoint /api/admin/delete-user no backend para usuários com role ADMIN e tratamento robusto com try/catch e estado de carregamento no modal de exclusão do DashboardView.",
     additions: [
       {

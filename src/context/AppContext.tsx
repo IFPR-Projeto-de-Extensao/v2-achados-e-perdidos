@@ -3018,17 +3018,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
 
       if (!res.ok) {
-        let errMsg = "Falha ao excluir usuário no servidor.";
+        const resText = await res.text();
+        let errMsg = `Falha na exclusão do usuário no servidor (${res.status})`;
         try {
-          const errData = await res.json();
-          if (errData?.error) errMsg = errData.error;
-          else if (errData?.message) errMsg = errData.message;
+          const errData = JSON.parse(resText);
+          if (errData?.error) {
+            errMsg = errData.error;
+          } else if (errData?.message) {
+            errMsg = errData.message;
+          }
         } catch (_) {
-          try {
-            const errText = await res.text();
-            if (errText) errMsg = `Erro do servidor (${res.status}): ${errText.slice(0, 120)}`;
-          } catch (_) {}
+          if (resText && resText.trim()) {
+            errMsg = `Falha no servidor (${res.status}): ${resText.trim().slice(0, 150)}`;
+          }
         }
+        console.error("[Admin Delete User Error]:", {
+          status: res.status,
+          statusText: res.statusText,
+          message: errMsg,
+          targetUserId,
+        });
         throw new Error(errMsg);
       }
 
