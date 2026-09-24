@@ -1,15 +1,33 @@
-import express, { Request, Response, NextFunction } from "express";
+import express, { type Request, type Response, type NextFunction } from "express";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
-import nodemailer, { Transporter } from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
 import { GoogleGenAI, Type } from "@google/genai";
-import { getApps, initializeApp, cert, App } from "firebase-admin/app";
-import { getAuth, Auth } from "firebase-admin/auth";
-import { getFirestore, Firestore } from "firebase-admin/firestore";
-import firebaseAppConfig from "./firebase-applet-config.json";
+import { getApps, initializeApp, cert, type App } from "firebase-admin/app";
+import { getAuth, type Auth } from "firebase-admin/auth";
+import { getFirestore, type Firestore } from "firebase-admin/firestore";
+
+// Safe loading of firebase config to prevent Node 22 ESM import assertion errors
+let firebaseAppConfig: any = {};
+try {
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(configPath)) {
+    firebaseAppConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  }
+} catch (configErr) {
+  console.warn("[Firebase Config Notice] Não foi possível ler firebase-applet-config.json:", configErr);
+}
 
 dotenv.config();
+
+// Global process exception guards to prevent Serverless Function crashes
+process.on("unhandledRejection", (reason) => {
+  console.error("[Server Process unhandledRejection]:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[Server Process uncaughtException]:", err);
+});
 
 const app = express();
 const PORT = 3000;
@@ -21,11 +39,16 @@ const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
 
 function formatPrivateKey(rawKey: string | undefined): string | undefined {
   if (!rawKey) return undefined;
-  // Handle literal escaped \n strings from Vercel / environment configs
-  let formatted = rawKey.replace(/\\n/g, "\n");
-  if (formatted.startsWith('"') && formatted.endsWith('"')) {
-    formatted = formatted.slice(1, -1).replace(/\\n/g, "\n");
+  let formatted = rawKey.trim();
+  // Strip surrounding single or double quotes
+  if (
+    (formatted.startsWith('"') && formatted.endsWith('"')) ||
+    (formatted.startsWith("'") && formatted.endsWith("'"))
+  ) {
+    formatted = formatted.slice(1, -1);
   }
+  // Replace escaped \n and \r with real newlines
+  formatted = formatted.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
   return formatted.trim();
 }
 
@@ -54,15 +77,23 @@ export function getFirebaseAdminApp(): App | null {
 
   try {
     if (clientEmail && privateKey) {
-      adminAppInstance = initializeApp({
-        credential: cert({
+      try {
+        adminAppInstance = initializeApp({
+          credential: cert({
+            projectId: FIREBASE_PROJECT_ID,
+            clientEmail,
+            privateKey,
+          }),
           projectId: FIREBASE_PROJECT_ID,
-          clientEmail,
-          privateKey,
-        }),
-        projectId: FIREBASE_PROJECT_ID,
-      });
-      console.log(`[Firebase Admin] Inicializado com Service Account (${clientEmail}) para projeto: ${FIREBASE_PROJECT_ID}`);
+        });
+        console.log(`[Firebase Admin] Inicializado com Service Account (${clientEmail}) para projeto: ${FIREBASE_PROJECT_ID}`);
+      } catch (certErr: any) {
+        console.warn(`[Firebase Admin Warning] Falha na credencial da Service Account:`, certErr?.message || certErr);
+        adminAppInstance = initializeApp({
+          projectId: FIREBASE_PROJECT_ID,
+        });
+        console.log(`[Firebase Admin] Inicializado com Project ID (${FIREBASE_PROJECT_ID}) em modo padrão após falha de certificado.`);
+      }
     } else {
       adminAppInstance = initializeApp({
         projectId: FIREBASE_PROJECT_ID,
@@ -158,9 +189,29 @@ interface RateLimitRecord {
 
 const rateLimitStore = new Map<string, RateLimitRecord>();
 
+function getClientIp(req: Request): string {
+  try {
+    const forwarded = req.headers?.["x-forwarded-for"];
+    if (typeof forwarded === "string" && forwarded) {
+      return forwarded.split(",")[0].trim();
+    }
+    const realIp = req.headers?.["x-real-ip"];
+    if (typeof realIp === "string" && realIp) {
+      return realIp.trim();
+    }
+    return (
+      req.socket?.remoteAddress ||
+      (req as any).connection?.remoteAddress ||
+      "unknown"
+    );
+  } catch {
+    return "unknown";
+  }
+}
+
 function createRateLimiter(maxRequests: number, windowMs: number, label: string) {
   return (req: Request, res: Response, next: NextFunction) => {
-    const identifier = req.authUser?.uid ? `user:${req.authUser.uid}` : `ip:${req.ip || req.socket.remoteAddress || "unknown"}`;
+    const identifier = req.authUser?.uid ? `user:${req.authUser.uid}` : `ip:${getClientIp(req)}`;
     const key = `${label}:${identifier}`;
     const now = Date.now();
     const current = rateLimitStore.get(key);
@@ -185,17 +236,19 @@ function createRateLimiter(maxRequests: number, windowMs: number, label: string)
 const aiRateLimiter = createRateLimiter(20, 60 * 1000, "IA");
 const generalRateLimiter = createRateLimiter(120, 60 * 1000, "API");
 
-// Clean up stale rate limit entries periodically
-const rateLimitCleanupInterval = setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of rateLimitStore.entries()) {
-    if (now > val.resetTime) {
-      rateLimitStore.delete(key);
+// Clean up stale rate limit entries periodically (only in long-running container mode)
+if (!process.env.VERCEL) {
+  const rateLimitCleanupInterval = setInterval(() => {
+    const now = Date.now();
+    for (const [key, val] of rateLimitStore.entries()) {
+      if (now > val.resetTime) {
+        rateLimitStore.delete(key);
+      }
     }
+  }, 5 * 60 * 1000);
+  if (typeof rateLimitCleanupInterval?.unref === "function") {
+    rateLimitCleanupInterval.unref();
   }
-}, 5 * 60 * 1000);
-if (typeof rateLimitCleanupInterval?.unref === "function") {
-  rateLimitCleanupInterval.unref();
 }
 
 // =================================================================
@@ -345,10 +398,10 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
       status: "REJECTED_UNAUTHORIZED",
       details: {
         method: req.method,
-        ip: req.ip || req.socket.remoteAddress,
+        ip: getClientIp(req),
         headersSent: Object.keys(req.headers),
       },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     console.warn(`[Security Alert] Tentativa de acesso não autenticado a recurso de IA rejeitada com 401. Audit ID: ${unauthAudit.id}`);
@@ -515,7 +568,7 @@ app.get(["/api/system/config", "/system/config"], (req: Request, res: Response) 
     console.error("[System Config Error] Falha ao ler configuração do sistema:", {
       message: err?.message || String(err),
       stack: err?.stack,
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
       timestamp: new Date().toISOString(),
     });
     return res.status(200).json({
@@ -586,7 +639,7 @@ app.post(["/api/system/config", "/system/config"], requireAdmin, (req: Request, 
       console.warn("[System Config POST Warning] Corpo da requisição ausente ou inválido:", {
         body: req.body,
         user: req.authUser?.email || req.authUser?.uid,
-        ip: req.ip,
+        ip: getClientIp(req),
       });
       return res.status(400).json({
         success: false,
@@ -617,7 +670,7 @@ app.post(["/api/system/config", "/system/config"], requireAdmin, (req: Request, 
       message: err?.message || String(err),
       stack: err?.stack,
       user: req.authUser?.email || req.authUser?.uid,
-      ip: req.ip,
+      ip: getClientIp(req),
       timestamp: new Date().toISOString(),
     });
     return res.status(500).json({
@@ -668,7 +721,7 @@ app.post(["/api/admin/master-wipe", "/admin/master-wipe"], requireAuth, requireA
         details: `Master Wipe executado com sucesso no servidor pelo Admin ${adminEmail}. Coleções excluídas: ${JSON.stringify(deletedCounts)}`,
         status: "SUCCESS",
         timestamp: new Date().toISOString(),
-        ip: req.ip || req.socket.remoteAddress,
+        ip: getClientIp(req),
       });
 
       await firestore.collection("audit_logs").add({
@@ -696,7 +749,7 @@ app.post(["/api/admin/master-wipe", "/admin/master-wipe"], requireAuth, requireA
       action: "MASTER_WIPE_EXECUTED",
       status: "SUCCESS",
       details: { deletedCounts },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     return res.status(200).json({
@@ -895,7 +948,7 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
         authErrorCode,
         firestoreErrorCode,
       },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     if (!authDeleted && !firestoreDeleted) {
@@ -953,7 +1006,7 @@ app.post(["/api/analytics/track", "/analytics/track"], (req: Request, res: Respo
     if (!req.body || typeof req.body !== "object") {
       console.warn("[Analytics Track Warning] Payload inválido recebido em /api/analytics/track", {
         body: req.body,
-        ip: req.ip,
+        ip: getClientIp(req),
       });
       return res.status(400).json({ success: false, error: "Payload JSON inválido." });
     }
@@ -962,7 +1015,7 @@ app.post(["/api/analytics/track", "/analytics/track"], (req: Request, res: Respo
     if (!eventName || typeof eventName !== "string" || eventName.trim().length === 0 || eventName.length > 100) {
       console.warn("[Analytics Track Warning] Nome do evento inválido ou ausente:", {
         eventName,
-        ip: req.ip,
+        ip: getClientIp(req),
       });
       return res.status(400).json({ success: false, error: "Nome do evento ('eventName') inválido ou ausente." });
     }
@@ -984,7 +1037,7 @@ app.post(["/api/analytics/track", "/analytics/track"], (req: Request, res: Respo
       params: safeParams,
       timestamp: safeTimestamp,
       url: safeUrl,
-      ip: req.ip || req.socket.remoteAddress || "unknown",
+      ip: getClientIp(req),
       userId: req.authUser?.uid || "ANONYMOUS",
       userEmail: req.authUser?.email,
     };
@@ -1001,7 +1054,7 @@ app.post(["/api/analytics/track", "/analytics/track"], (req: Request, res: Respo
     console.error("[Analytics Track Error] Falha ao processar telemetria:", {
       message: err?.message || String(err),
       stack: err?.stack,
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
       timestamp: new Date().toISOString(),
     });
     return res.status(200).json({
@@ -1039,7 +1092,7 @@ app.get(["/api/analytics/metrics", "/analytics/metrics"], (req: Request, res: Re
     console.error("[Analytics Metrics Error] Falha ao compilar métricas do sistema:", {
       message: err?.message || String(err),
       stack: err?.stack,
-      ip: req.ip,
+      ip: getClientIp(req),
       timestamp: new Date().toISOString(),
     });
     return res.status(500).json({
@@ -1072,7 +1125,7 @@ app.post(["/api/ai/analyze-object", "/ai/analyze-object"], requireAuth, aiRateLi
         modelUsed: "gemini-3.8-flash",
         promptSnippet: cleanPrompt.substring(0, 100),
         details: { error: "GEMINI_API_KEY não configurada no servidor." },
-        ip: req.ip || req.socket.remoteAddress,
+        ip: getClientIp(req),
       });
 
       return res.status(503).json({
@@ -1172,7 +1225,7 @@ A resposta DEVE ser estritamente no formato JSON definido no schema.`;
         extractedTitle: extractedData?.title,
         extractedCategory: extractedData?.category,
       },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     return res.json({
@@ -1190,7 +1243,7 @@ A resposta DEVE ser estritamente no formato JSON definido no schema.`;
       action: "EXTRACT_OBJECT_DETAILS",
       status: "FAILED",
       details: { error: error.message },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     res.status(500).json({
@@ -1225,7 +1278,7 @@ app.post(["/api/ai/analyze-image", "/ai/analyze-image"], requireAuth, aiRateLimi
         status: "FAILED",
         modelUsed: "gemini-3.7-flash",
         details: { error: "GEMINI_API_KEY não configurada no servidor." },
-        ip: req.ip || req.socket.remoteAddress,
+        ip: getClientIp(req),
       });
 
       return res.status(503).json({
@@ -1336,7 +1389,7 @@ Retorne um JSON rigorosamente estruturado conforme o schema.`;
         detectedCategory: analysis?.category,
         brand: analysis?.brand,
       },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     return res.json({
@@ -1355,7 +1408,7 @@ Retorne um JSON rigorosamente estruturado conforme o schema.`;
       status: "FAILED",
       modelUsed: "gemini-3.7-flash",
       details: { error: err.message },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     return res.status(500).json({
@@ -1395,7 +1448,7 @@ app.post(["/api/ai/suggest-category", "/ai/suggest-category"], requireAuth, aiRa
         modelUsed: "gemini-3.1-flash-lite",
         promptSnippet: `Título: ${cleanTitle} | Desc: ${cleanDescription.substring(0, 100)}`,
         details: { error: "GEMINI_API_KEY não configurada no servidor." },
-        ip: req.ip || req.socket.remoteAddress,
+        ip: getClientIp(req),
       });
 
       return res.status(503).json({
@@ -1499,7 +1552,7 @@ Calcule:
         confidenceLevel: parsedResult.confidenceLevel,
         autoFillRecommended: parsedResult.autoFillRecommended,
       },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     return res.json({
@@ -1518,7 +1571,7 @@ Calcule:
       status: "FAILED",
       modelUsed: "gemini-3.1-flash-lite",
       details: { error: err.message },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     return res.status(500).json({
@@ -1554,7 +1607,7 @@ app.post(["/api/ai/quick-tag", "/ai/quick-tag"], requireAuth, aiRateLimiter, asy
         modelUsed: "gemini-3.1-flash-lite",
         promptSnippet: cleanText.substring(0, 100),
         details: { error: "GEMINI_API_KEY não configurada no servidor." },
-        ip: req.ip || req.socket.remoteAddress,
+        ip: getClientIp(req),
       });
 
       return res.status(503).json({
@@ -1591,7 +1644,7 @@ app.post(["/api/ai/quick-tag", "/ai/quick-tag"], requireAuth, aiRateLimiter, asy
       modelUsed: "gemini-3.1-flash-lite",
       promptSnippet: cleanText.substring(0, 100),
       details: { suggestedCategory: parsedResult.suggestedCategory, tagCount: parsedResult.tags?.length },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     return res.json(parsedResult);
@@ -1604,7 +1657,7 @@ app.post(["/api/ai/quick-tag", "/ai/quick-tag"], requireAuth, aiRateLimiter, asy
       action: "QUICK_AUTO_TAG",
       status: "FAILED",
       details: { error: err.message },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     return res.status(500).json({
@@ -1643,7 +1696,7 @@ app.post(["/api/ai/match-similarity", "/ai/match-similarity"], requireAuth, aiRa
         status: "FAILED",
         modelUsed: "gemini-3.8-flash",
         details: { error: "GEMINI_API_KEY não configurada no servidor." },
-        ip: req.ip || req.socket.remoteAddress,
+        ip: getClientIp(req),
       });
 
       return res.status(503).json({
@@ -1724,7 +1777,7 @@ Calcule uma pontuação de similaridade de 0 a 100 para cada um. Retorne apenas 
         candidatesCount: safeCandidates.length,
         matchedCount: parsed.matches?.length || 0,
       },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     return res.json(parsed);
@@ -1739,7 +1792,7 @@ Calcule uma pontuação de similaridade de 0 a 100 para cada um. Retorne apenas 
       action: "MATCH_SIMILARITY",
       status: "FAILED",
       details: { error: err.message },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     res.status(500).json({ error: err.message || "Erro no cruzamento de dados de IA." });
@@ -1832,7 +1885,7 @@ app.post(["/api/fcm/send-match-alert", "/fcm/send-match-alert"], requireAuth, ge
         lostItemId: userLostItem.id,
         matchedFeatures,
       },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     return res.json({
@@ -2164,7 +2217,7 @@ app.post(["/api/notifications/send-match-email", "/notifications/send-match-emai
         newItemId: newItem.id,
         counterpartItemId: counterpartItem.id,
       },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     return res.json({
@@ -2363,7 +2416,7 @@ app.post(
       timestamp,
       clientDiagnostics: clientDiagnostics || {
         userAgent: req.headers["user-agent"] || "unknown",
-        ip: req.ip || req.socket.remoteAddress || "unknown",
+        ip: getClientIp(req),
       },
     };
 
@@ -2923,7 +2976,7 @@ app.post(["/api/gemini/semantic-search", "/gemini/semantic-search"], requireAuth
         modelUsed: "gemini-3.7-flash",
         promptSnippet: cleanQuery,
         details: { error: "GEMINI_API_KEY não configurada no servidor." },
-        ip: req.ip || req.socket.remoteAddress,
+        ip: getClientIp(req),
       });
 
       return res.status(503).json({
@@ -3003,7 +3056,7 @@ Retorne a lista com os IDs dos itens correspondentes, nota de relevância de 0 a
         candidatesCount: safeCandidates.length,
         resultsCount: parsed.results?.length || 0,
       },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     return res.json({
@@ -3023,7 +3076,7 @@ Retorne a lista com os IDs dos itens correspondentes, nota de relevância de 0 a
       action: "SEMANTIC_SEARCH",
       status: "FAILED",
       details: { error: err.message },
-      ip: req.ip || req.socket.remoteAddress,
+      ip: getClientIp(req),
     });
 
     res.status(500).json({ error: err.message || "Erro na busca semântica Gemini." });
@@ -3553,7 +3606,7 @@ app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
     stack: err?.stack,
     method: req.method,
     url: req.originalUrl || req.url,
-    ip: req.ip || req.socket.remoteAddress,
+    ip: getClientIp(req),
     timestamp: new Date().toISOString(),
   });
 

@@ -24,12 +24,78 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.24",
+    codename: "Vercel Serverless Invocation & ESM Resolution Hardening",
+    releaseDate: "23/09/2026",
+    releaseDateTime: "23 de Setembro de 2026 • 23:50 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Identificação e correção definitiva da causa raiz do erro HTTP 500 FUNCTION_INVOCATION_FAILED na exclusão de contas na Vercel (região gru1). Resolução do erro de importação sem extensão no api/index.ts (ERR_MODULE_NOT_FOUND sob ESM nativo), eliminação de erro de asserção de import JSON no Node 22 (ERR_IMPORT_ATTRIBUTE_MISSING), conversão de importações de tipo no Firebase Admin SDK, criação de wrapper canônico de Serverless Function com normalização de URL reescrita (x-matched-path) e blindagem contra erros de leitura de IP e timer no ambiente serverless.",
+    additions: [
+      {
+        id: "v1924-add-1",
+        title: "Wrapper Canônico de Função Serverless Vercel (api/index.ts)",
+        description: "Reestruturação do api/index.ts com assinatura canônica (req, res), proteção por Promise, captura de exceções em tempo de execução e normalização de URLs reescritas por regras do vercel.json via headers x-matched-path e x-vercel-matched-path.",
+        module: "VERCEL",
+        tag: "Serverless & Routing",
+      },
+      {
+        id: "v1924-add-2",
+        title: "Utilitário Crash-Safe getClientIp para Ambientes Serverless",
+        description: "Implementação da função getClientIp(req) substituindo chamadas inseguras ao getter req.ip do Express, evitando que proxies sem socket ou com forwarding causem TypeError no ambiente serverless.",
+        module: "ADMIN",
+        tag: "Segurança & Backend",
+      },
+      {
+        id: "v1924-add-3",
+        title: "Process Exception Guards Globais",
+        description: "Adição de listeners unhandledRejection e uncaughtException no processo para registrar diagnósticos completos e impedir encerramento forçado do container serverless da Vercel.",
+        module: "VERCEL",
+        tag: "Resiliência",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1924-fix-1",
+        title: "Resolução do Erro Fatal ERR_MODULE_NOT_FOUND em api/index.ts",
+        description: "Correção da importação relativa sem extensão no Node.js ESM (type: module), apontando explicitamente para '../server.ts' com suporte habilitado em tsconfig.json (allowImportingTsExtensions).",
+        module: "VERCEL",
+        tag: "ESM Module Resolution",
+      },
+      {
+        id: "v1924-fix-2",
+        title: "Eliminação do Erro ERR_IMPORT_ATTRIBUTE_MISSING no Node 22",
+        description: "Substituição do import estático direto de 'firebase-applet-config.json' por leitura segura com fs.readFileSync e JSON.parse, eliminando a exigência de import assertion que quebrava o runtime Node 22 na Vercel.",
+        module: "FIRESTORE",
+        tag: "Node 22 Compatibility",
+      },
+      {
+        id: "v1924-fix-3",
+        title: "Correção de SyntaxError em Tipos do Firebase Admin",
+        description: "Conversão das importações de 'App', 'Auth' e 'Firestore' para type-only imports ('type App', 'type Auth', 'type Firestore'), prevenindo SyntaxError por ausência de export nomeado em tempo de execução.",
+        module: "AUTH",
+        tag: "Firebase Admin SDK",
+      },
+      {
+        id: "v1924-fix-4",
+        title: "Desativação de Timers Top-Level em Modo Serverless",
+        description: "Condicionamento do rateLimitCleanupInterval no server.ts para executar apenas quando process.env.VERCEL não estiver ativo, prevenindo timers pendentes no congelamento de funções serverless.",
+        module: "VERCEL",
+        tag: "Ciclo de Vida Serverless",
+      },
+    ],
+    stats: {
+      additionsCount: 3,
+      fixesCount: 4,
+    },
+  },
+  {
     version: "v1.9.23",
     codename: "Transparent Error Exposure & Deletion Pipeline Hardening",
     releaseDate: "23/09/2026",
     releaseDateTime: "23 de Setembro de 2026 • 21:40 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Rastreamento completo do fluxo de exclusão de usuários e eliminação definitiva do mascaramento de erros técnicos. Diagnóstico do erro na leitura de streams no cliente (res.text() após res.json() causando stream already read e forçando texto genérico), estruturação de logs detalhados no backend em server.ts para capturar códigos reais do Firebase Admin e resiliência na ordem de execução com integridade entre Auth, Firestore e auditoria.",
     additions: [
       {
