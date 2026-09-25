@@ -24,12 +24,71 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.25",
+    codename: "Serverless Lifecycle Promise Resolution & API Infrastructure Diagnostics",
+    releaseDate: "25/09/2026",
+    releaseDateTime: "25 de Setembro de 2026 • 22:30 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Diagnóstico completo da infraestrutura de Serverless Functions da Vercel e correção definitiva da causa raiz do erro HTTP 500 FUNCTION_INVOCATION_FAILED em /api/analytics/metrics e /api/admin/delete-user. Identificado que a Promise retornada pelo handler do api/index.ts ficava indefinidamente pendente porque respostas concluídas com sucesso pelo Express não invocam o callback de erro/fallback da aplicação, culminando em timeout e corte pelo runtime Vercel Lambda. Implementadas escutas ativas aos eventos de ciclo de vida 'finish' e 'close' do ServerlessResponse, tratamento para encerramento de rotas 404 sem requisições pendentes, preservação e decodificação do parâmetro __route no vercel.json, criação do catch-all api/[...route].ts e auditoria de logging seguro por etapas (START, AUTH_VALIDATION, UID_VALIDATION, FIREBASE_ADMIN_INITIALIZATION, FIRESTORE_PRE_FETCH, AUTH_DELETE, FIRESTORE_UPDATE, AUDIT).",
+    additions: [
+      {
+        id: "v1925-add-1",
+        title: "Escutas de Ciclo de Vida 'finish' e 'close' na Serverless Function",
+        description: "Adição de listeners imediatos nos eventos 'finish' e 'close' do objeto ServerResponse em api/index.ts, garantindo a resolução síncrona da Promise assim que qualquer rota Express (como /api/analytics/metrics ou /api/admin/delete-user) finalizar o envio da resposta.",
+        module: "VERCEL",
+        tag: "Serverless Lifecycle",
+      },
+      {
+        id: "v1925-add-2",
+        title: "Roteamento Catch-All Canônico api/[...route].ts",
+        description: "Implementação de api/[...route].ts como endpoint catch-all nativo do sistema de arquivos da Vercel, permitindo resolução automática e direta de rotas aninhadas sob /api/* sem perda de path original.",
+        module: "VERCEL",
+        tag: "Routing & Architecture",
+      },
+      {
+        id: "v1925-add-3",
+        title: "Decodificação de Parâmetro __route nas Reescritas Vercel",
+        description: "Atualização das regras do vercel.json ({ source: '/api/(.*)', destination: '/api?__route=$1' }) e decodificador em api/index.ts para garantir identificação precisa de qualquer sub-rota chamada pelo frontend.",
+        module: "VERCEL",
+        tag: "URL Normalization",
+      },
+      {
+        id: "v1925-add-4",
+        title: "Logging Seguro Estruturado por Etapas no Backend",
+        description: "Implementação de logs padronizados por etapas (STAGE: START, AUTH_VALIDATION, UID_VALIDATION, FIREBASE_ADMIN_INITIALIZATION, FIRESTORE_PRE_FETCH, AUTH_DELETE, FIRESTORE_UPDATE, AUDIT) sem exposição de credenciais ou tokens.",
+        module: "ADMIN",
+        tag: "Auditoria & Diagnóstico",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1925-fix-1",
+        title: "Eliminação do Timeout e FUNCTION_INVOCATION_FAILED na Vercel",
+        description: "Correção do travamento de Promise pendente que causava HTTP 500 FUNCTION_INVOCATION_FAILED no gateway gru1 da Vercel tanto em requisições GET (/api/analytics/metrics) quanto POST (/api/admin/delete-user).",
+        module: "VERCEL",
+        tag: "Estabilidade Crítica",
+      },
+      {
+        id: "v1925-fix-2",
+        title: "Encerramento Seguro de Respostas 404 em Rotas Serverless",
+        description: "Garantia de que requisições para rotas não registradas no Express recebam resposta JSON 404 imediata com resolução da Promise, prevenindo timeouts por rotas inexistentes.",
+        module: "VERCEL",
+        tag: "Resiliência",
+      },
+    ],
+    stats: {
+      additionsCount: 4,
+      fixesCount: 2,
+    },
+  },
+  {
     version: "v1.9.24",
     codename: "Vercel Serverless Invocation & ESM Resolution Hardening",
     releaseDate: "23/09/2026",
     releaseDateTime: "23 de Setembro de 2026 • 23:50 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Identificação e correção definitiva da causa raiz do erro HTTP 500 FUNCTION_INVOCATION_FAILED na exclusão de contas na Vercel (região gru1). Resolução do erro de importação sem extensão no api/index.ts (ERR_MODULE_NOT_FOUND sob ESM nativo), eliminação de erro de asserção de import JSON no Node 22 (ERR_IMPORT_ATTRIBUTE_MISSING), conversão de importações de tipo no Firebase Admin SDK, criação de wrapper canônico de Serverless Function com normalização de URL reescrita (x-matched-path) e blindagem contra erros de leitura de IP e timer no ambiente serverless.",
     additions: [
       {

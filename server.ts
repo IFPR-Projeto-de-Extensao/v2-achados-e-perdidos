@@ -773,25 +773,34 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
   const adminEmail = req.authUser!.email || "root_admin";
   const { targetUserId } = req.body || {};
 
+  console.log(`[Admin Delete User] [STAGE: START] Requisição recebida. Admin: ${adminEmail} (${adminUid})`);
+
   if (!targetUserId || typeof targetUserId !== "string" || !targetUserId.trim()) {
+    console.warn(`[Admin Delete User] [STAGE: UID_VALIDATION] Falha: targetUserId inválido ou ausente.`, { targetUserId });
     return res.status(400).json({
       success: false,
       error: "ID do usuário a ser excluído não informado ou inválido.",
+      stage: "UID_VALIDATION",
     });
   }
 
   const cleanTargetId = targetUserId.trim();
+  console.log(`[Admin Delete User] [STAGE: UID_VALIDATION] Target UID validado: ${cleanTargetId}`);
 
   // Security constraint: Administrator cannot delete their own account
   if (cleanTargetId === adminUid) {
+    console.warn(`[Admin Delete User] [STAGE: ADMIN_SELF_DELETE_GUARD] Tentativa de autoexclusão bloqueada para: ${cleanTargetId}`);
     return res.status(403).json({
       success: false,
       error: "Operação não permitida: um administrador não pode excluir a própria conta.",
+      stage: "ADMIN_VALIDATION",
     });
   }
 
+  console.log(`[Admin Delete User] [STAGE: FIREBASE_ADMIN_INITIALIZATION] Verificando instâncias do Firebase Admin SDK...`);
   const adminAuth = getAdminAuth();
   const adminFirestore = getAdminFirestore();
+  console.log(`[Admin Delete User] [STAGE: FIREBASE_ADMIN_INITIALIZATION] Admin Auth disponível: ${Boolean(adminAuth)}, Admin Firestore disponível: ${Boolean(adminFirestore)}`);
 
   try {
     let targetEmail = "";
@@ -800,6 +809,7 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
     let targetStatus = "active";
 
     // 1. Fetch user data from Firestore for audit trail and verification
+    console.log(`[Admin Delete User] [STAGE: FIRESTORE_PRE_FETCH] Buscando dados do usuário ${cleanTargetId} no Firestore...`);
     if (adminFirestore) {
       try {
         const userDoc = await adminFirestore.collection("users").doc(cleanTargetId).get();
@@ -809,9 +819,15 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
           targetName = uData?.name || "";
           targetRole = uData?.role || "ALUNO";
           targetStatus = uData?.status || "active";
+          console.log(`[Admin Delete User] [STAGE: FIRESTORE_PRE_FETCH] Dados encontrados: ${targetEmail} (${targetName}), Papel: ${targetRole}`);
+        } else {
+          console.log(`[Admin Delete User] [STAGE: FIRESTORE_PRE_FETCH] Documento /users/${cleanTargetId} não encontrado no Firestore.`);
         }
-      } catch (fReadErr) {
-        console.warn("[Admin Delete User Warning] Falha ao ler documento do usuário no Firestore:", fReadErr);
+      } catch (fReadErr: any) {
+        console.warn("[Admin Delete User Warning] [STAGE: FIRESTORE_PRE_FETCH] Falha ao ler documento do usuário no Firestore:", {
+          message: fReadErr?.message || String(fReadErr),
+          code: fReadErr?.code,
+        });
       }
     }
 
@@ -821,12 +837,14 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
         const fbUserRecord = await adminAuth.getUser(cleanTargetId);
         targetEmail = fbUserRecord.email || "";
         targetName = fbUserRecord.displayName || targetEmail.split("@")[0] || cleanTargetId;
+        console.log(`[Admin Delete User] [STAGE: AUTH_PRE_FETCH] Dados encontrados no Auth: ${targetEmail}`);
       } catch (authLookupErr) {
         // User may already be removed or not found
       }
     }
 
     // 2. Delete user from Firebase Authentication
+    console.log(`[Admin Delete User] [STAGE: AUTH_DELETE] Iniciando exclusão do UID ${cleanTargetId} no Firebase Auth...`);
     let authDeleted = false;
     let authErrorCode: string | null = null;
     let authErrorDetail: string | null = null;
@@ -835,15 +853,15 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
       try {
         await adminAuth.deleteUser(cleanTargetId);
         authDeleted = true;
-        console.log(`[Admin Delete User] Usuário ${cleanTargetId} (${targetEmail}) excluído do Firebase Auth com sucesso.`);
+        console.log(`[Admin Delete User] [STAGE: AUTH_DELETE] Sucesso: Usuário ${cleanTargetId} (${targetEmail}) excluído do Firebase Auth.`);
       } catch (authDelErr: any) {
         authErrorCode = authDelErr?.code || "auth/unknown";
         authErrorDetail = authDelErr?.message || String(authDelErr);
         if (authDelErr?.code === "auth/user-not-found") {
-          console.log(`[Admin Delete User] Usuário ${cleanTargetId} já não constava no Firebase Auth.`);
+          console.log(`[Admin Delete User] [STAGE: AUTH_DELETE] Usuário ${cleanTargetId} já não constava no Firebase Auth.`);
           authDeleted = true;
         } else {
-          console.error(`[Admin Delete User Error - Firebase Auth]: Falha ao excluir UID ${cleanTargetId} do Auth:`, {
+          console.error(`[Admin Delete User Error] [STAGE: AUTH_DELETE]: Falha ao excluir UID ${cleanTargetId} do Auth:`, {
             code: authErrorCode,
             message: authErrorDetail,
             adminUid,
@@ -853,10 +871,11 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
         }
       }
     } else {
-      console.warn(`[Admin Delete User Notice] Firebase Admin Auth não está inicializado no servidor.`);
+      console.warn(`[Admin Delete User Notice] [STAGE: AUTH_DELETE] Firebase Admin Auth não está inicializado no servidor.`);
     }
 
     // 3. Delete user document from Firestore /users/{cleanTargetId}
+    console.log(`[Admin Delete User] [STAGE: FIRESTORE_UPDATE] Removendo documento /users/${cleanTargetId}...`);
     let firestoreDeleted = false;
     let firestoreErrorCode: string | null = null;
     let firestoreErrorDetail: string | null = null;
@@ -865,11 +884,11 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
       try {
         await adminFirestore.collection("users").doc(cleanTargetId).delete();
         firestoreDeleted = true;
-        console.log(`[Admin Delete User] Documento /users/${cleanTargetId} removido do Firestore.`);
+        console.log(`[Admin Delete User] [STAGE: FIRESTORE_UPDATE] Documento /users/${cleanTargetId} removido do Firestore.`);
       } catch (fsErr: any) {
         firestoreErrorCode = fsErr?.code ? String(fsErr.code) : "firestore/error";
         firestoreErrorDetail = fsErr?.message || String(fsErr);
-        console.error(`[Admin Delete User Error - Firestore]: Falha ao remover documento /users/${cleanTargetId}:`, {
+        console.error(`[Admin Delete User Error] [STAGE: FIRESTORE_UPDATE]: Falha ao remover documento /users/${cleanTargetId}:`, {
           code: firestoreErrorCode,
           message: firestoreErrorDetail,
           adminUid,
@@ -879,6 +898,7 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
       }
 
       // 4. Clean up private notifications addressed specifically to this user
+      console.log(`[Admin Delete User] [STAGE: FIRESTORE_NOTIFICATIONS_CLEANUP] Limpando notificações privadas do usuário...`);
       try {
         const notifsSnap = await adminFirestore
           .collection("notifications")
@@ -888,12 +908,14 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
           const batch = adminFirestore.batch();
           notifsSnap.docs.forEach((d) => batch.delete(d.ref));
           await batch.commit();
+          console.log(`[Admin Delete User] [STAGE: FIRESTORE_NOTIFICATIONS_CLEANUP] ${notifsSnap.size} notificações removidas.`);
         }
       } catch (cleanNotifErr: any) {
-        console.warn("[Admin Delete User Warning] Falha ao limpar notificações privadas do usuário:", cleanNotifErr?.message || cleanNotifErr);
+        console.warn("[Admin Delete User Warning] [STAGE: FIRESTORE_NOTIFICATIONS_CLEANUP] Falha ao limpar notificações privadas:", cleanNotifErr?.message || cleanNotifErr);
       }
 
       // 5. Persist audit logs in Firestore (Preserving all audit trails!)
+      console.log(`[Admin Delete User] [STAGE: AUDIT] Gravando registros imutáveis de auditoria...`);
       try {
         const nowIso = new Date().toISOString();
         const auditLogId = `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -927,8 +949,9 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
           details: `Conta de '${targetName || cleanTargetId}' (${targetEmail}) excluída permanentemente do Firebase Authentication e do Firestore.`,
           timestamp: nowIso,
         });
+        console.log(`[Admin Delete User] [STAGE: AUDIT] Auditoria gravada no Firestore com sucesso.`);
       } catch (auditPersistErr: any) {
-        console.warn("[Admin Delete User Warning] Falha secundária ao persistir logs de auditoria no Firestore:", auditPersistErr?.message || auditPersistErr);
+        console.warn("[Admin Delete User Warning] [STAGE: AUDIT] Falha secundária ao persistir logs de auditoria no Firestore:", auditPersistErr?.message || auditPersistErr);
       }
     }
 
