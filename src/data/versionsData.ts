@@ -30,7 +30,7 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
     releaseDateTime: "26 de Setembro de 2026 • 00:30 BRT",
     type: "PATCH",
     isCurrent: true,
-    summary: "Reestruturação arquitetural completa dos endpoints de produção para compatibilidade nativa com o runtime Serverless do Vercel e Node.js 22: 1) Separação dos endpoints essenciais (/api/system/config, /api/analytics/track, /api/analytics/metrics e /api/admin/delete-user) em Serverless Functions dedicadas e autocontidas, eliminando a dependência do monolito server.ts de 3.843 linhas durante o ciclo de vida serverless; 2) Configuração explícita do runtime Node.js 22.x no vercel.json e package.json (requisito do firebase-admin 14.2.0); 3) Padronização de imports sem extensões .ts para resolução correta de módulos no empacotamento Vercel; 4) Centralização resiliente do Firebase Admin com lazy-loading e tratamento não bloqueante de webhooks opcionais do Discord.",
+    summary: "Reestruturação arquitetural completa dos endpoints de produção para compatibilidade nativa com o runtime Serverless do Vercel e Node.js 22: 1) Separação dos endpoints essenciais (/api/system/config, /api/analytics/track, /api/analytics/metrics e /api/admin/delete-user) em Serverless Functions dedicadas e autocontidas, eliminando a dependência do monolito server.ts de 3.843 linhas durante o ciclo de vida serverless; 2) Configuração explícita do runtime Node.js 22.x via engines.node no package.json (requisito do firebase-admin 14.2.0) e compatibilidade com o Vercel CLI; 3) Padronização de imports sem extensões .ts para resolução correta de módulos no empacotamento Vercel; 4) Centralização resiliente do Firebase Admin com lazy-loading e tratamento não bloqueante de webhooks opcionais do Discord.",
     additions: [
       {
         id: "v1928-add-1",
@@ -42,7 +42,7 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
       {
         id: "v1928-add-2",
         title: "Suporte e Configuração Explícita para Node.js 22",
-        description: "Definição formal de runtime nodejs22.x no vercel.json e engines.node 22.x no package.json, garantindo compatibilidade com o SDK firebase-admin@14.2.0.",
+        description: "Definição formal de engines.node 22.x no package.json, garantindo que o Vercel selecione nativamente o runtime Node.js 22 e mantenha total compatibilidade com o SDK firebase-admin@14.2.0.",
         module: "VERCEL",
         tag: "Node.js 22",
       },
