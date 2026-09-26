@@ -4,7 +4,7 @@ import {
   getAdminFirestore,
   parseJwtPayload,
   FIREBASE_PROJECT_ID,
-} from "../../src/lib/firebaseAdmin.ts";
+} from "../../src/lib/firebaseAdmin";
 
 const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
 

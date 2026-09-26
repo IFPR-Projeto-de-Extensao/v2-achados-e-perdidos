@@ -1,3 +1,3 @@
-import handler from "./index.ts";
+import handler from "./index";
 
 export default handler;

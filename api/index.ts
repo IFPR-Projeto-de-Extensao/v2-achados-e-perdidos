@@ -1,4 +1,4 @@
-import app from "../server.ts";
+import app from "../server";
 
 export default async function handler(req: any, res: any) {
   // 1. Recover the true original request URL

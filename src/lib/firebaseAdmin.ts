@@ -4,14 +4,20 @@ import { getApps, initializeApp, cert, type App } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 
-let firebaseAppConfig: any = {};
-try {
-  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    firebaseAppConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+let cachedAppConfig: any = null;
+function getLazyFirebaseAppConfig(): any {
+  if (cachedAppConfig !== null) return cachedAppConfig;
+  try {
+    const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+    if (fs.existsSync(configPath)) {
+      cachedAppConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+      return cachedAppConfig;
+    }
+  } catch {
+    // Silent fallback in serverless environments where file may not exist or be bundled
   }
-} catch (configErr) {
-  // Silent fallback in serverless environments where file may be packaged differently
+  cachedAppConfig = {};
+  return cachedAppConfig;
 }
 
 export function formatPrivateKey(rawKey: string | undefined): string | undefined {
@@ -32,11 +38,9 @@ export function formatPrivateKey(rawKey: string | undefined): string | undefined
 export const FIREBASE_PROJECT_ID =
   process.env.FIREBASE_PROJECT_ID ||
   process.env.VITE_FIREBASE_PROJECT_ID ||
-  firebaseAppConfig?.projectId ||
   "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
 
 export const FIRESTORE_DATABASE_ID =
-  firebaseAppConfig?.firestoreDatabaseId ||
   process.env.FIRESTORE_DATABASE_ID ||
   "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
 
@@ -56,31 +60,33 @@ export function getFirebaseAdminApp(): App | null {
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
   const privateKey = formatPrivateKey(rawPrivateKey);
+  const cfg = getLazyFirebaseAppConfig();
+  const projectId = FIREBASE_PROJECT_ID || cfg?.projectId || "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
 
   try {
     if (clientEmail && privateKey) {
       try {
         adminAppInstance = initializeApp({
           credential: cert({
-            projectId: FIREBASE_PROJECT_ID,
+            projectId,
             clientEmail,
             privateKey,
           }),
-          projectId: FIREBASE_PROJECT_ID,
+          projectId,
         });
-        console.log(`[Firebase Admin] Inicializado com Service Account (${clientEmail}) para projeto: ${FIREBASE_PROJECT_ID}`);
+        console.log(`[Firebase Admin] Inicializado com Service Account (${clientEmail}) para projeto: ${projectId}`);
       } catch (certErr: any) {
         console.warn(`[Firebase Admin Warning] Falha na credencial da Service Account:`, certErr?.message || certErr);
         adminAppInstance = initializeApp({
-          projectId: FIREBASE_PROJECT_ID,
+          projectId,
         });
-        console.log(`[Firebase Admin] Inicializado com Project ID (${FIREBASE_PROJECT_ID}) em modo padrão após falha de certificado.`);
+        console.log(`[Firebase Admin] Inicializado com Project ID (${projectId}) em modo padrão após falha de certificado.`);
       }
     } else {
       adminAppInstance = initializeApp({
-        projectId: FIREBASE_PROJECT_ID,
+        projectId,
       });
-      console.log(`[Firebase Admin] Inicializado com Project ID (${FIREBASE_PROJECT_ID}) em modo padrão.`);
+      console.log(`[Firebase Admin] Inicializado com Project ID (${projectId}) em modo padrão.`);
     }
   } catch (err: any) {
     console.warn(`[Firebase Admin Notice] Inicialização em modo resiliente:`, err?.message || err);

@@ -24,12 +24,78 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.28",
+    codename: "Standalone Serverless Architecture & Node 22 Runtime Optimization",
+    releaseDate: "26/09/2026",
+    releaseDateTime: "26 de Setembro de 2026 • 00:30 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Reestruturação arquitetural completa dos endpoints de produção para compatibilidade nativa com o runtime Serverless do Vercel e Node.js 22: 1) Separação dos endpoints essenciais (/api/system/config, /api/analytics/track, /api/analytics/metrics e /api/admin/delete-user) em Serverless Functions dedicadas e autocontidas, eliminando a dependência do monolito server.ts de 3.843 linhas durante o ciclo de vida serverless; 2) Configuração explícita do runtime Node.js 22.x no vercel.json e package.json (requisito do firebase-admin 14.2.0); 3) Padronização de imports sem extensões .ts para resolução correta de módulos no empacotamento Vercel; 4) Centralização resiliente do Firebase Admin com lazy-loading e tratamento não bloqueante de webhooks opcionais do Discord.",
+    additions: [
+      {
+        id: "v1928-add-1",
+        title: "Endpoints Serverless Dedicados e Autocontidos",
+        description: "Criação de funções serverless independentes em /api/system/config, /api/analytics/track, /api/analytics/metrics e /api/admin/delete-user com ciclo de vida isolado e sem sobrecarga do servidor express.",
+        module: "VERCEL",
+        tag: "Arquitetura Serverless",
+      },
+      {
+        id: "v1928-add-2",
+        title: "Suporte e Configuração Explícita para Node.js 22",
+        description: "Definição formal de runtime nodejs22.x no vercel.json e engines.node 22.x no package.json, garantindo compatibilidade com o SDK firebase-admin@14.2.0.",
+        module: "VERCEL",
+        tag: "Node.js 22",
+      },
+      {
+        id: "v1928-add-3",
+        title: "Pipeline de Exclusão Administrativa com Auditoria Imutável",
+        description: "Implementação completa da Serverless Function /api/admin/delete-user com 16 estágios de validação: autenticação Bearer, RBAC estrito, proteção contra autoexclusão, remoção no Firebase Auth, expurgo no Firestore e registro ACCOUNT_DELETED em audit_logs.",
+        module: "ADMIN",
+        tag: "Segurança & RBAC",
+      },
+      {
+        id: "v1928-add-4",
+        title: "Módulo Resiliente e Centralizado de Firebase Admin",
+        description: "Otimização de src/lib/firebaseAdmin.ts com carregamento lazy de configuração, singleton seguro e tolerância a credenciais opcionais em produção.",
+        module: "FIRESTORE",
+        tag: "Firebase Admin",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1928-fix-1",
+        title: "Eliminação do Erro FUNCTION_INVOCATION_FAILED no Vercel",
+        description: "Resolução definitiva das falhas de invocação causadas por imports de módulos de desenvolvimento e sobrecarga de cold start do backend monolítico.",
+        module: "VERCEL",
+        tag: "Estabilidade Crítica",
+      },
+      {
+        id: "v1928-fix-2",
+        title: "Correção de Extensões de Importação TypeScript em Serverless",
+        description: "Remoção de extensões .ts explícitas em imports relativos para garantir compatibilidade com os bundlers de produção da Vercel.",
+        module: "VERCEL",
+        tag: "Módulos & Bundling",
+      },
+      {
+        id: "v1928-fix-3",
+        title: "Tratamento Não Bloqueante para Variáveis Opcionais do Discord",
+        description: "Garantia de que a ausência de DISCORD_FEEDBACK_WEBHOOK_URL não resulte em falhas ou 500 para requisições de feedback e notificações.",
+        module: "DISCORD",
+        tag: "Tolerância a Falhas",
+      },
+    ],
+    stats: {
+      additionsCount: 4,
+      fixesCount: 3,
+    },
+  },
+  {
     version: "v1.9.27",
     codename: "Cold Start Vite Decoupling & QR Code Deep Link URL Sanitization",
     releaseDate: "25/09/2026",
     releaseDateTime: "25 de Setembro de 2026 • 23:45 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Diagnóstico e resolução definitiva dos erros compartilhados nas Serverless Functions e no leitor de QR Code: 1) Eliminação do erro FUNCTION_INVOCATION_FAILED em /api/system/config, /api/analytics/track, /api/analytics/metrics e /api/admin/delete-user através do isolamento estático do Vite no server.ts (impedindo que bundlers da Vercel incluam 12MB de ferramentas de desenvolvimento, Rollup e LightningCSS em funções serverless) e proteção contra execução de startServer / app.listen em ambientes serverless; 2) Correção do erro de segmento inválido no Firestore (FirebaseError: Invalid segment ... Paths must not contain // in them) em qrCodeUtils.ts, garantindo que URLs completas (como /admin) sem ID de item não sejam propagadas como identificadores de documentos para o Firestore; 3) Documentação técnica sobre os erros de rede do Google Tag Manager e Firebase Logging decorrentes de bloqueadores de anúncios de clientes.",
     additions: [
       {
