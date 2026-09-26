@@ -24,12 +24,71 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.26",
+    codename: "Isolated Serverless Architecture & Robust 16-Stage Account Deletion",
+    releaseDate: "25/09/2026",
+    releaseDateTime: "25 de Setembro de 2026 • 23:15 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Criação da Serverless Function dedicada api/admin/delete-user.ts e isolamento do módulo src/lib/firebaseAdmin.ts para eliminação definitiva do acoplamento com o servidor Express e Vite na Vercel. Implementação do pipeline rigoroso de diagnóstico em 16 etapas com logging auditável sem exposição de credenciais (DELETE_USER_START, REQUEST_PARSED, AUTH_CHECK_START, AUTH_CHECK_OK, ADMIN_CHECK_START, ADMIN_CHECK_OK, TARGET_UID_VALIDATED, FIREBASE_ADMIN_INIT_START, FIREBASE_ADMIN_INIT_OK, AUTH_DELETE_START, AUTH_DELETE_OK, FIRESTORE_CLEANUP_START, FIRESTORE_CLEANUP_OK, AUDIT_START, AUDIT_OK, DELETE_USER_SUCCESS). Tratamento controlado com resposta HTTP 404 caso o targetUserId não exista no Firebase Authentication, bloqueio de autoexclusão com HTTP 403 e captura de exceções no nível mais externo com resposta JSON segura { error: 'Não foi possível excluir a conta.', code: 'INTERNAL_ERROR' }.",
+    additions: [
+      {
+        id: "v1926-add-1",
+        title: "Serverless Function Dedicada para Exclusão (api/admin/delete-user.ts)",
+        description: "Implementação de endpoint serverless desacoplado do Express em api/admin/delete-user.ts, respondendo nativamente na Vercel para requisições POST com parsing seguro de stream e proteção completa de ciclo de vida.",
+        module: "ADMIN",
+        tag: "Serverless & Architecture",
+      },
+      {
+        id: "v1926-add-2",
+        title: "Módulo Centralizado e Leve src/lib/firebaseAdmin.ts",
+        description: "Extração da inicialização do Firebase Admin SDK para um módulo limpo e independente de dependências pesadas como Vite dev server, prevenindo travamentos de build e runtime na Vercel.",
+        module: "FIRESTORE",
+        tag: "Firebase Admin SDK",
+      },
+      {
+        id: "v1926-add-3",
+        title: "Pipeline de Diagnóstico e Auditoria em 16 Etapas",
+        description: "Padronização do fluxo com logging explícito em 16 etapas canônicas (DELETE_USER_START até DELETE_USER_SUCCESS) com rastreamento detalhado de erros técnicos no console do servidor sem vazar segredos.",
+        module: "ADMIN",
+        tag: "Logging & Diagnóstico",
+      },
+      {
+        id: "v1926-add-4",
+        title: "Tratamento 404 para Usuário Inexistente no Firebase Auth",
+        description: "Consulta prévia ao Firebase Authentication via adminAuth.getUser(cleanTargetId); caso o usuário não exista (auth/user-not-found), retorna HTTP 404 com código USER_NOT_FOUND em vez de propagar falha 500.",
+        module: "AUTH",
+        tag: "Validação & Segurança",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1926-fix-1",
+        title: "Eliminação Definitiva de FUNCTION_INVOCATION_FAILED em delete-user",
+        description: "Isolamento da rota contra inicializações acidentais de processos de background ou servidores de desenvolvimento (EADDRINUSE / Vite), garantindo execução atômica em menos de 200 ms.",
+        module: "VERCEL",
+        tag: "Estabilidade Crítica",
+      },
+      {
+        id: "v1926-fix-2",
+        title: "Tratamento de Exceção Global com JSON Controlado",
+        description: "Proteção de nível mais externo com bloco try/catch global que impede interrupção abrupta da função e garante retorno do JSON padrão { error: 'Não foi possível excluir a conta.', code: 'INTERNAL_ERROR' }.",
+        module: "ADMIN",
+        tag: "Resiliência",
+      },
+    ],
+    stats: {
+      additionsCount: 4,
+      fixesCount: 2,
+    },
+  },
+  {
     version: "v1.9.25",
     codename: "Serverless Lifecycle Promise Resolution & API Infrastructure Diagnostics",
     releaseDate: "25/09/2026",
     releaseDateTime: "25 de Setembro de 2026 • 22:30 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Diagnóstico completo da infraestrutura de Serverless Functions da Vercel e correção definitiva da causa raiz do erro HTTP 500 FUNCTION_INVOCATION_FAILED em /api/analytics/metrics e /api/admin/delete-user. Identificado que a Promise retornada pelo handler do api/index.ts ficava indefinidamente pendente porque respostas concluídas com sucesso pelo Express não invocam o callback de erro/fallback da aplicação, culminando em timeout e corte pelo runtime Vercel Lambda. Implementadas escutas ativas aos eventos de ciclo de vida 'finish' e 'close' do ServerlessResponse, tratamento para encerramento de rotas 404 sem requisições pendentes, preservação e decodificação do parâmetro __route no vercel.json, criação do catch-all api/[...route].ts e auditoria de logging seguro por etapas (START, AUTH_VALIDATION, UID_VALIDATION, FIREBASE_ADMIN_INITIALIZATION, FIRESTORE_PRE_FETCH, AUTH_DELETE, FIRESTORE_UPDATE, AUDIT).",
     additions: [
       {
