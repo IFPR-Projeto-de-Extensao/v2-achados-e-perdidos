@@ -24,12 +24,64 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.27",
+    codename: "Cold Start Vite Decoupling & QR Code Deep Link URL Sanitization",
+    releaseDate: "25/09/2026",
+    releaseDateTime: "25 de Setembro de 2026 • 23:45 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Diagnóstico e resolução definitiva dos erros compartilhados nas Serverless Functions e no leitor de QR Code: 1) Eliminação do erro FUNCTION_INVOCATION_FAILED em /api/system/config, /api/analytics/track, /api/analytics/metrics e /api/admin/delete-user através do isolamento estático do Vite no server.ts (impedindo que bundlers da Vercel incluam 12MB de ferramentas de desenvolvimento, Rollup e LightningCSS em funções serverless) e proteção contra execução de startServer / app.listen em ambientes serverless; 2) Correção do erro de segmento inválido no Firestore (FirebaseError: Invalid segment ... Paths must not contain // in them) em qrCodeUtils.ts, garantindo que URLs completas (como /admin) sem ID de item não sejam propagadas como identificadores de documentos para o Firestore; 3) Documentação técnica sobre os erros de rede do Google Tag Manager e Firebase Logging decorrentes de bloqueadores de anúncios de clientes.",
+    additions: [
+      {
+        id: "v1927-add-1",
+        title: "Desacoplamento Estático do Vite no Backend Serverless",
+        description: "Transformação do import do Vite em import dinâmico com string calculada e proteção precoce de ambiente serverless (VERCEL / AWS_LAMBDA), reduzindo o bundle e impedindo falhas de inicialização por dependências nativas.",
+        module: "VERCEL",
+        tag: "Cold Start & Bundle",
+      },
+      {
+        id: "v1927-add-2",
+        title: "Sanitização Rigorosa de Segmentos Firestore em qrCodeUtils",
+        description: "Validação estrita de searchId antes de invocar doc(db, 'items', id), bloqueando URLs completas ou strings com barras de alcançarem o Firestore e prevenindo falhas de execução no deep linking da aplicação.",
+        module: "QR_CODE",
+        tag: "Firestore & Routing",
+      },
+      {
+        id: "v1927-add-3",
+        title: "Proteção contra Pre-Consumed Streams no express.urlencoded",
+        description: "Envolvimento do middleware express.urlencoded com verificação de body pré-processado, impedindo que requisições POST travem o event loop aguardando streams de dados já consumidos pela Vercel.",
+        module: "ADMIN",
+        tag: "Backend & Middleware",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1927-fix-1",
+        title: "Correção de FUNCTION_INVOCATION_FAILED Geral em Endpoints Serverless",
+        description: "Resolução do erro 500 que afetava simultaneamente /api/system/config, /api/analytics/track, /api/analytics/metrics e /api/admin/delete-user.",
+        module: "VERCEL",
+        tag: "Estabilidade Crítica",
+      },
+      {
+        id: "v1927-fix-2",
+        title: "Eliminação do FirebaseError: Invalid segment (Paths must not contain //)",
+        description: "Impedimento de que rotas gerais como /admin sejam interpretadas como IDs de itens ao carregar a página inicial.",
+        module: "QR_CODE",
+        tag: "Firestore Segment Error",
+      },
+    ],
+    stats: {
+      additionsCount: 3,
+      fixesCount: 2,
+    },
+  },
+  {
     version: "v1.9.26",
     codename: "Isolated Serverless Architecture & Robust 16-Stage Account Deletion",
     releaseDate: "25/09/2026",
     releaseDateTime: "25 de Setembro de 2026 • 23:15 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Criação da Serverless Function dedicada api/admin/delete-user.ts e isolamento do módulo src/lib/firebaseAdmin.ts para eliminação definitiva do acoplamento com o servidor Express e Vite na Vercel. Implementação do pipeline rigoroso de diagnóstico em 16 etapas com logging auditável sem exposição de credenciais (DELETE_USER_START, REQUEST_PARSED, AUTH_CHECK_START, AUTH_CHECK_OK, ADMIN_CHECK_START, ADMIN_CHECK_OK, TARGET_UID_VALIDATED, FIREBASE_ADMIN_INIT_START, FIREBASE_ADMIN_INIT_OK, AUTH_DELETE_START, AUTH_DELETE_OK, FIRESTORE_CLEANUP_START, FIRESTORE_CLEANUP_OK, AUDIT_START, AUDIT_OK, DELETE_USER_SUCCESS). Tratamento controlado com resposta HTTP 404 caso o targetUserId não exista no Firebase Authentication, bloqueio de autoexclusão com HTTP 403 e captura de exceções no nível mais externo com resposta JSON segura { error: 'Não foi possível excluir a conta.', code: 'INTERNAL_ERROR' }.",
     additions: [
       {

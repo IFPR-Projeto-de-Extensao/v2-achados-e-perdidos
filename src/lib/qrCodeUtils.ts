@@ -123,9 +123,29 @@ export function parseQrCodeOrUrl(input: string): ParsedQrResult {
     };
   }
 
-  // 3. Fallback: treat as potential item ID or search string
+  // 3. Fallback: if it looks like a URL, web path, or route, do NOT treat it as an item ID
+  const isUrlLike =
+    rawQuery.startsWith("http://") ||
+    rawQuery.startsWith("https://") ||
+    rawQuery.includes("://") ||
+    rawQuery.startsWith("/") ||
+    rawQuery.includes("?") ||
+    rawQuery.includes("&");
+
+  if (isUrlLike) {
+    return {
+      itemId: null,
+      qrCodeId: null,
+      tab: null,
+      rawQuery,
+    };
+  }
+
+  // Only valid alphanumeric/hyphen string should be treated as potential item ID
+  const isPotentialId = /^[a-zA-Z0-9_-]{1,128}$/.test(rawQuery);
+
   return {
-    itemId: rawQuery,
+    itemId: isPotentialId ? rawQuery : null,
     qrCodeId: null,
     tab: null,
     rawQuery,
@@ -158,8 +178,8 @@ export function findItemInList(
     if (match) return match;
   }
 
-  // Match raw query against ID, QR Tag, or partial match
-  if (targetRaw) {
+  // Match raw query against ID, QR Tag, or partial match (never match full URLs against items)
+  if (targetRaw && !targetRaw.startsWith("http://") && !targetRaw.startsWith("https://") && !targetRaw.includes("://")) {
     const exactMatch = items.find(
       (it) =>
         it &&
@@ -189,19 +209,30 @@ export async function fetchItemFromFirestore(
   parsedOrId: ParsedQrResult | string
 ): Promise<LostFoundItem | null> {
   const parsed = typeof parsedOrId === "string" ? parseQrCodeOrUrl(parsedOrId) : parsedOrId;
-  const searchId = parsed.itemId || (parsed.rawQuery && !parsed.rawQuery.startsWith("http") ? parsed.rawQuery : null);
+  const searchId = parsed.itemId || null;
   const searchQr = parsed.qrCodeId || (parsed.rawQuery && parsed.rawQuery.startsWith("QR-IFPR-") ? parsed.rawQuery : null);
 
-  // 1. Direct Document ID lookup
-  if (searchId) {
-    try {
-      const docRef = doc(db, "items", searchId);
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        return { id: snap.id, ...snap.data() } as LostFoundItem;
+  // 1. Direct Document ID lookup (Strict validation: never pass URLs or segments with // to Firestore)
+  if (searchId && typeof searchId === "string") {
+    const cleanId = searchId.trim();
+    const isValidDocId =
+      cleanId.length > 0 &&
+      cleanId.length <= 128 &&
+      !cleanId.includes("/") &&
+      !cleanId.includes("\\") &&
+      !cleanId.includes("://") &&
+      !cleanId.startsWith("http");
+
+    if (isValidDocId) {
+      try {
+        const docRef = doc(db, "items", cleanId);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          return { id: snap.id, ...snap.data() } as LostFoundItem;
+        }
+      } catch (err) {
+        console.warn("[qrCodeUtils] Erro ao buscar item por ID no Firestore:", err);
       }
-    } catch (err) {
-      console.warn("[qrCodeUtils] Erro ao buscar item por ID no Firestore:", err);
     }
   }
 

@@ -165,7 +165,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     next();
   });
 });
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.body && typeof req.body === "object") {
+    return next();
+  }
+  express.urlencoded({ extended: true, limit: "10mb" })(req, res, next);
+});
 
 // Standard CORS & Request Headers Middleware
 app.use((req, res, next) => {
@@ -3725,6 +3730,16 @@ app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
 
 // Serve frontend assets
 async function startServer() {
+  // Never run startServer in serverless environments (Vercel, AWS Lambda)
+  if (
+    process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.LAMBDA_TASK_ROOT ||
+    process.env.VERCEL_ENV
+  ) {
+    return;
+  }
+
   const isProduction = process.env.NODE_ENV === "production";
   const distPath = path.join(process.cwd(), "dist");
 
@@ -3738,7 +3753,9 @@ async function startServer() {
         delete (global as any).__dirname;
       }
 
-      const { createServer: createViteServer } = await import("vite");
+      // Dynamic string package name prevents static bundlers (like @vercel/nft) from bundling Vite into Serverless functions
+      const viteModule = "vite";
+      const { createServer: createViteServer } = await import(/* @vite-ignore */ viteModule);
       const vite = await createViteServer({
         server: { middlewareMode: true, hmr: false },
         appType: "spa",
@@ -3796,14 +3813,28 @@ async function startServer() {
     });
   }
 
-  if (!process.env.VERCEL && process.env.NODE_ENV !== "test") {
+  const isServerlessEnv = Boolean(
+    process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.LAMBDA_TASK_ROOT ||
+    process.env.VERCEL_ENV
+  );
+
+  if (!isServerlessEnv && process.env.NODE_ENV !== "test") {
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`IFPR Achados & Perdidos backend rodando em http://localhost:${PORT}`);
     });
   }
 }
 
-if (!process.env.VERCEL && process.env.NODE_ENV !== "test") {
+const isServerlessRuntime = Boolean(
+  process.env.VERCEL ||
+  process.env.AWS_LAMBDA_FUNCTION_NAME ||
+  process.env.LAMBDA_TASK_ROOT ||
+  process.env.VERCEL_ENV
+);
+
+if (!isServerlessRuntime && process.env.NODE_ENV !== "test") {
   startServer();
 }
 
