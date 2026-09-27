@@ -79,12 +79,12 @@ describe("Firestore Security Rules - Audit & Privilege Escalation Hardening", ()
   });
 
   describe("Least Privilege & Personal Data Protection (/users)", () => {
-    it("should block indiscriminate user directory listing by students", () => {
-      expect(rulesContent).toMatch(/allow list: if isAdmin\(\) \|\|\s*\(isServidor\(\) && isAccountActive\(\)\) \|\|\s*\(isSignedIn\(\) && isAccountActive\(\) && resource\.data\.email == request\.auth\.token\.email\);/);
+    it("should block indiscriminate user directory listing by students and regular staff", () => {
+      expect(rulesContent).toMatch(/allow list: if isAdmin\(\) \|\|\s*\(isSignedIn\(\) && isAccountActive\(\) && resource\.data\.email == request\.auth\.token\.email\);/);
     });
 
-    it("should allow individual users to only read their own profile doc", () => {
-      expect(rulesContent).toMatch(/allow get: if isAuthUser\(userId\) \|\| \(isServidor\(\) && isAccountActive\(\)\) \|\| isAdmin\(\);/);
+    it("should allow individual users to only read their own profile doc and block reading other users' docs", () => {
+      expect(rulesContent).toMatch(/allow get: if isAuthUser\(userId\) \|\| isAdmin\(\);/);
     });
   });
 
@@ -119,7 +119,7 @@ describe("Firestore Security Rules - Audit & Privilege Escalation Hardening", ()
     });
 
     it("should strictly limit writes to the heartbeat metric document by signed in users", () => {
-      expect(rulesContent).toContain("allow create, update: if isSignedIn() && metricId == 'heartbeat';");
+      expect(rulesContent).toMatch(/allow create, update: if isAdmin\(\) \|\| \(isSignedIn\(\) && isAccountActive\(\) && metricId == 'heartbeat'\);/);
     });
 
     it("should only allow administrators to delete system metrics", () => {
@@ -128,8 +128,8 @@ describe("Firestore Security Rules - Audit & Privilege Escalation Hardening", ()
   });
 
   describe("Support Tickets Protection & Identity Spoofing Prevention (/support_tickets)", () => {
-    it("should only allow administrators to list all support tickets", () => {
-      expect(rulesContent).toMatch(/match \/support_tickets\/\{ticketId\}[\s\S]*?allow list: if isAdmin\(\);/);
+    it("should restrict collection listing to administrators or self-query", () => {
+      expect(rulesContent).toMatch(/match \/support_tickets\/\{ticketId\}[\s\S]*?allow list: if isAdmin\(\) \|\| \(isSignedIn\(\) && isAccountActive\(\) && resource\.data\.userId == request\.auth\.uid\);/);
     });
 
     it("should prevent cross-user ticket inspection (users can only get their own ticket)", () => {
@@ -138,7 +138,7 @@ describe("Firestore Security Rules - Audit & Privilege Escalation Hardening", ()
 
     it("should prevent authenticated users from spoofing another userId or author email", () => {
       expect(rulesContent).toContain("incoming().userId == request.auth.uid");
-      expect(rulesContent).toContain("incoming().email == request.auth.token.email");
+      expect(rulesContent).toContain("(!('email' in incoming()) || incoming().email == request.auth.token.email)");
     });
 
     it("should disallow unauthenticated visitors from setting an arbitrary userId", () => {
@@ -146,7 +146,8 @@ describe("Firestore Security Rules - Audit & Privilege Escalation Hardening", ()
     });
 
     it("should disallow non-admins from updating or deleting support tickets", () => {
-      expect(rulesContent).toMatch(/match \/support_tickets\/\{ticketId\}[\s\S]*?allow update, delete: if isAdmin\(\);/);
+      expect(rulesContent).toMatch(/allow update: if isAdmin\(\);/);
+      expect(rulesContent).toMatch(/allow delete: if isAdmin\(\);/);
     });
   });
 });

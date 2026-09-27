@@ -445,3 +445,15 @@ export function sanitizeForFirestore<T>(data: T): T {
   return data;
 }
 
+/**
+ * Generates a cryptographically secure 128-bit random token for remote digital signature verification.
+ */
+export function generateSecureSignatureToken(prefix = "sig_"): string {
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    const hex = Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    return `${prefix}${hex}`;
+  }
+  return `${prefix}${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 12)}`;
+}

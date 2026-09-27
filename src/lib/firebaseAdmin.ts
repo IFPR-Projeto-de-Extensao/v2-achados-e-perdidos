@@ -130,14 +130,3 @@ export function getAdminFirestore(): Firestore | null {
   return adminFirestoreInstance;
 }
 
-export function parseJwtPayload(token: string): any {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const payloadBase64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-    const jsonStr = Buffer.from(payloadBase64, "base64").toString("utf-8");
-    return JSON.parse(jsonStr);
-  } catch {
-    return null;
-  }
-}

@@ -116,6 +116,7 @@ export interface LostFoundItem {
   recipientSignatureDate?: string;
   signatureToken?: string;
   signatureTokenUsed?: boolean;
+  signatureTokenExpiresAt?: string;
   signedAt?: string;
   signatureIpOrDevice?: string;
 

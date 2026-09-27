@@ -309,7 +309,14 @@ export const DashboardView: React.FC = () => {
 
   const fetchServerMetrics = async () => {
     try {
-      const res = await fetch("/api/analytics/metrics");
+      const headers: Record<string, string> = {};
+      if (auth.currentUser) {
+        try {
+          const token = await auth.currentUser.getIdToken();
+          if (token) headers["Authorization"] = `Bearer ${token}`;
+        } catch (_) {}
+      }
+      const res = await fetch("/api/analytics/metrics", { headers });
       if (res.ok) {
         const data = await res.json();
         setServerMetrics(data);

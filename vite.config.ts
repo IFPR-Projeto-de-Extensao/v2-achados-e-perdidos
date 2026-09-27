@@ -8,7 +8,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     tailwindcss(),
     react(),
@@ -186,7 +186,7 @@ export default defineConfig({
     },
   },
   build: {
-    sourcemap: true,
+    sourcemap: mode === 'development',
     outDir: 'dist',
     emptyOutDir: true,
     chunkSizeWarningLimit: 1200,
@@ -226,4 +226,4 @@ export default defineConfig({
     // HMR is disabled in AI Studio container environment
     hmr: false,
   },
-});
+}));

@@ -2,7 +2,6 @@ import {
   getFirebaseAdminApp,
   getAdminAuth,
   getAdminFirestore,
-  parseJwtPayload,
   FIREBASE_PROJECT_ID,
 } from "../../src/lib/firebaseAdmin";
 
@@ -144,22 +143,13 @@ export default async function handler(req: any, res: any) {
         }
       }
     } catch (tokenVerifyErr: any) {
-      console.warn(`[Admin Delete User Warning] verifyIdToken falhou, testando payload decodificado:`, tokenVerifyErr?.message);
-      const payload = parseJwtPayload(token);
-      if (payload) {
-        const nowSec = Math.floor(Date.now() / 1000);
-        const isValidIss =
-          payload.iss === `https://securetoken.google.com/${FIREBASE_PROJECT_ID}` ||
-          (payload.iss && payload.iss.includes("securetoken.google.com"));
-        const isValidAud = payload.aud === FIREBASE_PROJECT_ID || (payload.aud && payload.aud.includes("ifpr"));
-        const isNotExpired = payload.exp && payload.exp > nowSec;
-
-        if (isValidIss && isValidAud && isNotExpired) {
-          adminUid = payload.user_id || payload.sub;
-          adminEmail = payload.email || "";
-          isAdmin = adminEmail === ROOT_ADMIN_EMAIL || payload.role === "ADMIN" || payload.admin === true;
-        }
-      }
+      console.warn(`[Admin Delete User Security] verifyIdToken falhou na validação de assinatura:`, tokenVerifyErr?.message || tokenVerifyErr);
+      return res.status(401).json({
+        success: false,
+        error: "Token de autenticação inválido ou expirado. Assinatura não verificada.",
+        code: "AUTH_INVALID_TOKEN",
+        stage: "AUTH_CHECK_START",
+      });
     }
 
     if (!adminUid) {

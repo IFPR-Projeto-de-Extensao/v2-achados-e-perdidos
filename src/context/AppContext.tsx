@@ -76,7 +76,7 @@ import {
   clearSyncQueue,
 } from "../lib/indexedDB";
 import { clear30DayUptimeRecords } from "../lib/uptimeManager";
-import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeParseDate, formatPhone, isValidPhone } from "../lib/utils";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeParseDate, formatPhone, isValidPhone, generateSecureSignatureToken } from "../lib/utils";
 import {
   DEFAULT_MAINTENANCE_MESSAGE,
   STORAGE_KEYS,
@@ -1898,17 +1898,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const email = safeToLower(firebaseUser.email);
     const isRoot = email === "paulocauan39@gmail.com";
-    const isAcademicServidor =
-      email.endsWith("@ifpr.edu.br") &&
-      !email.includes("@aluno.ifpr.edu.br") &&
-      !email.includes("@escola.ifpr.edu.br");
-    const isPrivileged =
-      isRoot ||
-      currentUser?.role === "ADMIN" ||
-      currentUser?.role === "SERVIDOR" ||
-      isAcademicServidor;
+    const isPrivileged = isRoot || currentUser?.role === "ADMIN";
 
-    // Ordinary students and non-privileged users do not harvest the users collection
+    // Non-admin users (students and regular staff) do not harvest or enumerate the users collection
     if (!isPrivileged) {
       setAllUsers(currentUser ? [currentUser] : []);
       return;
@@ -3791,7 +3783,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const now = new Date();
     const returnDate = now.toLocaleDateString("pt-BR");
     const returnTime = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    const signatureToken = returnData.signatureToken || `sig_${Math.random().toString(36).substring(2, 10)}`;
+    const signatureToken = returnData.signatureToken || generateSecureSignatureToken("sig_");
+    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
     const isDirectlySigned = returnData.signatureType === "IN_PERSON_DEVICE" && !!returnData.signatureDataUrl;
     const isRemoteEmail = returnData.signatureType === "REMOTE_EMAIL";
@@ -3837,6 +3830,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       recipientSignatureType: returnData.signatureType || (isDirectlySigned ? "IN_PERSON_DEVICE" : isRemoteEmail ? "REMOTE_EMAIL" : "PRE_VERIFIED"),
       recipientSignatureStatus: isDirectlySigned ? "SIGNED" : isRemoteEmail ? "PENDING_REMOTE" : "NOT_REQUIRED",
       signatureToken: isRemoteEmail ? signatureToken : undefined,
+      signatureTokenExpiresAt: isRemoteEmail ? expiresAt : undefined,
       signedAt: isDirectlySigned ? now.toISOString() : undefined,
       history: [...existingHistory, newHistLog],
       historyLogs: [...existingHistory, newHistLog],
