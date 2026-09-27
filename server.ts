@@ -2034,10 +2034,10 @@ interface MatchEmailPayload {
 }
 
 function getEmailTransporter(): Transporter | null {
-  const host = process.env.SMTP_HOST;
+  const host = (process.env.SMTP_HOST || "").trim();
   const port = parseInt(process.env.SMTP_PORT || "587", 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const user = (process.env.SMTP_USER || "").trim();
+  const pass = (process.env.SMTP_PASS || "").trim().replace(/\s+/g, "");
   const secure = process.env.SMTP_SECURE === "true" || port === 465;
 
   if (!host || !user || !pass) {
@@ -2049,6 +2049,13 @@ function getEmailTransporter(): Transporter | null {
     port,
     secure,
     auth: { user, pass },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+    tls: {
+      rejectUnauthorized: true,
+      minVersion: "TLSv1.2",
+    },
   });
 }
 
@@ -2612,7 +2619,7 @@ app.post(
 
 // Diagnostic Environment Endpoint (Boolean flags only, strictly no secrets)
 app.get(["/api/debug/env", "/debug/env"], (req, res) => {
-  const isConfigured = Boolean(
+  const isDiscordConfigured = Boolean(
     process.env.DISCORD_FEEDBACK_WEBHOOK_URL ||
     process.env.DISCORD_WEBHOOK_URL_FEEDBACK ||
     process.env.DISCORD_FEEDBACK_URL ||
@@ -2623,10 +2630,34 @@ app.get(["/api/debug/env", "/debug/env"], (req, res) => {
     process.env.DISCORD_FEEDBACK
   );
 
+  const smtpHost = (process.env.SMTP_HOST || "").trim();
+  const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
+  const smtpUser = (process.env.SMTP_USER || "").trim();
+  const smtpPass = (process.env.SMTP_PASS || "").trim();
+  const isSmtpConfigured = Boolean(smtpHost && smtpUser && smtpPass);
+
+  const maskEmail = (email: string) => {
+    if (!email || !email.includes("@")) return null;
+    const [name, domain] = email.split("@");
+    return `${name.substring(0, 3)}***@${domain}`;
+  };
+
   res.json({
-    status: isConfigured,
-    DISCORD_FEEDBACK_WEBHOOK_URL: isConfigured,
-    DISCORD_WEBHOOK_READY: isConfigured,
+    status: isDiscordConfigured || isSmtpConfigured,
+    DISCORD_FEEDBACK_WEBHOOK_URL: isDiscordConfigured,
+    DISCORD_WEBHOOK_READY: isDiscordConfigured,
+    SMTP: {
+      configured: isSmtpConfigured,
+      hostPresent: Boolean(smtpHost),
+      portPresent: Boolean(process.env.SMTP_PORT),
+      userPresent: Boolean(smtpUser),
+      passPresent: Boolean(smtpPass),
+      fromPresent: Boolean(process.env.SMTP_FROM),
+      host: smtpHost || null,
+      port: smtpPort,
+      secure: process.env.SMTP_SECURE === "true" || smtpPort === 465,
+      userMasked: maskEmail(smtpUser),
+    },
     runtime: "express",
     timestamp: new Date().toISOString(),
   });

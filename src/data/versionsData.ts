@@ -174,10 +174,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "VERCEL",
         tag: "CSP & Hardening",
       },
+      {
+        id: "v1928-fix-17",
+        title: "Integração e Hardening do Envio SMTP Serverless para Atendimento e Suporte",
+        description: "Implementação completa de despacho de e-mails transacionais via Nodemailer no endpoint standalone da Vercel api/support/send-feedback.ts, com suporte a TLS 1.2+, sanitização automática de espaços em senhas de aplicativo do Google, timeouts de conexão para ambientes serverless, diagnósticos seguros em /api/debug/env e templates responsivos com protocolo oficial.",
+        module: "DISCORD",
+        tag: "SMTP & Suporte",
+      },
     ],
     stats: {
       additionsCount: 4,
-      fixesCount: 16,
+      fixesCount: 17,
     },
   },
   {

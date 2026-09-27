@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
+import nodemailer, { type Transporter } from "nodemailer";
 
 interface FeedbackRequestBody {
   name?: string;
@@ -15,6 +16,174 @@ interface FeedbackRequestBody {
     language?: string;
     [key: string]: any;
   };
+}
+
+function getEmailTransporter(): { transporter: Transporter | null; diagnostics: { configured: boolean; reason?: string } } {
+  const host = (process.env.SMTP_HOST || "").trim();
+  const port = parseInt(process.env.SMTP_PORT || "587", 10);
+  const user = (process.env.SMTP_USER || "").trim();
+  const pass = (process.env.SMTP_PASS || "").trim().replace(/\s+/g, "");
+  const secure = process.env.SMTP_SECURE === "true" || port === 465;
+
+  if (!host || !user || !pass) {
+    const missing: string[] = [];
+    if (!host) missing.push("SMTP_HOST");
+    if (!user) missing.push("SMTP_USER");
+    if (!pass) missing.push("SMTP_PASS");
+    return {
+      transporter: null,
+      diagnostics: { configured: false, reason: `Variáveis SMTP ausentes: ${missing.join(", ")}` },
+    };
+  }
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+    tls: {
+      rejectUnauthorized: true,
+      minVersion: "TLSv1.2",
+    },
+  });
+
+  return { transporter, diagnostics: { configured: true } };
+}
+
+async function sendFeedbackViaSmtp(ticket: {
+  protocol: string;
+  name: string;
+  email: string;
+  category: string;
+  subject: string;
+  message: string;
+  priority?: string;
+  timestamp: string;
+  clientDiagnostics?: any;
+}): Promise<{ sent: boolean; messageId?: string; error?: string; status: "SENT" | "PENDING_SMTP_CONFIG" | "AUTH_FAILED" | "NETWORK_ERROR" | "ERROR" }> {
+  const { transporter, diagnostics } = getEmailTransporter();
+  const destinationEmail = "localizamais0@gmail.com";
+
+  if (!transporter) {
+    console.info(`[SMTP Feedback Notice] ${diagnostics.reason}. Mensagem registrada sem despacho SMTP.`);
+    return { sent: false, status: "PENDING_SMTP_CONFIG", error: diagnostics.reason };
+  }
+
+  try {
+    const fromAddress = process.env.SMTP_FROM || `"Localiza+ Suporte IFPR" <${process.env.SMTP_USER || destinationEmail}>`;
+    
+    const categoryMap: Record<string, string> = {
+      BUG_REPORT: "Relato de Bug / Erro no Sistema",
+      FEEDBACK: "Sugestão ou Melhoria",
+      SUPPORT: "Suporte Técnico & Atendimento",
+      BELONGING_QUERY: "Dúvida sobre Pertence / Retirada",
+      OTHER: "Elogio ou Outro Assunto",
+    };
+
+    const categoryLabel = categoryMap[ticket.category] || ticket.category;
+    const priorityLabel = ticket.priority === "ALTA" ? "Alta" : ticket.priority === "BAIXA" ? "Baixa" : "Média";
+
+    const textBody = `[LOCALIZA+ • SUPORTE & FEEDBACK IFPR]
+Protocolo: ${ticket.protocol}
+Data/Hora: ${ticket.timestamp}
+
+Remetente: ${ticket.name} <${ticket.email}>
+Categoria: ${categoryLabel}
+Prioridade: ${priorityLabel}
+Assunto: ${ticket.subject}
+
+Mensagem:
+${ticket.message}
+
+Diagnósticos do Cliente:
+${JSON.stringify(ticket.clientDiagnostics || {}, null, 2)}
+`;
+
+    const htmlBody = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; color: #1e293b; }
+    .container { max-width: 600px; margin: 24px auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; }
+    .header { background: #00843D; padding: 24px; text-align: center; color: #ffffff; }
+    .header h1 { margin: 0; font-size: 20px; font-weight: bold; }
+    .content { padding: 24px; }
+    .field { margin-bottom: 12px; }
+    .label { font-weight: 600; color: #475569; font-size: 13px; }
+    .value { font-size: 14px; color: #0f172a; margin-top: 2px; }
+    .message-box { background: #f1f5f9; padding: 16px; border-radius: 8px; border-left: 4px solid #00843D; margin-top: 16px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+    .footer { padding: 16px 24px; background: #f8fafc; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Localiza+ • Novo Feedback / Suporte</h1>
+      <p style="margin: 4px 0 0; opacity: 0.9; font-size: 13px;">Protocolo: ${ticket.protocol}</p>
+    </div>
+    <div class="content">
+      <div class="field">
+        <div class="label">Remetente:</div>
+        <div class="value"><strong>${ticket.name}</strong> (${ticket.email})</div>
+      </div>
+      <div class="field">
+        <div class="label">Categoria:</div>
+        <div class="value">${categoryLabel}</div>
+      </div>
+      <div class="field">
+        <div class="label">Prioridade:</div>
+        <div class="value">${priorityLabel}</div>
+      </div>
+      <div class="field">
+        <div class="label">Assunto:</div>
+        <div class="value">${ticket.subject}</div>
+      </div>
+      <div class="field">
+        <div class="label">Mensagem do Usuário:</div>
+        <div class="message-box">${ticket.message}</div>
+      </div>
+    </div>
+    <div class="footer">
+      Central de Atendimento • IFPR Campus Ivaiporã • <a href="mailto:${destinationEmail}" style="color: #00843D; text-decoration: none;">${destinationEmail}</a>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+    console.log(`[SMTP Feedback Diagnostics] Enviando mensagem via SMTP para ${destinationEmail} (Protocolo: ${ticket.protocol})...`);
+    const info = await transporter.sendMail({
+      from: fromAddress,
+      to: destinationEmail,
+      replyTo: ticket.email ? `"${ticket.name}" <${ticket.email}>` : undefined,
+      subject: `[${ticket.protocol}] ${ticket.subject}`,
+      text: textBody,
+      html: htmlBody,
+    });
+
+    console.log(`[SMTP Feedback Success] E-mail despachado com sucesso. MessageID: ${info.messageId}, Resposta: ${info.response}`);
+    return { sent: true, messageId: info.messageId, status: "SENT" };
+  } catch (err: any) {
+    const errMsg = err?.message || String(err);
+    let status: "AUTH_FAILED" | "NETWORK_ERROR" | "ERROR" = "ERROR";
+
+    if (errMsg.includes("535") || errMsg.toLowerCase().includes("badcredentials") || errMsg.toLowerCase().includes("invalid login")) {
+      status = "AUTH_FAILED";
+      console.error("[SMTP Error: AUTH_FAILED] Credenciais SMTP recusadas pelo servidor (Verifique se é uma Senha de Aplicativo de 16 dígitos válida do Google):", errMsg);
+    } else if (errMsg.includes("ETIMEDOUT") || errMsg.includes("ECONNREFUSED") || errMsg.includes("ENOTFOUND")) {
+      status = "NETWORK_ERROR";
+      console.error("[SMTP Error: NETWORK_CONNECTION] Falha de rede/DNS na conexão SMTP:", errMsg);
+    } else {
+      console.error("[SMTP Error: GENERAL] Falha ao enviar e-mail via SMTP:", errMsg);
+    }
+
+    return { sent: false, status, error: errMsg };
+  }
 }
 
 function getDiscordFeedbackWebhookUrl(): string {
@@ -226,7 +395,7 @@ export default async function handler(req: any, res: any) {
 
     console.log(`[Feedback API Diagnostics] Request received (${req.method}) - Protocol: ${ticketProtocol}, Category: ${category || 'FEEDBACK'}, Subject: ${trimmedSubject.substring(0, 40)}...`);
 
-    const discordSent = await sendFeedbackToDiscord({
+    const ticketPayload = {
       protocol: ticketProtocol,
       name: trimmedName.substring(0, 100),
       email: trimmedEmail.substring(0, 120),
@@ -236,7 +405,13 @@ export default async function handler(req: any, res: any) {
       priority: String(priority || "MEDIA"),
       timestamp,
       clientDiagnostics,
-    });
+    };
+
+    // 1. Dispatch real email via SMTP Transporter if configured
+    const smtpResult = await sendFeedbackViaSmtp(ticketPayload);
+
+    // 2. Dispatch to Discord Webhook with error resilience
+    const discordSent = await sendFeedbackToDiscord(ticketPayload);
 
     return res.status(200).json({
       success: true,
@@ -245,6 +420,9 @@ export default async function handler(req: any, res: any) {
       timestamp,
       destinationEmail,
       emailSubject: `[${ticketProtocol}] ${trimmedSubject}`,
+      smtpDispatched: smtpResult.sent,
+      smtpStatus: smtpResult.status,
+      smtpMessageId: smtpResult.messageId || null,
       discordDispatched: discordSent,
     });
   } catch (error: any) {

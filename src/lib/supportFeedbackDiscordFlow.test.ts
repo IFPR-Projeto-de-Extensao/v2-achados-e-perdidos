@@ -133,4 +133,44 @@ describe("Support Feedback & Bug Report Discord Integration Flow", () => {
     expect(responseStatus).toBe(400);
     expect(responseJson.success).toBe(false);
   });
+
+  it("should handle SMTP dispatch correctly and return status indicators", async () => {
+    const sendFeedbackModule = await import("../../api/support/send-feedback");
+
+    const req = {
+      method: "POST",
+      body: {
+        name: "Professor Teste",
+        email: "professor@ifpr.edu.br",
+        category: "SUPPORT",
+        subject: "Dúvida sobre sistema de devoluções",
+        message: "Como registrar entrega de pertence com procuração?",
+        priority: "ALTA",
+      },
+    };
+
+    let responseStatus = 200;
+    let responseJson: any = null;
+
+    const res = {
+      setHeader: vi.fn(),
+      status: (code: number) => {
+        responseStatus = code;
+        return {
+          json: (data: any) => {
+            responseJson = data;
+            return data;
+          },
+        };
+      },
+    };
+
+    await sendFeedbackModule.default(req, res);
+
+    expect(responseStatus).toBe(200);
+    expect(responseJson.success).toBe(true);
+    expect(responseJson.destinationEmail).toBe(OFFICIAL_EMAIL);
+    expect(responseJson).toHaveProperty("smtpDispatched");
+    expect(responseJson).toHaveProperty("smtpStatus");
+  });
 });

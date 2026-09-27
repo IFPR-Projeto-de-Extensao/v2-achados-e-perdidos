@@ -8,7 +8,7 @@ export default async function handler(req: any, res: any) {
     return res.status(200).end();
   }
 
-  const isConfigured = Boolean(
+  const isDiscordConfigured = Boolean(
     process.env.DISCORD_FEEDBACK_WEBHOOK_URL ||
     process.env.DISCORD_WEBHOOK_URL_FEEDBACK ||
     process.env.DISCORD_FEEDBACK_URL ||
@@ -19,11 +19,35 @@ export default async function handler(req: any, res: any) {
     process.env.DISCORD_FEEDBACK
   );
 
-  // Safe boolean flags only - NEVER expose secrets or URLs
+  const smtpHost = (process.env.SMTP_HOST || "").trim();
+  const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
+  const smtpUser = (process.env.SMTP_USER || "").trim();
+  const smtpPass = (process.env.SMTP_PASS || "").trim();
+  const isSmtpConfigured = Boolean(smtpHost && smtpUser && smtpPass);
+
+  const maskEmail = (email: string) => {
+    if (!email || !email.includes("@")) return null;
+    const [name, domain] = email.split("@");
+    return `${name.substring(0, 3)}***@${domain}`;
+  };
+
+  // Safe boolean flags & non-sensitive parameters only - NEVER expose secrets or URLs
   return res.status(200).json({
-    status: isConfigured,
-    DISCORD_FEEDBACK_WEBHOOK_URL: isConfigured,
-    DISCORD_WEBHOOK_READY: isConfigured,
+    status: isDiscordConfigured || isSmtpConfigured,
+    DISCORD_FEEDBACK_WEBHOOK_URL: isDiscordConfigured,
+    DISCORD_WEBHOOK_READY: isDiscordConfigured,
+    SMTP: {
+      configured: isSmtpConfigured,
+      hostPresent: Boolean(smtpHost),
+      portPresent: Boolean(process.env.SMTP_PORT),
+      userPresent: Boolean(smtpUser),
+      passPresent: Boolean(smtpPass),
+      fromPresent: Boolean(process.env.SMTP_FROM),
+      host: smtpHost || null,
+      port: smtpPort,
+      secure: process.env.SMTP_SECURE === "true" || smtpPort === 465,
+      userMasked: maskEmail(smtpUser),
+    },
     runtime: typeof process !== "undefined" && process.release ? "node" : "serverless",
     timestamp: new Date().toISOString(),
   });
