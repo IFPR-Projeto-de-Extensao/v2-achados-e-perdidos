@@ -181,10 +181,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "DISCORD",
         tag: "SMTP & Suporte",
       },
+      {
+        id: "v1928-fix-18",
+        title: "Identidade Visual Dinâmica por Categoria em E-mails de Suporte e Feedback",
+        description: "Apresentação visual automática de e-mails transacionais de suporte com base na categoria do chamado: cabeçalho vermelho (#DC2626) com tipografia branca e destaques laterais de atenção para Relatos de Bug / Erro no Sistema, e cabeçalho verde institucional (#00843D) para Sugestões, Elogios e Dúvidas, mantendo padrão de alto contraste e legibilidade.",
+        module: "DISCORD",
+        tag: "E-mail & Design",
+      },
     ],
     stats: {
       additionsCount: 4,
-      fixesCount: 17,
+      fixesCount: 18,
     },
   },
   {

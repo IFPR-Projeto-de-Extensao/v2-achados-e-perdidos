@@ -53,6 +53,92 @@ function getEmailTransporter(): { transporter: Transporter | null; diagnostics: 
   return { transporter, diagnostics: { configured: true } };
 }
 
+export function buildSupportEmailHtml(ticket: {
+  protocol: string;
+  name: string;
+  email: string;
+  category: string;
+  subject: string;
+  message: string;
+  priority?: string;
+  timestamp: string;
+  clientDiagnostics?: any;
+}, destinationEmail: string = "localizamais0@gmail.com"): string {
+  const categoryMap: Record<string, string> = {
+    BUG_REPORT: "Relato de Bug / Erro no Sistema",
+    FEEDBACK: "Sugestão ou Melhoria",
+    SUPPORT: "Suporte Técnico & Atendimento",
+    BELONGING_QUERY: "Dúvida sobre Pertence / Retirada",
+    OTHER: "Elogio ou Outro Assunto",
+  };
+
+  const categoryLabel = categoryMap[ticket.category] || ticket.category;
+  const priorityLabel = ticket.priority === "ALTA" ? "Alta" : ticket.priority === "BAIXA" ? "Baixa" : "Média";
+
+  const isBugReport =
+    ticket.category === "BUG_REPORT" ||
+    ticket.category === "Relato de Bug / Erro no Sistema" ||
+    (ticket.subject && ticket.subject.toLowerCase().includes("bug"));
+
+  const headerColor = isBugReport ? "#DC2626" : "#00843D";
+  const accentColor = isBugReport ? "#DC2626" : "#00843D";
+
+  return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; color: #1e293b; }
+    .container { max-width: 600px; margin: 24px auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; }
+    .header { background: ${headerColor}; padding: 24px; text-align: center; color: #ffffff; }
+    .header h1 { margin: 0; font-size: 20px; font-weight: bold; color: #ffffff; }
+    .header p { margin: 4px 0 0; opacity: 0.95; font-size: 13px; color: #ffffff; }
+    .content { padding: 24px; }
+    .field { margin-bottom: 12px; }
+    .label { font-weight: 600; color: #475569; font-size: 13px; }
+    .value { font-size: 14px; color: #0f172a; margin-top: 2px; }
+    .message-box { background: #f1f5f9; padding: 16px; border-radius: 8px; border-left: 4px solid ${accentColor}; margin-top: 16px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; color: #0f172a; }
+    .footer { padding: 16px 24px; background: #f8fafc; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Localiza+ • Novo Feedback / Suporte</h1>
+      <p>Protocolo: ${ticket.protocol}</p>
+    </div>
+    <div class="content">
+      <div class="field">
+        <div class="label">Remetente:</div>
+        <div class="value"><strong>${ticket.name}</strong> (${ticket.email})</div>
+      </div>
+      <div class="field">
+        <div class="label">Categoria:</div>
+        <div class="value">${categoryLabel}</div>
+      </div>
+      <div class="field">
+        <div class="label">Prioridade:</div>
+        <div class="value">${priorityLabel}</div>
+      </div>
+      <div class="field">
+        <div class="label">Assunto:</div>
+        <div class="value">${ticket.subject}</div>
+      </div>
+      <div class="field">
+        <div class="label">Mensagem do Usuário:</div>
+        <div class="message-box">${ticket.message}</div>
+      </div>
+    </div>
+    <div class="footer">
+      Central de Atendimento • IFPR Campus Ivaiporã • <a href="mailto:${destinationEmail}" style="color: ${accentColor}; text-decoration: none;">${destinationEmail}</a>
+    </div>
+  </div>
+</body>
+</html>
+`;
+}
+
 async function sendFeedbackViaSmtp(ticket: {
   protocol: string;
   name: string;
@@ -102,59 +188,7 @@ Diagnósticos do Cliente:
 ${JSON.stringify(ticket.clientDiagnostics || {}, null, 2)}
 `;
 
-    const htmlBody = `
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; background-color: #f8fafc; color: #1e293b; }
-    .container { max-width: 600px; margin: 24px auto; background: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; }
-    .header { background: #00843D; padding: 24px; text-align: center; color: #ffffff; }
-    .header h1 { margin: 0; font-size: 20px; font-weight: bold; }
-    .content { padding: 24px; }
-    .field { margin-bottom: 12px; }
-    .label { font-weight: 600; color: #475569; font-size: 13px; }
-    .value { font-size: 14px; color: #0f172a; margin-top: 2px; }
-    .message-box { background: #f1f5f9; padding: 16px; border-radius: 8px; border-left: 4px solid #00843D; margin-top: 16px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
-    .footer { padding: 16px 24px; background: #f8fafc; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>Localiza+ • Novo Feedback / Suporte</h1>
-      <p style="margin: 4px 0 0; opacity: 0.9; font-size: 13px;">Protocolo: ${ticket.protocol}</p>
-    </div>
-    <div class="content">
-      <div class="field">
-        <div class="label">Remetente:</div>
-        <div class="value"><strong>${ticket.name}</strong> (${ticket.email})</div>
-      </div>
-      <div class="field">
-        <div class="label">Categoria:</div>
-        <div class="value">${categoryLabel}</div>
-      </div>
-      <div class="field">
-        <div class="label">Prioridade:</div>
-        <div class="value">${priorityLabel}</div>
-      </div>
-      <div class="field">
-        <div class="label">Assunto:</div>
-        <div class="value">${ticket.subject}</div>
-      </div>
-      <div class="field">
-        <div class="label">Mensagem do Usuário:</div>
-        <div class="message-box">${ticket.message}</div>
-      </div>
-    </div>
-    <div class="footer">
-      Central de Atendimento • IFPR Campus Ivaiporã • <a href="mailto:${destinationEmail}" style="color: #00843D; text-decoration: none;">${destinationEmail}</a>
-    </div>
-  </div>
-</body>
-</html>
-`;
+    const htmlBody = buildSupportEmailHtml(ticket, destinationEmail);
 
     console.log(`[SMTP Feedback Diagnostics] Enviando mensagem via SMTP para ${destinationEmail} (Protocolo: ${ticket.protocol})...`);
     const info = await transporter.sendMail({

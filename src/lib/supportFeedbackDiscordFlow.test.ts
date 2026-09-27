@@ -173,4 +173,58 @@ describe("Support Feedback & Bug Report Discord Integration Flow", () => {
     expect(responseJson).toHaveProperty("smtpDispatched");
     expect(responseJson).toHaveProperty("smtpStatus");
   });
+
+  describe("Email Visual Presentation by Category", () => {
+    it("should render red header (#DC2626) with white text for BUG_REPORT category", async () => {
+      const { buildSupportEmailHtml } = await import("../../api/support/send-feedback");
+
+      const bugTicket = {
+        protocol: "IFPR-SUP-BUG12345",
+        name: "Aluno IFPR",
+        email: "aluno@ifpr.edu.br",
+        category: "BUG_REPORT",
+        subject: "Erro 500 ao tentar abrir câmera de QR",
+        message: "A tela congela ao autorizar a câmera no celular.",
+        priority: "ALTA",
+        timestamp: "27/09/2026 12:45:00",
+        clientDiagnostics: { userAgent: "Mozilla/5.0", platform: "Android" },
+      };
+
+      const html = buildSupportEmailHtml(bugTicket, OFFICIAL_EMAIL);
+
+      // Red header background with white text
+      expect(html).toContain("background: #DC2626;");
+      expect(html).toContain("color: #ffffff;");
+      expect(html).toContain("border-left: 4px solid #DC2626;");
+      expect(html).toContain("Relato de Bug / Erro no Sistema");
+      expect(html).toContain(OFFICIAL_EMAIL);
+      expect(html).toContain("IFPR-SUP-BUG12345");
+    });
+
+    it("should render green header (#00843D) with white text for FEEDBACK and general support categories", async () => {
+      const { buildSupportEmailHtml } = await import("../../api/support/send-feedback");
+
+      const feedbackTicket = {
+        protocol: "IFPR-SUP-FDBK9876",
+        name: "Servidor IFPR",
+        email: "servidor@ifpr.edu.br",
+        category: "FEEDBACK",
+        subject: "Sugestão de filtro por bloco do campus",
+        message: "Gostaria de poder filtrar os itens pelo bloco administrativo.",
+        priority: "MEDIA",
+        timestamp: "27/09/2026 12:50:00",
+      };
+
+      const html = buildSupportEmailHtml(feedbackTicket, OFFICIAL_EMAIL);
+
+      // Green header background with white text
+      expect(html).toContain("background: #00843D;");
+      expect(html).toContain("color: #ffffff;");
+      expect(html).toContain("border-left: 4px solid #00843D;");
+      expect(html).toContain("Sugestão ou Melhoria");
+      expect(html).toContain(OFFICIAL_EMAIL);
+      expect(html).toContain("IFPR-SUP-FDBK9876");
+    });
+  });
 });
+
