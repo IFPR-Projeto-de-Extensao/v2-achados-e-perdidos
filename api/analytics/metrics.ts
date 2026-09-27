@@ -1,4 +1,4 @@
-import { getAdminFirestore, getAdminAuth } from "../../src/lib/firebaseAdmin";
+import { getAdminFirestore, getAdminAuth } from "../_lib/firebaseAdmin";
 
 const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
 const serverlessStartTime = Date.now();

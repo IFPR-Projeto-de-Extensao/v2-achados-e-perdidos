@@ -188,10 +188,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "DISCORD",
         tag: "E-mail & Design",
       },
+      {
+        id: "v1928-fix-19",
+        title: "Consolidação Serverless de Módulo Único do Firebase Admin em api/_lib",
+        description: "Migração do módulo singleton do Firebase Admin para o namespace padrão de helpers serverless da Vercel api/_lib/firebaseAdmin.ts e atualização de imports em /api/analytics/track, /api/analytics/metrics, /api/system/config e /api/admin/delete-user. Eliminação do erro ERR_MODULE_NOT_FOUND em runtime ESM sem duplicação de inicialização.",
+        module: "VERCEL",
+        tag: "Serverless & Admin",
+      },
     ],
     stats: {
       additionsCount: 4,
-      fixesCount: 18,
+      fixesCount: 19,
     },
   },
   {

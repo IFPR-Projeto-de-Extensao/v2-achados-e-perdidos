@@ -3,7 +3,7 @@ import {
   getAdminAuth,
   getAdminFirestore,
   FIREBASE_PROJECT_ID,
-} from "../../src/lib/firebaseAdmin";
+} from "../_lib/firebaseAdmin";
 
 const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
 

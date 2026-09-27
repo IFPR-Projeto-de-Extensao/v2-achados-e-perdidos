@@ -217,7 +217,7 @@ describe("JWT Signature Verification & Zero-Trust Authentication Security", () =
 
   // Test I: Ausência de parseJwtPayload no módulo firebaseAdmin
   it("I. Módulo firebaseAdmin não deve exportar parseJwtPayload para autenticação", async () => {
-    const firebaseAdminModule = await import("./firebaseAdmin");
+    const firebaseAdminModule = await import("../../api/_lib/firebaseAdmin");
     expect((firebaseAdminModule as any).parseJwtPayload).toBeUndefined();
   });
 });
