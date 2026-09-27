@@ -154,15 +154,25 @@ export interface ItemReturnData {
   signatureIpOrDevice?: string;
 }
 
+export type SyncQueueStatus =
+  | "PENDENTE"
+  | "SINCRONIZANDO"
+  | "ERRO"
+  | "ERRO_TEMPORARIO"
+  | "ERRO_PERMANENTE"
+  | "CONCLUIDO";
+
 export interface SyncQueueEntry {
   id: string;
   type: "REGISTER_ITEM";
   payload: LostFoundItem;
   createdAt: string;
-  status: "PENDENTE" | "SINCRONIZANDO" | "ERRO";
+  status: SyncQueueStatus;
   attempts: number;
   lastAttempt?: string;
   error?: string;
+  errorType?: "TEMPORARY" | "PERMANENT";
+  payloadSizeBytes?: number;
 }
 
 export interface ItemClaim {

@@ -24,12 +24,64 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.29",
+    codename: "Firestore Payload Size Guard & Error Classification Engine",
+    releaseDate: "27/09/2026",
+    releaseDateTime: "27 de Setembro de 2026 • 13:45 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Implementação de Defesa em Profundidade e Classificação de Erros de Sincronização: 1) Guarda defensiva interna conservadora de 900.000 bytes (tamanho em bytes UTF-8 do JSON serializado via TextEncoder) antes de invocar setDoc(), prevenindo que o payload se aproxime do limite rígido de 1 MiB do Firestore; 2) Classificação determinística entre erros temporários (instabilidade de rede/timeout, mantidos na fila para retry automático) e erros permanentes (payload excessivo ou erros irreversíveis de validação, preservados com segurança no IndexedDB sem loops de retry automático); 3) Atualização da fila offline SyncQueueEntry com suporte a ERRO_TEMPORARIO e ERRO_PERMANENTE preservando compatibilidade retroativa; 4) Diferenciação visual e informativa no UploadStatusIndicator; 5) Suíte de testes automatizados com cobertura completa dos 12 cenários de sincronização, concorrência, offline, fronteira e payload.",
+    additions: [
+      {
+        id: "v1929-add-1",
+        title: "Guarda Defensiva de Tamanho de Payload (900 KB UTF-8)",
+        description: "Validação programática conservadora via TextEncoder que calcula o tamanho em bytes UTF-8 do JSON sanitizado em JavaScript antes do setDoc(). Payloads acima de 900.000 bytes são bloqueados preventivamente e preservados no dispositivo como ERRO_PERMANENTE.",
+        module: "FIRESTORE",
+        tag: "Guarda de Tamanho",
+      },
+      {
+        id: "v1929-add-2",
+        title: "Motor de Classificação de Erros (Temporários vs Permanentes)",
+        description: "Função classifySyncError que isola falhas temporárias de rede (retryable na reconexão) de erros permanentes de dados, impedindo loops infinitos e preservando os dados intactos no IndexedDB.",
+        module: "PWA",
+        tag: "Resiliência Offline",
+      },
+      {
+        id: "v1929-add-3",
+        title: "Indicador de Upload com Detecção de Atenção de Itens",
+        description: "Aprimoramento do UploadStatusIndicator para sinalizar quando um item possui dados que exigem atenção, sem mascarar o estado real e sem bloquear os demais uploads da fila.",
+        module: "PWA",
+        tag: "Interface & UX",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1929-fix-1",
+        title: "Prevenção de Loop de Retry em Documentos com Payload Excessivo",
+        description: "Itens com tamanho superior ao limite defensivo são mantidos seguros na fila local e não entram em loop de retentativas a cada reconexão ou inicialização.",
+        module: "FIRESTORE",
+        tag: "Estabilidade",
+      },
+      {
+        id: "v1929-fix-2",
+        title: "Compatibilidade Retroativa de Status da Fila Offline",
+        description: "Preservação integral do processamento de entradas legadas com status ERRO sem perda de dados na migração de versão.",
+        module: "PWA",
+        tag: "Compatibilidade",
+      },
+    ],
+    stats: {
+      additionsCount: 3,
+      fixesCount: 2,
+    },
+  },
+  {
     version: "v1.9.28",
     codename: "Standalone Serverless Architecture & Node 22 Runtime Optimization",
     releaseDate: "26/09/2026",
     releaseDateTime: "26 de Setembro de 2026 • 00:30 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Hardening de Segurança e Reestruturação Serverless para Node 22: 1) Hardening crítico de segurança com eliminação total de qualquer fallback de decodificação manual de JWT sem assinatura válida (parseJwtPayload) em server.ts, /api/admin/delete-user, /api/system/config e src/lib/firebaseAdmin.ts, garantindo que qualquer token ausente, malformado, expirado ou forjado seja estritamente rejeitado com HTTP 401 via Firebase Admin SDK verifyIdToken; 2) Separação dos endpoints essenciais (/api/system/config, /api/analytics/track, /api/analytics/metrics e /api/admin/delete-user) em Serverless Functions dedicadas e autocontidas; 3) Configuração explícita do runtime Node.js 22.x via engines.node no package.json (requisito do firebase-admin 14.2.0); 4) Padronização de imports sem extensões .ts para empacotamento Vercel; 5) Suíte completa de 232 testes unitários e de integração validando 100% dos cenários de segurança e RBAC.",
     additions: [
       {
@@ -195,10 +247,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "VERCEL",
         tag: "Serverless & Admin",
       },
+      {
+        id: "v1928-fix-20",
+        title: "Resolução do Mecanismo de Sincronização e Upload Offline/Online com Mutex e Telemetria em Tempo Real",
+        description: "Correção do fluxo de upload e sincronização automática de itens do IndexedDB para o Firestore: inicialização automática de sincronização no boot quando online, unificação dos listeners de rede para eliminação de race conditions, bloqueio atômico de concorrência com mutex (isSyncingRef), telemetria em tempo real com estados dinâmicos no UploadStatusIndicator, preservação segura de fotos comprimidas e ação manual otimizada no botão Sincronizar Agora.",
+        module: "PWA",
+        tag: "Sync & Upload",
+      },
     ],
     stats: {
       additionsCount: 4,
-      fixesCount: 19,
+      fixesCount: 20,
     },
   },
   {

@@ -1,6 +1,7 @@
 // IndexedDB Persistence Layer for RNF02 (Fast system & Offline capability)
 // Includes dedicated sync-queue for offline user registration requests
 import { LostFoundItem, SyncQueueEntry } from "../types";
+import { calculatePayloadSizeBytes } from "./payloadSizeGuard";
 
 const DB_NAME = "IFPRAchadosPerdidosDB";
 const DB_VERSION = 2;
@@ -105,7 +106,12 @@ export async function saveOfflineErrorLogIndexedDB(logData: any): Promise<void> 
 // SYNC QUEUE STORE (Offline User Registration Requests)
 // -------------------------------------------------------------
 
-export async function queueOfflineItemRegistration(item: LostFoundItem): Promise<SyncQueueEntry> {
+export async function queueOfflineItemRegistration(
+  item: LostFoundItem,
+  initialOptions?: Partial<Omit<SyncQueueEntry, "id" | "type" | "payload" | "createdAt">>
+): Promise<SyncQueueEntry> {
+  const byteSize = initialOptions?.payloadSizeBytes ?? calculatePayloadSizeBytes(item);
+
   const queueEntry: SyncQueueEntry = {
     id: `queue-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     type: "REGISTER_ITEM",
@@ -114,8 +120,12 @@ export async function queueOfflineItemRegistration(item: LostFoundItem): Promise
       isOfflineQueued: true,
     },
     createdAt: new Date().toISOString(),
-    status: "PENDENTE",
-    attempts: 0,
+    status: initialOptions?.status || "PENDENTE",
+    attempts: initialOptions?.attempts || 0,
+    lastAttempt: initialOptions?.lastAttempt,
+    error: initialOptions?.error,
+    errorType: initialOptions?.errorType,
+    payloadSizeBytes: byteSize,
   };
 
   try {
@@ -129,7 +139,7 @@ export async function queueOfflineItemRegistration(item: LostFoundItem): Promise
 
     return new Promise((resolve, reject) => {
       tx.oncomplete = () => {
-        console.log(`[Offline Sync] Cadastro de objeto "${item.title}" armazenado na fila IndexedDB:`, queueEntry.id);
+        console.log(`[Offline Sync] Cadastro de objeto "${item.title}" armazenado na fila IndexedDB (${byteSize} bytes):`, queueEntry.id);
         resolve(queueEntry);
       };
       tx.onerror = () => reject(tx.error);

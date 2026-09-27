@@ -24,6 +24,7 @@ export const UploadStatusIndicator: React.FC = () => {
     retryUploadTask,
     pendingSyncCount,
     isOnline,
+    isSyncing,
     triggerManualSync,
   } = useApp();
 
@@ -31,7 +32,7 @@ export const UploadStatusIndicator: React.FC = () => {
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
 
   // If no tasks and no pending offline syncs, do not render
-  if ((!activeUploadTasks || activeUploadTasks.length === 0) && pendingSyncCount === 0) {
+  if ((!activeUploadTasks || activeUploadTasks.length === 0) && pendingSyncCount === 0 && !isSyncing) {
     return null;
   }
 
@@ -40,12 +41,53 @@ export const UploadStatusIndicator: React.FC = () => {
   ).length;
 
   const errorCount = (activeUploadTasks || []).filter((t) => t.status === "ERROR").length;
+  const permanentErrorCount = (activeUploadTasks || []).filter(
+    (t) =>
+      t.status === "ERROR" &&
+      (t.error?.includes("PAYLOAD_SIZE") ||
+        t.error?.includes("PERMANENT") ||
+        t.statusMessage?.includes("atenção") ||
+        t.statusMessage?.includes("grandes demais"))
+  ).length;
+  const temporaryErrorCount = Math.max(0, errorCount - permanentErrorCount);
   const completedCount = (activeUploadTasks || []).filter((t) => t.status === "COMPLETED").length;
 
   const latestTask: UploadTaskStatus | undefined =
     activeUploadTasks && activeUploadTasks.length > 0
       ? activeUploadTasks[activeUploadTasks.length - 1]
       : undefined;
+
+  // Determine user-facing subtitle following strict state rules
+  const getSubtitleMessage = (): string => {
+    if (!isOnline) {
+      return pendingSyncCount > 0
+        ? `Sem conexão. ${pendingSyncCount} ${pendingSyncCount === 1 ? "item aguardando" : "itens aguardando"} sincronização.`
+        : "Sem conexão com a internet.";
+    }
+
+    if (isSyncing || inProgressCount > 0) {
+      const count = pendingSyncCount || inProgressCount || 1;
+      return `Sincronizando ${count} ${count === 1 ? "item" : "itens"}...`;
+    }
+
+    if (permanentErrorCount > 0) {
+      return "Um item precisa de atenção antes de ser sincronizado.";
+    }
+
+    if (temporaryErrorCount > 0) {
+      return "Não foi possível sincronizar agora. Tentaremos novamente.";
+    }
+
+    if (completedCount > 0 && pendingSyncCount === 0) {
+      return `Sincronização concluída. ${completedCount} ${completedCount === 1 ? "item enviado" : "itens enviados"}.`;
+    }
+
+    if (pendingSyncCount > 0) {
+      return `Fila offline: ${pendingSyncCount} ${pendingSyncCount === 1 ? "item pendente" : "itens pendentes"}`;
+    }
+
+    return "Nenhum upload pendente.";
+  };
 
   const getStatusBadge = (status: UploadTaskStatus["status"]) => {
     switch (status) {
@@ -145,10 +187,7 @@ export const UploadStatusIndicator: React.FC = () => {
                 )}
               </div>
               <p className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate max-w-[180px] sm:max-w-[220px]">
-                {latestTask?.statusMessage ||
-                  (pendingSyncCount > 0
-                    ? `${pendingSyncCount} item(ns) na fila offline`
-                    : "Todos os envios foram sincronizados")}
+                {getSubtitleMessage()}
               </p>
             </div>
           </div>
@@ -276,15 +315,29 @@ export const UploadStatusIndicator: React.FC = () => {
                   )}
                 </div>
               ))
+            ) : pendingSyncCount > 0 ? (
+              <div className="text-center py-3 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-xl p-3 border border-amber-200/60 dark:border-amber-900/40">
+                <p className="font-bold flex items-center justify-center space-x-1.5">
+                  <HardDrive className="w-3.5 h-3.5" />
+                  <span>{pendingSyncCount} {pendingSyncCount === 1 ? "item aguardando" : "itens aguardando"} sincronização</span>
+                </p>
+                <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-1">
+                  {isOnline
+                    ? isSyncing
+                      ? "Processando fila com o Firestore..."
+                      : "Conectado. A sincronização automática será processada."
+                    : "Os dados estão gravados com segurança no IndexedDB local."}
+                </p>
+              </div>
             ) : (
               <div className="text-center py-3 text-xs text-neutral-500 dark:text-neutral-400">
-                Nenhum upload ativo no momento.
+                Nenhum upload pendente.
               </div>
             )}
 
             {/* Offline Sync Controls */}
             {pendingSyncCount > 0 && (
-              <div className="pt-2 flex items-center justify-between bg-neutral-50 dark:bg-neutral-800/50 p-2 rounded-xl mt-2">
+              <div className="pt-2 flex items-center justify-between bg-neutral-50 dark:bg-neutral-800/50 p-2.5 rounded-xl mt-2 border border-neutral-100 dark:border-neutral-800">
                 <div className="flex items-center space-x-1.5">
                   <HardDrive className="w-3.5 h-3.5 text-neutral-500" />
                   <span className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
@@ -294,14 +347,20 @@ export const UploadStatusIndicator: React.FC = () => {
                 {isOnline && (
                   <button
                     type="button"
-                    onClick={() => {
+                    id="btn-sync-now"
+                    disabled={isSyncing}
+                    onClick={async () => {
                       vibrateClick();
-                      triggerManualSync();
+                      await triggerManualSync();
                     }}
-                    className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center space-x-1"
+                    className={`text-[11px] font-bold px-3 py-1.5 rounded-lg flex items-center space-x-1.5 transition-all ${
+                      isSyncing
+                        ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 opacity-80 cursor-not-allowed"
+                        : "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
+                    }`}
                   >
-                    <RefreshCw className="w-3 h-3" />
-                    <span>Sincronizar Agora</span>
+                    <RefreshCw className={`w-3 h-3 ${isSyncing ? "animate-spin" : ""}`} />
+                    <span>{isSyncing ? "Sincronizando..." : "Sincronizar Agora"}</span>
                   </button>
                 )}
               </div>

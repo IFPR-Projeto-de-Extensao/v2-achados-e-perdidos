@@ -76,6 +76,11 @@ import {
   clearSyncQueue,
 } from "../lib/indexedDB";
 import { clear30DayUptimeRecords } from "../lib/uptimeManager";
+import {
+  calculatePayloadSizeBytes,
+  classifySyncError,
+  FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES,
+} from "../lib/payloadSizeGuard";
 import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeParseDate, formatPhone, isValidPhone, generateSecureSignatureToken } from "../lib/utils";
 import {
   DEFAULT_MAINTENANCE_MESSAGE,
@@ -343,6 +348,7 @@ interface AppContextType {
   setRegisterTypeSelection: (type: "PERDIDO" | "ENCONTRADO") => void;
   systemLatencyMs: number | null;
   isOnline: boolean;
+  isSyncing: boolean;
   pendingSyncCount: number;
   syncOfflineQueue: () => Promise<void>;
   triggerManualSync: () => Promise<void>;
@@ -379,6 +385,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Heartbeat & System Health Monitoring (RNF01 & RNF02)
   const [systemLatencyMs, setSystemLatencyMs] = useState<number | null>(24);
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const isSyncingRef = useRef<boolean>(false);
   const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
   const [lastHeartbeatTimestamp, setLastHeartbeatTimestamp] = useState<string | null>(new Date().toISOString());
   const [indexedDbLoaded, setIndexedDbLoaded] = useState<boolean>(false);
@@ -424,12 +432,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const triggerManualSync = async () => {
+    console.log("[Manual Sync Trigger] Sincronização manual solicitada pelo usuário.");
     await syncOfflineQueue();
   };
 
   const retryUploadTask = async (taskId: string) => {
     const task = activeUploadTasks.find((t) => t.id === taskId);
     if (!task) return;
+
+    // If the task corresponds to a queue entry, reset its state to PENDENTE to allow manual retry
+    const queue = await getPendingSyncQueue();
+    const entry = queue.find((e) => e.payload?.id === task.itemId || e.id === task.itemId || `sync-task-${e.id}` === taskId);
+    if (entry) {
+      await updateSyncQueueEntry(entry.id, {
+        status: "PENDENTE",
+        error: undefined,
+        errorType: undefined,
+      });
+    }
+
     updateUploadTask(taskId, {
       status: "UPLOADING",
       progress: 30,
@@ -437,6 +458,255 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       error: undefined,
     });
     await syncOfflineQueue();
+  };
+
+  // Synchronize pending offline registration queue with Firestore
+  const syncOfflineQueue = async () => {
+    if (isSyncingRef.current) {
+      console.log("[Offline Sync Notice] Sincronização já em execução. Evitando execução concorrente.");
+      return;
+    }
+
+    const networkOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
+    if (!networkOnline) {
+      console.log("[Offline Sync Notice] Dispositivo sem conexão ativa. Sincronização aguardará reconexão.");
+      setIsOnline(false);
+      return;
+    }
+
+    isSyncingRef.current = true;
+    setIsSyncing(true);
+
+    try {
+      const queue = await getPendingSyncQueue();
+      const count = queue ? queue.length : 0;
+      console.log(`[Offline Sync Pipeline] Iniciando verificação de fila: ${count} item(ns) encontrado(s). Conectividade: ONLINE`);
+
+      if (!queue || queue.length === 0) {
+        setPendingSyncCount(0);
+        return;
+      }
+
+      let syncedCount = 0;
+      let temporaryErrorCount = 0;
+      let permanentErrorCount = 0;
+
+      for (const entry of queue) {
+        const taskId = `sync-task-${entry.id}`;
+        const itemTitle = entry.payload?.title || "Objeto sem título";
+        const itemId = entry.payload?.id || entry.id;
+
+        // 1. Guard against PERMANENT errors: Skip automatic retry to prevent loop
+        if (entry.status === "ERRO_PERMANENTE" || entry.errorType === "PERMANENT") {
+          console.log(`[Offline Sync] Pulando item com erro permanente #${entry.id} ("${itemTitle}"). Preservado no dispositivo.`);
+          permanentErrorCount++;
+          addUploadTask({
+            id: taskId,
+            itemId: itemId,
+            itemTitle: itemTitle,
+            itemType: entry.payload?.type || "ENCONTRADO",
+            thumbnailUrl: entry.payload?.imageUrl,
+            progress: 100,
+            status: "ERROR",
+            error: entry.error || "ERRO_PERMANENTE",
+            statusMessage: entry.error?.includes("PAYLOAD_SIZE")
+              ? "Este item possui dados ou imagem grandes demais para sincronização. O cadastro foi preservado no dispositivo e precisa ser ajustado."
+              : "Um item precisa de atenção antes de ser sincronizado.",
+            startedAt: entry.createdAt,
+          });
+          continue;
+        }
+
+        console.log(`[Offline Sync] Processando item #${entry.id} (Item ID: ${itemId}, Título: "${itemTitle}", Tentativa: ${(entry.attempts || 0) + 1})...`);
+
+        // Create or update real-time progress task for UI visibility
+        addUploadTask({
+          id: taskId,
+          itemId: itemId,
+          itemTitle: itemTitle,
+          itemType: entry.payload?.type || "ENCONTRADO",
+          thumbnailUrl: entry.payload?.imageUrl,
+          progress: 30,
+          status: "UPLOADING",
+          statusMessage: `Sincronizando "${itemTitle}" com o Firestore...`,
+          startedAt: new Date().toISOString(),
+        });
+
+        const itemToSave = {
+          ...entry.payload,
+          isOfflineQueued: false,
+          syncedAt: new Date().toISOString(),
+        };
+
+        const sanitizedPayload = sanitizeFirestoreData(itemToSave);
+        const payloadSizeBytes = calculatePayloadSizeBytes(sanitizedPayload);
+
+        // 2. Defensive Size Guard check (900,000 bytes)
+        if (payloadSizeBytes > FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES) {
+          console.warn(`[Offline Sync] Item #${entry.id} excede o limite defensivo (${payloadSizeBytes} bytes > ${FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES} bytes). Bloqueando setDoc() e marcando como ERRO_PERMANENTE.`);
+          permanentErrorCount++;
+          await updateSyncQueueEntry(entry.id, {
+            status: "ERRO_PERMANENTE",
+            errorType: "PERMANENT",
+            error: `PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT (${payloadSizeBytes} bytes)`,
+            payloadSizeBytes,
+            lastAttempt: new Date().toISOString(),
+          });
+
+          updateUploadTask(taskId, {
+            status: "ERROR",
+            error: "PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT",
+            statusMessage: "Este item possui dados ou imagem grandes demais para sincronização. O cadastro foi preservado no dispositivo e precisa ser ajustado.",
+          });
+          continue;
+        }
+
+        try {
+          await updateSyncQueueEntry(entry.id, {
+            status: "SINCRONIZANDO",
+            attempts: (entry.attempts || 0) + 1,
+            lastAttempt: new Date().toISOString(),
+            payloadSizeBytes,
+          });
+
+          // 3. Persist to Firestore with merge to prevent duplicate records
+          await setDoc(doc(db, "items", itemToSave.id), sanitizedPayload, { merge: true });
+          console.log(`[Offline Sync Success] Item #${itemToSave.id} gravado e confirmado no Firestore (${payloadSizeBytes} bytes).`);
+
+          updateUploadTask(taskId, {
+            progress: 85,
+            statusMessage: "Gravado com sucesso no Firestore. Finalizando...",
+          });
+
+          // 4. Remove successfully synchronized entry from local IndexedDB queue
+          await removeSyncQueueEntry(entry.id);
+          console.log(`[Offline Sync Success] Item #${entry.id} removido da fila local IndexedDB.`);
+
+          updateUploadTask(taskId, {
+            progress: 100,
+            status: "COMPLETED",
+            statusMessage: "Sincronizado com sucesso com o servidor em nuvem!",
+            completedAt: new Date().toISOString(),
+          });
+
+          syncedCount++;
+
+          // 5. Update local state immediately so item appears as synchronized
+          setItems((prev) => {
+            const exists = prev.some((it) => it.id === itemToSave.id);
+            if (exists) {
+              return prev.map((it) => (it.id === itemToSave.id ? itemToSave : it));
+            }
+            return [itemToSave, ...prev];
+          });
+
+          // 6. Asynchronous Discord Webhook dispatch (non-blocking)
+          const discordItemPayload = {
+            ...itemToSave,
+            imageUrl:
+              itemToSave.imageUrl &&
+              (itemToSave.imageUrl.startsWith("http://") || itemToSave.imageUrl.startsWith("https://"))
+                ? itemToSave.imageUrl
+                : undefined,
+          };
+
+          if (itemToSave.type === "ENCONTRADO") {
+            safeFetchJson(
+              "/api/items/notify-novos-achados",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ item: discordItemPayload }),
+              },
+              () => ({ success: true })
+            ).catch((discordErr) => {
+              console.warn("[Novos Achados Webhook Notice] Envio offline-sync ao Discord:", discordErr);
+            });
+          } else if (itemToSave.type === "PERDIDO") {
+            safeFetchJson(
+              "/api/items/notify-novas-perdas",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ item: discordItemPayload }),
+              },
+              () => ({ success: true })
+            ).catch((discordErr) => {
+              console.warn("[Novas Perdas Webhook Notice] Envio offline-sync ao Discord:", discordErr);
+            });
+          }
+        } catch (syncErr: any) {
+          const classifiedErr = classifySyncError(syncErr, payloadSizeBytes);
+          console.error(`[Offline Sync Error] Falha ao sincronizar item #${entry.id} (${classifiedErr.category}):`, syncErr?.message || syncErr);
+
+          if (classifiedErr.isPermanent) {
+            permanentErrorCount++;
+          } else {
+            temporaryErrorCount++;
+          }
+          
+          await updateSyncQueueEntry(entry.id, {
+            status: classifiedErr.isPermanent ? "ERRO_PERMANENTE" : "ERRO_TEMPORARIO",
+            errorType: classifiedErr.category,
+            error: classifiedErr.reason,
+            payloadSizeBytes,
+          });
+
+          updateUploadTask(taskId, {
+            status: "ERROR",
+            error: classifiedErr.reason,
+            statusMessage: classifiedErr.isPermanent
+              ? classifiedErr.userMessage
+              : "Falha temporária ao sincronizar. O item permanece seguro na fila.",
+          });
+        }
+      }
+
+      const remainingEntries = await getPendingSyncQueue();
+      const remainingCount = remainingEntries.length;
+      setPendingSyncCount(remainingCount);
+
+      const hasPermanent = remainingEntries.some(
+        (e) => e.status === "ERRO_PERMANENTE" || e.errorType === "PERMANENT"
+      );
+      const hasTemporary = remainingEntries.some(
+        (e) => e.status === "ERRO_TEMPORARIO" || (e.status === "ERRO" && e.errorType !== "PERMANENT")
+      );
+
+      if (syncedCount > 0) {
+        vibrateSuccess();
+        if (hasPermanent) {
+          addToast(
+            `${syncedCount} ${syncedCount === 1 ? "ocorrência sincronizada" : "ocorrências sincronizadas"}. Um item com dados excessivos foi mantido no dispositivo para ajuste.`,
+            "info"
+          );
+        } else {
+          addToast(
+            `Sincronização concluída! ${syncedCount} ${
+              syncedCount === 1
+                ? "ocorrência enviada ao Firestore com sucesso"
+                : "ocorrências enviadas ao Firestore com sucesso"
+            }!`,
+            "success"
+          );
+        }
+      } else if (hasPermanent && !hasTemporary) {
+        addToast(
+          "Um item precisa de atenção antes de ser sincronizado.",
+          "warning"
+        );
+      } else if (hasTemporary) {
+        addToast(
+          "Não foi possível sincronizar agora devido a instabilidade de rede. Tentaremos novamente automaticamente.",
+          "warning"
+        );
+      }
+    } catch (e: any) {
+      console.warn("[Offline Sync Notice] Erro geral ao processar fila:", e?.message || e);
+    } finally {
+      isSyncingRef.current = false;
+      setIsSyncing(false);
+    }
   };
 
   // Listen to Service Worker Background Sync events and messages
@@ -467,7 +737,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // Load items and sync queue count from IndexedDB instantly on boot
+  // Load items and sync queue count from IndexedDB instantly on boot & auto-trigger sync if online
   useEffect(() => {
     getItemsFromIndexedDB()
       .then((cached) => {
@@ -478,7 +748,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
       .catch((e) => console.warn("IndexedDB inicialização notice:", e));
 
-    getSyncQueueCount().then(setPendingSyncCount).catch(() => {});
+    getSyncQueueCount()
+      .then((count) => {
+        setPendingSyncCount(count);
+        if (count > 0 && typeof navigator !== "undefined" && navigator.onLine) {
+          console.log(`[Offline Sync Boot] ${count} item(ns) pendente(s) na fila IndexedDB na inicialização. Iniciando sincronização automática...`);
+          syncOfflineQueue();
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Save items snapshot to IndexedDB whenever items state updates
@@ -488,108 +766,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [items]);
 
-  // Synchronize pending offline registration queue with Firestore
-  const syncOfflineQueue = async () => {
-    try {
-      const queue = await getPendingSyncQueue();
-      if (!queue || queue.length === 0) {
-        setPendingSyncCount(0);
-        return;
-      }
-
-      console.log(`[Offline Sync] Sincronizando ${queue.length} ocorrências pendentes com Firestore...`);
-      let syncedCount = 0;
-
-      for (const entry of queue) {
-        try {
-          await updateSyncQueueEntry(entry.id, {
-            status: "SINCRONIZANDO",
-            attempts: (entry.attempts || 0) + 1,
-            lastAttempt: new Date().toISOString(),
-          });
-
-          const itemToSave = {
-            ...entry.payload,
-            isOfflineQueued: false,
-            syncedAt: new Date().toISOString(),
-          };
-
-          await setDoc(doc(db, "items", itemToSave.id), sanitizeFirestoreData(itemToSave));
-
-          await removeSyncQueueEntry(entry.id);
-          syncedCount++;
-
-          // Update local item in state
-          setItems((prev) =>
-            prev.map((it) => (it.id === itemToSave.id ? itemToSave : it))
-          );
-
-          // If found or lost item, notify Discord (non-blocking)
-          const sanitizedPayload = {
-            ...itemToSave,
-            imageUrl:
-              itemToSave.imageUrl &&
-              (itemToSave.imageUrl.startsWith("http://") || itemToSave.imageUrl.startsWith("https://"))
-                ? itemToSave.imageUrl
-                : undefined,
-          };
-
-          if (itemToSave.type === "ENCONTRADO") {
-            safeFetchJson(
-              "/api/items/notify-novos-achados",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ item: sanitizedPayload }),
-              },
-              () => ({ success: true })
-            ).catch((discordErr) => {
-              console.warn("[Novos Achados Webhook Notice] Envio offline-sync ao Discord:", discordErr);
-            });
-          } else if (itemToSave.type === "PERDIDO") {
-            safeFetchJson(
-              "/api/items/notify-novas-perdas",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ item: sanitizedPayload }),
-              },
-              () => ({ success: true })
-            ).catch((discordErr) => {
-              console.warn("[Novas Perdas Webhook Notice] Envio offline-sync ao Discord:", discordErr);
-            });
-          }
-        } catch (syncErr: any) {
-          console.error(`[Offline Sync] Falha ao sincronizar item #${entry.id}:`, syncErr);
-          await updateSyncQueueEntry(entry.id, {
-            status: "ERRO",
-            error: syncErr?.message || "Erro durante sincronização",
-          });
-        }
-      }
-
-      const remaining = await getSyncQueueCount();
-      setPendingSyncCount(remaining);
-
-      if (syncedCount > 0) {
-        addToast(
-          `Conexão restabelecida! ${syncedCount} ${
-            syncedCount === 1 ? "ocorrência cadastrada offline foi sincronizada" : "ocorrências cadastradas offline foram sincronizadas"
-          } com o Firestore com sucesso!`,
-          "success"
-        );
-      }
-    } catch (e) {
-      console.warn("Aviso ao sincronizar fila offline:", e);
-    }
-  };
-
   // Listen to browser online/offline network connectivity events
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const handleOnline = () => {
-      console.log("[Rede] Dispositivo online conectado à internet.");
+      console.log("[Rede] Dispositivo online conectado à internet. Disparando sincronização automática da fila...");
       setIsOnline(true);
       syncOfflineQueue();
     };
@@ -1998,38 +2180,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
 
-    // 3. Online event handler: Automatically process queued pre-registrations when connection is restored
-    const handleOnlineSync = async () => {
-      try {
-        const queue = await getPendingSyncQueue();
-        if (queue && queue.length > 0) {
-          addToast(`Conexão restaurada! Sincronizando ${queue.length} pré-cadastro(s) offline com o Firestore...`, "info");
-          for (const entry of queue) {
-            if (entry.type === "REGISTER_ITEM" && entry.payload) {
-              try {
-                await setDoc(doc(db, "items", entry.payload.id), sanitizeFirestoreData(entry.payload));
-                await removeSyncQueueEntry(entry.id);
-              } catch (syncErr) {
-                console.warn("Erro ao sincronizar item offline individual:", syncErr);
-              }
-            }
-          }
-          const remaining = await getSyncQueueCount();
-          setPendingSyncCount(remaining);
-          if (remaining === 0) {
-            addToast("Todos os pré-cadastros offline foram sincronizados com sucesso!", "success");
-          }
-        }
-      } catch (err) {
-        console.warn("Aviso ao processar fila offline de pré-cadastros:", err);
-      }
-    };
-
-    window.addEventListener("online", handleOnlineSync);
-
     return () => {
       isMounted = false;
-      window.removeEventListener("online", handleOnlineSync);
       unsubscribe();
     };
   }, []);
@@ -3196,12 +3348,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (_) {}
     }
 
+    // Sanitize item and compute real UTF-8 payload byte size
+    const sanitizedItemPayload = sanitizeFirestoreData(newItem);
+    const payloadSizeBytes = calculatePayloadSizeBytes(sanitizedItemPayload);
+
+    // 1. DEFENSIVE SIZE GUARD (900,000 bytes limit)
+    if (payloadSizeBytes > FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES) {
+      console.warn(
+        `[Tamanho Defensivo] Ocorrência #${newItem.id} ultrapassa o limite defensivo (${payloadSizeBytes} bytes > ${FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES} bytes). Gravação no Firestore bloqueada.`
+      );
+      await queueOfflineItemRegistration(newItem, {
+        status: "ERRO_PERMANENTE",
+        errorType: "PERMANENT",
+        error: `PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT (${payloadSizeBytes} bytes)`,
+        payloadSizeBytes,
+      });
+      setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
+      const queueCount = await getSyncQueueCount();
+      setPendingSyncCount(queueCount);
+      updateUploadTask(taskId, {
+        progress: 100,
+        status: "ERROR",
+        error: "PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT",
+        statusMessage: "Este item possui dados ou imagem grandes demais para sincronização. O cadastro foi preservado no dispositivo e precisa ser ajustado.",
+        completedAt: new Date().toISOString(),
+      });
+      addToast(
+        "Este item possui dados ou imagem grandes demais para sincronização. O cadastro foi preservado no dispositivo e precisa ser ajustado.",
+        "warning"
+      );
+      return { newItem, matches: [], persistenceStatus: "OFFLINE_QUEUED", isOffline: false };
+    }
+
     // Check offline status before attempting Firestore write
     const isCurrentlyOffline = typeof navigator !== "undefined" && !navigator.onLine;
 
     if (isCurrentlyOffline) {
       try {
-        await queueOfflineItemRegistration(newItem);
+        await queueOfflineItemRegistration(newItem, {
+          status: "PENDENTE",
+          payloadSizeBytes,
+        });
         setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
         const queueCount = await getSyncQueueCount();
         setPendingSyncCount(queueCount);
@@ -3232,7 +3419,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     try {
-      await setDoc(doc(db, "items", newItem.id), sanitizeFirestoreData(newItem));
+      await setDoc(doc(db, "items", newItem.id), sanitizedItemPayload);
       setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
       
       const itemTxId = `TX-ITEM-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
@@ -3244,7 +3431,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fieldChanged: "status_inicial",
         oldValue: "NAO_REGISTRADO",
         newValue: newItem.status,
-        details: `Ocorrência #${newItem.id} "${newItem.title}" (${newItem.type}) cadastrada no campus ${newItem.location} com persistência confirmada.`,
+        details: `Ocorrência #${newItem.id} "${newItem.title}" (${newItem.type}) cadastrada no campus ${newItem.location} com persistência confirmada (${payloadSizeBytes} bytes).`,
         transactionId: itemTxId,
       });
 
@@ -3298,25 +3485,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
     } catch (e: any) {
-      console.warn("Aviso ao gravar no Firestore, salvando na fila offline do IndexedDB:", e);
+      const classifiedErr = classifySyncError(e, payloadSizeBytes);
+      console.warn(`[Cadastro] Falha ao persistir no Firestore (${classifiedErr.category}):`, e);
       try {
-        await queueOfflineItemRegistration(newItem);
+        await queueOfflineItemRegistration(newItem, {
+          status: classifiedErr.isPermanent ? "ERRO_PERMANENTE" : "ERRO_TEMPORARIO",
+          errorType: classifiedErr.category,
+          error: classifiedErr.reason,
+          payloadSizeBytes,
+        });
         setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
         const queueCount = await getSyncQueueCount();
         setPendingSyncCount(queueCount);
         updateUploadTask(taskId, {
           progress: 100,
-          status: "QUEUED_SYNC",
-          statusMessage: "Conexão instável. Salvo no IndexedDB para Background Sync.",
-          isBackgroundSyncRegistered: true,
+          status: classifiedErr.isPermanent ? "ERROR" : "QUEUED_SYNC",
+          error: classifiedErr.reason,
+          statusMessage: classifiedErr.isPermanent
+            ? classifiedErr.userMessage
+            : "Conexão instável. Salvo no IndexedDB para Background Sync.",
+          isBackgroundSyncRegistered: !classifiedErr.isPermanent,
           completedAt: new Date().toISOString(),
         });
+        addToast(classifiedErr.userMessage, classifiedErr.isPermanent ? "warning" : "info");
         return { newItem, matches: [], persistenceStatus: "OFFLINE_QUEUED", isOffline: true };
       } catch (_) {}
       updateUploadTask(taskId, {
         status: "ERROR",
-        error: e?.message || "Erro durante upload",
-        statusMessage: "Falha no upload do item",
+        error: classifiedErr.reason || "Erro durante upload",
+        statusMessage: classifiedErr.userMessage,
       });
       handleFirestoreError(e, OperationType.WRITE, `items/${newItem.id}`);
     }
@@ -4393,6 +4590,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setRegisterTypeSelection,
         systemLatencyMs,
         isOnline,
+        isSyncing,
         pendingSyncCount,
         syncOfflineQueue,
         triggerManualSync,
