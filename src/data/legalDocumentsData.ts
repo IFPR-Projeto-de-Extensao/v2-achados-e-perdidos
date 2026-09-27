@@ -55,7 +55,7 @@ export const PRIVACY_POLICY_DATA: LegalDocumentData = {
   project: "Projeto InovaIF",
   address: "Rua Max Arthur Greipel, nº 505 – Parque Industrial, Ivaiporã – PR, CEP 86873-400",
   lastUpdated: "18 de agosto de 2026",
-  contactEmail: "localizamais6@gmail.com",
+  contactEmail: "localizamais0@gmail.com",
   dpoName: "Paulo Cauan Lima Pereira",
   dpoEmail: "paulocauan39@gmail.com",
   summary:
@@ -71,7 +71,7 @@ export const PRIVACY_POLICY_DATA: LegalDocumentData = {
       infoCards: [
         { label: "Instituição", value: "Instituto Federal do Paraná – IFPR – Campus Ivaiporã" },
         { label: "Endereço", value: "Rua Max Arthur Greipel, nº 505 – Parque Industrial, Ivaiporã – PR, CEP 86873-400" },
-        { label: "E-mail institucional do projeto", value: "localizamais6@gmail.com" },
+        { label: "E-mail institucional do projeto", value: "localizamais0@gmail.com" },
       ],
     },
     {
@@ -275,7 +275,7 @@ export const PRIVACY_POLICY_DATA: LegalDocumentData = {
       num: 15,
       title: "Comunicação por e-mail",
       paragraphs: [
-        "O sistema pode enviar e-mails transacionais necessários para o funcionamento da conta do usuário (como confirmação de cadastro, instruções de redefinição de senha e comunicados de entrega de pertences). Essas mensagens são expedidas pelo canal oficial do projeto (localizamais6@gmail.com) ou infraestrutura institucional correspondente, não sendo praticado o envio de mensagens promocionais não solicitadas (spam).",
+        "O sistema pode enviar e-mails transacionais necessários para o funcionamento da conta do usuário (como confirmação de cadastro, instruções de redefinição de senha e comunicados de entrega de pertences). Essas mensagens são expedidas pelo canal oficial do projeto (localizamais0@gmail.com) ou infraestrutura institucional correspondente, não sendo praticado o envio de mensagens promocionais não solicitadas (spam).",
       ],
     },
     {
@@ -385,7 +385,7 @@ export const PRIVACY_POLICY_DATA: LegalDocumentData = {
         "Para exercer qualquer um dos seus direitos previstos na LGPD, o titular de dados ou seu responsável legal pode enviar uma solicitação formal pelos canais indicados abaixo, informando seu nome completo, vínculo institucional e a descrição clara da solicitação:",
       ],
       infoCards: [
-        { label: "E-mail geral do projeto", value: "localizamais6@gmail.com" },
+        { label: "E-mail geral do projeto", value: "localizamais0@gmail.com" },
         { label: "Contato de privacidade do projeto", value: "paulocauan39@gmail.com" },
       ],
       paragraphsAfter: [
@@ -449,7 +449,7 @@ export const PRIVACY_POLICY_DATA: LegalDocumentData = {
         "Para dúvidas, sugestões ou solicitações relacionadas a esta Política de Privacidade ou ao tratamento de dados no Localiza+:",
       ],
       infoCards: [
-        { label: "E-mail geral do projeto", value: "localizamais6@gmail.com" },
+        { label: "E-mail geral do projeto", value: "localizamais0@gmail.com" },
         { label: "Contato de privacidade do projeto", value: "paulocauan39@gmail.com" },
         {
           label: "Endereço institucional",
@@ -478,7 +478,7 @@ export const TERMS_OF_USE_DATA: LegalDocumentData = {
   project: "Projeto InovaIF",
   address: "Rua Max Arthur Greipel, nº 505 – Parque Industrial, Ivaiporã – PR, CEP 86873-400",
   lastUpdated: "18 de agosto de 2026",
-  contactEmail: "localizamais6@gmail.com",
+  contactEmail: "localizamais0@gmail.com",
   summary:
     "Regras, diretrizes, direitos, responsabilidades e condições gerais aplicáveis ao uso da plataforma Localiza+ no âmbito do Instituto Federal do Paraná (IFPR) – Campus Ivaiporã.",
   sections: [
@@ -776,7 +776,7 @@ export const TERMS_OF_USE_DATA: LegalDocumentData = {
         { label: "Projeto & Equipe", value: "Localiza+ – Projeto InovaIF" },
         { label: "Instituição", value: "Instituto Federal do Paraná – Campus Ivaiporã" },
         { label: "Endereço", value: "Rua Max Arthur Greipel, nº 505 – Parque Industrial, Ivaiporã – PR, CEP 86873-400" },
-        { label: "E-mail Oficial do Projeto", value: "localizamais6@gmail.com" },
+        { label: "E-mail Oficial do Projeto", value: "localizamais0@gmail.com" },
       ],
     },
     {

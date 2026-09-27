@@ -70,7 +70,7 @@ export const AccountStatusBanner: React.FC<AccountStatusBannerProps> = ({ user }
 
         <div className="flex items-center space-x-2 shrink-0 self-end sm:self-auto">
           <a
-            href="mailto:localizamais6@gmail.com"
+            href="mailto:localizamais0@gmail.com"
             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all inline-flex items-center space-x-1.5 ${
               isBanned
                 ? "bg-white text-red-700 hover:bg-neutral-100 shadow-xs"

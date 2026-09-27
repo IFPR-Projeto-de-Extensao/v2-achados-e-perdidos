@@ -120,7 +120,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
     try {
       const result = await submitSupportFeedback({
         name: (feedbackSenderName || currentUser.name || "Membro da Comunidade").trim(),
-        email: (feedbackSenderEmail || currentUser.email || "localizamais6@gmail.com").trim(),
+        email: (feedbackSenderEmail || currentUser.email || "localizamais0@gmail.com").trim(),
         category: "FEEDBACK",
         subject: `[Feedback] ${feedbackCategory} - Avaliação: ${feedbackRating} estrelas`,
         message: feedbackMessage.trim(),
@@ -174,7 +174,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
 
       const result = await submitSupportFeedback({
         name: (currentUser.name || "Membro da Comunidade").trim(),
-        email: (currentUser.email || "localizamais6@gmail.com").trim(),
+        email: (currentUser.email || "localizamais0@gmail.com").trim(),
         category: "BUG_REPORT",
         subject: `[Bug Report] ${bugTitle.trim()}`,
         message: detailedReport,

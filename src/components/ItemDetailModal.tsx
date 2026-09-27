@@ -224,7 +224,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
   // Institutional notification modal state
   const [emailModalOpen, setEmailModalOpen] = useState(false);
-  const [recipientEmail, setRecipientEmail] = useState(item?.contactInfo || "localizamais6@gmail.com");
+  const [recipientEmail, setRecipientEmail] = useState(item?.contactInfo || "localizamais0@gmail.com");
   const [emailSubject, setEmailSubject] = useState(`[IFPR Achados & Perdidos] Consulta: ${item?.title || "Item"}`);
   const [emailBody, setEmailBody] = useState(`Olá,\n\nEstou entrando em contato a respeito do item "${item?.title || "Item"}" (ID: ${item?.id || ""}) cadastrado no Achados e Perdidos do IFPR Campus Ivaiporã.\n\nAtenciosamente,\n${currentUser?.name || "Usuário IFPR"}`);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
@@ -686,19 +686,36 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             </div>
           </div>
 
-          <button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir / Salvar Recibo PDF</button>
-
-          <script>
-            window.onload = function() {
-              setTimeout(function() { window.print(); }, 500);
-            };
-          </script>
+          <button id="btnPrintReceipt" class="btn-print no-print">🖨️ Imprimir / Salvar Recibo PDF</button>
         </body>
       </html>
     `;
 
     printWindow.document.write(htmlContent);
     printWindow.document.close();
+
+    const btn = printWindow.document.getElementById("btnPrintReceipt");
+    if (btn) {
+      btn.addEventListener("click", () => {
+        printWindow.print();
+      });
+    }
+
+    printWindow.addEventListener("load", () => {
+      setTimeout(() => {
+        try {
+          printWindow.focus();
+          printWindow.print();
+        } catch (_) {}
+      }, 300);
+    });
+
+    setTimeout(() => {
+      try {
+        printWindow.focus();
+        printWindow.print();
+      } catch (_) {}
+    }, 500);
   };
 
   // Download high-resolution QR Code PNG for tracking and identification
@@ -860,7 +877,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
         body: JSON.stringify({
           itemId: item.id,
           itemTitle: item.title,
-          recipientEmail: item.recipientSignatureEmail || item.contactInfo || "localizamais6@gmail.com",
+          recipientEmail: item.recipientSignatureEmail || item.contactInfo || "localizamais0@gmail.com",
           recipientName: item.recipientSignatureName || "Aluno / Servidor IFPR",
           signatureLink,
           signatureToken: token,
@@ -1022,17 +1039,35 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               Sistema Oficial de Gestão de Achados e Perdidos • IFPR Campus Ivaiporã
             </div>
           </div>
-          <button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button>
-          <script>
-            window.onload = function() {
-              setTimeout(function() { window.print(); }, 500);
-            };
-          </script>
+          <button id="btnPrintTag" class="btn-print no-print">🖨️ Imprimir / Salvar como PDF</button>
         </body>
       </html>
     `;
     printWindow.document.write(htmlContent);
     printWindow.document.close();
+
+    const btn = printWindow.document.getElementById("btnPrintTag");
+    if (btn) {
+      btn.addEventListener("click", () => {
+        printWindow.print();
+      });
+    }
+
+    printWindow.addEventListener("load", () => {
+      setTimeout(() => {
+        try {
+          printWindow.focus();
+          printWindow.print();
+        } catch (_) {}
+      }, 300);
+    });
+
+    setTimeout(() => {
+      try {
+        printWindow.focus();
+        printWindow.print();
+      } catch (_) {}
+    }, 500);
   };
 
   const handleSendEmailSubmit = async (e: React.FormEvent) => {

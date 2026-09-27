@@ -115,13 +115,35 @@ export const ItemCard: React.FC<ItemCardProps> = ({
               Sistema Oficial de Gestão de Achados e Perdidos • IFPR Campus Ivaiporã
             </div>
           </div>
-          <button class="btn-print no-print" onclick="window.print()">🖨️ Imprimir / Salvar como PDF</button>
-          <script>window.onload = function() { setTimeout(function() { window.print(); }, 500); };</script>
+          <button id="btnPrintCardTag" class="btn-print no-print">🖨️ Imprimir / Salvar como PDF</button>
         </body>
       </html>
     `;
     printWindow.document.write(htmlContent);
     printWindow.document.close();
+
+    const btn = printWindow.document.getElementById("btnPrintCardTag");
+    if (btn) {
+      btn.addEventListener("click", () => {
+        printWindow.print();
+      });
+    }
+
+    printWindow.addEventListener("load", () => {
+      setTimeout(() => {
+        try {
+          printWindow.focus();
+          printWindow.print();
+        } catch (_) {}
+      }, 300);
+    });
+
+    setTimeout(() => {
+      try {
+        printWindow.focus();
+        printWindow.print();
+      } catch (_) {}
+    }, 500);
   };
 
   return (

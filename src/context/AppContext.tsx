@@ -2252,7 +2252,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       action: entry.action,
       actorId: realAuthUid || currentUser?.id || "sistema-ifpr",
       actorName: currentUser?.name || auth.currentUser?.displayName || "Sistema IFPR",
-      actorEmail: realAuthEmail || currentUser?.email || "localizamais6@gmail.com",
+      actorEmail: realAuthEmail || currentUser?.email || "localizamais0@gmail.com",
       actorRole: effectiveRole,
       timestamp: now.toISOString(),
       fieldChanged: entry.fieldChanged,
@@ -3626,7 +3626,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Automated email notification when marked as DEVOLVIDO
       if (status === "DEVOLVIDO" && existing) {
-        const ownerEmail = (existing as any).registeredByUserEmail || existing.contactInfo || "localizamais6@gmail.com";
+        const ownerEmail = (existing as any).registeredByUserEmail || existing.contactInfo || "localizamais0@gmail.com";
         safeFetchJson(
           "/api/automation/notify-item-returned",
           {
@@ -3868,7 +3868,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast(`Devolução do item #${itemId} registrada com sucesso!`, "success");
 
       // Automated email notification / remote signature link
-      const targetEmail = returnData.recipientEmail || (existing as any)?.registeredByUserEmail || "localizamais6@gmail.com";
+      const targetEmail = returnData.recipientEmail || (existing as any)?.registeredByUserEmail || "localizamais0@gmail.com";
       const originUrl = typeof window !== "undefined" ? window.location.origin : "";
       const signatureLink = `${originUrl}/?tab=sign-receipt&itemId=${encodeURIComponent(itemId)}&token=${encodeURIComponent(signatureToken)}`;
 

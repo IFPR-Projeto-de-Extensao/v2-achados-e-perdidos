@@ -7,8 +7,6 @@ export const CSP_DIRECTIVES = {
   "default-src": ["'self'"],
   "script-src": [
     "'self'",
-    "'unsafe-inline'",
-    "'unsafe-eval'",
     "https://apis.google.com",
     "https://*.firebaseapp.com",
     "https://*.googleapis.com",
@@ -28,6 +26,8 @@ export const CSP_DIRECTIVES = {
     "data:",
     "blob:",
     "https://images.unsplash.com",
+    "https://api.dicebear.com",
+    "https://*.dicebear.com",
     "https://*.googleusercontent.com",
     "https://*.gstatic.com",
     "https://*.googleapis.com",

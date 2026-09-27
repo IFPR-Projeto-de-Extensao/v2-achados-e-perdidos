@@ -82,7 +82,7 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
           action: act.action,
           actorId: act.adminId || "sistema",
           actorName: act.adminName || "Administrador",
-          actorEmail: "localizamais6@gmail.com",
+          actorEmail: "localizamais0@gmail.com",
           actorRole: "ADMIN",
           timestamp: act.timestamp,
           fieldChanged: act.fieldChanged || "dados_gerais",
@@ -226,7 +226,7 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
-      doc.text(`Responsável pela Emissão: ${currentUser?.name || "Administrador do Sistema"} (${currentUser?.role || "ADMIN"}) - ${currentUser?.email || "localizamais6@gmail.com"}`, 14, 38);
+      doc.text(`Responsável pela Emissão: ${currentUser?.name || "Administrador do Sistema"} (${currentUser?.role || "ADMIN"}) - ${currentUser?.email || "localizamais0@gmail.com"}`, 14, 38);
       doc.text(`Escopo do Relatório: Total de ${filteredLogs.length} eventos auditados com garantia de imutabilidade no banco de dados Firestore.`, 14, 43);
 
       // Metrics Cards in PDF

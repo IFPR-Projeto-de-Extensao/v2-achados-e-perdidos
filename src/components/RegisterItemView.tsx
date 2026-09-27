@@ -91,7 +91,7 @@ export const RegisterItemView: React.FC = () => {
   const [brand, setBrand] = useState("");
   const [location, setLocation] = useState(IFPR_LOCATIONS[0]);
   const [date, setDate] = useState(getTodayDateString());
-  const [contactInfo, setContactInfo] = useState(currentUser?.email || "localizamais6@gmail.com");
+  const [contactInfo, setContactInfo] = useState(currentUser?.email || "localizamais0@gmail.com");
   const [contactPhone, setContactPhone] = useState(
     currentUser?.phone ? formatPhone(currentUser.phone) : ""
   );

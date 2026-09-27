@@ -187,7 +187,7 @@ app.use((req, res, next) => {
 
   res.header(
     "Content-Security-Policy",
-    "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://apis.google.com https://*.firebaseapp.com https://*.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://images.unsplash.com https://*.googleusercontent.com https://*.gstatic.com https://*.googleapis.com https://*.firebasestorage.app https://firebasestorage.googleapis.com https://*.githubusercontent.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://generativelanguage.googleapis.com https://images.unsplash.com https://*.google.com wss://*.firebaseio.com; frame-src 'self' https://*.firebaseapp.com https://*.google.com; frame-ancestors 'self' https://*.google.com https://*.google.dev https://*.run.app https://*.web.app https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self';"
+    "default-src 'self'; script-src 'self' https://apis.google.com https://*.firebaseapp.com https://*.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://images.unsplash.com https://api.dicebear.com https://*.dicebear.com https://*.googleusercontent.com https://*.gstatic.com https://*.googleapis.com https://*.firebasestorage.app https://firebasestorage.googleapis.com https://*.githubusercontent.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://firestore.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://generativelanguage.googleapis.com https://images.unsplash.com https://*.google.com wss://*.firebaseio.com; frame-src 'self' https://*.firebaseapp.com https://*.google.com; frame-ancestors 'self' https://*.google.com https://*.google.dev https://*.run.app https://*.web.app https://*.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self';"
   );
 
   if (req.method === "OPTIONS") {
@@ -2149,7 +2149,7 @@ export async function sendMatchNotificationEmail(payload: MatchEmailPayload): Pr
     </div>
     <div class="footer">
       Instituto Federal do Paraná • Campus Ivaiporã<br>
-      Rodovia PR-466 - Ivaiporã/PR • Contato: localizamais6@gmail.com<br>
+      Rodovia PR-466 - Ivaiporã/PR • Contato: localizamais0@gmail.com<br>
       Mensagem enviada automaticamente pelo sistema Localiza+.
     </div>
   </div>
@@ -2501,7 +2501,7 @@ app.post(
 
     const ticketProtocol = `IFPR-SUP-${Date.now().toString(36).toUpperCase()}`;
     const timestamp = new Date().toISOString();
-    const destinationEmail = "localizamais6@gmail.com";
+    const destinationEmail = "localizamais0@gmail.com";
     const adminNotificationEmail = ROOT_ADMIN_EMAIL;
 
     const emailPayload = {
@@ -2523,7 +2523,62 @@ app.post(
 
     console.log(`[Support Ticket Dispatched] Protocol: ${ticketProtocol} | From: ${emailPayload.senderEmail} | Category: ${emailPayload.category} | To: ${destinationEmail}`);
 
-    // Envio para o Discord Webhook
+    // Persist ticket to Firestore via Admin SDK
+    const adminDb = getAdminFirestore();
+    if (adminDb) {
+      try {
+        const ticketDocId = `ticket_${ticketProtocol}`;
+        await adminDb.collection("support_tickets").doc(ticketDocId).set({
+          id: ticketDocId,
+          name: emailPayload.senderName,
+          email: emailPayload.senderEmail,
+          category: emailPayload.category,
+          subject: String(subject).trim(),
+          message: emailPayload.body,
+          priority: String(priority || "MEDIA"),
+          createdAt: timestamp,
+          status: "NOVO",
+          protocol: ticketProtocol,
+          clientDiagnostics: emailPayload.clientDiagnostics,
+        });
+
+        // Register email notification log in Firestore
+        const notifDocId = `email_ticket_${ticketProtocol}_${Date.now()}`;
+        await adminDb.collection("email_notifications").doc(notifDocId).set({
+          id: notifDocId,
+          ticketProtocol,
+          recipientEmail: destinationEmail,
+          senderName: emailPayload.senderName,
+          senderEmail: emailPayload.senderEmail,
+          subject: emailPayload.subject,
+          category: emailPayload.category,
+          status: "QUEUED_OR_RECORDED",
+          timestamp,
+        });
+      } catch (dbErr) {
+        console.warn("[Support Ticket Firestore Warning] Erro ao persistir ticket no Firestore:", dbErr);
+      }
+    }
+
+    // Try sending email via SMTP transporter if configured
+    const transporter = getEmailTransporter();
+    let emailSent = false;
+    if (transporter) {
+      try {
+        const fromAddress = process.env.SMTP_FROM || `"Localiza+ Suporte IFPR" <${process.env.SMTP_USER || destinationEmail}>`;
+        await transporter.sendMail({
+          from: fromAddress,
+          to: destinationEmail,
+          subject: emailPayload.subject,
+          text: `Protocolo: ${ticketProtocol}\nDe: ${emailPayload.senderName} (${emailPayload.senderEmail})\nCategoria: ${emailPayload.category}\nPrioridade: ${emailPayload.priority}\nData: ${timestamp}\n\nMensagem:\n${emailPayload.body}\n\nDiagnóstico: ${JSON.stringify(emailPayload.clientDiagnostics)}`,
+        });
+        emailSent = true;
+      } catch (mailErr: any) {
+        console.warn("[Support Ticket Mail Warning] Erro ao despachar SMTP:", mailErr?.message || mailErr);
+      }
+    }
+
+    // Envio para o Discord Webhook (com isolamento de falhas)
     const discordSent = await sendFeedbackToDiscord({
       protocol: ticketProtocol,
       name: emailPayload.senderName,
@@ -2544,6 +2599,7 @@ app.post(
       destinationEmail,
       emailSubject: emailPayload.subject,
       discordDispatched: discordSent,
+      emailDispatched: emailSent,
     });
   } catch (error: any) {
     console.error("Erro no envio do feedback de suporte:", error);
@@ -3247,7 +3303,7 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
       });
     }
 
-    const targetEmail = recipientEmail || "localizamais6@gmail.com";
+    const targetEmail = recipientEmail || "localizamais0@gmail.com";
     const targetName = recipientName || "Comunidade IFPR";
     const timestamp = new Date().toISOString();
     const emailSubject = `🎉 Seu objeto "${itemTitle}" foi devolvido com sucesso! - IFPR Achados e Perdidos`;
@@ -3620,7 +3676,7 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
       }
     }
 
-    const targetEmail = recipientEmail || "localizamais6@gmail.com";
+    const targetEmail = recipientEmail || "localizamais0@gmail.com";
     const targetName = recipientName || "Aluno / Servidor IFPR";
     const timestamp = new Date().toISOString();
     const emailSubject = `📝 Assinatura Digital Necessária: Recebimento do Objeto "${itemTitle || itemId}" - IFPR Campus Ivaiporã`;

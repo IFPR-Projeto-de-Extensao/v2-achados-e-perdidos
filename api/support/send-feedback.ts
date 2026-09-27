@@ -222,7 +222,7 @@ export default async function handler(req: any, res: any) {
 
     const ticketProtocol = `IFPR-SUP-${Date.now().toString(36).toUpperCase()}`;
     const timestamp = new Date().toISOString();
-    const destinationEmail = "localizamais6@gmail.com";
+    const destinationEmail = "localizamais0@gmail.com";
 
     console.log(`[Feedback API Diagnostics] Request received (${req.method}) - Protocol: ${ticketProtocol}, Category: ${category || 'FEEDBACK'}, Subject: ${trimmedSubject.substring(0, 40)}...`);
 

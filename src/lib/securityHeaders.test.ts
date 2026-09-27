@@ -34,13 +34,14 @@ describe("Security Hardening: Security Headers & Source Maps (Correção 11)", (
   });
 
   describe("Content-Security-Policy (CSP) Architecture", () => {
-    it("should include necessary script sources (self, inline, eval, google apis, firebase)", () => {
+    it("should include necessary script sources and strictly exclude unsafe-inline and unsafe-eval", () => {
       const scriptSrc = CSP_DIRECTIVES["script-src"];
       expect(scriptSrc).toContain("'self'");
-      expect(scriptSrc).toContain("'unsafe-inline'");
-      expect(scriptSrc).toContain("'unsafe-eval'");
+      expect(scriptSrc).not.toContain("'unsafe-inline'");
+      expect(scriptSrc).not.toContain("'unsafe-eval'");
       expect(scriptSrc).toContain("https://apis.google.com");
       expect(scriptSrc).toContain("https://*.firebaseapp.com");
+      expect(scriptSrc).toContain("https://*.googleapis.com");
     });
 
     it("should allow Google Fonts in style-src and font-src", () => {
@@ -48,14 +49,82 @@ describe("Security Hardening: Security Headers & Source Maps (Correção 11)", (
       expect(CSP_DIRECTIVES["font-src"]).toContain("https://fonts.gstatic.com");
     });
 
-    it("should allow image sources for avatars, qr codes, unsplash and firebase storage", () => {
+    it("should explicitly authorize DiceBear avatars in the img-src directive of the CSP", () => {
+      const imgSrc = CSP_DIRECTIVES["img-src"];
+      // Validates that DiceBear API is strictly present in the runtime CSP configuration
+      expect(imgSrc).toContain("https://api.dicebear.com");
+      expect(imgSrc).toContain("https://*.dicebear.com");
+      
+      const serializedCsp = buildContentSecurityPolicy();
+      expect(serializedCsp).toMatch(/img-src[^;]*https:\/\/api\.dicebear\.com/);
+      expect(SECURITY_HEADERS["Content-Security-Policy"]).toMatch(/img-src[^;]*https:\/\/api\.dicebear\.com/);
+    });
+
+    it("should allow image sources for avatars, qr codes, unsplash, dicebear, and firebase storage", () => {
       const imgSrc = CSP_DIRECTIVES["img-src"];
       expect(imgSrc).toContain("'self'");
       expect(imgSrc).toContain("data:");
       expect(imgSrc).toContain("blob:");
       expect(imgSrc).toContain("https://images.unsplash.com");
+      expect(imgSrc).toContain("https://api.dicebear.com");
+      expect(imgSrc).toContain("https://*.dicebear.com");
       expect(imgSrc).toContain("https://*.googleusercontent.com");
       expect(imgSrc).toContain("https://firebasestorage.googleapis.com");
+    });
+
+    it("should enforce script-src directive protections, exclude unsafe-inline and unsafe-eval, and restrict script execution to authorized origins", () => {
+      const scriptSrc = CSP_DIRECTIVES["script-src"];
+      
+      // 1. Validates that script-src is defined and present
+      expect(scriptSrc).toBeDefined();
+      expect(Array.isArray(scriptSrc)).toBe(true);
+
+      // 2. Validates authorized 1st party and trusted infrastructure origins
+      expect(scriptSrc).toContain("'self'");
+      expect(scriptSrc).toContain("https://apis.google.com");
+      expect(scriptSrc).toContain("https://*.firebaseapp.com");
+      expect(scriptSrc).toContain("https://*.googleapis.com");
+
+      // 3. Strict exclusion of unsafe-inline and unsafe-eval across production policies
+      expect(scriptSrc).not.toContain("'unsafe-inline'");
+      expect(scriptSrc).not.toContain("'unsafe-eval'");
+
+      // 4. Prohibits arbitrary wildcards, insecure protocols, or untrusted external CDNs
+      expect(scriptSrc).not.toContain("*");
+      expect(scriptSrc).not.toContain("http:");
+      expect(scriptSrc).not.toContain("https:");
+      expect(scriptSrc.some((src) => src.includes("cdn.jsdelivr.net") || src.includes("unpkg.com"))).toBe(false);
+
+      // 5. Validates that the serialized CSP header contains the full strict script-src directive
+      const serializedCsp = buildContentSecurityPolicy();
+      expect(serializedCsp).toContain("script-src 'self' https://apis.google.com https://*.firebaseapp.com https://*.googleapis.com");
+      expect(serializedCsp).not.toMatch(/script-src[^;]*'unsafe-inline'/);
+      expect(serializedCsp).not.toMatch(/script-src[^;]*'unsafe-eval'/);
+    });
+
+    it("should verify HTML entrypoints and printable documents in components do not rely on inline onclick or inline script tags", () => {
+      const indexHtmlPath = path.join(process.cwd(), "index.html");
+      const offlineHtmlPath = path.join(process.cwd(), "public/offline.html");
+      const itemDetailPath = path.join(process.cwd(), "src/components/ItemDetailModal.tsx");
+      const itemCardPath = path.join(process.cwd(), "src/components/ItemCard.tsx");
+
+      const indexHtmlContent = fs.readFileSync(indexHtmlPath, "utf-8");
+      const offlineHtmlContent = fs.readFileSync(offlineHtmlPath, "utf-8");
+      const itemDetailContent = fs.readFileSync(itemDetailPath, "utf-8");
+      const itemCardContent = fs.readFileSync(itemCardPath, "utf-8");
+
+      // index.html should only have external script module tag, no inline script blocks
+      expect(indexHtmlContent).not.toMatch(/<script(?![^>]*src=)[^>]*>[\s\S]*?<\/script>/);
+
+      // offline.html should use external /offline.js
+      expect(offlineHtmlContent).not.toMatch(/<script(?![^>]*src=)[^>]*>[\s\S]*?<\/script>/);
+
+      // Components should not inject inline onclick or script tags into popup DOM
+      expect(itemDetailContent).not.toMatch(/onclick\s*=\s*["']window\.print\(\)["']/);
+      expect(itemDetailContent).not.toMatch(/<script>[\s\S]*?window\.print[\s\S]*?<\/script>/);
+
+      expect(itemCardContent).not.toMatch(/onclick\s*=\s*["']window\.print\(\)["']/);
+      expect(itemCardContent).not.toMatch(/<script>[\s\S]*?window\.print[\s\S]*?<\/script>/);
     });
 
     it("should allow connect-src for Firestore, Auth, Gemini API, and WebSockets", () => {
@@ -115,6 +184,7 @@ describe("Security Hardening: Security Headers & Source Maps (Correção 11)", (
       expect(headerMap["Strict-Transport-Security"]).toBe("max-age=31536000; includeSubDomains");
       expect(headerMap["Content-Security-Policy"]).toBeDefined();
       expect(headerMap["Content-Security-Policy"]).toContain("default-src 'self'");
+      expect(headerMap["Content-Security-Policy"]).toContain("https://api.dicebear.com");
       expect(headerMap["X-Frame-Options"]).toBeUndefined();
     });
 

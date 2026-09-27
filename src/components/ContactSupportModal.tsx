@@ -167,7 +167,7 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
   };
 
   const generateMailtoUrl = () => {
-    const dest = "localizamais6@gmail.com";
+    const dest = "localizamais0@gmail.com";
     const sub = `[IFPR Suporte - ${category}] ${subject || "Contato de Usuário"}`;
     const bodyLines = [
       `Olá Equipe de Atendimento do IFPR Campus Ivaiporã,`,
@@ -296,8 +296,8 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
                   <Mail className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
                   <span>
                     {language === "pt"
-                      ? "Cópia arquivada para a equipe de suporte: localizamais6@gmail.com"
-                      : "Archived copy to support team: localizamais6@gmail.com"}
+                      ? "Cópia arquivada para a equipe de suporte: localizamais0@gmail.com"
+                      : "Archived copy to support team: localizamais0@gmail.com"}
                   </span>
                 </div>
 
