@@ -4,7 +4,7 @@ import autoTable from "jspdf-autotable";
 import { LostFoundItem } from "../types";
 import { useApp } from "../context/AppContext";
 import { usePossessionVerification } from "../hooks/usePossessionVerification";
-import { formatDateTime, formatSafeDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, isItemNew, getItemAgeText } from "../lib/utils";
+import { formatDateTime, formatSafeDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, isItemNew, getItemAgeText, getTodayDateString, isFutureDate, validateItemOccurrenceDate, validateItemTextFields, ITEM_FIELD_LIMITS } from "../lib/utils";
 import { getItemPublicUrl, getItemQrValue } from "../lib/qrCodeUtils";
 import { QRCodeSVG } from "qrcode.react";
 import { RestrictedQRViewModal } from "./RestrictedQRViewModal";
@@ -138,6 +138,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const [editDescription, setEditDescription] = useState(currentItem?.description || "");
   const [editCategory, setEditCategory] = useState<string>(currentItem?.category || "OUTROS");
   const [editLocation, setEditLocation] = useState(currentItem?.location || "");
+  const [editDate, setEditDate] = useState(currentItem?.date || getTodayDateString());
   const [editColor, setEditColor] = useState(currentItem?.color || "");
   const [editBrand, setEditBrand] = useState(currentItem?.brand || "");
   const [editContactInfo, setEditContactInfo] = useState(currentItem?.contactInfo || "");
@@ -148,6 +149,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     setEditDescription(currentItem?.description || "");
     setEditCategory(currentItem?.category || "OUTROS");
     setEditLocation(currentItem?.location || "");
+    setEditDate(currentItem?.date || getTodayDateString());
     setEditColor(currentItem?.color || "");
     setEditBrand(currentItem?.brand || "");
     setEditContactInfo(currentItem?.contactInfo || "");
@@ -157,6 +159,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     currentItem?.description,
     currentItem?.category,
     currentItem?.location,
+    currentItem?.date,
     currentItem?.color,
     currentItem?.brand,
     currentItem?.contactInfo,
@@ -949,12 +952,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     setIsReopeningReturn(true);
     try {
       await reopenItemReturn(item.id, reopenReason.trim());
-      addToast(`A devolução do item "${item.title}" foi reaberta. Ocorrência ativa novamente.`, "success");
       setReopenModalOpen(false);
       onClose();
     } catch (err) {
-      console.error(err);
-      addToast("Erro ao reabrir a devolução.", "error");
+      console.error("[handleReopenReturnSubmit] Erro:", err);
     } finally {
       setIsReopeningReturn(false);
     }
@@ -971,12 +972,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     setIsRegisteringDestination(true);
     try {
       await registerItemDestination(item.id, destinationType, destinationNotes.trim());
-      addToast(`Destinação do objeto (${destinationType}) registrada com sucesso. Item encerrado.`, "success");
       setDestinationModalOpen(false);
       onClose();
     } catch (err) {
-      console.error(err);
-      addToast("Erro ao registrar a destinação do item.", "error");
+      console.error("[handleDestinationSubmit] Erro:", err);
     } finally {
       setIsRegisteringDestination(false);
     }
@@ -1122,6 +1121,23 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       addToast("O título do objeto não pode ficar em branco.", "error");
       return;
     }
+    const textValidation = validateItemTextFields({
+      title: editTitle,
+      description: editDescription,
+      location: editLocation,
+      color: editColor,
+      brand: editBrand,
+      contactInfo: editContactInfo,
+    }, false);
+    if (!textValidation.isValid) {
+      addToast(textValidation.error || "Limite de caracteres excedido.", "error");
+      return;
+    }
+    const dateValidation = validateItemOccurrenceDate(editDate, "A data da ocorrência");
+    if (!dateValidation.isValid) {
+      addToast(dateValidation.error || "Data inválida ou futura não permitida.", "error");
+      return;
+    }
     setIsSavingEdit(true);
     try {
       await updateItemData(currentItem.id, {
@@ -1129,6 +1145,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
         description: editDescription.trim(),
         category: editCategory as any,
         location: editLocation.trim(),
+        date: editDate.trim(),
         color: editColor.trim(),
         brand: editBrand.trim(),
         contactInfo: editContactInfo.trim(),
@@ -1458,7 +1475,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <span>{item.type}</span>
               </div>
 
-              <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white">
+              <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white break-words">
                 {item.title}
               </h2>
             </div>
@@ -1500,7 +1517,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-500">
                 Descrição Detalhada
               </h4>
-              <p className="text-xs sm:text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed bg-neutral-50 dark:bg-neutral-800/80 p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-700">
+              <p className="text-xs sm:text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed bg-neutral-50 dark:bg-neutral-800/80 p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-700 break-words">
                 {item.description}
               </p>
             </div>
@@ -1702,6 +1719,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                       setEditDescription(item.description);
                       setEditCategory(item.category);
                       setEditLocation(item.location);
+                      setEditDate(item.date || getTodayDateString());
                       setEditColor(item.color || "");
                       setEditBrand(item.brand || "");
                       setEditContactInfo(item.contactInfo || "");
@@ -2414,12 +2432,26 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
             <form onSubmit={handleSaveEditedItem} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                  Título / Nome do Objeto *
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                    Título / Nome do Objeto *
+                  </label>
+                  <span
+                    id="edit-title-char-counter"
+                    className={`text-[10px] font-mono font-medium ${
+                      editTitle.length >= ITEM_FIELD_LIMITS.TITLE
+                        ? "text-amber-600 dark:text-amber-400 font-bold"
+                        : "text-neutral-400 dark:text-neutral-500"
+                    }`}
+                    title={`Limite máximo: ${ITEM_FIELD_LIMITS.TITLE} caracteres`}
+                  >
+                    {editTitle.length} / {ITEM_FIELD_LIMITS.TITLE} caracteres
+                  </span>
+                </div>
                 <input
                   type="text"
                   required
+                  maxLength={ITEM_FIELD_LIMITS.TITLE}
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
@@ -2427,11 +2459,25 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                  Descrição Detalhada
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                    Descrição Detalhada
+                  </label>
+                  <span
+                    id="edit-description-char-counter"
+                    className={`text-[10px] font-mono font-medium ${
+                      editDescription.length >= ITEM_FIELD_LIMITS.DESCRIPTION
+                        ? "text-amber-600 dark:text-amber-400 font-bold"
+                        : "text-neutral-400 dark:text-neutral-500"
+                    }`}
+                    title={`Limite máximo: ${ITEM_FIELD_LIMITS.DESCRIPTION} caracteres`}
+                  >
+                    {editDescription.length} / {ITEM_FIELD_LIMITS.DESCRIPTION} caracteres
+                  </span>
+                </div>
                 <textarea
                   rows={3}
+                  maxLength={ITEM_FIELD_LIMITS.DESCRIPTION}
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
@@ -2459,11 +2505,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Localização no Campus
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                      Localização no Campus
+                    </label>
+                    <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+                      Máx. {ITEM_FIELD_LIMITS.LOCATION} carac.
+                    </span>
+                  </div>
                   <input
                     type="text"
+                    maxLength={ITEM_FIELD_LIMITS.LOCATION}
                     value={editLocation}
                     onChange={(e) => setEditLocation(e.target.value)}
                     className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
@@ -2471,13 +2523,33 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 </div>
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                  Data da Ocorrência *
+                </label>
+                <input
+                  type="date"
+                  required
+                  max={getTodayDateString()}
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                />
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Cor Predominante
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                      Cor Predominante
+                    </label>
+                    <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+                      Máx. {ITEM_FIELD_LIMITS.COLOR} carac.
+                    </span>
+                  </div>
                   <input
                     type="text"
+                    maxLength={ITEM_FIELD_LIMITS.COLOR}
                     value={editColor}
                     onChange={(e) => setEditColor(e.target.value)}
                     className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
@@ -2485,11 +2557,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Marca / Fabricante
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                      Marca / Fabricante
+                    </label>
+                    <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+                      Máx. {ITEM_FIELD_LIMITS.BRAND} carac.
+                    </span>
+                  </div>
                   <input
                     type="text"
+                    maxLength={ITEM_FIELD_LIMITS.BRAND}
                     value={editBrand}
                     onChange={(e) => setEditBrand(e.target.value)}
                     className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
@@ -2498,11 +2576,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                  Contato / Instruções de Devolução
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                    Contato / Instruções de Devolução
+                  </label>
+                  <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+                    Máx. {ITEM_FIELD_LIMITS.CONTACT_INFO} carac.
+                  </span>
+                </div>
                 <input
                   type="text"
+                  maxLength={ITEM_FIELD_LIMITS.CONTACT_INFO}
                   value={editContactInfo}
                   onChange={(e) => setEditContactInfo(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"

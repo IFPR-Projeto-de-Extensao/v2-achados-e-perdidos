@@ -11,6 +11,8 @@ import {
   formatSafeDateTime,
   isItemNew,
   getItemAgeText,
+  isFutureDate,
+  validateItemOccurrenceDate,
 } from "./utils";
 
 describe("Date Utilities & Invalid Time Value Safety", () => {
@@ -222,6 +224,24 @@ describe("String Sanitization & Safe Transformation Utilities", () => {
 
     it("should return empty string if all inputs are null or undefined", () => {
       expect(safeTextCorpus(null, undefined, "")).toBe("");
+    });
+  });
+
+  describe("isFutureDate & validateItemOccurrenceDate", () => {
+    it("should correctly identify past, present, and future dates", () => {
+      const today = new Date();
+      const past = new Date(today.getFullYear() - 1, 0, 1);
+      const future = new Date(today.getFullYear() + 2, 0, 1);
+
+      expect(isFutureDate(past)).toBe(false);
+      expect(isFutureDate(today)).toBe(false);
+      expect(isFutureDate(future)).toBe(true);
+    });
+
+    it("should validate occurrence dates and reject future dates", () => {
+      expect(validateItemOccurrenceDate("2020-01-01").isValid).toBe(true);
+      expect(validateItemOccurrenceDate("2099-01-01").isValid).toBe(false);
+      expect(validateItemOccurrenceDate("").isValid).toBe(false);
     });
   });
 });

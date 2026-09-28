@@ -7,7 +7,7 @@ import { ItemCategory, LostFoundItem } from "../types";
 import { auth } from "../lib/firebase";
 import { isAccountBlocked, resolveAccountStatus } from "../lib/accountStatusUtils";
 import { safeFetchJson, clientAnalyzeObject, clientAnalyzeImage, requestCategorySuggestion, AICategorySuggestion } from "../lib/apiHelper";
-import { triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, safeToLower, safeIncludes, safeTextCorpus, sanitizeQuery, getTodayDateString, formatPhone, isValidPhone } from "../lib/utils";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, safeToLower, safeIncludes, safeTextCorpus, sanitizeQuery, getTodayDateString, formatPhone, isValidPhone, isFutureDate, validateItemOccurrenceDate, validateItemTextFields, ITEM_FIELD_LIMITS } from "../lib/utils";
 import { compressImage, formatBytes } from "../lib/imageCompression";
 import {
   Sparkles,
@@ -640,6 +640,25 @@ export const RegisterItemView: React.FC = () => {
       return;
     }
 
+    const textValidation = validateItemTextFields({
+      title,
+      description,
+      location,
+      color,
+      brand,
+      contactInfo,
+    }, false);
+    if (!textValidation.isValid) {
+      addToast(textValidation.error || "Limite de caracteres excedido.", "error");
+      return;
+    }
+
+    const dateValidation = validateItemOccurrenceDate(date, "A data da ocorrência");
+    if (!dateValidation.isValid) {
+      addToast(dateValidation.error || "Data inválida ou futura não permitida.", "error");
+      return;
+    }
+
     if (contactPhone && !isValidPhone(contactPhone)) {
       addToast("Telefone de contato inválido. Informe o DDD e o número completo no formato (XX) 9XXXX-XXXX.", "error");
       return;
@@ -922,6 +941,7 @@ export const RegisterItemView: React.FC = () => {
               type="text"
               value={aiPrompt}
               onChange={(e) => setAiPrompt(e.target.value)}
+              maxLength={ITEM_FIELD_LIMITS.AI_PROMPT}
               placeholder="Ex: Encontrei uma calculadora científica Casio prata no lab de informática B2..."
               className="w-full pr-10 px-4 py-2.5 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
             />
@@ -975,18 +995,32 @@ export const RegisterItemView: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Título */}
           <div>
-            <label
-              htmlFor="title-input"
-              className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
-            >
-              Título do Objeto <span className="text-red-500" aria-hidden="true">*</span>
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label
+                htmlFor="title-input"
+                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+              >
+                Título do Objeto <span className="text-red-500" aria-hidden="true">*</span>
+              </label>
+              <span
+                id="title-char-counter"
+                className={`text-[10px] font-mono font-medium ${
+                  title.length >= ITEM_FIELD_LIMITS.TITLE
+                    ? "text-amber-600 dark:text-amber-400 font-bold"
+                    : "text-neutral-400 dark:text-neutral-500"
+                }`}
+                title={`Limite máximo: ${ITEM_FIELD_LIMITS.TITLE} caracteres`}
+              >
+                {title.length} / {ITEM_FIELD_LIMITS.TITLE} caracteres
+              </span>
+            </div>
             <input
               id="title-input"
               type="text"
               required
               aria-required="true"
               aria-label="Título ou nome descritivo do objeto"
+              maxLength={ITEM_FIELD_LIMITS.TITLE}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Ex: Garrafa Térmica Kouda Verde 750ml"
@@ -1071,16 +1105,22 @@ export const RegisterItemView: React.FC = () => {
 
           {/* Cor */}
           <div>
-            <label
-              htmlFor="color-input"
-              className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
-            >
-              Cor Predominante
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label
+                htmlFor="color-input"
+                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+              >
+                Cor Predominante
+              </label>
+              <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+                Máx. {ITEM_FIELD_LIMITS.COLOR} carac.
+              </span>
+            </div>
             <input
               id="color-input"
               type="text"
               aria-label="Cor predominante do objeto"
+              maxLength={ITEM_FIELD_LIMITS.COLOR}
               value={color}
               onChange={(e) => setColor(e.target.value)}
               placeholder="Ex: Verde escuro / Prata"
@@ -1090,16 +1130,22 @@ export const RegisterItemView: React.FC = () => {
 
           {/* Marca */}
           <div>
-            <label
-              htmlFor="brand-input"
-              className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
-            >
-              Marca / Modelo / Fabricante
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label
+                htmlFor="brand-input"
+                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+              >
+                Marca / Modelo / Fabricante
+              </label>
+              <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+                Máx. {ITEM_FIELD_LIMITS.BRAND} carac.
+              </span>
+            </div>
             <input
               id="brand-input"
               type="text"
               aria-label="Marca ou fabricante do objeto"
+              maxLength={ITEM_FIELD_LIMITS.BRAND}
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
               placeholder="Ex: Casio, Nike, Kouda, JBL, IFPR"
@@ -1145,6 +1191,7 @@ export const RegisterItemView: React.FC = () => {
               required
               aria-required="true"
               aria-label="Data da ocorrência"
+              max={getTodayDateString()}
               value={date}
               onChange={(e) => setDate(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
@@ -1155,12 +1202,25 @@ export const RegisterItemView: React.FC = () => {
         {/* Descrição Completa */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label
-              htmlFor="description-input"
-              className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
-            >
-              Descrição Completa e Detalhes <span className="text-red-500" aria-hidden="true">*</span>
-            </label>
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="description-input"
+                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+              >
+                Descrição Completa e Detalhes <span className="text-red-500" aria-hidden="true">*</span>
+              </label>
+              <span
+                id="description-char-counter"
+                className={`text-[10px] font-mono font-medium ${
+                  description.length >= ITEM_FIELD_LIMITS.DESCRIPTION
+                    ? "text-amber-600 dark:text-amber-400 font-bold"
+                    : "text-neutral-400 dark:text-neutral-500"
+                }`}
+                title={`Limite máximo: ${ITEM_FIELD_LIMITS.DESCRIPTION} caracteres`}
+              >
+                {description.length} / {ITEM_FIELD_LIMITS.DESCRIPTION} caracteres
+              </span>
+            </div>
 
             <button
               type="button"
@@ -1191,6 +1251,7 @@ export const RegisterItemView: React.FC = () => {
             aria-required="true"
             aria-label="Descrição detalhada do objeto"
             rows={4}
+            maxLength={ITEM_FIELD_LIMITS.DESCRIPTION}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Descreva o estado de conservação, marcas de uso, sinais particulares ou circunstâncias em que o pertence foi visto/encontrado..."
@@ -1447,18 +1508,24 @@ export const RegisterItemView: React.FC = () => {
           </div>
 
           <div>
-            <label
-              htmlFor="contact-input"
-              className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
-            >
-              E-mail / Ponto de Guarda <span className="text-red-500" aria-hidden="true">*</span>
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label
+                htmlFor="contact-input"
+                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+              >
+                E-mail / Ponto de Guarda <span className="text-red-500" aria-hidden="true">*</span>
+              </label>
+              <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+                Máx. {ITEM_FIELD_LIMITS.CONTACT_INFO} carac.
+              </span>
+            </div>
             <input
               id="contact-input"
               type="text"
               required
               aria-required="true"
               aria-label="E-mail ou ponto onde o objeto se encontra guardado"
+              maxLength={ITEM_FIELD_LIMITS.CONTACT_INFO}
               value={contactInfo}
               onChange={(e) => setContactInfo(e.target.value)}
               placeholder="Ex: Guarita da Portaria Principal ou email@ifpr.edu.br"

@@ -71,3 +71,24 @@ export const DEFAULT_MAINTENANCE_MESSAGE =
   "Estamos efetuando uma manutenção preventiva no banco de dados do Achados & Perdidos do IFPR. As consultas e registros estão temporariamente pausados. Por favor, volte em instantes!";
 
 export const OFFICIAL_DISCORD_INVITE_URL = "https://discord.gg/uV2qUDrHcw";
+
+/**
+ * Limites máximos de caracteres para campos de texto de ocorrências
+ * Definidos com base em auditoria de layout, cartões, relatórios PDF e persistência:
+ * - TITLE: 100 caracteres (identificador primordial, cabeçalho de cards, prevenção de quebra de layout)
+ * - DESCRIPTION: 1000 caracteres (detalhes, marcas de uso, circunstâncias, proteção contra buffer overflow)
+ * - LOCATION: 120 caracteres (especificação de setor/bloco/sala/laboratório no campus)
+ * - COLOR: 50 caracteres (especificação de cores predominantes)
+ * - BRAND: 60 caracteres (marca, modelo ou fabricante)
+ * - CONTACT_INFO: 150 caracteres (instruções de contato ou local de guarda)
+ * - AI_PROMPT: 500 caracteres (texto de comando/ditado para análise Gemini)
+ */
+export const ITEM_FIELD_LIMITS = {
+  TITLE: 100,
+  DESCRIPTION: 1000,
+  LOCATION: 120,
+  COLOR: 50,
+  BRAND: 60,
+  CONTACT_INFO: 150,
+  AI_PROMPT: 500,
+} as const;

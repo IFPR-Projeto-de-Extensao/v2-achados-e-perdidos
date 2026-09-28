@@ -57,7 +57,7 @@ export default async function handler(req: any, res: any) {
   const adminAuth = getAdminAuth();
   if (!adminAuth) {
     console.error("[Analytics Metrics Security] Firebase Admin Auth não inicializado no servidor.");
-    return res.status(500).json({
+    return res.status(503).json({
       success: false,
       error: "Serviço de autenticação administrativo temporariamente indisponível.",
       code: "AUTH_SERVICE_UNAVAILABLE",

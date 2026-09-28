@@ -148,7 +148,7 @@ export const UploadStatusIndicator: React.FC = () => {
         {/* Header Bar */}
         <div
           id="upload-status-header"
-          className="px-4 py-3 bg-neutral-50 dark:bg-neutral-800/80 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between cursor-pointer select-none"
+          className="px-4 py-3 bg-neutral-50 dark:bg-neutral-800/80 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between cursor-pointer"
           onClick={() => {
             vibrateClick();
             setIsExpanded(!isExpanded);

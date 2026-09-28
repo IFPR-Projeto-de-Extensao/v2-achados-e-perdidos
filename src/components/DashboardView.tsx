@@ -338,25 +338,29 @@ export const DashboardView: React.FC = () => {
       return;
     }
 
-    await addUserByAdmin({
-      name: newUserName,
-      email: newUserEmail,
-      role: newUserRole,
-      courseOrDept: newUserDept || "IFPR Campus Ivaiporã",
-      registrationNumber: newUserRegNumber || "2026100" + Math.floor(100 + Math.random() * 900),
-      reputationScore: 10,
-      avatarUrl: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
-    });
+    try {
+      await addUserByAdmin({
+        name: newUserName,
+        email: newUserEmail,
+        role: newUserRole,
+        courseOrDept: newUserDept || "IFPR Campus Ivaiporã",
+        registrationNumber: newUserRegNumber || "2026100" + Math.floor(100 + Math.random() * 900),
+        reputationScore: 10,
+        avatarUrl: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
+      });
 
-    await logAdminAction(
-      "NOVO_USUARIO",
-      `Cadastrou manualmente o usuário '${newUserName}' (${newUserRole}) no IFPR Campus Ivaiporã.`
-    );
+      await logAdminAction(
+        "NOVO_USUARIO",
+        `Cadastrou manualmente o usuário '${newUserName}' (${newUserRole}) no IFPR Campus Ivaiporã.`
+      );
 
-    setNewUserName("");
-    setNewUserEmail("");
-    setNewUserRegNumber("");
-    setIsAddingUserOpen(false);
+      setNewUserName("");
+      setNewUserEmail("");
+      setNewUserRegNumber("");
+      setIsAddingUserOpen(false);
+    } catch (_) {
+      // Falha tratada pelo addUserByAdmin com notificação de erro. O modal permanece aberto com os dados preenchidos para nova tentativa.
+    }
   };
 
   const handleSendAdminNotification = async (e: React.FormEvent) => {

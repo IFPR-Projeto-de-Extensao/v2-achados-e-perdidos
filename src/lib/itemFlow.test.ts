@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { LostFoundItem, ItemStatus, UserRole } from "../types";
+import { validateItemOccurrenceDate } from "./utils";
 
 // Validation helper replicating core business logic
 export function validateItemInput(item: {
@@ -7,6 +8,7 @@ export function validateItemInput(item: {
   description?: string;
   location?: string;
   type?: string;
+  date?: string;
 }): { isValid: boolean; error?: string } {
   if (!item.title || !item.title.trim()) {
     return { isValid: false, error: "O título do objeto é obrigatório." };
@@ -19,6 +21,12 @@ export function validateItemInput(item: {
   }
   if (!item.type || (item.type !== "PERDIDO" && item.type !== "ENCONTRADO")) {
     return { isValid: false, error: "O tipo do objeto deve ser PERDIDO ou ENCONTRADO." };
+  }
+  if (item.date !== undefined) {
+    const dateVal = validateItemOccurrenceDate(item.date, "A data da ocorrência");
+    if (!dateVal.isValid) {
+      return { isValid: false, error: dateVal.error };
+    }
   }
   return { isValid: true };
 }
@@ -135,6 +143,29 @@ describe("Fluxo de Itens do Localiza+ (Validação e Autorização)", () => {
       });
       expect(result.isValid).toBe(false);
       expect(result.error).toBe("O tipo do objeto deve ser PERDIDO ou ENCONTRADO.");
+    });
+
+    it("deve rejeitar item informado com data futura", () => {
+      const result = validateItemInput({
+        title: "Fones de Ouvido",
+        description: "Fones bluetooth esquecidos",
+        location: "Biblioteca",
+        type: "PERDIDO",
+        date: "2099-12-31",
+      });
+      expect(result.isValid).toBe(false);
+      expect(result.error).toContain("não pode ser posterior à data atual");
+    });
+
+    it("deve aceitar item informado com data passada ou de hoje", () => {
+      const resultPast = validateItemInput({
+        title: "Fones de Ouvido",
+        description: "Fones bluetooth esquecidos",
+        location: "Biblioteca",
+        type: "PERDIDO",
+        date: "2026-01-10",
+      });
+      expect(resultPast.isValid).toBe(true);
     });
   });
 

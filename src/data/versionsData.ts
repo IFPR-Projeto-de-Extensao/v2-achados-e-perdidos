@@ -24,12 +24,246 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.36",
+    codename: "API Endpoints Resilience & HTTP Error Classifier",
+    releaseDate: "28/09/2026",
+    releaseDateTime: "28 de Setembro de 2026 • 23:25 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Auditoria técnica completa e blindagem de resiliência em todos os endpoints '/api/*' e servidor Express do Localiza+ (IFPR Campus Ivaiporã): 1) Inventário e auditoria detalhada de 100% dos endpoints (/api/support/send-feedback, /api/system/config, /api/analytics/track, /api/analytics/metrics, /api/debug/env, /api/items/notify-novos-achados, /api/items/notify-novas-perdas, /api/admin/delete-user, /api/admin/master-wipe, /api/ai/*, /api/gemini/semantic-search, /api/signature/*); 2) Eliminação de erros genéricos HTTP 500 na integração com IA via implementação do classificador especializado 'classifyGeminiError', mapeando com precisão Rate Limit/Quota (429), filtros de segurança/argumentos inválidos (400), chave não autorizada/inválida (503) e indisponibilidade de upstream (503/502); 3) Suporte expandido a chaves de API multi-origem (GEMINI_API_KEY, GOOGLE_API_KEY, VITE_GEMINI_API_KEY, API_KEY); 4) Ajuste defensivo em endpoints administrativos de configuração e métricas para retornar HTTP 503 (AUTH_SERVICE_UNAVAILABLE) quando o Firebase Admin Auth estiver indisponível; 5) Inclusão de flags booleanas de diagnóstico para GEMINI_AI e FIREBASE_ADMIN em /api/debug/env sem qualquer vazamento de secrets; 6) Criação da suíte de testes automatizados apiEndpointsAudit.test.ts.",
+    additions: [
+      {
+        id: "v1936-add-1",
+        title: "Classificador Especializado de Resiliência de Erros da IA (classifyGeminiError)",
+        description: "Implementação da função classifyGeminiError para mapear status codes granulares (429 Rate Limit, 400 Safety/Invalid Args, 503 Service Unavailable, 502 Upstream Error) nos 6 endpoints de inteligência artificial em server.ts.",
+        module: "IA_GEMINI",
+        tag: "Resiliência & APIs",
+      },
+      {
+        id: "v1936-add-2",
+        title: "Suíte Automatizada de Auditoria de Endpoints e Diagnósticos",
+        description: "Criação de src/lib/apiEndpointsAudit.test.ts cobrindo cenários de rate limit, credenciais expiradas, bloqueio de segurança e mascaramento estrito de secrets nos diagnósticos de ambiente.",
+        module: "ADMIN",
+        tag: "Testes Automatizados",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1936-fix-1",
+        title: "Substituição de Erros Genéricos HTTP 500 por Códigos Semânticos Precisos",
+        description: "Eliminação de respostas 500 não tratadas em chamadas à API Gemini e serviços externos, fornecendo mensagens descritivas estruturadas em JSON com códigos de erro específicos.",
+        module: "VERCEL",
+        tag: "Serverless & Backend",
+      },
+      {
+        id: "v1936-fix-2",
+        title: "Resolução Multi-Origem para Chaves de Ambiente do Google Gemini",
+        description: "Aprimoramento de getGenAIClient para consultar transparentemente GEMINI_API_KEY, GOOGLE_API_KEY, VITE_GEMINI_API_KEY e API_KEY, prevenindo falhas de inicialização em diferentes ambientes de hospedagem.",
+        module: "IA_GEMINI",
+        tag: "Configuração de Ambiente",
+      },
+    ],
+    stats: {
+      additionsCount: 2,
+      fixesCount: 2,
+    },
+  },
+  {
+    version: "v1.9.35",
+    codename: "Text Selection & Accessibility Interaction Guard",
+    releaseDate: "28/09/2026",
+    releaseDateTime: "28 de Setembro de 2026 • 23:15 BRT",
+    type: "PATCH",
+    summary: "Auditoria técnica e correção de acessibilidade nos bloqueios de seleção de texto (select-none / user-select: none) em todo o sistema Localiza+ (IFPR Campus Ivaiporã): 1) Identificação e eliminação da causa raiz global na tag <body> do index.html (<body class=\"antialiased select-none\">), que impedia nativamente a seleção e cópia de quaisquer textos no aplicativo (títulos, descrições de objetos, relatórios, códigos de validação, termos de uso, logs e mensagens); 2) Remoção de bloqueios indevidos em cabeçalhos de versões (VersionHistoryView), banner PWA (PWAInstallBanner) e cabeçalho de status de upload (UploadStatusIndicator); 3) Preservação rigorosa e contextual de bloqueios legítimos (Categoria A) indispensáveis para a integridade interativa: canvas de assinatura digital (DigitalSignaturePad), botões de ação e download, labels de alternância rápida de checkboxes e tags de imagens institucionais contra ghosting de arraste; 4) Suíte automatizada de testes (textSelectionAccessibility.test.ts) validando a liberdade de seleção de texto em componentes de leitura e a blindagem em controles interativos.",
+    additions: [
+      {
+        id: "v1935-add-1",
+        title: "Suíte Automatizada de Acessibilidade de Seleção de Texto",
+        description: "Implementação de testes em src/lib/textSelectionAccessibility.test.ts para assegurar que textos em index.html, VersionHistoryView, PWAInstallBanner e componentes textuais não possuam bloqueio indevido, preservando a proteção legítima no canvas de assinatura e botões.",
+        module: "GERAL",
+        tag: "Acessibilidade & Testes",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1935-fix-1",
+        title: "Eliminação do Bloqueio Global de Seleção de Texto no index.html",
+        description: "Remoção da classe 'select-none' do elemento <body> no index.html, restaurando o comportamento nativo de seleção, cópia e colagem em todos os componentes, textos informativos, detalhes de itens e relatórios.",
+        module: "GERAL",
+        tag: "Acessibilidade WCAG",
+      },
+      {
+        id: "v1935-fix-2",
+        title: "Liberação de Cópia em Cabeçalhos de Versão e Banners Informativos",
+        description: "Remoção de 'select-none' nos cabeçalhos de milestone do VersionHistoryView, PWAInstallBanner e UploadStatusIndicator, permitindo a cópia de números de versão, codenames, datas e mensagens de status.",
+        module: "GERAL",
+        tag: "Usabilidade & Interface",
+      },
+    ],
+    stats: {
+      additionsCount: 1,
+      fixesCount: 2,
+    },
+  },
+  {
+    version: "v1.9.34",
+    codename: "Administrative User Deletion Integrity Guard",
+    releaseDate: "28/09/2026",
+    releaseDateTime: "28 de Setembro de 2026 • 22:50 BRT",
+    type: "PATCH",
+    isCurrent: false,
+    summary: "Auditoria e blindagem técnica completa do fluxo de exclusão administrativa de usuários no Localiza+ (IFPR Campus Ivaiporã), eliminando qualquer risco de inconsistência entre Firebase Authentication e Firestore ou de falso sucesso na interface: 1) Resolução da falha em que a exclusão no Firestore falhava após a remoção no Firebase Auth sem que o backend acusasse erro, evitando que a interface apresentasse falso sucesso total enquanto o perfil permanecia no banco; 2) Tratamento explícito e granular de falhas intermediárias com código de status HTTP 500/FIRESTORE_DELETE_FAILED_AFTER_AUTH, registro de log de auditoria forense imutável com ação ACCOUNT_DELETION_INCONSISTENCY e detalhamento técnico para reconciliação; 3) Garantia de integridade do estado local (AppContext deleteUser): em falha parcial, o usuário não é removido falsamente da interface, sendo mantido com alerta de reconciliação para reintento pelo administrador; 4) Suporte a reconciliação e operações idempotentes: usuários com conta Auth já removida (auth/user-not-found) ou documento Firestore ausente resolvem com idempotência e completam a limpeza; 5) Suíte automatizada de testes cobrindo os 10 cenários obrigatórios (sucesso completo, falha no Auth, falha no Firestore após Auth, idempotência, segurança RBAC, bloqueio de autoexclusão e consistência de estado local).",
+    additions: [
+      {
+        id: "v1934-add-1",
+        title: "Bateria de Testes Automatizados de Integridade da Exclusão de Usuários",
+        description: "Criação de suíte de testes em src/lib/adminUserDeletionIntegrity.test.ts cobrindo exaustivamente os 10 cenários da exclusão administrativa (Casos A, B, C, D idempotentes, RBAC e reconciliação).",
+        module: "ADMIN",
+        tag: "Testes Automatizados",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1934-fix-1",
+        title: "Detecção e Tratamento de Falhas de Exclusão no Firestore Após Sucesso no Firebase Auth",
+        description: "Correção de api/admin/delete-user.ts e server.ts para não retornar HTTP 200 de sucesso quando o Firestore falhar após a exclusão do Auth, registrando log imutável de ACCOUNT_DELETION_INCONSISTENCY e permitindo reconciliação.",
+        module: "AUTH",
+        tag: "Integridade de Dados",
+      },
+      {
+        id: "v1934-fix-2",
+        title: "Proteção contra Falsa Exclusão Visual no Estado Local do Cliente",
+        description: "Atualização de deleteUser no AppContext para validar confirmação completa de ambas as fontes de dados, mantendo o usuário na interface com aviso específico de reconciliação em caso de falha parcial.",
+        module: "ADMIN",
+        tag: "Resiliência da Interface",
+      },
+    ],
+    stats: {
+      additionsCount: 1,
+      fixesCount: 2,
+    },
+  },
+  {
+    version: "v1.9.33",
+    codename: "Administrative Operations & Batch Persistence Integrity Guard",
+    releaseDate: "28/09/2026",
+    releaseDateTime: "28 de Setembro de 2026 • 22:15 BRT",
+    type: "PATCH",
+    isCurrent: false,
+    summary: "Auditoria e correção definitiva da integridade de operações administrativas e em lote no Localiza+ (IFPR Campus Ivaiporã), eliminando qualquer possibilidade de falso sucesso ou divergência entre estado local e banco de dados: 1) Regra estrita de confirmação (Firestore confirmou ➔ atualizar estado local ➔ exibir sucesso); 2) Eliminação de simulação de sucesso e atualizações otimistas desprovidas de confirmação em operações em lote (bulkUpdateItemStatus, bulkDeleteItems, approveAllPendingUsers, addUserByAdmin, updateMaintenanceCustomMessage, toggleMaintenanceMode, updateBackupScheduleConfig, executeFirestoreBackupNow, sendNotificationToUser e templates); 3) Tratamento explícito e granular de cenários em lote: Cenário A (todos confirmados ➔ sucesso total), Cenário B (falha parcial ➔ apenas confirmados atualizam estado local, aviso transparente com contagem real de sucessos e falhas), Cenário C (todas falham ➔ nenhuma alteração aplicada ao estado local, mensagem de erro compreensível); 4) Re-lançamento de exceções em rotinas administrativas para manter modais abertos e permitir novas tentativas; 5) Suíte automatizada de testes cobrindo os 7 cenários obrigatórios (sucesso individual, falha individual, lote total, lote parcial, lote falho, exceção inesperada e concorrência).",
+    additions: [
+      {
+        id: "v1933-add-1",
+        title: "Módulo de Operações Administrativas e Lotes Resilientes (adminBatchOperations)",
+        description: "Implementação de funções autoritativas em src/lib/adminBatchOperations.ts para governança de lote e rastreamento rigoroso de itens confirmados vs falhos com statusSummary explícito.",
+        module: "ADMIN",
+        tag: "Integridade & Governança",
+      },
+      {
+        id: "v1933-add-2",
+        title: "Suíte de Testes de Integridade Administrativa e Resistência a Falhas de Persistência",
+        description: "Criação de bateria de testes automatizados em src/lib/adminOperationsIntegrity.test.ts cobrindo os 7 cenários obrigatórios de persistência individual, lote e concorrência.",
+        module: "ADMIN",
+        tag: "Testes Automatizados",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1933-fix-1",
+        title: "Eliminação de Falsos Sucessos e Atualizações Otimistas Desconectadas no Firestore",
+        description: "Correção de todas as rotinas administrativas no AppContext, ObjectsView e DashboardView para que o estado local e os toasts de sucesso sejam disparados apenas após a confirmação inequívoca da Promise do Firestore, sem persistências simuladas.",
+        module: "FIRESTORE",
+        tag: "Consistência & Resiliência",
+      },
+    ],
+    stats: {
+      additionsCount: 2,
+      fixesCount: 1,
+    },
+  },
+  {
+    version: "v1.9.32",
+    codename: "Item Text Field Character Limits & Deep Validation Guard",
+    releaseDate: "28/09/2026",
+    releaseDateTime: "28 de Setembro de 2026 • 20:30 BRT",
+    type: "PATCH",
+    isCurrent: false,
+    summary: "Implementação de limites máximos e auditoria rigorosa de campos de texto no Localiza+ (IFPR Campus Ivaiporã), eliminando quebras visuais e distorção de layout provocadas por conteúdos excessivamente longos: 1) Limite máximo coerente de 100 caracteres para o Título do Item com contador dinâmico ('X / 100 caracteres') no cadastro (RegisterItemView) e na edição (ItemDetailModal); 2) Limites diferenciados em conformidade com a finalidade de cada campo: Descrição (1000 caracteres com contador), Localização (120 caracteres), Cor Predominante (50 caracteres), Marca/Modelo (60 caracteres), Contato/Instruções (150 caracteres) e Prompt IA (500 caracteres); 3) Defesa em profundidade com validação pré-persistência e pré-enfileiramento offline em AppContext (addItem, updateItemData e processSyncQueue), impedindo gravação ou avanço para fila offline de dados inválidos mesmo em caso de manipulação do DOM; 4) Preservação integral de dados existentes no banco sem migrações destrutivas; 5) Suíte completa de testes automatizados unitários e de integração cobrindo todos os cenários de borda, limites exatos, tentativas de evasão e fluxos online/offline.",
+    additions: [
+      {
+        id: "v1932-add-1",
+        title: "Centralização de Limites de Texto e Utilitário de Validação em Profundidade (ITEM_FIELD_LIMITS & validateItemTextFields)",
+        description: "Definição de constantes de limites em src/lib/constants.ts e função de validação rigorosa em src/lib/utils.ts, assegurando fonte única de verdade para restrições de tamanho de campos de texto.",
+        module: "GERAL",
+        tag: "Validação & Integridade",
+      },
+      {
+        id: "v1932-add-2",
+        title: "Contadores Dinâmicos de Caracteres no Frontend ('X / LIMITE caracteres')",
+        description: "Adição de feedback visual em tempo real nos campos de Título e Descrição em RegisterItemView e ItemDetailModal, alertando o usuário sobre a contagem de caracteres e limite máximo suportado.",
+        module: "GERAL",
+        tag: "Interface do Usuário",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1932-fix-1",
+        title: "Blindagem Pré-Persistência e Bloqueio de Textos Excessivos no Cadastro, Edição e Sincronização Offline",
+        description: "Validação programática pré-persistência nas funções addItem, updateItemData e no processador de sincronização offline em AppContext, impedindo que textos acima do limite alcancem o Firestore ou entrem na fila local mesmo em tentativas de adulteração de DOM.",
+        module: "FIRESTORE",
+        tag: "Persistência & Resiliência",
+      },
+    ],
+    stats: {
+      additionsCount: 2,
+      fixesCount: 1,
+    },
+  },
+  {
+    version: "v1.9.31",
+    codename: "Future Occurrence Date Validation & Temporal Integrity Guard",
+    releaseDate: "28/09/2026",
+    releaseDateTime: "28 de Setembro de 2026 • 20:15 BRT",
+    type: "PATCH",
+    isCurrent: false,
+    summary: "Implementação de validação rigorosa de datas temporais para cadastro e edição de itens no Localiza+ (IFPR Campus Ivaiporã), eliminando a possibilidade de informar datas futuras para ocorrências de perdas ou encontros: 1) Restrição no frontend com atributo HTML5 max={getTodayDateString()} no input de data do RegisterItemView e do modal de edição em ItemDetailModal; 2) Validação programática profunda e independente na camada de processamento de dados (validateItemOccurrenceDate e isFutureDate em utils.ts), blindando as rotinas addItem e updateItemData contra datas posteriores à data atual; 3) Suporte robusto a fuso horário e múltiplos formatos temporais (YYYY-MM-DD, DD/MM/YYYY, ISO e instâncias de Date) com normalização local à meia-noite para evitar falsos positivos; 4) Edição e preservação do fluxo de ocorrências com campo de data editável e validado para usuários autorizados; 5) Suíte de testes automatizados com cobertura de datas passadas, data de hoje, datas futuras, tentativas de evasão e fluxos online/offline.",
+    additions: [
+      {
+        id: "v1931-add-1",
+        title: "Utilitários de Validação Temporal de Ocorrências (isFutureDate & validateItemOccurrenceDate)",
+        description: "Criação de funções modulares em src/lib/utils.ts para validação segura de datas de ocorrência, impedindo valores nulos, malformatados ou posteriores ao dia corrente no fuso horário local.",
+        module: "GERAL",
+        tag: "Validação & Integridade",
+      },
+      {
+        id: "v1931-add-2",
+        title: "Edição de Data de Ocorrência no ItemDetailModal com Restrição Temporal",
+        description: "Inclusão do campo editável 'Data da Ocorrência' no formulário de edição de pertences em ItemDetailModal com validação ativa e restrição max configurada para a data de hoje.",
+        module: "GERAL",
+        tag: "Detalhes do Item",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1931-fix-1",
+        title: "Bloqueio de Cadastro e Edição com Data Futura (RegisterItemView, ItemDetailModal e AppContext)",
+        description: "Aplicação do atributo max no input HTML5 type='date' e verificação imperativa pré-persistência em addItem e updateItemData, rejeitando qualquer tentativa de cadastro ou atualização com data posterior à data atual com mensagem explicativa amigável.",
+        module: "FIRESTORE",
+        tag: "Integridade de Dados",
+      },
+    ],
+    stats: {
+      additionsCount: 2,
+      fixesCount: 1,
+    },
+  },
+  {
     version: "v1.9.30",
     codename: "Profile Photo Persistence & Admin User Deletion Resilience",
     releaseDate: "27/09/2026",
     releaseDateTime: "27 de Setembro de 2026 • 15:15 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Resolução definitiva do fluxo de foto de perfil e do gerenciamento administrativo de exclusão de usuários: 1) Eliminação do bloqueio HTTP 403 Forbidden do CDN Google (lh3.googleusercontent.com) via inclusão do atributo referrerPolicy='no-referrer' e fallback gracioso com onError em todas as instâncias de avatar do sistema; 2) Implementação do fluxo completo de upload e compressão da foto de perfil em 'Meu Perfil' (validação de formato JPG/PNG/WebP, tamanho até 5MB, compressão via Canvas/WebP 320x320 85%, persistência atômica no Firestore em users/{uid}.avatarUrl e sincronização no Firebase Auth via updateProfile); 3) Correção definitiva do endpoint administrativo de exclusão (/api/admin/delete-user e server.ts), alinhando o FIRESTORE_DATABASE_ID e FIREBASE_PROJECT_ID com o arquivo real de configuração firebase-applet-config.json (evitando falha 5 NOT_FOUND no database 'default'); 4) Eliminação do bloqueio HTTP 404 quando o usuário a ser excluído não possui registro no Firebase Auth, permitindo a limpeza de contas órfãs do Firestore com preservação de auditoria imutável.",
     additions: [
       {

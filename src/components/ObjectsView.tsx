@@ -1301,8 +1301,16 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
             <button
               type="button"
               onClick={async () => {
-                await bulkUpdateItemStatus(selectedItemIds, "DEVOLVIDO");
-                setSelectedItemIds([]);
+                try {
+                  const res = await bulkUpdateItemStatus(selectedItemIds, "DEVOLVIDO");
+                  if (res && res.succeededIds) {
+                    setSelectedItemIds((prev) => prev.filter((id) => !res.succeededIds.includes(id)));
+                  } else {
+                    setSelectedItemIds([]);
+                  }
+                } catch (_) {
+                  // Em caso de falha total, mantém os itens selecionados para nova tentativa do administrador
+                }
               }}
               className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center space-x-1.5 transition-colors shadow-xs"
             >
@@ -1319,8 +1327,16 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                       `Tem certeza que deseja excluir permanentemente ${selectedItemIds.length} objeto(s)?`
                     )
                   ) {
-                    await bulkDeleteItems(selectedItemIds);
-                    setSelectedItemIds([]);
+                    try {
+                      const res = await bulkDeleteItems(selectedItemIds);
+                      if (res && res.succeededIds) {
+                        setSelectedItemIds((prev) => prev.filter((id) => !res.succeededIds.includes(id)));
+                      } else {
+                        setSelectedItemIds([]);
+                      }
+                    } catch (_) {
+                      // Em caso de falha total, preserva a seleção para nova tentativa
+                    }
                   }
                 }}
                 className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs flex items-center space-x-1.5 transition-colors shadow-xs"

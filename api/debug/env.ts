@@ -31,9 +31,20 @@ export default async function handler(req: any, res: any) {
     return `${name.substring(0, 3)}***@${domain}`;
   };
 
+  const isGeminiConfigured = Boolean(
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    process.env.API_KEY
+  );
+
+  const isFirebaseAdminConfigured = Boolean(
+    process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY
+  );
+
   // Safe boolean flags & non-sensitive parameters only - NEVER expose secrets or URLs
   return res.status(200).json({
-    status: isDiscordConfigured || isSmtpConfigured,
+    status: isDiscordConfigured || isSmtpConfigured || isGeminiConfigured,
     DISCORD_FEEDBACK_WEBHOOK_URL: isDiscordConfigured,
     DISCORD_WEBHOOK_READY: isDiscordConfigured,
     SMTP: {
@@ -47,6 +58,13 @@ export default async function handler(req: any, res: any) {
       port: smtpPort,
       secure: process.env.SMTP_SECURE === "true" || smtpPort === 465,
       userMasked: maskEmail(smtpUser),
+    },
+    GEMINI_AI: {
+      configured: isGeminiConfigured,
+    },
+    FIREBASE_ADMIN: {
+      configured: isFirebaseAdminConfigured,
+      projectIdPresent: Boolean(process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID),
     },
     runtime: typeof process !== "undefined" && process.release ? "node" : "serverless",
     timestamp: new Date().toISOString(),

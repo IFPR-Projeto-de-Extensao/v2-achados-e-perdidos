@@ -635,8 +635,14 @@ service cloud.firestore {
     match /test_error_logs/{logId} {
       // Reading & Listing: Exclusively Admin and Servidor
       allow get, list: if isAdmin() || isServidor();
-      // Creation: Authenticated active user logging their own error snapshot
+      // Creation: Authenticated active user logging their own error snapshot with strict schema validation
       allow create: if isSignedIn() && 
+                       isAccountActive() &&
+                       incoming().batteryId is string && incoming().batteryId.size() > 0 && incoming().batteryId.size() <= 100 &&
+                       incoming().testId is string && incoming().testId.size() > 0 && incoming().testId.size() <= 100 &&
+                       incoming().action is string && incoming().action.size() > 0 && incoming().action.size() <= 50 &&
+                       incoming().errorMessage is string && incoming().errorMessage.size() > 0 && incoming().errorMessage.size() <= 5000 &&
+                       incoming().timestamp is string &&
                        (!('userId' in incoming()) || incoming().userId == request.auth.uid) &&
                        (!('userEmail' in incoming()) || request.auth.token.email == null || incoming().userEmail == request.auth.token.email);
       // Immutability: Test error logs cannot be updated once written

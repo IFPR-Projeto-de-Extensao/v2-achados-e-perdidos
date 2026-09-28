@@ -82,7 +82,7 @@ import {
   classifySyncError,
   FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES,
 } from "../lib/payloadSizeGuard";
-import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeParseDate, formatPhone, isValidPhone, generateSecureSignatureToken } from "../lib/utils";
+import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeParseDate, formatPhone, isValidPhone, generateSecureSignatureToken, isFutureDate, validateItemOccurrenceDate, validateItemTextFields, ITEM_FIELD_LIMITS } from "../lib/utils";
 import {
   DEFAULT_MAINTENANCE_MESSAGE,
   STORAGE_KEYS,
@@ -277,8 +277,8 @@ interface AppContextType {
   backupScheduleConfig: BackupScheduleConfig;
   updateBackupScheduleConfig: (config: Partial<BackupScheduleConfig>) => Promise<void>;
   executeFirestoreBackupNow: (triggerType?: "MANUAL" | "PROGRAMADO") => Promise<BackupLog>;
-  bulkUpdateItemStatus: (itemIds: string[], status: ItemStatus) => Promise<void>;
-  bulkDeleteItems: (itemIds: string[]) => Promise<void>;
+  bulkUpdateItemStatus: (itemIds: string[], status: ItemStatus) => Promise<{ succeededIds: string[]; failedIds: string[] }>;
+  bulkDeleteItems: (itemIds: string[]) => Promise<{ succeededIds: string[]; failedIds: string[] }>;
   addUserByAdmin: (newUser: Omit<User, "id">) => Promise<void>;
   resetSystemData: () => Promise<void>;
   clearAllLogsAndMetrics: () => Promise<void>;
@@ -558,6 +558,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             status: "ERROR",
             error: "PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT",
             statusMessage: "Este item possui dados ou imagem grandes demais para sincronização. O cadastro foi preservado no dispositivo e precisa ser ajustado.",
+          });
+          continue;
+        }
+
+        // 2. TEXT FIELDS DEFENSIVE BOUNDARY GUARD
+        const syncTextValidation = validateItemTextFields({
+          title: itemToSave.title,
+          description: itemToSave.description,
+          location: itemToSave.location,
+          color: itemToSave.color,
+          brand: itemToSave.brand,
+          contactInfo: itemToSave.contactInfo,
+        }, false);
+        if (!syncTextValidation.isValid) {
+          console.warn(`[Offline Sync Guard] Item #${itemToSave.id} rejeitado por exceder limite de caracteres: ${syncTextValidation.error}`);
+          await updateSyncQueueEntry(entry.id, {
+            status: "ERRO_PERMANENTE",
+            errorType: "PERMANENT",
+            error: `FIELD_LIMIT_EXCEEDED: ${syncTextValidation.error}`,
+            lastAttempt: new Date().toISOString(),
+          });
+          updateUploadTask(taskId, {
+            status: "ERROR",
+            error: "FIELD_LIMIT_EXCEEDED",
+            statusMessage: syncTextValidation.error || "Limite de caracteres excedido.",
           });
           continue;
         }
@@ -1195,10 +1220,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [firebaseUser, currentUser?.role]);
 
   const updateMaintenanceCustomMessage = async (msg: string) => {
-    setMaintenanceCustomMessage(msg);
     vibrateClick();
     try {
       await setDoc(doc(db, "system", "config"), { maintenanceCustomMessage: msg }, { merge: true });
+      setMaintenanceCustomMessage(msg);
       const token = await auth.currentUser?.getIdToken();
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -1213,17 +1238,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       addToast("Mensagem do banner de manutenção atualizada em tempo real!", "success");
     } catch (e) {
-      console.warn("Aviso ao salvar mensagem de manutenção no Firestore:", e);
-      try {
-        const token = await auth.currentUser?.getIdToken();
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-        fetch("/api/system/config", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ maintenanceCustomMessage: msg, updatedBy: currentUser.name }),
-        }).catch(() => {});
-      } catch {}
+      console.error("Erro ao salvar mensagem de manutenção no Firestore:", e);
+      addToast("Erro ao gravar mensagem de manutenção no banco de dados.", "error");
+      throw e;
     }
   };
 
@@ -1232,12 +1249,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const userObj = allUsers.find((u) => u.id === userId);
     const userName = userObj ? userObj.name : userId;
 
-    setAllUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, approvalStatus: nextStatus } : u))
-    );
-
     try {
       await setDoc(doc(db, "users", userId), { approvalStatus: nextStatus }, { merge: true });
+      // Atualizar estado local APENAS após confirmação inequívoca do Firestore
+      setAllUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, approvalStatus: nextStatus } : u))
+      );
       await logAdminAction(
         approved ? "APROVACAO_USUARIO" : "REJEICAO_USUARIO",
         `${approved ? "Aprovou" : "Rejeitou"} o acesso do usuário acadêmico '${userName}' (${userObj?.email || ""}).`
@@ -1249,7 +1266,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         approved ? "success" : "info"
       );
     } catch (e) {
-      console.warn("Aviso ao atualizar aprovação no Firestore:", e);
+      console.error("Erro ao atualizar aprovação no Firestore:", e);
+      addToast(`Erro ao gravar alteração de aprovação do usuário '${userName}' no Firestore.`, "error");
+      throw e;
     }
   };
 
@@ -1264,16 +1283,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    setAllUsers((prev) =>
-      prev.map((u) => (u.approvalStatus === "PENDENTE" ? { ...u, approvalStatus: "APROVADO" } : u))
-    );
-
     try {
       const batch = writeBatch(db);
       for (const u of pendingList) {
         batch.set(doc(db, "users", u.id), { approvalStatus: "APROVADO" }, { merge: true });
       }
       await batch.commit();
+
+      // Somente após a persistência bem-sucedida do lote no Firestore o estado local é atualizado
+      setAllUsers((prev) =>
+        prev.map((u) => (u.approvalStatus === "PENDENTE" ? { ...u, approvalStatus: "APROVADO" } : u))
+      );
+
       await logAdminAction(
         "APROVACAO_EM_LOTE",
         `Aprovou todos os ${pendingList.length} cadastros acadêmicos pendentes no sistema em lote por ${currentUser.name}.`
@@ -1281,22 +1302,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast(`✅ Todos os ${pendingList.length} cadastros pendentes foram aprovados com sucesso!`, "success");
     } catch (e) {
       console.error("Erro ao aprovar cadastros em lote:", e);
-      addToast("Erro ao gravar aprovações em lote no Firestore.", "error");
+      addToast("Erro ao gravar aprovações em lote no Firestore. Nenhum cadastro foi alterado.", "error");
+      throw e;
     }
   };
 
   const updateBackupScheduleConfig = async (configPartial: Partial<BackupScheduleConfig>) => {
     const updated = { ...backupScheduleConfig, ...configPartial };
-    setBackupScheduleConfig(updated);
     try {
       await setDoc(doc(db, "system", "backup_config"), updated, { merge: true });
+      setBackupScheduleConfig(updated);
       await logAdminAction(
         "CONFIG_BACKUP",
         `Atualizou a configuração de backups automáticos do Firestore (Ativo: ${updated.enabled}, Frequência: ${updated.frequency}).`
       );
       addToast("Configuração de backup automático atualizada com sucesso!", "success");
     } catch (e) {
-      console.warn("Aviso ao salvar backup_config:", e);
+      console.error("Erro ao salvar backup_config no Firestore:", e);
+      addToast("Erro ao salvar configuração de backup no Firestore.", "error");
+      throw e;
     }
   };
 
@@ -1341,8 +1365,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       timestamp: new Date().toISOString(),
     };
 
-    setBackupLogs((prev) => [newLog, ...prev]);
-
     try {
       await setDoc(doc(db, "backup_logs", newLog.id), newLog);
       await setDoc(
@@ -1353,13 +1375,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         },
         { merge: true }
       );
+      setBackupLogs((prev) => [newLog, ...prev]);
       await logAdminAction(
         "BACKUP_SISTEMA",
         `Executou o backup snapshot completo do banco Firestore (${(fileSizeBytes / 1024).toFixed(1)} KB, ${items.length} objetos, ${allUsers.length} usuários).`
       );
       addToast(`⚡ Backup do Firestore gerado e baixado: ${filename}`, "success");
     } catch (e) {
-      console.warn("Aviso ao registrar log de backup no Firestore:", e);
+      console.error("Erro ao registrar log de backup no Firestore:", e);
+      addToast("Backup baixado, mas houve falha ao registrar o log no Firestore.", "warning");
+      throw e;
     }
 
     return newLog;
@@ -1372,9 +1397,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       vibrateSuccess();
     }
-    setMaintenanceMode(nextVal);
     try {
       await setDoc(doc(db, "system", "config"), { maintenanceMode: nextVal }, { merge: true });
+      setMaintenanceMode(nextVal);
       const token = await auth.currentUser?.getIdToken();
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -1396,23 +1421,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         nextVal ? "error" : "success"
       );
     } catch (e) {
-      console.warn("Aviso ao salvar modo de manutenção no Firestore:", e);
-      try {
-        const token = await auth.currentUser?.getIdToken();
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (token) headers["Authorization"] = `Bearer ${token}`;
-        fetch("/api/system/config", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ maintenanceMode: nextVal, updatedBy: currentUser.name }),
-        }).catch(() => {});
-      } catch {}
-      addToast(
-        nextVal
-          ? "🚨 Modo Manutenção ATIVADO pelo Administrador!"
-          : "✅ Modo Manutenção DESATIVADO.",
-        nextVal ? "error" : "success"
-      );
+      console.error("Erro ao salvar modo de manutenção no Firestore:", e);
+      addToast("Erro ao persistir o estado do modo de manutenção no banco de dados.", "error");
+      throw e;
     }
   };
 
@@ -1436,35 +1447,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  // Bulk Operations
-  const bulkUpdateItemStatus = async (itemIds: string[], status: ItemStatus) => {
-    if (itemIds.length === 0) return;
-    try {
-      for (const id of itemIds) {
+  // Bulk Operations com integridade e fidelidade estrita ao Firestore
+  const bulkUpdateItemStatus = async (itemIds: string[], status: ItemStatus): Promise<{ succeededIds: string[]; failedIds: string[] }> => {
+    if (itemIds.length === 0) return { succeededIds: [], failedIds: [] };
+    const succeededIds: string[] = [];
+    const failedIds: string[] = [];
+
+    for (const id of itemIds) {
+      try {
         await updateDoc(doc(db, "items", id), sanitizeFirestoreData({ status }));
+        succeededIds.push(id);
+      } catch (err) {
+        failedIds.push(id);
+        console.error(`[bulkUpdateItemStatus] Falha ao atualizar item #${id} no Firestore:`, err);
       }
-      addToast(`${itemIds.length} item(ns) alterado(s) para ${status} com sucesso!`, "success");
-    } catch (e) {
-      console.warn("Erro ao atualizar lote de itens:", e);
-      setItems((prev) =>
-        prev.map((it) => (itemIds.includes(it.id) ? { ...it, status } : it))
-      );
-      addToast(`${itemIds.length} item(ns) atualizado(s) com sucesso!`, "success");
     }
+
+    // Apenas os itens cuja alteração foi EFETIVAMENTE confirmada pelo Firestore têm o estado local modificado
+    if (succeededIds.length > 0) {
+      setItems((prev) =>
+        prev.map((it) => (succeededIds.includes(it.id) ? { ...it, status } : it))
+      );
+    }
+
+    // Exibição de feedback fiel à realidade das operações
+    if (failedIds.length === 0) {
+      // Cenário A: Todas confirmadas com sucesso
+      addToast(`${succeededIds.length} item(ns) alterado(s) para ${status} com sucesso!`, "success");
+    } else if (succeededIds.length === 0) {
+      // Cenário C: Todas falharam no Firestore
+      addToast(`Falha ao alterar o status dos ${failedIds.length} item(ns) no Firestore. Nenhuma alteração foi persistida.`, "error");
+      throw new Error(`Falha total na atualização em lote de ${failedIds.length} item(ns).`);
+    } else {
+      // Cenário B: Falha parcial (alguns sucederam e outros falharam)
+      addToast(
+        `${succeededIds.length} item(ns) alterado(s) com sucesso e ${failedIds.length} falharam na gravação remota.`,
+        "warning"
+      );
+    }
+
+    return { succeededIds, failedIds };
   };
 
-  const bulkDeleteItems = async (itemIds: string[]) => {
-    if (itemIds.length === 0) return;
-    try {
-      for (const id of itemIds) {
+  const bulkDeleteItems = async (itemIds: string[]): Promise<{ succeededIds: string[]; failedIds: string[] }> => {
+    if (itemIds.length === 0) return { succeededIds: [], failedIds: [] };
+    const succeededIds: string[] = [];
+    const failedIds: string[] = [];
+
+    for (const id of itemIds) {
+      try {
         await deleteDoc(doc(db, "items", id));
+        succeededIds.push(id);
+      } catch (err) {
+        failedIds.push(id);
+        console.error(`[bulkDeleteItems] Falha ao excluir item #${id} no Firestore:`, err);
       }
-      addToast(`${itemIds.length} item(ns) excluído(s) permanentemente!`, "success");
-    } catch (e) {
-      console.warn("Erro ao excluir lote de itens:", e);
-      setItems((prev) => prev.filter((it) => !itemIds.includes(it.id)));
-      addToast(`${itemIds.length} item(ns) removido(s) do acervo!`, "success");
     }
+
+    // Apenas os itens cuja exclusão foi EFETIVAMENTE confirmada pelo Firestore são removidos do estado local
+    if (succeededIds.length > 0) {
+      setItems((prev) => prev.filter((it) => !succeededIds.includes(it.id)));
+    }
+
+    // Exibição de feedback fiel à realidade das operações
+    if (failedIds.length === 0) {
+      // Cenário A: Todas as exclusões confirmadas no Firestore
+      addToast(`${succeededIds.length} item(ns) excluído(s) permanentemente!`, "success");
+    } else if (succeededIds.length === 0) {
+      // Cenário C: Todas as exclusões falharam no Firestore
+      addToast(`Falha ao excluir os ${failedIds.length} item(ns) no Firestore. Nenhum item foi removido.`, "error");
+      throw new Error(`Falha total na exclusão em lote de ${failedIds.length} item(ns).`);
+    } else {
+      // Cenário B: Falha parcial
+      addToast(
+        `${succeededIds.length} item(ns) excluído(s) com sucesso e ${failedIds.length} falharam na exclusão remota.`,
+        "warning"
+      );
+    }
+
+    return { succeededIds, failedIds };
   };
 
   const addUserByAdmin = async (userData: Omit<User, "id">) => {
@@ -1478,10 +1539,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     try {
       await setDoc(doc(db, "users", newUserId), newUser);
+      // Somente após confirmação do Firestore o usuário é adicionado ao estado local
+      setAllUsers((prev) => [...prev, newUser]);
       addToast(`Usuário ${newUser.name} cadastrado no sistema com sucesso!`, "success");
     } catch (e) {
-      setAllUsers((prev) => [...prev, newUser]);
-      addToast(`Usuário ${newUser.name} adicionado ao sistema!`, "success");
+      console.error("Erro ao cadastrar usuário no Firestore:", e);
+      addToast(`Falha ao cadastrar o usuário '${newUser.name}' no banco de dados. Tente novamente.`, "error");
+      throw e;
     }
   };
 
@@ -2460,9 +2524,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await setDoc(doc(db, "activity_logs", newLog.id), newLog);
+      setActivityLogs((prev) => [newLog, ...prev]);
     } catch (e) {
       console.warn("Aviso ao gravar log no Firestore:", e);
-      setActivityLogs((prev) => [newLog, ...prev]);
     }
   };
 
@@ -2599,40 +2663,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdByEmail: template.createdByEmail || currentUser.email,
     };
 
-    setDocumentTemplates((prev) => {
-      const idx = prev.findIndex((t) => t.id === updatedTemplate.id);
-      const next = idx >= 0 ? prev.map((t) => (t.id === updatedTemplate.id ? updatedTemplate : t)) : [updatedTemplate, ...prev];
-      try {
-        localStorage.setItem("ifpr_document_templates_cache", JSON.stringify(next));
-      } catch (_) {}
-      return next;
-    });
-
     try {
       await setDoc(doc(db, "document_templates", updatedTemplate.id), updatedTemplate);
+      setDocumentTemplates((prev) => {
+        const idx = prev.findIndex((t) => t.id === updatedTemplate.id);
+        const next = idx >= 0 ? prev.map((t) => (t.id === updatedTemplate.id ? updatedTemplate : t)) : [updatedTemplate, ...prev];
+        try {
+          localStorage.setItem("ifpr_document_templates_cache", JSON.stringify(next));
+        } catch (_) {}
+        return next;
+      });
       await logAdminAction(
         "SALVAR_MODELO_DOCUMENTO",
         `Modelo de documento '${updatedTemplate.title}' (${updatedTemplate.code}) salvo/atualizado.`
       );
       addToast(`Modelo '${updatedTemplate.title}' salvo com sucesso!`, "success");
     } catch (e) {
-      console.warn("Aviso ao salvar modelo no Firestore:", e);
-      addToast(`Modelo '${updatedTemplate.title}' salvo localmente!`, "info");
+      console.error("Erro ao salvar modelo no Firestore:", e);
+      addToast(`Erro ao gravar modelo '${updatedTemplate.title}' no Firestore.`, "error");
+      throw e;
     }
   };
 
   const deleteDocumentTemplate = async (templateId: string) => {
     const target = documentTemplates.find((t) => t.id === templateId);
-    setDocumentTemplates((prev) => {
-      const next = prev.filter((t) => t.id !== templateId);
-      try {
-        localStorage.setItem("ifpr_document_templates_cache", JSON.stringify(next));
-      } catch (_) {}
-      return next;
-    });
 
     try {
       await deleteDoc(doc(db, "document_templates", templateId));
+      setDocumentTemplates((prev) => {
+        const next = prev.filter((t) => t.id !== templateId);
+        try {
+          localStorage.setItem("ifpr_document_templates_cache", JSON.stringify(next));
+        } catch (_) {}
+        return next;
+      });
       if (target) {
         await logAdminAction(
           "EXCLUIR_MODELO_DOCUMENTO",
@@ -2641,8 +2705,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       addToast("Modelo excluído com sucesso.", "info");
     } catch (e) {
-      console.warn("Aviso ao excluir modelo no Firestore:", e);
-      addToast("Modelo removido localmente.", "info");
+      console.error("Erro ao excluir modelo no Firestore:", e);
+      addToast("Erro ao excluir modelo no banco de dados.", "error");
+      throw e;
     }
   };
 
@@ -2697,16 +2762,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       generatedByEmail: currentUser.email,
     };
 
-    setGeneratedDocuments((prev) => {
-      const next = [newRecord, ...prev];
-      try {
-        localStorage.setItem("ifpr_generated_documents_cache", JSON.stringify(next));
-      } catch (_) {}
-      return next;
-    });
-
     try {
       await setDoc(doc(db, "generated_documents", newRecord.id), newRecord);
+      setGeneratedDocuments((prev) => {
+        const next = [newRecord, ...prev];
+        try {
+          localStorage.setItem("ifpr_generated_documents_cache", JSON.stringify(next));
+        } catch (_) {}
+        return next;
+      });
       await logAdminAction(
         "GERAR_DOCUMENTO_PDF",
         `Documento '${newRecord.templateTitle}' emitido (Nº ${newRecord.documentNumber}) para '${newRecord.recipientOrOrg}'.`
@@ -2718,16 +2782,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const deleteGeneratedDocument = async (docId: string) => {
     const target = generatedDocuments.find((d) => d.id === docId);
-    setGeneratedDocuments((prev) => {
-      const next = prev.filter((d) => d.id !== docId);
-      try {
-        localStorage.setItem("ifpr_generated_documents_cache", JSON.stringify(next));
-      } catch (_) {}
-      return next;
-    });
 
     try {
       await deleteDoc(doc(db, "generated_documents", docId));
+      setGeneratedDocuments((prev) => {
+        const next = prev.filter((d) => d.id !== docId);
+        try {
+          localStorage.setItem("ifpr_generated_documents_cache", JSON.stringify(next));
+        } catch (_) {}
+        return next;
+      });
       if (target) {
         await logAdminAction(
           "EXCLUIR_DOCUMENTO_GERADO",
@@ -2736,8 +2800,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       addToast("Documento removido do histórico com sucesso.", "info");
     } catch (e) {
-      console.warn("Aviso ao excluir documento gerado no Firestore:", e);
-      addToast("Documento removido do histórico local.", "info");
+      console.error("Erro ao excluir documento gerado no Firestore:", e);
+      addToast("Erro ao excluir documento no banco de dados.", "error");
+      throw e;
     }
   };
 
@@ -2978,7 +3043,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateUserProfileData = async (updatedUser: User) => {
-    setCurrentUser(updatedUser);
     try {
       if (auth.currentUser && updatedUser.avatarUrl && updatedUser.avatarUrl !== auth.currentUser.photoURL) {
         try {
@@ -2991,9 +3055,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
       await setDoc(doc(db, "users", updatedUser.id), updatedUser, { merge: true });
+      setCurrentUser(updatedUser);
       addToast("Perfil atualizado no banco de dados!", "success");
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `users/${updatedUser.id}`);
+      throw e;
     }
   };
 
@@ -3181,20 +3247,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         body: JSON.stringify({ targetUserId: cleanTargetId }),
       });
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => null);
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success) {
+        // Caso C: Inconsistência real (Auth excluído, Firestore falhou)
+        if (data?.authDeleted && !data?.firestoreDeleted) {
+          // Atualiza estado local para indicar conta com Auth removido e pendente de reconciliação no Firestore
+          setAllUsers((prev) =>
+            prev.map((u) =>
+              u.id === cleanTargetId
+                ? {
+                    ...u,
+                    status: "suspended",
+                    statusReason: "Conta Auth removida; perfil pendente de reconciliação no Firestore.",
+                  }
+                : u
+            )
+          );
+          addToast(
+            `Atenção: A conta no Firebase Auth de '${targetName}' foi removida, mas a exclusão no Firestore falhou. O perfil foi mantido na lista para reconciliação.`,
+            "warning"
+          );
+          throw new Error(data?.error || "Falha ao remover o perfil no Firestore após exclusão da conta de autenticação.");
+        }
+
         const errorMsg =
-          errorData?.error ||
-          errorData?.message ||
+          data?.error ||
+          data?.message ||
           `Falha na exclusão administrativa do usuário (HTTP ${res.status}).`;
         throw new Error(errorMsg);
       }
 
-      const data = await res.json().catch(() => null);
-
-      // 3. Sucesso exclusivo via backend: o servidor já realizou a exclusão no Auth,
-      // a limpeza no Firestore (users e notifications) e o registro imutável em audit_logs e activity_logs.
-      // O cliente apenas atualiza a interface / estado local:
+      // 3. Sucesso completo comprovado: ambas as fontes (Auth e Firestore) foram confirmadas
       setAllUsers((prev) => prev.filter((u) => u.id !== cleanTargetId));
 
       addToast(
@@ -3203,7 +3287,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     } catch (e: any) {
       console.error("[deleteUser] Erro ao excluir conta do usuário:", e);
-      addToast(`Erro ao excluir conta: ${e?.message || "Operação não autorizada"}`, "error");
+      // Se já disparou o toast de aviso específico de inconsistência, não sobrescreve com toast genérico
+      if (!e?.message?.includes("perfil no Firestore após exclusão")) {
+        addToast(`Erro ao excluir conta: ${e?.message || "Operação não autorizada"}`, "error");
+      }
       throw e;
     }
   };
@@ -3232,18 +3319,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error("É necessário fazer login para cadastrar um item.");
     }
 
-    // Strict input validations
-    if (!itemData.title || !itemData.title.trim()) {
-      throw new Error("O título do objeto é obrigatório.");
-    }
-    if (!itemData.description || !itemData.description.trim()) {
-      throw new Error("A descrição do objeto é obrigatória.");
-    }
-    if (!itemData.location || !itemData.location.trim()) {
-      throw new Error("O local do objeto é obrigatório.");
+    // Strict input and length boundary validations (Defense in Depth)
+    const textValidation = validateItemTextFields({
+      title: itemData.title,
+      description: itemData.description,
+      location: itemData.location,
+      color: itemData.color,
+      brand: itemData.brand,
+      contactInfo: itemData.contactInfo,
+    }, false);
+    if (!textValidation.isValid) {
+      addToast(textValidation.error || "Limite de caracteres excedido.", "error");
+      throw new Error(textValidation.error || "Campo de texto excede o limite permitido.");
     }
     if (!itemData.type || (itemData.type !== "PERDIDO" && itemData.type !== "ENCONTRADO")) {
       throw new Error("O tipo do objeto deve ser PERDIDO ou ENCONTRADO.");
+    }
+    const dateValidation = validateItemOccurrenceDate(itemData.date, "A data da ocorrência");
+    if (!dateValidation.isValid) {
+      addToast(dateValidation.error || "Data inválida ou futura não permitida.", "error");
+      throw new Error(dateValidation.error || "A data da ocorrência não pode ser futura.");
     }
 
     const uniqueTimestamp = Date.now().toString(36).toUpperCase();
@@ -3868,6 +3963,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error("Permissão negada: apenas o autor ou servidores/administradores podem editar este item.");
     }
 
+    // Strict text field length validation (Defense in Depth)
+    const textValidation = validateItemTextFields({
+      title: updatedFields.title,
+      description: updatedFields.description,
+      location: updatedFields.location,
+      color: updatedFields.color,
+      brand: updatedFields.brand,
+      contactInfo: updatedFields.contactInfo,
+    }, true);
+    if (!textValidation.isValid) {
+      addToast(textValidation.error || "Limite de caracteres excedido.", "error");
+      throw new Error(textValidation.error || "Campo de texto excede o limite permitido.");
+    }
+
+    if (updatedFields.date !== undefined) {
+      const dateValidation = validateItemOccurrenceDate(updatedFields.date, "A data da ocorrência");
+      if (!dateValidation.isValid) {
+        addToast(dateValidation.error || "Data inválida ou futura não permitida.", "error");
+        throw new Error(dateValidation.error || "A data da ocorrência não pode ser futura.");
+      }
+    }
+
     const effectiveUserId = auth.currentUser.uid;
     const effectiveUserName = currentUser?.name || auth.currentUser.displayName || "Usuário IFPR";
     const effectiveUserRole: UserRole = currentUser?.role || (auth.currentUser.email === "paulocauan39@gmail.com" ? "ADMIN" : "ALUNO");
@@ -4204,6 +4321,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await updateDoc(doc(db, "items", itemId), updatePayload);
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === itemId
+            ? {
+                ...it,
+                status: previousStatus,
+                resolutionDate: undefined,
+                returnedByUserId: undefined,
+                returnedByName: undefined,
+                returnedByRole: undefined,
+                returnDate: undefined,
+                returnTime: undefined,
+                recipientName: undefined,
+                recipientEmail: undefined,
+                recipientBond: undefined,
+                history: [...existingHistory, newHistLog],
+                historyLogs: [...existingHistory, newHistLog],
+              }
+            : it
+        )
+      );
       await logAdminAction(
         "REABERTURA_DEVOLUCAO",
         `Reabriu a devolução do objeto #${itemId} (${existing.title}). Motivo: ${reason}`
@@ -4211,6 +4349,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast(`Devolução do objeto #${itemId} reaberta! O item retornou para a lista de pendentes.`, "success");
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `items/${itemId}`);
+      throw e;
     }
   };
 
@@ -4261,6 +4400,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await updateDoc(doc(db, "items", itemId), updatePayload);
+      setItems((prev) =>
+        prev.map((it) =>
+          it.id === itemId
+            ? {
+                ...it,
+                status: "ENCERRADO" as ItemStatus,
+                destinationType: destType,
+                destinationReason: destReason,
+                destinationDate: now.toISOString(),
+                destinationResponsible: currentUser.name,
+                history: [...existingHistory, newHistLog],
+                historyLogs: [...existingHistory, newHistLog],
+              }
+            : it
+        )
+      );
       await logAdminAction(
         "DESTINACAO_ITEM",
         `Registrou destinação do item não reclamado #${itemId} (${existing.title}). Tipo: ${destType}. Motivo: ${destReason}`
@@ -4268,6 +4423,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast(`Destinação do objeto #${itemId} registrada com sucesso.`, "success");
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `items/${itemId}`);
+      throw e;
     }
   };
 
@@ -4439,6 +4595,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await setDoc(doc(db, "notifications", notif.id), sanitizeFirestoreData(notif));
+      setNotifications((prev) => [notif, ...prev]);
       const targetUserName = allUsers.find((u) => u.id === targetUserId)?.name || targetUserId;
       await logAdminAction(
         "ADMIN_NOTIFICATION",
@@ -4446,20 +4603,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       addToast(`Notificação enviada para ${targetUserName} com sucesso!`, "success");
     } catch (e) {
-      console.warn("Aviso ao salvar notificação no Firestore:", e);
-      setNotifications((prev) => [notif, ...prev]);
-      addToast(`Notificação enviada com sucesso!`, "success");
+      console.error("Erro ao salvar notificação no Firestore:", e);
+      addToast("Erro ao gravar notificação no banco de dados.", "error");
+      throw e;
     }
   };
 
   const markNotificationRead = async (id: string) => {
     try {
+      await updateDoc(doc(db, "notifications", id), sanitizeFirestoreData({ read: true }));
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, read: true } : n))
       );
-      await updateDoc(doc(db, "notifications", id), sanitizeFirestoreData({ read: true }));
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `notifications/${id}`);
+      throw e;
     }
   };
 
@@ -4468,17 +4626,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const userNotifs = notifications.filter(
         (n) => isNotificationForUser(n, currentUser, firebaseUser?.uid) && !n.read
       );
-      setNotifications((prev) =>
-        prev.map((n) =>
-          isNotificationForUser(n, currentUser, firebaseUser?.uid) ? { ...n, read: true } : n
-        )
-      );
+      const succeededIds: string[] = [];
       for (const n of userNotifs) {
-        await updateDoc(doc(db, "notifications", n.id), sanitizeFirestoreData({ read: true }));
+        try {
+          await updateDoc(doc(db, "notifications", n.id), sanitizeFirestoreData({ read: true }));
+          succeededIds.push(n.id);
+        } catch (err) {
+          console.error(`Erro ao marcar notificação ${n.id} como lida:`, err);
+        }
       }
-      addToast("Notificações marcadas como lidas.", "info");
+      if (succeededIds.length > 0) {
+        setNotifications((prev) =>
+          prev.map((n) =>
+            succeededIds.includes(n.id) ? { ...n, read: true } : n
+          )
+        );
+      }
+      if (userNotifs.length > 0 && succeededIds.length === userNotifs.length) {
+        addToast("Notificações marcadas como lidas.", "info");
+      } else if (succeededIds.length > 0) {
+        addToast(`${succeededIds.length} notificações atualizadas no servidor.`, "info");
+      }
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, "notifications");
+      throw e;
     }
   };
 

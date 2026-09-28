@@ -1,5 +1,5 @@
 import { collection, addDoc } from "firebase/firestore";
-import { db } from "./firebase";
+import { auth, db } from "./firebase";
 import { User, TestStatus } from "../types";
 import { sanitizeForFirestore } from "./utils";
 
@@ -137,11 +137,14 @@ export async function logTestError(params: {
     console.warn("Falha ao salvar log de erro de teste localmente:", localErr);
   }
 
-  // 2. If online and Firestore is available, record in remote collection
-  if (isOnline) {
+  // 2. If online and authenticated, record in remote Firestore collection
+  const authUser = auth.currentUser;
+  if (isOnline && (authUser || currentUser)) {
     try {
       const sanitized = sanitizeForFirestore({
         ...record,
+        userId: record.userId || authUser?.uid,
+        userEmail: record.userEmail || authUser?.email || undefined,
         loggedAt: nowIso,
       });
       await addDoc(collection(db, "test_error_logs"), sanitized);

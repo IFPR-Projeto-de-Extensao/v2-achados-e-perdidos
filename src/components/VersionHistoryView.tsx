@@ -688,7 +688,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                   {/* Version Milestone Header */}
                   <div
                     onClick={() => toggleVersion(version.version)}
-                    className="p-5 sm:p-6 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-b from-transparent to-neutral-50/50 dark:to-neutral-900/30 select-none"
+                    className="p-5 sm:p-6 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-b from-transparent to-neutral-50/50 dark:to-neutral-900/30"
                   >
                     <div className="flex items-start space-x-3.5">
                       <div
@@ -919,7 +919,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                 {/* Version Card Header */}
                 <div
                   onClick={() => toggleVersion(version.version)}
-                  className="p-5 sm:p-6 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-b from-transparent to-neutral-50/50 dark:to-neutral-900/30 select-none"
+                  className="p-5 sm:p-6 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gradient-to-b from-transparent to-neutral-50/50 dark:to-neutral-900/30"
                 >
                   <div className="flex items-start space-x-3.5">
                     <div

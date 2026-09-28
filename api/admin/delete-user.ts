@@ -334,8 +334,55 @@ export default async function handler(req: any, res: any) {
     }
 
     // ----------------------------------------------------
-    // STAGE 13: FIRESTORE_CLEANUP_OK
+    // STAGE 13: FIRESTORE_CLEANUP_OK OR FAILED
     // ----------------------------------------------------
+    if (!firestoreDeleted) {
+      currentStage = "FIRESTORE_CLEANUP_FAILED";
+      console.error(`[Admin Delete User Inconsistency] [STAGE: FIRESTORE_CLEANUP_FAILED] Auth foi excluído, mas o perfil no Firestore falhou ao ser removido:`, {
+        targetUserId: cleanTargetId,
+        authDeleted,
+        firestoreDeleted,
+      });
+
+      if (adminFirestore) {
+        try {
+          const nowIso = new Date().toISOString();
+          const auditLogId = `audit-inc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+          await adminFirestore.collection("audit_logs").doc(auditLogId).set({
+            id: auditLogId,
+            transactionId: `TX-USER-DEL-INC-${Date.now().toString(36).toUpperCase()}`,
+            objectId: cleanTargetId,
+            objectType: "USER",
+            objectTitle: targetName || cleanTargetId,
+            action: "ACCOUNT_DELETION_INCONSISTENCY",
+            actorId: adminUid,
+            actorName: "Administrador TI",
+            actorEmail: adminEmail,
+            actorRole: "ADMIN",
+            timestamp: nowIso,
+            fieldChanged: "account_lifecycle",
+            oldValue: targetStatus,
+            newValue: "AUTH_DELETED_FIRESTORE_PENDING",
+            details: `INCONSISTÊNCIA DETECTADA: A conta do usuário '${targetName || cleanTargetId}' (${targetEmail}) foi excluída do Firebase Authentication, mas a remoção do documento /users/${cleanTargetId} no Firestore falhou. Perfil mantido para reconciliação manual ou reintento administrativo.`,
+            immutable: true,
+          });
+        } catch (auditErr: any) {
+          console.warn(`[Admin Delete User Warning] Falha ao persistir auditoria de inconsistência:`, auditErr?.message);
+        }
+      }
+
+      return res.status(500).json({
+        success: false,
+        partialSuccess: true,
+        authDeleted: true,
+        firestoreDeleted: false,
+        error: "A conta no Firebase Authentication foi excluída, mas ocorreu uma falha ao remover o perfil no Firestore. O registro de perfil permanece no banco de dados para reconciliação.",
+        code: "FIRESTORE_DELETE_FAILED_AFTER_AUTH",
+        targetUserId: cleanTargetId,
+        stage: "FIRESTORE_CLEANUP_FAILED",
+      });
+    }
+
     currentStage = "FIRESTORE_CLEANUP_OK";
     console.log(`[Admin Delete User] [STAGE: FIRESTORE_CLEANUP_OK] Limpeza do Firestore concluída.`);
 

@@ -446,14 +446,24 @@ function logAIAudit(entry: Omit<AIAuditRecord, "id" | "timestamp">): AIAuditReco
 app.use(authenticateToken);
 app.use(generalRateLimiter);
 
-// Initialize Google GenAI Server Client safely
+// Initialize Google GenAI Server Client safely with multi-source env key resolution
 let aiClient: GoogleGenAI | null = null;
 
 function getGenAIClient(): GoogleGenAI | null {
-  if (!aiClient && process.env.GEMINI_API_KEY) {
+  const apiKey = (
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    process.env.API_KEY ||
+    ""
+  ).trim();
+
+  if (!apiKey) return null;
+
+  if (!aiClient) {
     try {
       aiClient = new GoogleGenAI({
-        apiKey: process.env.GEMINI_API_KEY,
+        apiKey,
         httpOptions: {
           headers: {
             "User-Agent": "aistudio-build",
@@ -461,10 +471,59 @@ function getGenAIClient(): GoogleGenAI | null {
         },
       });
     } catch (err) {
-      console.error("Erro ao inicializar GoogleGenAI:", err);
+      console.error("[Gemini AI Init Error] Erro ao inicializar GoogleGenAI:", err);
     }
   }
   return aiClient;
+}
+
+export function classifyGeminiError(err: any): { statusCode: number; message: string; errorCode: string } {
+  const errMsg = String(err?.message || err || "");
+  const status = Number(err?.status || err?.statusCode || 0);
+
+  if (status === 429 || errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.toLowerCase().includes("quota")) {
+    return {
+      statusCode: 429,
+      message: "Limite de cota ou taxa da API Google Gemini excedido. Tente novamente em alguns instantes.",
+      errorCode: "RATE_LIMIT_EXCEEDED",
+    };
+  }
+
+  if (status === 400 || errMsg.includes("INVALID_ARGUMENT") || errMsg.includes("SAFETY") || errMsg.toLowerCase().includes("blocked")) {
+    return {
+      statusCode: 400,
+      message: "A solicitação foi recusada pelos filtros de segurança ou parâmetros inválidos da IA.",
+      errorCode: "INVALID_ARGUMENT_OR_SAFETY",
+    };
+  }
+
+  if (
+    status === 401 ||
+    status === 403 ||
+    errMsg.includes("API_KEY_INVALID") ||
+    errMsg.includes("PERMISSION_DENIED") ||
+    errMsg.includes("UNAUTHENTICATED")
+  ) {
+    return {
+      statusCode: 503,
+      message: "Credencial da API Gemini não autorizada ou chave de API inválida no servidor.",
+      errorCode: "API_KEY_UNAUTHORIZED",
+    };
+  }
+
+  if (status === 503 || status === 504 || errMsg.includes("UNAVAILABLE") || errMsg.includes("DEADLINE_EXCEEDED") || errMsg.includes("ETIMEDOUT")) {
+    return {
+      statusCode: 503,
+      message: "O serviço de Inteligência Artificial do Google Gemini está temporariamente indisponível.",
+      errorCode: "GEMINI_UPSTREAM_UNAVAILABLE",
+    };
+  }
+
+  return {
+    statusCode: 502,
+    message: `Erro de comunicação com o serviço upstream do Google Gemini: ${errMsg}`,
+    errorCode: "GEMINI_UPSTREAM_ERROR",
+  };
 }
 
 // In-memory Analytics & Monitoring Store
@@ -941,8 +1000,73 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
     }
 
     // ----------------------------------------------------
-    // STAGE 13: FIRESTORE_CLEANUP_OK
+    // STAGE 13: FIRESTORE_CLEANUP_OK OR FAILED
     // ----------------------------------------------------
+    if (!firestoreDeleted) {
+      currentStage = "FIRESTORE_CLEANUP_FAILED";
+      console.error(`[Admin Delete User Inconsistency] [STAGE: FIRESTORE_CLEANUP_FAILED] Auth foi excluído, mas o perfil no Firestore falhou ao ser removido:`, {
+        targetUserId: cleanTargetId,
+        authDeleted,
+        firestoreDeleted,
+      });
+
+      if (adminFirestore) {
+        try {
+          const nowIso = new Date().toISOString();
+          const auditLogId = `audit-inc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+          await adminFirestore.collection("audit_logs").doc(auditLogId).set({
+            id: auditLogId,
+            transactionId: `TX-USER-DEL-INC-${Date.now().toString(36).toUpperCase()}`,
+            objectId: cleanTargetId,
+            objectType: "USER",
+            objectTitle: targetName || cleanTargetId,
+            action: "ACCOUNT_DELETION_INCONSISTENCY",
+            actorId: adminUid,
+            actorName: "Administrador TI",
+            actorEmail: adminEmail,
+            actorRole: "ADMIN",
+            timestamp: nowIso,
+            fieldChanged: "account_lifecycle",
+            oldValue: targetStatus,
+            newValue: "AUTH_DELETED_FIRESTORE_PENDING",
+            details: `INCONSISTÊNCIA DETECTADA: A conta do usuário '${targetName || cleanTargetId}' (${targetEmail}) foi excluída do Firebase Authentication, mas a remoção do documento /users/${cleanTargetId} no Firestore falhou. Perfil mantido para reconciliação manual ou reintento administrativo.`,
+            immutable: true,
+          });
+        } catch (auditPersistErr: any) {
+          console.warn("[Admin Delete User Warning] Falha ao persistir auditoria de inconsistência:", auditPersistErr?.message);
+        }
+      }
+
+      logAIAudit({
+        userId: adminUid,
+        userEmail: adminEmail,
+        userRole: "ADMIN",
+        endpoint: "/api/admin/delete-user",
+        action: "ACCOUNT_DELETION_INCONSISTENCY",
+        status: "FAILED",
+        details: {
+          targetUserId: cleanTargetId,
+          targetEmail,
+          targetName,
+          authDeleted: true,
+          firestoreDeleted: false,
+          error: "FIRESTORE_DELETE_FAILED_AFTER_AUTH",
+        },
+        ip: getClientIp(req),
+      });
+
+      return res.status(500).json({
+        success: false,
+        partialSuccess: true,
+        authDeleted: true,
+        firestoreDeleted: false,
+        error: "A conta no Firebase Authentication foi excluída, mas ocorreu uma falha ao remover o perfil no Firestore. O registro de perfil permanece no banco de dados para reconciliação.",
+        code: "FIRESTORE_DELETE_FAILED_AFTER_AUTH",
+        targetUserId: cleanTargetId,
+        stage: "FIRESTORE_CLEANUP_FAILED",
+      });
+    }
+
     currentStage = "FIRESTORE_CLEANUP_OK";
     console.log(`[Admin Delete User] [STAGE: FIRESTORE_CLEANUP_OK] Limpeza do Firestore concluída.`);
 
@@ -1334,6 +1458,7 @@ A resposta DEVE ser estritamente no formato JSON definido no schema.`;
     });
   } catch (error: any) {
     console.error("Erro na rota /api/ai/analyze-object:", error);
+    const classified = classifyGeminiError(error);
 
     logAIAudit({
       userId,
@@ -1342,13 +1467,14 @@ A resposta DEVE ser estritamente no formato JSON definido no schema.`;
       endpoint: "/api/ai/analyze-object",
       action: "EXTRACT_OBJECT_DETAILS",
       status: "FAILED",
-      details: { error: error.message },
+      details: { error: error.message, errorCode: classified.errorCode },
       ip: getClientIp(req),
     });
 
-    res.status(500).json({
+    return res.status(classified.statusCode).json({
       success: false,
-      error: error.message || "Erro interno ao processar inteligência artificial.",
+      error: classified.message,
+      code: classified.errorCode,
     });
   }
 });
@@ -1498,6 +1624,7 @@ Retorne um JSON rigorosamente estruturado conforme o schema.`;
     });
   } catch (err: any) {
     console.error("Erro no endpoint /api/ai/analyze-image:", err);
+    const classified = classifyGeminiError(err);
 
     logAIAudit({
       userId,
@@ -1507,13 +1634,14 @@ Retorne um JSON rigorosamente estruturado conforme o schema.`;
       action: "VISION_IMAGE_ANALYSIS",
       status: "FAILED",
       modelUsed: "gemini-3.7-flash",
-      details: { error: err.message },
+      details: { error: err.message, errorCode: classified.errorCode },
       ip: getClientIp(req),
     });
 
-    return res.status(500).json({
+    return res.status(classified.statusCode).json({
       success: false,
-      error: err.message || "Erro na análise de visão do Gemini.",
+      error: classified.message,
+      code: classified.errorCode,
     });
   }
 });
@@ -1661,6 +1789,7 @@ Calcule:
     });
   } catch (err: any) {
     console.error("Erro no endpoint /api/ai/suggest-category:", err);
+    const classified = classifyGeminiError(err);
 
     logAIAudit({
       userId,
@@ -1670,13 +1799,14 @@ Calcule:
       action: "SUGGEST_CATEGORY",
       status: "FAILED",
       modelUsed: "gemini-3.1-flash-lite",
-      details: { error: err.message },
+      details: { error: err.message, errorCode: classified.errorCode },
       ip: getClientIp(req),
     });
 
-    return res.status(500).json({
+    return res.status(classified.statusCode).json({
       success: false,
-      error: err.message || "Erro ao sugerir categoria com Gemini.",
+      error: classified.message,
+      code: classified.errorCode,
     });
   }
 });
@@ -1749,6 +1879,9 @@ app.post(["/api/ai/quick-tag", "/ai/quick-tag"], requireAuth, aiRateLimiter, asy
 
     return res.json(parsedResult);
   } catch (err: any) {
+    console.error("Erro no endpoint /api/ai/quick-tag:", err);
+    const classified = classifyGeminiError(err);
+
     logAIAudit({
       userId,
       userEmail,
@@ -1756,13 +1889,15 @@ app.post(["/api/ai/quick-tag", "/ai/quick-tag"], requireAuth, aiRateLimiter, asy
       endpoint: "/api/ai/quick-tag",
       action: "QUICK_AUTO_TAG",
       status: "FAILED",
-      details: { error: err.message },
+      modelUsed: "gemini-3.1-flash-lite",
+      details: { error: err.message, errorCode: classified.errorCode },
       ip: getClientIp(req),
     });
 
-    return res.status(500).json({
+    return res.status(classified.statusCode).json({
       success: false,
-      error: err.message || "Erro ao processar tags automáticas com Gemini.",
+      error: classified.message,
+      code: classified.errorCode,
     });
   }
 });
@@ -1883,6 +2018,7 @@ Calcule uma pontuação de similaridade de 0 a 100 para cada um. Retorne apenas 
     return res.json(parsed);
   } catch (err: any) {
     console.error("Erro no endpoint /api/ai/match-similarity:", err);
+    const classified = classifyGeminiError(err);
 
     logAIAudit({
       userId,
@@ -1891,11 +2027,16 @@ Calcule uma pontuação de similaridade de 0 a 100 para cada um. Retorne apenas 
       endpoint: "/api/ai/match-similarity",
       action: "MATCH_SIMILARITY",
       status: "FAILED",
-      details: { error: err.message },
+      modelUsed: "gemini-3.8-flash",
+      details: { error: err.message, errorCode: classified.errorCode },
       ip: getClientIp(req),
     });
 
-    res.status(500).json({ error: err.message || "Erro no cruzamento de dados de IA." });
+    return res.status(classified.statusCode).json({
+      success: false,
+      error: classified.message,
+      code: classified.errorCode,
+    });
   }
 });
 
@@ -2641,8 +2782,19 @@ app.get(["/api/debug/env", "/debug/env"], (req, res) => {
     return `${name.substring(0, 3)}***@${domain}`;
   };
 
+  const isGeminiConfigured = Boolean(
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    process.env.API_KEY
+  );
+
+  const isFirebaseAdminConfigured = Boolean(
+    process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY
+  );
+
   res.json({
-    status: isDiscordConfigured || isSmtpConfigured,
+    status: isDiscordConfigured || isSmtpConfigured || isGeminiConfigured,
     DISCORD_FEEDBACK_WEBHOOK_URL: isDiscordConfigured,
     DISCORD_WEBHOOK_READY: isDiscordConfigured,
     SMTP: {
@@ -2656,6 +2808,13 @@ app.get(["/api/debug/env", "/debug/env"], (req, res) => {
       port: smtpPort,
       secure: process.env.SMTP_SECURE === "true" || smtpPort === 465,
       userMasked: maskEmail(smtpUser),
+    },
+    GEMINI_AI: {
+      configured: isGeminiConfigured,
+    },
+    FIREBASE_ADMIN: {
+      configured: isFirebaseAdminConfigured,
+      projectIdPresent: Boolean(process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID),
     },
     runtime: "express",
     timestamp: new Date().toISOString(),
@@ -3254,6 +3413,7 @@ Retorne a lista com os IDs dos itens correspondentes, nota de relevância de 0 a
     });
   } catch (err: any) {
     console.error("Erro no endpoint /api/gemini/semantic-search:", err);
+    const classified = classifyGeminiError(err);
 
     logAIAudit({
       userId,
@@ -3262,11 +3422,16 @@ Retorne a lista com os IDs dos itens correspondentes, nota de relevância de 0 a
       endpoint: "/api/gemini/semantic-search",
       action: "SEMANTIC_SEARCH",
       status: "FAILED",
-      details: { error: err.message },
+      modelUsed: "gemini-3.7-flash",
+      details: { error: err.message, errorCode: classified.errorCode },
       ip: getClientIp(req),
     });
 
-    res.status(500).json({ error: err.message || "Erro na busca semântica Gemini." });
+    return res.status(classified.statusCode).json({
+      success: false,
+      error: classified.message,
+      code: classified.errorCode,
+    });
   }
 });
 

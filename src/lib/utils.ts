@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { ITEM_FIELD_LIMITS } from "./constants";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -456,4 +457,271 @@ export function generateSecureSignatureToken(prefix = "sig_"): string {
     return `${prefix}${hex}`;
   }
   return `${prefix}${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 12)}`;
+}
+
+/**
+ * Checks whether a given date representation refers to a future calendar date
+ * compared to today in the local timezone.
+ *
+ * Prevents timezone false positives by normalizing the comparison to local calendar dates
+ * (YYYY-MM-DD) or midnight boundaries.
+ *
+ * @param input Date string (YYYY-MM-DD, DD/MM/YYYY, ISO), Date instance, Timestamp or unix timestamp
+ * @param nowReference Optional reference date (defaults to new Date())
+ * @returns boolean true if the date is strictly in the future, false otherwise
+ */
+export function isFutureDate(input: unknown, nowReference: Date = new Date()): boolean {
+  if (input === null || input === undefined || input === "") {
+    return false;
+  }
+
+  // 1. If string in format YYYY-MM-DD, compare directly against local today YYYY-MM-DD
+  if (typeof input === "string") {
+    const trimmed = input.trim();
+    const isoMatch = trimmed.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+    if (isoMatch) {
+      const year = parseInt(isoMatch[1], 10);
+      const month = String(parseInt(isoMatch[2], 10)).padStart(2, "0");
+      const day = String(parseInt(isoMatch[3], 10)).padStart(2, "0");
+      const inputYmd = `${year}-${month}-${day}`;
+
+      const refYear = nowReference.getFullYear();
+      const refMonth = String(nowReference.getMonth() + 1).padStart(2, "0");
+      const refDay = String(nowReference.getDate()).padStart(2, "0");
+      const todayYmd = `${refYear}-${refMonth}-${refDay}`;
+
+      return inputYmd > todayYmd;
+    }
+
+    // Brazilian format DD/MM/YYYY
+    const brMatch = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (brMatch) {
+      const day = String(parseInt(brMatch[1], 10)).padStart(2, "0");
+      const month = String(parseInt(brMatch[2], 10)).padStart(2, "0");
+      const year = parseInt(brMatch[3], 10);
+      const inputYmd = `${year}-${month}-${day}`;
+
+      const refYear = nowReference.getFullYear();
+      const refMonth = String(nowReference.getMonth() + 1).padStart(2, "0");
+      const refDay = String(nowReference.getDate()).padStart(2, "0");
+      const todayYmd = `${refYear}-${refMonth}-${refDay}`;
+
+      return inputYmd > todayYmd;
+    }
+  }
+
+  // 2. Safe parse input
+  const parsed = safeParseDate(input);
+  if (!parsed || isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  // Normalize parsed date to local midnight
+  const inputMidnight = new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate(), 0, 0, 0, 0);
+  // Normalize reference date to local midnight
+  const todayMidnight = new Date(nowReference.getFullYear(), nowReference.getMonth(), nowReference.getDate(), 0, 0, 0, 0);
+
+  return inputMidnight.getTime() > todayMidnight.getTime();
+}
+
+/**
+ * Validates an item occurrence date, ensuring it is provided, well-formed, and not in the future.
+ * Returns { isValid: boolean, error?: string }.
+ */
+export function validateItemOccurrenceDate(
+  dateInput: unknown,
+  fieldName = "Data da ocorrência"
+): { isValid: boolean; error?: string } {
+  if (dateInput === null || dateInput === undefined || String(dateInput).trim() === "") {
+    return { isValid: false, error: `${fieldName} é obrigatória.` };
+  }
+
+  const str = String(dateInput).trim();
+  const parsed = safeParseDate(str);
+  if (!parsed || isNaN(parsed.getTime())) {
+    return { isValid: false, error: `${fieldName} inválida.` };
+  }
+
+  if (isFutureDate(str)) {
+    return {
+      isValid: false,
+      error: `${fieldName} não pode ser posterior à data atual (não são permitidas datas futuras).`,
+    };
+  }
+
+  return { isValid: true };
+}
+
+export { ITEM_FIELD_LIMITS };
+
+export interface ItemTextFieldsToValidate {
+  title?: string | null;
+  description?: string | null;
+  location?: string | null;
+  color?: string | null;
+  brand?: string | null;
+  contactInfo?: string | null;
+}
+
+export interface ItemFieldValidationResult {
+  isValid: boolean;
+  error?: string;
+  field?: keyof ItemTextFieldsToValidate;
+  currentLength?: number;
+  maxLength?: number;
+}
+
+/**
+ * Validação rigorosa dos limites de caracteres dos campos de texto de ocorrências
+ * (Achados e Perdidos IFPR Campus Ivaiporã).
+ *
+ * Utilizada como Defesa em Profundidade:
+ * 1) No formulário de cadastro (RegisterItemView);
+ * 2) No formulário de edição (ItemDetailModal);
+ * 3) Na camada de processamento e pré-persistência de dados (addItem e updateItemData em AppContext);
+ * 4) No fluxo offline antes de qualquer gravação local ou enfileiramento.
+ *
+ * @param fields Campos a serem auditados e validados
+ * @param isPartial Se true, valida apenas campos definidos (edição parcial)
+ */
+export function validateItemTextFields(
+  fields: ItemTextFieldsToValidate,
+  isPartial = false
+): ItemFieldValidationResult {
+  // 1. Título (Obrigatório no cadastro, opcional na edição parcial)
+  if (fields.title !== undefined && fields.title !== null) {
+    const title = String(fields.title);
+    if (!isPartial && !title.trim()) {
+      return {
+        isValid: false,
+        error: "O título do objeto é obrigatório.",
+        field: "title",
+        currentLength: 0,
+        maxLength: ITEM_FIELD_LIMITS.TITLE,
+      };
+    }
+    if (title.length > ITEM_FIELD_LIMITS.TITLE) {
+      return {
+        isValid: false,
+        error: `O título do objeto não pode ultrapassar ${ITEM_FIELD_LIMITS.TITLE} caracteres (atualmente com ${title.length}).`,
+        field: "title",
+        currentLength: title.length,
+        maxLength: ITEM_FIELD_LIMITS.TITLE,
+      };
+    }
+  } else if (!isPartial) {
+    return {
+      isValid: false,
+      error: "O título do objeto é obrigatório.",
+      field: "title",
+      currentLength: 0,
+      maxLength: ITEM_FIELD_LIMITS.TITLE,
+    };
+  }
+
+  // 2. Descrição (Obrigatória no cadastro, opcional na edição parcial)
+  if (fields.description !== undefined && fields.description !== null) {
+    const desc = String(fields.description);
+    if (!isPartial && !desc.trim()) {
+      return {
+        isValid: false,
+        error: "A descrição do objeto é obrigatória.",
+        field: "description",
+        currentLength: 0,
+        maxLength: ITEM_FIELD_LIMITS.DESCRIPTION,
+      };
+    }
+    if (desc.length > ITEM_FIELD_LIMITS.DESCRIPTION) {
+      return {
+        isValid: false,
+        error: `A descrição do objeto não pode ultrapassar ${ITEM_FIELD_LIMITS.DESCRIPTION} caracteres (atualmente com ${desc.length}).`,
+        field: "description",
+        currentLength: desc.length,
+        maxLength: ITEM_FIELD_LIMITS.DESCRIPTION,
+      };
+    }
+  } else if (!isPartial) {
+    return {
+      isValid: false,
+      error: "A descrição do objeto é obrigatória.",
+      field: "description",
+      currentLength: 0,
+      maxLength: ITEM_FIELD_LIMITS.DESCRIPTION,
+    };
+  }
+
+  // 3. Localização (Obrigatória no cadastro, opcional na edição parcial)
+  if (fields.location !== undefined && fields.location !== null) {
+    const loc = String(fields.location);
+    if (!isPartial && !loc.trim()) {
+      return {
+        isValid: false,
+        error: "O local do objeto é obrigatório.",
+        field: "location",
+        currentLength: 0,
+        maxLength: ITEM_FIELD_LIMITS.LOCATION,
+      };
+    }
+    if (loc.length > ITEM_FIELD_LIMITS.LOCATION) {
+      return {
+        isValid: false,
+        error: `O local do objeto não pode ultrapassar ${ITEM_FIELD_LIMITS.LOCATION} caracteres (atualmente com ${loc.length}).`,
+        field: "location",
+        currentLength: loc.length,
+        maxLength: ITEM_FIELD_LIMITS.LOCATION,
+      };
+    }
+  } else if (!isPartial) {
+    return {
+      isValid: false,
+      error: "O local do objeto é obrigatório.",
+      field: "location",
+      currentLength: 0,
+      maxLength: ITEM_FIELD_LIMITS.LOCATION,
+    };
+  }
+
+  // 4. Cor (Opcional, mas se preenchida deve respeitar o limite)
+  if (fields.color !== undefined && fields.color !== null) {
+    const color = String(fields.color);
+    if (color.length > ITEM_FIELD_LIMITS.COLOR) {
+      return {
+        isValid: false,
+        error: `A cor do objeto não pode ultrapassar ${ITEM_FIELD_LIMITS.COLOR} caracteres (atualmente com ${color.length}).`,
+        field: "color",
+        currentLength: color.length,
+        maxLength: ITEM_FIELD_LIMITS.COLOR,
+      };
+    }
+  }
+
+  // 5. Marca (Opcional, mas se preenchida deve respeitar o limite)
+  if (fields.brand !== undefined && fields.brand !== null) {
+    const brand = String(fields.brand);
+    if (brand.length > ITEM_FIELD_LIMITS.BRAND) {
+      return {
+        isValid: false,
+        error: `A marca do objeto não pode ultrapassar ${ITEM_FIELD_LIMITS.BRAND} caracteres (atualmente com ${brand.length}).`,
+        field: "brand",
+        currentLength: brand.length,
+        maxLength: ITEM_FIELD_LIMITS.BRAND,
+      };
+    }
+  }
+
+  // 6. Contato / Ponto de guarda (Opcional, mas se preenchido deve respeitar o limite)
+  if (fields.contactInfo !== undefined && fields.contactInfo !== null) {
+    const contact = String(fields.contactInfo);
+    if (contact.length > ITEM_FIELD_LIMITS.CONTACT_INFO) {
+      return {
+        isValid: false,
+        error: `As informações de contato não podem ultrapassar ${ITEM_FIELD_LIMITS.CONTACT_INFO} caracteres (atualmente com ${contact.length}).`,
+        field: "contactInfo",
+        currentLength: contact.length,
+        maxLength: ITEM_FIELD_LIMITS.CONTACT_INFO,
+      };
+    }
+  }
+
+  return { isValid: true };
 }

@@ -59,7 +59,7 @@ export const PWAInstallBanner: React.FC = () => {
           className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-40 max-w-md w-[calc(100%-2rem)] sm:w-auto bg-white/95 dark:bg-[#1e1e1e]/95 backdrop-blur-md border border-gray-200 dark:border-neutral-700/80 rounded-2xl shadow-xl p-3.5 flex items-center justify-between gap-3 transition-all duration-300 animate-in fade-in slide-in-from-bottom-2"
         >
           <div
-            className="flex items-center space-x-3 min-w-0 cursor-pointer select-none"
+            className="flex items-center space-x-3 min-w-0 cursor-pointer"
             onClick={() => {
               vibrateClick();
               setShowInstructionsModal(true);
