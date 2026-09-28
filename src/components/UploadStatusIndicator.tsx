@@ -21,6 +21,7 @@ export const UploadStatusIndicator: React.FC = () => {
   const {
     activeUploadTasks,
     removeUploadTask,
+    cancelUploadTask,
     retryUploadTask,
     pendingSyncCount,
     isOnline,
@@ -284,12 +285,26 @@ export const UploadStatusIndicator: React.FC = () => {
                             retryUploadTask(task.id);
                           }}
                           title="Tentar novamente"
+                          aria-label="Tentar novamente"
                           className="p-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 rounded hover:bg-blue-50 dark:hover:bg-blue-950/40"
                         >
                           <RefreshCw className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      {(task.status === "COMPLETED" || task.status === "ERROR") && (
+                      {task.status === "ERROR" ? (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            vibrateClick();
+                            await cancelUploadTask(task.id);
+                          }}
+                          title="Cancelar upload e remover da fila"
+                          aria-label="Cancelar upload e remover da fila"
+                          className="p-1 text-neutral-400 hover:text-red-600 dark:hover:text-red-400 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      ) : task.status === "COMPLETED" ? (
                         <button
                           type="button"
                           onClick={() => {
@@ -297,11 +312,12 @@ export const UploadStatusIndicator: React.FC = () => {
                             removeUploadTask(task.id);
                           }}
                           title="Remover da lista"
-                          className="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                          aria-label="Remover da lista"
+                          className="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
 

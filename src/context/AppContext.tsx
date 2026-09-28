@@ -360,6 +360,7 @@ interface AppContextType {
   addUploadTask: (task: UploadTaskStatus) => void;
   updateUploadTask: (taskId: string, updates: Partial<UploadTaskStatus>) => void;
   removeUploadTask: (taskId: string) => void;
+  cancelUploadTask: (taskId: string) => Promise<void>;
   retryUploadTask: (taskId: string) => Promise<void>;
   documentTemplates: DocumentTemplate[];
   generatedDocuments: GeneratedDocumentRecord[];
@@ -432,6 +433,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveUploadTasks((prev) => prev.filter((t) => t.id !== taskId));
   };
 
+  const cancelUploadTask = async (taskId: string): Promise<void> => {
+    const task = activeUploadTasks.find((t) => t.id === taskId);
+    const queue = await getPendingSyncQueue();
+
+    // Match queue entry by multiple bindings:
+    // 1. entry.payload?.id === task?.itemId
+    // 2. entry.id === task?.itemId
+    // 3. `sync-task-${entry.id}` === taskId
+    // 4. entry.id === taskId
+    // 5. task?.id === `sync-task-${entry.id}`
+    const entry = queue.find(
+      (e) =>
+        (task && (e.payload?.id === task.itemId || e.id === task.itemId)) ||
+        `sync-task-${e.id}` === taskId ||
+        e.id === taskId ||
+        (task && task.id === `sync-task-${e.id}`)
+    );
+
+    if (entry) {
+      await removeSyncQueueEntry(entry.id);
+      console.info(`[Offline Upload Cancel] Tarefa ${taskId} removida da fila IndexedDB.`);
+    } else {
+      console.info(`[Offline Upload Cancel] Nenhuma entrada IndexedDB encontrada para tarefa ${taskId}.`);
+    }
+
+    // Refresh actual count from IndexedDB
+    const remaining = await getSyncQueueCount();
+    setPendingSyncCount(remaining);
+
+    // Remove task from React active upload tasks state
+    setActiveUploadTasks((prev) => prev.filter((t) => t.id !== taskId));
+  };
+
   const triggerManualSync = async () => {
     console.log("[Manual Sync Trigger] Sincronização manual solicitada pelo usuário.");
     await syncOfflineQueue();
@@ -441,10 +475,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const task = activeUploadTasks.find((t) => t.id === taskId);
     if (!task) return;
 
-    // If the task corresponds to a queue entry, reset its state to PENDENTE to allow manual retry
+    // If the task corresponds to a queue entry, check if error is permanent
     const queue = await getPendingSyncQueue();
-    const entry = queue.find((e) => e.payload?.id === task.itemId || e.id === task.itemId || `sync-task-${e.id}` === taskId);
+    const entry = queue.find(
+      (e) =>
+        (task && (e.payload?.id === task.itemId || e.id === task.itemId)) ||
+        `sync-task-${e.id}` === taskId ||
+        e.id === taskId ||
+        (task && task.id === `sync-task-${e.id}`)
+    );
+
     if (entry) {
+      const isPermanentError =
+        entry.status === "ERRO_PERMANENTE" ||
+        entry.errorType === "PERMANENT" ||
+        (typeof entry.error === "string" &&
+          (entry.error.includes("PAYLOAD_SIZE") ||
+            entry.error.includes("FIELD_LIMIT") ||
+            entry.error.includes("PERMANENT"))) ||
+        (typeof task.error === "string" &&
+          (task.error.includes("PAYLOAD_SIZE") ||
+            task.error.includes("FIELD_LIMIT") ||
+            task.error.includes("PERMANENT")));
+
+      if (isPermanentError) {
+        console.warn(`[Retry Upload Blocked] Item #${entry.id} possui erro permanente (${entry.error}). O retry foi bloqueado.`);
+        addToast(
+          "Este item possui dados/imagens que excedem os limites permitidos. O cadastro precisa ser cancelado ou ajustado.",
+          "warning"
+        );
+        return;
+      }
+
       await updateSyncQueueEntry(entry.id, {
         status: "PENDENTE",
         error: undefined,
@@ -4762,6 +4824,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addUploadTask,
         updateUploadTask,
         removeUploadTask,
+        cancelUploadTask,
         retryUploadTask,
         documentTemplates,
         generatedDocuments,

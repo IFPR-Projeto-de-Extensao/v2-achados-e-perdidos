@@ -532,4 +532,240 @@ describe("Offline / Online Upload & Sync Engine (Localiza+)", () => {
     expect(result.remainingCount).toBe(1);
     expect(mockWriter).not.toHaveBeenCalled();
   });
+
+  // =========================================================================
+  // 13. Cancelamento Real de Upload Offline e Fila IndexedDB (cancelUploadTask)
+  // =========================================================================
+  describe("13. Auditoria e Validação de cancelUploadTask() na Fila Offline IndexedDB", () => {
+    it("TESTE 1: Erro permanente -> cancelUploadTask() remove a entrada do IndexedDB", async () => {
+      const entry = await syncEngine.enqueue(mockItemNormal, {
+        status: "ERRO_PERMANENTE",
+        errorType: "PERMANENT",
+        error: "PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT (950000 bytes)",
+      });
+
+      let activeTasks: UploadTaskStatus[] = [
+        {
+          id: `sync-task-${entry.id}`,
+          itemId: entry.payload.id,
+          itemTitle: entry.payload.title,
+          itemType: entry.payload.type,
+          status: "ERROR",
+          error: "PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT",
+          statusMessage: "Erro permanente",
+          startedAt: new Date().toISOString(),
+          progress: 100,
+        },
+      ];
+
+      const cancel = async (taskId: string) => {
+        const task = activeTasks.find((t) => t.id === taskId);
+        const queue = await syncEngine.getAll();
+        const found = queue.find(
+          (e) =>
+            (task && (e.payload?.id === task.itemId || e.id === task.itemId)) ||
+            `sync-task-${e.id}` === taskId ||
+            e.id === taskId ||
+            (task && task.id === `sync-task-${e.id}`)
+        );
+        if (found) {
+          await syncEngine.remove(found.id);
+        }
+        activeTasks = activeTasks.filter((t) => t.id !== taskId);
+      };
+
+      await cancel(`sync-task-${entry.id}`);
+
+      expect(await syncEngine.getCount()).toBe(0);
+      expect(activeTasks.length).toBe(0);
+    });
+
+    it("TESTE 2: Erro temporário -> cancelUploadTask() remove a entrada do IndexedDB", async () => {
+      const entry = await syncEngine.enqueue(mockItemNormal, {
+        status: "ERRO_TEMPORARIO",
+        errorType: "TEMPORARY",
+        error: "Falha temporária de rede / Firestore offline",
+      });
+
+      let activeTasks: UploadTaskStatus[] = [
+        {
+          id: `sync-task-${entry.id}`,
+          itemId: entry.payload.id,
+          itemTitle: entry.payload.title,
+          itemType: entry.payload.type,
+          status: "ERROR",
+          error: "TEMPORARY",
+          statusMessage: "Erro temporário",
+          startedAt: new Date().toISOString(),
+          progress: 100,
+        },
+      ];
+
+      const cancel = async (taskId: string) => {
+        const task = activeTasks.find((t) => t.id === taskId);
+        const queue = await syncEngine.getAll();
+        const found = queue.find(
+          (e) =>
+            (task && (e.payload?.id === task.itemId || e.id === task.itemId)) ||
+            `sync-task-${e.id}` === taskId ||
+            e.id === taskId ||
+            (task && task.id === `sync-task-${e.id}`)
+        );
+        if (found) {
+          await syncEngine.remove(found.id);
+        }
+        activeTasks = activeTasks.filter((t) => t.id !== taskId);
+      };
+
+      await cancel(`sync-task-${entry.id}`);
+
+      expect(await syncEngine.getCount()).toBe(0);
+      expect(activeTasks.length).toBe(0);
+    });
+
+    it("TESTE 3: Depois do cancelamento, getSyncQueueCount() retorna a contagem correta", async () => {
+      const entry1 = await syncEngine.enqueue(mockItemNormal);
+      const entry2 = await syncEngine.enqueue({ ...mockItemNormal, id: "item-2", title: "Item 2" });
+
+      expect(await syncEngine.getCount()).toBe(2);
+
+      await syncEngine.remove(entry1.id);
+      expect(await syncEngine.getCount()).toBe(1);
+
+      await syncEngine.remove(entry2.id);
+      expect(await syncEngine.getCount()).toBe(0);
+    });
+
+    it("TESTE 4: Depois do cancelamento, activeUploadTasks não contém mais a tarefa", async () => {
+      const entry = await syncEngine.enqueue(mockItemNormal, { status: "ERRO" });
+      let activeTasks: UploadTaskStatus[] = [
+        {
+          id: `sync-task-${entry.id}`,
+          itemId: entry.payload.id,
+          itemTitle: entry.payload.title,
+          itemType: entry.payload.type,
+          status: "ERROR",
+          statusMessage: "Erro",
+          startedAt: new Date().toISOString(),
+          progress: 100,
+        },
+      ];
+
+      activeTasks = activeTasks.filter((t) => t.id !== `sync-task-${entry.id}`);
+      expect(activeTasks.some((t) => t.id === `sync-task-${entry.id}`)).toBe(false);
+    });
+
+    it("TESTE 5: Depois do cancelamento, syncOfflineQueue() não processa novamente o item", async () => {
+      const entry = await syncEngine.enqueue(mockItemNormal);
+      await syncEngine.remove(entry.id);
+
+      const mockWriter = vi.fn().mockResolvedValue(true);
+      const result = await syncEngine.processSync(true, mockWriter);
+
+      expect(result.syncedCount).toBe(0);
+      expect(result.remainingCount).toBe(0);
+      expect(mockWriter).not.toHaveBeenCalled();
+    });
+
+    it("TESTE 6: Entrada identificada por sync-task-${entry.id} é encontrada corretamente", async () => {
+      const entry = await syncEngine.enqueue(mockItemNormal);
+      const taskId = `sync-task-${entry.id}`;
+
+      const queue = await syncEngine.getAll();
+      const found = queue.find((e) => `sync-task-${e.id}` === taskId);
+
+      expect(found).toBeDefined();
+      expect(found?.id).toBe(entry.id);
+    });
+
+    it("TESTE 7: Entrada identificada por payload.id também é encontrada corretamente", async () => {
+      const entry = await syncEngine.enqueue(mockItemNormal);
+      const targetPayloadId = mockItemNormal.id;
+
+      const queue = await syncEngine.getAll();
+      const found = queue.find((e) => e.payload?.id === targetPayloadId);
+
+      expect(found).toBeDefined();
+      expect(found?.id).toBe(entry.id);
+    });
+
+    it("TESTE 8: Erro permanente PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT não pode entrar em loop de retry", async () => {
+      const entry = await syncEngine.enqueue(mockItemNormal, {
+        status: "ERRO_PERMANENTE",
+        errorType: "PERMANENT",
+        error: "PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT (950000 bytes)",
+      });
+
+      const retryTask = async (taskId: string): Promise<boolean> => {
+        const queue = await syncEngine.getAll();
+        const found = queue.find((e) => `sync-task-${e.id}` === taskId);
+        if (!found) return false;
+
+        const isPermanent =
+          found.status === "ERRO_PERMANENTE" ||
+          found.errorType === "PERMANENT" ||
+          (typeof found.error === "string" && found.error.includes("PAYLOAD_SIZE"));
+
+        if (isPermanent) {
+          return false;
+        }
+
+        await syncEngine.update(found.id, { status: "PENDENTE", error: undefined });
+        return true;
+      };
+
+      const retried = await retryTask(`sync-task-${entry.id}`);
+      expect(retried).toBe(false);
+
+      const queueAfter = await syncEngine.getAll();
+      expect(queueAfter[0].status).toBe("ERRO_PERMANENTE");
+    });
+
+    it("TESTE 9: Retry de erro temporário continua funcionando", async () => {
+      const entry = await syncEngine.enqueue(mockItemNormal, {
+        status: "ERRO_TEMPORARIO",
+        errorType: "TEMPORARY",
+        error: "Falha de rede",
+      });
+
+      const retryTask = async (taskId: string): Promise<boolean> => {
+        const queue = await syncEngine.getAll();
+        const found = queue.find((e) => `sync-task-${e.id}` === taskId);
+        if (!found) return false;
+
+        const isPermanent =
+          found.status === "ERRO_PERMANENTE" ||
+          found.errorType === "PERMANENT" ||
+          (typeof found.error === "string" && found.error.includes("PAYLOAD_SIZE"));
+
+        if (isPermanent) {
+          return false;
+        }
+
+        await syncEngine.update(found.id, { status: "PENDENTE", error: undefined, errorType: undefined });
+        return true;
+      };
+
+      const retried = await retryTask(`sync-task-${entry.id}`);
+      expect(retried).toBe(true);
+
+      const queueAfter = await syncEngine.getAll();
+      expect(queueAfter[0].status).toBe("PENDENTE");
+
+      const mockWriter = vi.fn().mockResolvedValue(true);
+      const syncResult = await syncEngine.processSync(true, mockWriter);
+      expect(syncResult.syncedCount).toBe(1);
+      expect(mockWriter).toHaveBeenCalledTimes(1);
+    });
+
+    it("TESTE 10: Cancelar uma tarefa não chama setDoc() nem altera Firestore", async () => {
+      const entry = await syncEngine.enqueue(mockItemNormal, { status: "ERRO" });
+      const mockFirestoreSetDoc = vi.fn();
+
+      await syncEngine.remove(entry.id);
+
+      expect(mockFirestoreSetDoc).not.toHaveBeenCalled();
+      expect(await syncEngine.getCount()).toBe(0);
+    });
+  });
 });

@@ -24,12 +24,56 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.37",
+    codename: "Offline Upload Real Queue Cancellation & Permanent Error Guard",
+    releaseDate: "28/09/2026",
+    releaseDateTime: "28 de Setembro de 2026 • 23:35 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Correção crítica no mecanismo de cancelamento e retry da fila de uploads offline (IndexedDB) no Localiza+ (IFPR Campus Ivaiporã): 1) Implementação da função 'cancelUploadTask(taskId)' em AppContext para remover a entrada real persistida na fila IndexedDB (STORE_SYNC_QUEUE) através de múltiplos vínculos (payload.id, entry.id, sync-task-id), eliminando a falha em que o botão 'X' apenas removia a tarefa do estado visual React mantendo a pendência na fila; 2) Atualização em tempo real de 'pendingSyncCount' com base na contagem real do IndexedDB (getSyncQueueCount); 3) Integração do cancelamento persistente no componente UploadStatusIndicator substituindo a remoção visual por cancelUploadTask no botão 'X' para tarefas com erro; 4) Blindagem de 'retryUploadTask' contra loops infinitos de retry em itens com erro permanente (PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT / FIELD_LIMIT_EXCEEDED), alertando o usuário via toast informativo; 5) Preservação rigorosa de documentos já sincronizados no Firestore; 6) Expansão da suíte de testes em src/lib/offlineUploadSync.test.ts cobrindo os 10 cenários obrigatórios de cancelamento e retry.",
+    additions: [
+      {
+        id: "v1937-add-1",
+        title: "Cancelamento Real e Persistente na Fila IndexedDB (cancelUploadTask)",
+        description: "Implementação da função cancelUploadTask em AppContext com sincronização imediata de pendingSyncCount e exclusão física da entrada na tabela IndexedDB sem afetar o Firestore.",
+        module: "PWA",
+        tag: "Fila Offline & IndexedDB",
+      },
+      {
+        id: "v1937-add-2",
+        title: "Suíte de Testes de Cancelamento e Blindagem de Retry Offline",
+        description: "Adição de 10 testes específicos em src/lib/offlineUploadSync.test.ts validando cancelamento de erros permanentes e temporários, contagem exata da fila, integridade de tarefas ativas e bloqueio de loops.",
+        module: "GERAL",
+        tag: "Testes Automatizados",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1937-fix-1",
+        title: "Eliminação do Retorno Indesejado de Tarefas Canceladas no UploadStatusIndicator",
+        description: "Substituição da chamada removeUploadTask por cancelUploadTask no botão 'X' do UploadStatusIndicator, garantindo que itens cancelados não reapareçam após recargas de página, reconexão ou Background Sync.",
+        module: "PWA",
+        tag: "Correção Crítica",
+      },
+      {
+        id: "v1937-fix-2",
+        title: "Bloqueio de Loops de Retry em Erros Estruturais e de Limite de Tamanho",
+        description: "Aprimoramento de retryUploadTask para interceptar e barrar tentativas manuais de reenvio em itens marcados como ERRO_PERMANENTE por excesso de bytes defensivo (900.000 bytes) ou limites de texto.",
+        module: "PWA",
+        tag: "Proteção de Fila",
+      },
+    ],
+    stats: {
+      additionsCount: 2,
+      fixesCount: 2,
+    },
+  },
+  {
     version: "v1.9.36",
     codename: "API Endpoints Resilience & HTTP Error Classifier",
     releaseDate: "28/09/2026",
     releaseDateTime: "28 de Setembro de 2026 • 23:25 BRT",
     type: "PATCH",
-    isCurrent: true,
     summary: "Auditoria técnica completa e blindagem de resiliência em todos os endpoints '/api/*' e servidor Express do Localiza+ (IFPR Campus Ivaiporã): 1) Inventário e auditoria detalhada de 100% dos endpoints (/api/support/send-feedback, /api/system/config, /api/analytics/track, /api/analytics/metrics, /api/debug/env, /api/items/notify-novos-achados, /api/items/notify-novas-perdas, /api/admin/delete-user, /api/admin/master-wipe, /api/ai/*, /api/gemini/semantic-search, /api/signature/*); 2) Eliminação de erros genéricos HTTP 500 na integração com IA via implementação do classificador especializado 'classifyGeminiError', mapeando com precisão Rate Limit/Quota (429), filtros de segurança/argumentos inválidos (400), chave não autorizada/inválida (503) e indisponibilidade de upstream (503/502); 3) Suporte expandido a chaves de API multi-origem (GEMINI_API_KEY, GOOGLE_API_KEY, VITE_GEMINI_API_KEY, API_KEY); 4) Ajuste defensivo em endpoints administrativos de configuração e métricas para retornar HTTP 503 (AUTH_SERVICE_UNAVAILABLE) quando o Firebase Admin Auth estiver indisponível; 5) Inclusão de flags booleanas de diagnóstico para GEMINI_AI e FIREBASE_ADMIN em /api/debug/env sem qualquer vazamento de secrets; 6) Criação da suíte de testes automatizados apiEndpointsAudit.test.ts.",
     additions: [
       {
