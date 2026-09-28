@@ -844,58 +844,57 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
     }
 
     // Verify user in Firebase Auth before deletion
+    let authUserExists = false;
     try {
       const fbUser = await adminAuth.getUser(cleanTargetId);
+      authUserExists = true;
       if (!targetEmail) targetEmail = fbUser.email || "";
       if (!targetName) targetName = fbUser.displayName || targetEmail.split("@")[0] || cleanTargetId;
       console.log(`[Admin Delete User] Usuário localizado no Firebase Auth: ${cleanTargetId} (${targetEmail})`);
     } catch (getUserErr: any) {
       if (getUserErr?.code === "auth/user-not-found") {
-        console.warn(`[Admin Delete User] [STAGE: TARGET_UID_VALIDATED] Usuário não encontrado no Firebase Auth: ${cleanTargetId}`);
-        return res.status(404).json({
-          success: false,
-          error: "Usuário não encontrado no Firebase Authentication.",
-          code: "USER_NOT_FOUND",
-          stage: "TARGET_UID_VALIDATED",
-          targetUserId: cleanTargetId,
-        });
+        console.warn(`[Admin Delete User] Usuário ${cleanTargetId} não encontrado no Firebase Auth (ou já removido). Continuando limpeza no Firestore.`);
+      } else {
+        console.warn("[Admin Delete User Warning] Erro na consulta do Firebase Auth:", getUserErr?.message);
       }
-      console.warn("[Admin Delete User Warning] Erro na consulta do Firebase Auth:", getUserErr?.message);
     }
 
     // ----------------------------------------------------
     // STAGE 10: AUTH_DELETE_START
     // ----------------------------------------------------
     currentStage = "AUTH_DELETE_START";
-    console.log(`[Admin Delete User] [STAGE: AUTH_DELETE_START] Excluindo UID ${cleanTargetId} do Firebase Auth...`);
-
     let authDeleted = false;
     let authErrorCode: string | null = null;
     let authErrorDetail: string | null = null;
 
-    try {
-      await adminAuth.deleteUser(cleanTargetId);
-      authDeleted = true;
-    } catch (authDelErr: any) {
-      authErrorCode = authDelErr?.code || "auth/unknown";
-      authErrorDetail = authDelErr?.message || String(authDelErr);
-      if (authDelErr?.code === "auth/user-not-found") {
-        console.log(`[Admin Delete User] Usuário ${cleanTargetId} já não constava no Firebase Auth.`);
+    if (authUserExists) {
+      console.log(`[Admin Delete User] [STAGE: AUTH_DELETE_START] Excluindo UID ${cleanTargetId} do Firebase Auth...`);
+      try {
+        await adminAuth.deleteUser(cleanTargetId);
         authDeleted = true;
-      } else {
-        console.error(`[Admin Delete User Error] [STAGE: AUTH_DELETE_START]:`, {
-          code: authErrorCode,
-          message: authErrorDetail,
-          adminUid,
-          adminEmail,
-          targetUserId: cleanTargetId,
-        });
-        return res.status(500).json({
-          error: "Não foi possível excluir a conta.",
-          code: authErrorCode || "AUTH_DELETE_FAILED",
-          stage: "AUTH_DELETE_START",
-        });
+      } catch (authDelErr: any) {
+        authErrorCode = authDelErr?.code || "auth/unknown";
+        authErrorDetail = authDelErr?.message || String(authDelErr);
+        if (authDelErr?.code === "auth/user-not-found") {
+          console.log(`[Admin Delete User] Usuário ${cleanTargetId} já não constava no Firebase Auth.`);
+          authDeleted = true;
+        } else {
+          console.error(`[Admin Delete User Error] [STAGE: AUTH_DELETE_START]:`, {
+            code: authErrorCode,
+            message: authErrorDetail,
+            adminUid,
+            adminEmail,
+            targetUserId: cleanTargetId,
+          });
+          return res.status(500).json({
+            error: "Não foi possível excluir a conta no Firebase Authentication.",
+            code: authErrorCode || "AUTH_DELETE_FAILED",
+            stage: "AUTH_DELETE_START",
+          });
+        }
       }
+    } else {
+      authDeleted = true;
     }
 
     // ----------------------------------------------------

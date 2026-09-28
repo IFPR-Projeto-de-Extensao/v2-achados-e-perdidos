@@ -6,6 +6,7 @@ import { filterNotificationsForUser } from "../lib/notificationHelper";
 import { usePWA } from "../hooks/usePWA";
 import { ThemeToggle } from "./ThemeToggle";
 import { ContactSupportModal } from "./ContactSupportModal";
+import { getSafeAvatarUrl, handleAvatarError } from "../lib/avatarUtils";
 import {
   Search,
   PlusCircle,
@@ -442,8 +443,10 @@ export const Navbar: React.FC = () => {
                   className="flex items-center space-x-1.5 p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors shrink-0 group"
                 >
                   <img
-                    src={currentUser.avatarUrl}
+                    src={getSafeAvatarUrl(currentUser.avatarUrl, currentUser.name)}
                     alt={currentUser.name}
+                    referrerPolicy="no-referrer"
+                    onError={(e) => handleAvatarError(e, currentUser.name)}
                     className="w-7 h-7 rounded-full object-cover border border-[#00843D] shrink-0"
                   />
                   <span className="hidden md:inline text-xs font-semibold text-neutral-700 dark:text-neutral-300 max-w-[80px] xl:max-w-[105px] truncate whitespace-nowrap group-hover:text-[#00843D] dark:group-hover:text-green-400">

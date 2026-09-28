@@ -1,10 +1,12 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { ItemCard } from "./ItemCard";
-import { formatDate, formatDateTime, vibrateClick, formatPhone, isValidPhone } from "../lib/utils";
+import { formatDate, formatDateTime, vibrateClick, vibrateSuccess, formatPhone, isValidPhone } from "../lib/utils";
 import { UserRole, BadgeTier } from "../types";
 import { calculateUserReputation } from "../lib/reputationSystem";
 import { resolveAccountStatus, formatAccountStatusDetails } from "../lib/accountStatusUtils";
+import { compressImage } from "../lib/imageCompression";
+import { getSafeAvatarUrl, handleAvatarError } from "../lib/avatarUtils";
 import {
   User as UserIcon,
   GraduationCap,
@@ -41,6 +43,9 @@ import {
   ChevronUp,
   ShieldAlert,
   AlertOctagon,
+  Camera,
+  Upload,
+  Loader2,
 } from "lucide-react";
 
 export const ProfileView: React.FC = () => {
@@ -68,12 +73,64 @@ export const ProfileView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"my_items" | "claims">("my_items");
   const [isEditing, setIsEditing] = useState(false);
   const [isSubscribingFCM, setIsSubscribingFCM] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Edit form state
   const [editName, setEditName] = useState(currentUser?.name || "");
   const [editCourse, setEditCourse] = useState(currentUser?.courseOrDept || "");
   const [editMatricula, setEditMatricula] = useState(currentUser?.registrationNumber || "");
   const [editPhone, setEditPhone] = useState(currentUser?.phone || "");
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate type
+    const validTypes = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
+    if (!validTypes.includes(file.type)) {
+      addToast("Formato de imagem não suportado. Por favor, utilize JPG, PNG ou WebP.", "warning");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    // Validate size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      addToast("A fotografia selecionada é muito grande. O tamanho máximo permitido é de 5 MB.", "warning");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    try {
+      setIsUploadingPhoto(true);
+      vibrateClick();
+
+      // Compress photo for profile avatar (320x320, 85% quality, WebP)
+      const compressed = await compressImage(file, {
+        maxWidth: 320,
+        maxHeight: 320,
+        quality: 0.85,
+        outputFormat: "image/webp",
+      });
+
+      const newAvatarUrl = compressed.base64;
+
+      // Persist to Firestore and Firebase Auth
+      await updateUserProfileData({
+        ...currentUser,
+        avatarUrl: newAvatarUrl,
+      });
+
+      vibrateSuccess();
+      addToast("Foto de perfil atualizada e salva com sucesso!", "success");
+    } catch (err: any) {
+      console.error("Erro ao processar e salvar foto de perfil:", err);
+      addToast("Não foi possível salvar a nova foto de perfil. Tente novamente.", "error");
+    } finally {
+      setIsUploadingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const handleSubscribeFCM = async () => {
     vibrateClick();
@@ -156,16 +213,50 @@ export const ProfileView: React.FC = () => {
     <div className="max-w-5xl mx-auto space-y-8 pb-16">
       {/* Profile Header Card */}
       <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-sm flex flex-col md:flex-row items-center md:items-start space-y-4 md:space-y-0 md:space-x-6">
-        {/* Avatar */}
-        <div className="relative">
+        {/* Avatar with Camera Trigger & Fallback */}
+        <div className="relative group shrink-0">
           <img
-            src={currentUser.avatarUrl}
+            src={getSafeAvatarUrl(currentUser.avatarUrl, currentUser.name)}
             alt={currentUser.name}
-            className="w-24 h-24 rounded-2xl object-cover border-4 border-[#00843D] shadow-md"
+            referrerPolicy="no-referrer"
+            onError={(e) => handleAvatarError(e, currentUser.name)}
+            className="w-24 h-24 rounded-2xl object-cover border-4 border-[#00843D] shadow-md transition-transform group-hover:scale-105"
           />
-          <span className="absolute -bottom-2 -right-2 px-2.5 py-0.5 rounded-full bg-[#00843D] text-white text-[10px] font-bold uppercase tracking-wide border-2 border-white dark:border-[#1E1E1E]">
+          <span className="absolute -bottom-2 -right-2 px-2.5 py-0.5 rounded-full bg-[#00843D] text-white text-[10px] font-bold uppercase tracking-wide border-2 border-white dark:border-[#1E1E1E] z-10">
             {currentUser.role}
           </span>
+
+          {/* Hidden File Input for Avatar */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/jpg"
+            onChange={handlePhotoUpload}
+            className="hidden"
+            id="profile-avatar-file-input"
+            disabled={isUploadingPhoto}
+          />
+
+          {/* Camera Button Overlay */}
+          <label
+            htmlFor="profile-avatar-file-input"
+            className={`absolute inset-0 rounded-2xl bg-black/60 text-white flex flex-col items-center justify-center cursor-pointer transition-all duration-200 ${
+              isUploadingPhoto ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            }`}
+            title="Clique para alterar sua foto de perfil"
+          >
+            {isUploadingPhoto ? (
+              <>
+                <Loader2 className="w-6 h-6 animate-spin text-white mb-1" />
+                <span className="text-[9px] font-extrabold text-center uppercase tracking-tight">Salvando...</span>
+              </>
+            ) : (
+              <>
+                <Camera className="w-6 h-6 text-white mb-1 drop-shadow-sm" />
+                <span className="text-[10px] font-extrabold text-center uppercase tracking-tight">Alterar</span>
+              </>
+            )}
+          </label>
         </div>
 
         {/* User Details */}
@@ -320,13 +411,29 @@ export const ProfileView: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-1">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                 <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-[#00843D] text-white font-bold text-xs rounded-xl hover:bg-[#006830] transition-colors"
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingPhoto}
+                  className="px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-xs font-bold text-neutral-700 dark:text-neutral-200 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
                 >
-                  Salvar Alterações no Banco de Dados
+                  {isUploadingPhoto ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Camera className="w-3.5 h-3.5 text-[#00843D]" />
+                  )}
+                  <span>{isUploadingPhoto ? "Salvando foto..." : "Alterar Foto de Perfil"}</span>
                 </button>
+
+                <div className="flex justify-end space-x-2">
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 bg-[#00843D] text-white font-bold text-xs rounded-xl hover:bg-[#006830] transition-colors cursor-pointer shadow-xs"
+                  >
+                    Salvar Alterações no Banco de Dados
+                  </button>
+                </div>
               </div>
             </form>
           )}

@@ -6,6 +6,7 @@ import {
   calculateSuspensionDeadline,
   formatAccountStatusDetails,
 } from "../lib/accountStatusUtils";
+import { getSafeAvatarUrl, handleAvatarError } from "../lib/avatarUtils";
 import { formatDate, safeParseDate, vibrateClick, vibrateSuccess, vibrateWarning } from "../lib/utils";
 import {
   X,
@@ -159,11 +160,10 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
           <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
             <div className="flex items-center space-x-3 min-w-0">
               <img
-                src={
-                  user.avatarUrl ||
-                  "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
-                }
+                src={getSafeAvatarUrl(user.avatarUrl, user.name)}
                 alt=""
+                referrerPolicy="no-referrer"
+                onError={(e) => handleAvatarError(e, user.name)}
                 className="w-10 h-10 rounded-full object-cover shrink-0 border border-neutral-200 dark:border-neutral-700"
               />
               <div className="min-w-0">

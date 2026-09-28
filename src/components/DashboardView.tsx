@@ -18,6 +18,7 @@ import { DigitalReturnsD3Chart } from "./DigitalReturnsD3Chart";
 import { ExportFoundItemsReportModal } from "./ExportFoundItemsReportModal";
 import { ManageUserStatusModal } from "./ManageUserStatusModal";
 import { AccountManagementView } from "./AccountManagementView";
+import { getSafeAvatarUrl, handleAvatarError } from "../lib/avatarUtils";
 import { resolveAccountStatus, formatAccountStatusDetails } from "../lib/accountStatusUtils";
 import { auth, db, traceFirebasePerformance } from "../lib/firebase";
 import { collection, query, limit, getDocs } from "firebase/firestore";
@@ -2163,8 +2164,10 @@ export const DashboardView: React.FC = () => {
                                   <td className="p-3.5 font-bold text-neutral-900 dark:text-white">
                                     <div className="flex items-center space-x-2.5">
                                       <img
-                                        src={u.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"}
+                                        src={getSafeAvatarUrl(u.avatarUrl, u.name)}
                                         alt=""
+                                        referrerPolicy="no-referrer"
+                                        onError={(e) => handleAvatarError(e, u.name)}
                                         className="w-8 h-8 rounded-full object-cover shrink-0 border border-neutral-200 dark:border-neutral-700"
                                       />
                                       <div className="flex flex-col">
@@ -2693,8 +2696,10 @@ export const DashboardView: React.FC = () => {
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex items-center space-x-3">
                                     <img
-                                      src={pendingUser.avatarUrl}
+                                      src={getSafeAvatarUrl(pendingUser.avatarUrl, pendingUser.name)}
                                       alt={pendingUser.name}
+                                      referrerPolicy="no-referrer"
+                                      onError={(e) => handleAvatarError(e, pendingUser.name)}
                                       className="w-10 h-10 rounded-full object-cover border border-neutral-300 dark:border-neutral-700"
                                     />
                                     <div>

@@ -24,12 +24,64 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.30",
+    codename: "Profile Photo Persistence & Admin User Deletion Resilience",
+    releaseDate: "27/09/2026",
+    releaseDateTime: "27 de Setembro de 2026 • 15:15 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Resolução definitiva do fluxo de foto de perfil e do gerenciamento administrativo de exclusão de usuários: 1) Eliminação do bloqueio HTTP 403 Forbidden do CDN Google (lh3.googleusercontent.com) via inclusão do atributo referrerPolicy='no-referrer' e fallback gracioso com onError em todas as instâncias de avatar do sistema; 2) Implementação do fluxo completo de upload e compressão da foto de perfil em 'Meu Perfil' (validação de formato JPG/PNG/WebP, tamanho até 5MB, compressão via Canvas/WebP 320x320 85%, persistência atômica no Firestore em users/{uid}.avatarUrl e sincronização no Firebase Auth via updateProfile); 3) Correção definitiva do endpoint administrativo de exclusão (/api/admin/delete-user e server.ts), alinhando o FIRESTORE_DATABASE_ID e FIREBASE_PROJECT_ID com o arquivo real de configuração firebase-applet-config.json (evitando falha 5 NOT_FOUND no database 'default'); 4) Eliminação do bloqueio HTTP 404 quando o usuário a ser excluído não possui registro no Firebase Auth, permitindo a limpeza de contas órfãs do Firestore com preservação de auditoria imutável.",
+    additions: [
+      {
+        id: "v1930-add-1",
+        title: "Upload e Compressão de Foto de Perfil em Meu Perfil",
+        description: "Adição de mecanismo direto de seleção e upload de fotografia no perfil: validação de tipo e tamanho, compressão local com compressImage em WebP de alta qualidade e baixa pegada de dados, persistência no documento do Firestore e sincronização no Firebase Auth com updateProfile.",
+        module: "AUTH",
+        tag: "Perfil de Usuário",
+      },
+      {
+        id: "v1930-add-2",
+        title: "Blindagem de Carregamento de Avatares com no-referrer e Fallback",
+        description: "Adição do atributo referrerPolicy='no-referrer' em todas as tags de imagem de perfil (ProfileView, Navbar, AccountManagementView, DashboardView, ManageUserStatusModal), contornando o bloqueio de hotlinking do Google e garantindo exibição instantânea da foto real do Google ou fallback determinístico via Dicebear.",
+        module: "GERAL",
+        tag: "Interface & UX",
+      },
+      {
+        id: "v1930-add-3",
+        title: "Alinhamento de ID de Banco de Dados no Firebase Admin",
+        description: "Configuração do FIRESTORE_DATABASE_ID e FIREBASE_PROJECT_ID em api/_lib/firebaseAdmin.ts para utilizar a definição real de firebase-applet-config.json, impedindo conexões ao banco inexistente 'default'.",
+        module: "ADMIN",
+        tag: "Infraestrutura",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1930-fix-1",
+        title: "Eliminação do Bloqueio de Exclusão para Usuários sem Auth (404 Falso Positivo)",
+        description: "Ajuste na Serverless Function e rota Express de /api/admin/delete-user para que auth/user-not-found não interrompa a remoção, permitindo que administradores eliminem documentos órfãos do Firestore com trilha de auditoria completa.",
+        module: "ADMIN",
+        tag: "Exclusão Administrativa",
+      },
+      {
+        id: "v1930-fix-2",
+        title: "Resiliência no deleteUser com Fallback Seguro para Firestore",
+        description: "Aprimoramento do método deleteUser no AppContext para assegurar remoção direta do documento via Firestore (autorizada por firestore.rules para administradores) e atualização atômica da lista local allUsers.",
+        module: "ADMIN",
+        tag: "Ciclo de Vida de Contas",
+      },
+    ],
+    stats: {
+      additionsCount: 3,
+      fixesCount: 2,
+    },
+  },
+  {
     version: "v1.9.29",
     codename: "Firestore Payload Size Guard & Error Classification Engine",
     releaseDate: "27/09/2026",
     releaseDateTime: "27 de Setembro de 2026 • 13:45 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Implementação de Defesa em Profundidade e Classificação de Erros de Sincronização: 1) Guarda defensiva interna conservadora de 900.000 bytes (tamanho em bytes UTF-8 do JSON serializado via TextEncoder) antes de invocar setDoc(), prevenindo que o payload se aproxime do limite rígido de 1 MiB do Firestore; 2) Classificação determinística entre erros temporários (instabilidade de rede/timeout, mantidos na fila para retry automático) e erros permanentes (payload excessivo ou erros irreversíveis de validação, preservados com segurança no IndexedDB sem loops de retry automático); 3) Atualização da fila offline SyncQueueEntry com suporte a ERRO_TEMPORARIO e ERRO_PERMANENTE preservando compatibilidade retroativa; 4) Diferenciação visual e informativa no UploadStatusIndicator; 5) Suíte de testes automatizados com cobertura completa dos 12 cenários de sincronização, concorrência, offline, fronteira e payload.",
     additions: [
       {

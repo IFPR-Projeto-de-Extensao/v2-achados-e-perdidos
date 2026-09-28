@@ -54,6 +54,7 @@ import {
   onAuthStateChanged,
   sendEmailVerification,
   reload,
+  updateProfile,
   GoogleAuthProvider,
   User as FirebaseUser,
 } from "firebase/auth";
@@ -2979,6 +2980,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateUserProfileData = async (updatedUser: User) => {
     setCurrentUser(updatedUser);
     try {
+      if (auth.currentUser && updatedUser.avatarUrl && updatedUser.avatarUrl !== auth.currentUser.photoURL) {
+        try {
+          await updateProfile(auth.currentUser, {
+            photoURL: updatedUser.avatarUrl,
+            displayName: updatedUser.name || auth.currentUser.displayName,
+          });
+        } catch (authProfileErr) {
+          console.warn("[Auth Profile Sync Notice]:", authProfileErr);
+        }
+      }
       await setDoc(doc(db, "users", updatedUser.id), updatedUser, { merge: true });
       addToast("Perfil atualizado no banco de dados!", "success");
     } catch (e) {
@@ -3133,86 +3144,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteUser = async (targetUserId: string) => {
-    if (!targetUserId) return;
+    if (!targetUserId || typeof targetUserId !== "string" || !targetUserId.trim()) {
+      addToast("ID de usuário inválido para exclusão.", "error");
+      return;
+    }
+
+    const cleanTargetId = targetUserId.trim();
+
     if (currentUser.role !== "ADMIN") {
       addToast("Apenas o Administrador pode remover usuários do sistema.", "error");
       return;
     }
 
-    if (targetUserId === currentUser.id) {
+    if (cleanTargetId === currentUser.id) {
       addToast("Operação não permitida: Você não pode remover sua própria conta de administrador ativa.", "error");
       return;
     }
 
-    const targetUser = allUsers.find((u) => u.id === targetUserId);
-    const targetName = targetUser?.name || targetUserId;
-    const targetEmail = targetUser?.email || "";
-    const previousStatus = targetUser?.status || "active";
+    const targetUser = allUsers.find((u) => u.id === cleanTargetId);
+    const targetName = targetUser?.name || cleanTargetId;
 
     try {
-      // 1. Call server-side administrative deletion endpoint (Firebase Admin SDK)
+      // 1. Obter Bearer Token atualizado do usuário autenticado no Firebase Auth
       const idToken = await auth.currentUser?.getIdToken(true);
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (idToken) headers["Authorization"] = `Bearer ${idToken}`;
+      if (!idToken) {
+        throw new Error("Sessão administrativa não autenticada. Faça login novamente.");
+      }
 
+      // 2. Chamar endpoint administrativo server-authoritative exclusivo
       const res = await fetch("/api/admin/delete-user", {
         method: "POST",
-        headers,
-        body: JSON.stringify({ targetUserId }),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ targetUserId: cleanTargetId }),
       });
 
       if (!res.ok) {
-        const resText = await res.text();
-        let errMsg = `Falha na exclusão do usuário no servidor (${res.status})`;
-        try {
-          const errData = JSON.parse(resText);
-          if (errData?.error) {
-            errMsg = errData.error;
-          } else if (errData?.message) {
-            errMsg = errData.message;
-          }
-        } catch (_) {
-          if (resText && resText.trim()) {
-            errMsg = `Falha no servidor (${res.status}): ${resText.trim().slice(0, 150)}`;
-          }
-        }
-        console.error("[Admin Delete User Error]:", {
-          status: res.status,
-          statusText: res.statusText,
-          message: errMsg,
-          targetUserId,
-        });
-        throw new Error(errMsg);
+        const errorData = await res.json().catch(() => null);
+        const errorMsg =
+          errorData?.error ||
+          errorData?.message ||
+          `Falha na exclusão administrativa do usuário (HTTP ${res.status}).`;
+        throw new Error(errorMsg);
       }
 
-      // 2. Client-side Firestore doc cleanup if still cached/present
-      try {
-        await deleteDoc(doc(db, "users", targetUserId));
-      } catch (_) {}
+      const data = await res.json().catch(() => null);
 
-      // 3. Update local state
-      setAllUsers((prev) => prev.filter((u) => u.id !== targetUserId));
+      // 3. Sucesso exclusivo via backend: o servidor já realizou a exclusão no Auth,
+      // a limpeza no Firestore (users e notifications) e o registro imutável em audit_logs e activity_logs.
+      // O cliente apenas atualiza a interface / estado local:
+      setAllUsers((prev) => prev.filter((u) => u.id !== cleanTargetId));
 
-      // 4. Record audit logs for traceability
-      await recordAuditLog({
-        objectId: targetUserId,
-        objectType: "USER",
-        objectTitle: targetName,
-        action: "ACCOUNT_DELETED",
-        fieldChanged: "account_lifecycle",
-        oldValue: previousStatus,
-        newValue: "DELETED",
-        details: `Conta do usuário '${targetName}' (${targetEmail}) excluída permanentemente pelo administrador ${currentUser.name || currentUser.email}. Removida do Firebase Authentication e do Firestore.`,
-      });
-
-      await logAdminAction(
-        "ACCOUNT_DELETED" as any,
-        `Excluiu permanentemente a conta de '${targetName}' (${targetEmail}) do Firebase Authentication e Firestore.`
+      addToast(
+        data?.message || `Conta de '${targetName}' excluída definitivamente com sucesso!`,
+        "success"
       );
-
-      addToast(`Conta de '${targetName}' excluída definitivamente com sucesso!`, "success");
     } catch (e: any) {
-      console.error("Erro ao excluir conta do usuário:", e);
+      console.error("[deleteUser] Erro ao excluir conta do usuário:", e);
       addToast(`Erro ao excluir conta: ${e?.message || "Operação não autorizada"}`, "error");
       throw e;
     }

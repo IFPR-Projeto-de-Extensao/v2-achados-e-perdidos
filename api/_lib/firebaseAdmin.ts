@@ -36,12 +36,16 @@ export function formatPrivateKey(rawKey: string | undefined): string | undefined
 }
 
 export const FIREBASE_PROJECT_ID =
+  (getLazyFirebaseAppConfig() as any)?.projectId ||
   process.env.FIREBASE_PROJECT_ID ||
   process.env.VITE_FIREBASE_PROJECT_ID ||
-  "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
+  "gen-lang-client-0490390966";
 
 export const FIRESTORE_DATABASE_ID =
-  process.env.FIRESTORE_DATABASE_ID ||
+  (getLazyFirebaseAppConfig() as any)?.firestoreDatabaseId ||
+  (process.env.FIRESTORE_DATABASE_ID && process.env.FIRESTORE_DATABASE_ID !== "default"
+    ? process.env.FIRESTORE_DATABASE_ID
+    : undefined) ||
   "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
 
 let adminAppInstance: App | null = null;

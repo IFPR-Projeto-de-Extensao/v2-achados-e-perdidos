@@ -3,6 +3,7 @@ import { useApp } from "../context/AppContext";
 import { User, AccountStatus, UserRole } from "../types";
 import { resolveAccountStatus, formatAccountStatusDetails, sortUsersByCreationDesc } from "../lib/accountStatusUtils";
 import { ManageUserStatusModal } from "./ManageUserStatusModal";
+import { getSafeAvatarUrl, handleAvatarError } from "../lib/avatarUtils";
 import { vibrateClick, vibrateSuccess, safeIncludes, sanitizeQuery } from "../lib/utils";
 import {
   Users,
@@ -237,11 +238,10 @@ export const AccountManagementView: React.FC = () => {
                       <td className="p-3.5">
                         <div className="flex items-center space-x-3">
                           <img
-                            src={
-                              u.avatarUrl ||
-                              "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
-                            }
+                            src={getSafeAvatarUrl(u.avatarUrl, u.name)}
                             alt=""
+                            referrerPolicy="no-referrer"
+                            onError={(e) => handleAvatarError(e, u.name)}
                             className="w-8 h-8 rounded-full object-cover shrink-0 border border-neutral-200 dark:border-neutral-700"
                           />
                           <div>

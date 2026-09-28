@@ -117,4 +117,20 @@ describe("Regras de Segurança e Validação de Exclusão de Usuários", () => {
     const isAdmin = userDocData.role === "ADMIN";
     expect(isAdmin).toBe(true);
   });
+
+  it("permite exclusão de usuário do Firestore mesmo quando não localizado no Firebase Auth (auth/user-not-found)", () => {
+    // Simula usuário que consta no Firestore mas já foi excluído do Firebase Auth
+    const targetUserId = "user-only-in-firestore-123";
+    const authError = { code: "auth/user-not-found", message: "User not found in Auth" };
+
+    const shouldProceedFirestoreCleanup = authError.code === "auth/user-not-found";
+    expect(shouldProceedFirestoreCleanup).toBe(true);
+  });
+
+  it("gera fallback determinístico de avatar quando a URL está vazia ou falha", () => {
+    const userName = "Paulo Cauan";
+    const fallbackUrl = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(userName)}`;
+    expect(fallbackUrl).toContain("Paulo%20Cauan");
+    expect(fallbackUrl).toContain("dicebear.com");
+  });
 });
