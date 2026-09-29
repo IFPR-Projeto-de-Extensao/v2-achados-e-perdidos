@@ -715,6 +715,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             });
           }
         } catch (syncErr: any) {
+          const originalCode = syncErr?.code || (syncErr?.name === "FirebaseError" ? "firestore/unknown" : undefined);
+          const originalName = syncErr?.name || "UnknownError";
+          const originalMessage = syncErr?.message || String(syncErr);
+          const originalStack = syncErr?.stack;
+
+          console.error("[SYNC_FIRESTORE_ORIGINAL_ERROR]", {
+            code: originalCode,
+            name: originalName,
+            message: originalMessage,
+            stack: originalStack,
+            itemId: itemToSave.id,
+            taskId,
+            collection: "items",
+            documentId: itemToSave.id,
+            operation: "setDoc(..., { merge: true })",
+            payloadSizeBytes,
+            online: typeof navigator !== "undefined" ? navigator.onLine : undefined,
+            authUid: auth.currentUser?.uid || null,
+            authEmail: auth.currentUser?.email || null,
+            authEmailVerified: auth.currentUser?.emailVerified ?? null,
+            registeredByUserId: itemToSave.registeredByUserId,
+            registeredByRole: itemToSave.registeredByRole,
+          });
+
           const classifiedErr = classifySyncError(syncErr, payloadSizeBytes);
           console.error(`[Offline Sync Error] Falha ao sincronizar item #${entry.id} (${classifiedErr.category}):`, syncErr?.message || syncErr);
 
@@ -3634,6 +3658,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       }
     } catch (e: any) {
+      const originalCode = e?.code || (e?.name === "FirebaseError" ? "firestore/unknown" : undefined);
+      const originalName = e?.name || "UnknownError";
+      const originalMessage = e?.message || String(e);
+      const originalStack = e?.stack;
+
+      console.error("[ADD_ITEM_FIRESTORE_ORIGINAL_ERROR]", {
+        code: originalCode,
+        name: originalName,
+        message: originalMessage,
+        stack: originalStack,
+        itemId: newItem.id,
+        taskId,
+        collection: "items",
+        documentId: newItem.id,
+        operation: "setDoc()",
+        payloadSizeBytes,
+        online: typeof navigator !== "undefined" ? navigator.onLine : undefined,
+        authUid: auth.currentUser?.uid || null,
+        authEmail: auth.currentUser?.email || null,
+        authEmailVerified: auth.currentUser?.emailVerified ?? null,
+        registeredByUserId: newItem.registeredByUserId,
+        registeredByRole: newItem.registeredByRole,
+      });
+
       const classifiedErr = classifySyncError(e, payloadSizeBytes);
       console.warn(`[Cadastro] Falha ao persistir no Firestore (${classifiedErr.category}):`, e);
       const queuedItem: LostFoundItem = { ...newItem, isOfflineQueued: true };

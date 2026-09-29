@@ -19,6 +19,8 @@ export interface ClassifiedSyncError {
   reason: string;
   userMessage: string;
   payloadSizeBytes?: number;
+  originalCode?: string;
+  originalName?: string;
 }
 
 /**
@@ -63,6 +65,9 @@ export function isPayloadWithinDefensiveLimit(data: unknown): {
  * or PERMANENT (unrecoverable without user modification, e.g. payload > 900 KB or unrecoverable client errors).
  */
 export function classifySyncError(error: unknown, payloadSizeBytes?: number): ClassifiedSyncError {
+  const originalCode = (error as any)?.code;
+  const originalName = (error as any)?.name || (error instanceof Error ? error.name : undefined);
+
   // 1. Check size guard first
   if (payloadSizeBytes !== undefined && payloadSizeBytes > FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES) {
     return {
@@ -71,14 +76,20 @@ export function classifySyncError(error: unknown, payloadSizeBytes?: number): Cl
       reason: `PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT (${payloadSizeBytes} bytes > ${FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES} bytes)`,
       userMessage: "Este item possui dados ou imagem grandes demais para sincronização. O cadastro foi preservado no dispositivo e precisa ser ajustado.",
       payloadSizeBytes,
+      originalCode,
+      originalName,
     };
   }
 
   const errMessage = error instanceof Error ? error.message : String(error || "");
   const errLower = errMessage.toLowerCase();
+  const codeLower = typeof originalCode === "string" ? originalCode.toLowerCase() : "";
 
-  // 2. Permanent error patterns
+  // 2. Permanent error patterns (permission-denied, invalid-argument, resource-exhausted)
   if (
+    codeLower === "permission-denied" ||
+    codeLower === "invalid-argument" ||
+    codeLower === "resource-exhausted" ||
     errLower.includes("exceeds maximum allowed size") ||
     errLower.includes("payload_size_exceeds_defensive_limit") ||
     errLower.includes("invalid-argument") ||
@@ -93,15 +104,19 @@ export function classifySyncError(error: unknown, payloadSizeBytes?: number): Cl
       reason: errMessage || "Erro permanente de validação ou permissão",
       userMessage: "Um item precisa de atenção antes de ser sincronizado.",
       payloadSizeBytes,
+      originalCode,
+      originalName,
     };
   }
 
-  // 3. Temporary / Transient errors (network unavailable, timeouts, server unavailable, offline)
+  // 3. Temporary / Transient errors (unavailable, deadline-exceeded, network timeout, offline)
   return {
     category: "TEMPORARY",
     isPermanent: false,
     reason: errMessage || "Instabilidade transitória de rede ou serviço",
     userMessage: "Não foi possível sincronizar agora. Tentaremos novamente.",
     payloadSizeBytes,
+    originalCode,
+    originalName,
   };
 }
