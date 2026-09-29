@@ -477,20 +477,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     if (entry) {
-      const isSizeOrFieldLimitExceeded =
-        (typeof entry.error === "string" &&
-          (entry.error.includes("PAYLOAD_SIZE") ||
-            entry.error.includes("FIELD_LIMIT"))) ||
-        (task && typeof task.error === "string" &&
-          (task.error.includes("PAYLOAD_SIZE") ||
-            task.error.includes("FIELD_LIMIT")));
+      // Re-evaluate actual payload and fields in real-time instead of relying on stale error strings
+      const payloadToTest = (entry.payload || {}) as Partial<LostFoundItem>;
+      const actualByteSize = calculatePayloadSizeBytes(payloadToTest);
+      const isSizeExceeded = actualByteSize > FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES;
 
-      if (isSizeOrFieldLimitExceeded) {
-        console.warn(`[Retry Upload Blocked] Item #${resolvedItemId} possui dados/campos que excedem os limites (${entry.error}). O retry foi bloqueado.`);
+      const textValidation = validateItemTextFields({
+        title: payloadToTest.title,
+        description: payloadToTest.description,
+        location: payloadToTest.location,
+        color: payloadToTest.color,
+        brand: payloadToTest.brand,
+        contactInfo: payloadToTest.contactInfo,
+      }, false);
+
+      if (isSizeExceeded) {
+        console.warn(`[Retry Upload Blocked] Item #${resolvedItemId} excede o limite defensivo (${actualByteSize} bytes > ${FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES} bytes). O retry foi bloqueado.`);
         addToast(
-          "Este item possui dados/imagens que excedem os limites permitidos. O cadastro precisa ser cancelado ou ajustado.",
+          "Este item possui dados ou imagem grandes demais para sincronização. O cadastro precisa ser ajustado.",
           "warning"
         );
+        return;
+      }
+
+      if (!textValidation.isValid) {
+        console.warn(`[Retry Upload Blocked] Item #${resolvedItemId} excede limite de caracteres: ${textValidation.error}`);
+        addToast(textValidation.error || "Limite de caracteres excedido.", "warning");
         return;
       }
 

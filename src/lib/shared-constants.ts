@@ -127,6 +127,12 @@ export function sanitizeFirestoreData<T extends Record<string, any>>(data: T): R
         clean[key] = val;
       } else if (val !== null && typeof val === "object" && !Array.isArray(val) && !(val instanceof Date)) {
         clean[key] = sanitizeFirestoreData(val);
+      } else if (Array.isArray(val)) {
+        clean[key] = val.map((item) =>
+          item !== null && typeof item === "object" && !(item instanceof Date)
+            ? sanitizeFirestoreData(item)
+            : item
+        );
       } else {
         clean[key] = val;
       }

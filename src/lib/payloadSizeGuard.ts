@@ -86,20 +86,51 @@ export function classifySyncError(error: unknown, payloadSizeBytes?: number): Cl
   const codeLower = typeof originalCode === "string" ? originalCode.toLowerCase() : "";
 
   // 2. Unrecoverable data structure & payload boundary errors
+  // Note: If payload is within defensive limits (<= 900KB), it cannot be a payload size limit error.
+  const isActualPayloadSizeExceeded = payloadSizeBytes !== undefined && payloadSizeBytes > FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES;
+
+  if (
+    isActualPayloadSizeExceeded ||
+    codeLower === "resource-exhausted" ||
+    errLower.includes("exceeds maximum allowed size")
+  ) {
+    return {
+      category: "PERMANENT",
+      isPermanent: true,
+      reason: isActualPayloadSizeExceeded
+        ? `PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT (${payloadSizeBytes} bytes > ${FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES} bytes)`
+        : (errMessage || "Payload excede o limite máximo permitido pelo Firestore (1 MiB)."),
+      userMessage: "Este item possui dados ou imagem grandes demais para sincronização. O cadastro foi preservado no dispositivo e precisa ser ajustado.",
+      payloadSizeBytes,
+      originalCode,
+      originalName,
+    };
+  }
+
+  // 2.1 Text field limit errors
+  if (errLower.includes("field_limit_exceeded")) {
+    return {
+      category: "PERMANENT",
+      isPermanent: true,
+      reason: errMessage || "Limite de caracteres de campos de texto excedido",
+      userMessage: errMessage || "Limite de caracteres de campos de texto excedido. O cadastro precisa ser ajustado.",
+      payloadSizeBytes,
+      originalCode,
+      originalName,
+    };
+  }
+
+  // 2.2 Invalid argument / schema structure errors
   if (
     codeLower === "invalid-argument" ||
-    codeLower === "resource-exhausted" ||
-    errLower.includes("exceeds maximum allowed size") ||
-    errLower.includes("payload_size_exceeds_defensive_limit") ||
-    errLower.includes("field_limit_exceeded") ||
     errLower.includes("invalid-argument") ||
     errLower.includes("invalid argument")
   ) {
     return {
       category: "PERMANENT",
       isPermanent: true,
-      reason: errMessage || "Erro permanente de validação ou estrutura de dados",
-      userMessage: "Este item possui dados/imagens que excedem os limites permitidos. O cadastro precisa ser cancelado ou ajustado.",
+      reason: errMessage || "Estrutura de dados ou argumento inválido para o Firestore",
+      userMessage: "Estrutura de dados inválida para o banco de dados. O cadastro precisa ser verificado ou ajustado.",
       payloadSizeBytes,
       originalCode,
       originalName,

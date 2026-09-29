@@ -69,10 +69,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "AUTH",
         tag: "Segurança & Autenticação",
       },
+      {
+        id: "v1938-fix-3",
+        title: "Correção de Falso Bloqueio de Limite no Cadastro e Reenvio Offline",
+        description: "Reavaliação real do payload em retryUploadTask e classifySyncError garantindo que ocorrências com imagens válidas dentro do teto defensivo de 900.000 bytes (~118 KiB) não sejam bloqueadas por strings de erro obsoletas, além de sanitização recursiva de arrays no Firestore.",
+        module: "FIRESTORE",
+        tag: "Correção de Cadastro & Payload",
+      },
     ],
     stats: {
       additionsCount: 3,
-      fixesCount: 2,
+      fixesCount: 3,
     },
   },
   {
