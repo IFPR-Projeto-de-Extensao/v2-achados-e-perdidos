@@ -63,6 +63,9 @@ export const RegisterItemView: React.FC = () => {
     isAuthenticated,
     requestAuthForRegistration,
     setAuthModalOpen,
+    activeUploadTasks,
+    retryUploadTask,
+    cancelUploadTask,
   } = useApp();
 
   const { navigate, goBack } = useRouter();
@@ -592,11 +595,73 @@ export const RegisterItemView: React.FC = () => {
     }
   };
 
-  // Persistence Feedback State
+  // Persistence Feedback State (Reativo a mudanças na fila offline / background sync)
   const [registrationFeedback, setRegistrationFeedback] = useState<{
-    status: "CONFIRMED" | "OFFLINE_QUEUED";
+    status: "CONFIRMED" | "OFFLINE_QUEUED" | "SYNC_ERROR";
     item: LostFoundItem;
+    error?: string;
+    taskId?: string;
   } | null>(null);
+
+  // Reactive Sync Monitoring for OFFLINE_QUEUED / SYNC_ERROR registration feedback
+  useEffect(() => {
+    if (!registrationFeedback) return;
+
+    const currentItemId = registrationFeedback.item.id;
+
+    // 1. Direct confirmation verification: Check if the item is already present and confirmed in the items collection
+    const confirmedInItems = items.find((i) => i.id === currentItemId && !i.isOfflineQueued);
+    if (confirmedInItems && registrationFeedback.status !== "CONFIRMED") {
+      setRegistrationFeedback({
+        status: "CONFIRMED",
+        item: confirmedInItems,
+      });
+      return;
+    }
+
+    // 2. Correlation with activeUploadTasks using itemId and fallback taskId patterns
+    const matchingTask = activeUploadTasks.find(
+      (t) =>
+        t.itemId === currentItemId ||
+        t.id === currentItemId ||
+        t.id === `sync-task-${currentItemId}` ||
+        t.id === `upload-task-${currentItemId}`
+    );
+
+    if (matchingTask) {
+      if (matchingTask.status === "COMPLETED" && registrationFeedback.status !== "CONFIRMED") {
+        setRegistrationFeedback({
+          status: "CONFIRMED",
+          item: confirmedInItems || registrationFeedback.item,
+        });
+      } else if (matchingTask.status === "ERROR" && registrationFeedback.status !== "SYNC_ERROR") {
+        setRegistrationFeedback((prev) => {
+          if (!prev || prev.item.id !== currentItemId) return prev;
+          return {
+            status: "SYNC_ERROR",
+            item: prev.item,
+            error: matchingTask.error || "Falha temporária ao sincronizar o cadastro com o servidor em nuvem.",
+            taskId: matchingTask.id,
+          };
+        });
+      } else if (
+        (matchingTask.status === "UPLOADING" ||
+          matchingTask.status === "QUEUED_SYNC" ||
+          matchingTask.status === "SAVING_LOCAL") &&
+        registrationFeedback.status === "SYNC_ERROR"
+      ) {
+        // If a retry was started or upload resumed, return to OFFLINE_QUEUED
+        setRegistrationFeedback((prev) => {
+          if (!prev || prev.item.id !== currentItemId) return prev;
+          return {
+            status: "OFFLINE_QUEUED",
+            item: prev.item,
+            taskId: matchingTask.id,
+          };
+        });
+      }
+    }
+  }, [registrationFeedback, activeUploadTasks, items]);
 
   // Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1775,6 +1840,81 @@ export const RegisterItemView: React.FC = () => {
                   </button>
                 </div>
               </>
+            ) : registrationFeedback.status === "SYNC_ERROR" ? (
+              <>
+                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-3xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-center justify-center text-red-600 dark:text-red-400">
+                  <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12" />
+                </div>
+
+                <div className="space-y-2">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300">
+                    <AlertCircle className="w-3.5 h-3.5" /> Atenção: Falha na Sincronização
+                  </span>
+                  <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                    Falha no Envio
+                  </h2>
+                  <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">
+                    Não foi possível enviar o pertence <strong className="text-neutral-900 dark:text-white">"{registrationFeedback.item.title}"</strong> para o banco de dados no momento. O item permanece salvo localmente com segurança no dispositivo (IndexedDB).
+                  </p>
+                </div>
+
+                <div className="p-4 bg-red-50/60 dark:bg-red-950/20 rounded-2xl border border-red-200/80 dark:border-red-800/40 text-left space-y-2 text-xs text-red-800 dark:text-red-300">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" /> Detalhes da Ocorrência:
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-red-700 dark:text-red-400 font-mono">
+                    {registrationFeedback.error || "Falha temporária ao sincronizar com o servidor em nuvem."}
+                  </p>
+                  <p className="text-[10px] text-neutral-500 dark:text-neutral-400 pt-1">
+                    Você pode tentar o reenvio manual ou cancelar a operação da fila offline.
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      vibrateClick();
+                      const taskIdToRetry =
+                        registrationFeedback.taskId ||
+                        `sync-task-${registrationFeedback.item.id}`;
+                      await retryUploadTask(taskIdToRetry);
+                    }}
+                    className="flex-1 py-3.5 px-5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow-lg shadow-red-600/20 transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>Tentar Novamente Agora</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      vibrateClick();
+                      const taskIdToCancel =
+                        registrationFeedback.taskId ||
+                        `sync-task-${registrationFeedback.item.id}`;
+                      await cancelUploadTask(taskIdToCancel);
+                      setRegistrationFeedback(null);
+                      addToast("Envio offline cancelado e removido da fila com sucesso.", "info");
+                    }}
+                    className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-red-600 dark:text-red-400 font-semibold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                    title="Cancelar envio e remover da fila"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Cancelar Upload</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      vibrateClick();
+                      setRegistrationFeedback(null);
+                      navigate("/");
+                    }}
+                    className="py-3.5 px-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-400 font-bold text-xs transition-all cursor-pointer"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </>
             ) : (
               <>
                 <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-3xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-center text-amber-600 dark:text-amber-400">
@@ -1798,7 +1938,7 @@ export const RegisterItemView: React.FC = () => {
                     <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" /> Diretriz RNF-04:
                   </div>
                   <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
-                    Conforme os requisitos de governança do IFPR, o status final de persistência somente será emitido após a confirmação de recebimento pelo Firestore em nuvem. A sincronização ocorrerá automaticamente em segundo plano.
+                    Conforme os requisitos de governança do IFPR, o status final de persistência somente será emitido após a confirmação de recebimento pelo Firestore em nuvem. A sincronização ocorrerá automaticamente em segundo plano assim que a conectividade for restabelecida.
                   </p>
                 </div>
 

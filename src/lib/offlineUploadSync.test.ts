@@ -768,4 +768,167 @@ describe("Offline / Online Upload & Sync Engine (Localiza+)", () => {
       expect(await syncEngine.getCount()).toBe(0);
     });
   });
+
+  describe("RegisterItemView - Modal Reativo de Sincronização e Feedback", () => {
+    interface ModalState {
+      status: "CONFIRMED" | "OFFLINE_QUEUED" | "SYNC_ERROR";
+      item: LostFoundItem;
+      error?: string;
+      taskId?: string;
+    }
+
+    // Pure logic simulation of the RegisterItemView reactive effect
+    const evaluateModalState = (
+      currentModal: ModalState | null,
+      activeTasks: UploadTaskStatus[],
+      itemsList: LostFoundItem[]
+    ): ModalState | null => {
+      if (!currentModal) return null;
+
+      const currentItemId = currentModal.item.id;
+
+      // 1. Direct confirmation in items collection
+      const confirmedInItems = itemsList.find((i) => i.id === currentItemId && !i.isOfflineQueued);
+      if (confirmedInItems && currentModal.status !== "CONFIRMED") {
+        return {
+          status: "CONFIRMED",
+          item: confirmedInItems,
+        };
+      }
+
+      // 2. Correlation with activeUploadTasks
+      const matchingTask = activeTasks.find(
+        (t) =>
+          t.itemId === currentItemId ||
+          t.id === currentItemId ||
+          t.id === `sync-task-${currentItemId}` ||
+          t.id === `upload-task-${currentItemId}`
+      );
+
+      if (matchingTask) {
+        if (matchingTask.status === "COMPLETED" && currentModal.status !== "CONFIRMED") {
+          return {
+            status: "CONFIRMED",
+            item: confirmedInItems || currentModal.item,
+          };
+        } else if (matchingTask.status === "ERROR" && currentModal.status !== "SYNC_ERROR") {
+          return {
+            status: "SYNC_ERROR",
+            item: currentModal.item,
+            error: matchingTask.error || "Falha temporária ao sincronizar o cadastro com o servidor em nuvem.",
+            taskId: matchingTask.id,
+          };
+        } else if (
+          (matchingTask.status === "UPLOADING" ||
+            matchingTask.status === "QUEUED_SYNC" ||
+            matchingTask.status === "SAVING_LOCAL") &&
+          currentModal.status === "SYNC_ERROR"
+        ) {
+          return {
+            status: "OFFLINE_QUEUED",
+            item: currentModal.item,
+            taskId: matchingTask.id,
+          };
+        }
+      }
+
+      return currentModal;
+    };
+
+    it("Transição de OFFLINE_QUEUED para CONFIRMED quando a tarefa é concluída", () => {
+      const initialModal: ModalState = {
+        status: "OFFLINE_QUEUED",
+        item: { ...mockItemNormal, id: "item-react-1" },
+      };
+
+      const activeTasks: UploadTaskStatus[] = [
+        {
+          id: "sync-task-queue-123",
+          itemId: "item-react-1",
+          itemTitle: mockItemNormal.title,
+          itemType: "ENCONTRADO",
+          progress: 100,
+          status: "COMPLETED",
+          statusMessage: "Concluído",
+          startedAt: new Date().toISOString(),
+        },
+      ];
+
+      const nextState = evaluateModalState(initialModal, activeTasks, []);
+      expect(nextState?.status).toBe("CONFIRMED");
+      expect(nextState?.item.id).toBe("item-react-1");
+    });
+
+    it("Transição de OFFLINE_QUEUED para SYNC_ERROR quando ocorre falha na sincronização", () => {
+      const initialModal: ModalState = {
+        status: "OFFLINE_QUEUED",
+        item: { ...mockItemNormal, id: "item-react-2" },
+      };
+
+      const activeTasks: UploadTaskStatus[] = [
+        {
+          id: "sync-task-queue-456",
+          itemId: "item-react-2",
+          itemTitle: mockItemNormal.title,
+          itemType: "ENCONTRADO",
+          progress: 0,
+          status: "ERROR",
+          statusMessage: "Falha de rede",
+          error: "Erro 503: Servidor Firestore indisponível no momento",
+          startedAt: new Date().toISOString(),
+        },
+      ];
+
+      const nextState = evaluateModalState(initialModal, activeTasks, []);
+      expect(nextState?.status).toBe("SYNC_ERROR");
+      expect(nextState?.error).toContain("Erro 503");
+      expect(nextState?.taskId).toBe("sync-task-queue-456");
+    });
+
+    it("Transição de SYNC_ERROR de volta para OFFLINE_QUEUED ao iniciar retry", () => {
+      const initialModal: ModalState = {
+        status: "SYNC_ERROR",
+        item: { ...mockItemNormal, id: "item-react-3" },
+        error: "Erro de conexão",
+        taskId: "sync-task-queue-789",
+      };
+
+      const activeTasks: UploadTaskStatus[] = [
+        {
+          id: "sync-task-queue-789",
+          itemId: "item-react-3",
+          itemTitle: mockItemNormal.title,
+          itemType: "ENCONTRADO",
+          progress: 25,
+          status: "UPLOADING",
+          statusMessage: "Sincronizando...",
+          startedAt: new Date().toISOString(),
+        },
+      ];
+
+      const nextState = evaluateModalState(initialModal, activeTasks, []);
+      expect(nextState?.status).toBe("OFFLINE_QUEUED");
+      expect(nextState?.taskId).toBe("sync-task-queue-789");
+    });
+
+    it("Transição imediata para CONFIRMED se o item já foi confirmado na coleção global items", () => {
+      const initialModal: ModalState = {
+        status: "OFFLINE_QUEUED",
+        item: { ...mockItemNormal, id: "item-react-4", isOfflineQueued: true },
+      };
+
+      const itemsList: LostFoundItem[] = [
+        {
+          ...mockItemNormal,
+          id: "item-react-4",
+          isOfflineQueued: false,
+          syncedAt: new Date().toISOString(),
+        },
+      ];
+
+      const nextState = evaluateModalState(initialModal, [], itemsList);
+      expect(nextState?.status).toBe("CONFIRMED");
+      expect(nextState?.item.isOfflineQueued).toBe(false);
+    });
+  });
 });

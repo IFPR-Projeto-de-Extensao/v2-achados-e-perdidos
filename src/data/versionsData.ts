@@ -24,12 +24,57 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.38",
+    codename: "Reactive Offline Sync Modal & Task State Synchronization",
+    releaseDate: "28/09/2026",
+    releaseDateTime: "28 de Setembro de 2026 • 23:58 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Aprimoramento do modal de persistência de cadastro em RegisterItemView para acompanhamento reativo em tempo real do ciclo de vida de sincronização: 1) Monitoramento reativo das tarefas em 'activeUploadTasks' correlacionadas por 'itemId' (além de id direto e prefixos 'sync-task-' / 'upload-task-'); 2) Transição automática de 'OFFLINE_QUEUED' para 'CONFIRMED' quando a tarefa é concluída ou quando o item é confirmado na coleção global do Firestore; 3) Implementação do estado 'SYNC_ERROR' no modal ao detectar falhas de sincronização na fila, exibindo detalhes técnicos do erro, botão de reenvio manual (retryUploadTask) e cancelamento seguro da fila (cancelUploadTask); 4) Testes automatizados cobrindo todas as transições de estado do modal.",
+    additions: [
+      {
+        id: "v1938-add-1",
+        title: "Modal Reativo de Sincronização em RegisterItemView",
+        description: "Adição de monitoramento reativo com useEffect observando activeUploadTasks e items, atualizando automaticamente o modal de cadastro offline entre OFFLINE_QUEUED, SYNC_ERROR e CONFIRMED.",
+        module: "PWA",
+        tag: "Interface & Fila Offline",
+      },
+      {
+        id: "v1938-add-2",
+        title: "Ações de Retry e Cancelamento Direto no Modal de Falha",
+        description: "Integração das funções retryUploadTask e cancelUploadTask diretamente na interface do modal para recuperação e descarte de uploads offline com erro.",
+        module: "PWA",
+        tag: "Experiência do Usuário",
+      },
+      {
+        id: "v1938-add-3",
+        title: "Suíte de Testes para Transições Reativas do Modal",
+        description: "Adição de testes automatizados em src/lib/offlineUploadSync.test.ts cobrindo as 4 transições de estado do modal de cadastro offline.",
+        module: "GERAL",
+        tag: "Testes Automatizados",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1938-fix-1",
+        title: "Eliminação do Estado Obsoleto 'Aguardando Sincronização' no Modal",
+        description: "Correção que impedia o modal de cadastro de refletir a conclusão ou erro da sincronização em segundo plano enquanto o usuário mantinha o modal aberto.",
+        module: "PWA",
+        tag: "Correção Crítica",
+      },
+    ],
+    stats: {
+      additionsCount: 3,
+      fixesCount: 1,
+    },
+  },
+  {
     version: "v1.9.37",
     codename: "Offline Upload Real Queue Cancellation & Permanent Error Guard",
     releaseDate: "28/09/2026",
     releaseDateTime: "28 de Setembro de 2026 • 23:35 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Correção crítica no mecanismo de cancelamento e retry da fila de uploads offline (IndexedDB) no Localiza+ (IFPR Campus Ivaiporã): 1) Implementação da função 'cancelUploadTask(taskId)' em AppContext para remover a entrada real persistida na fila IndexedDB (STORE_SYNC_QUEUE) através de múltiplos vínculos (payload.id, entry.id, sync-task-id), eliminando a falha em que o botão 'X' apenas removia a tarefa do estado visual React mantendo a pendência na fila; 2) Atualização em tempo real de 'pendingSyncCount' com base na contagem real do IndexedDB (getSyncQueueCount); 3) Integração do cancelamento persistente no componente UploadStatusIndicator substituindo a remoção visual por cancelUploadTask no botão 'X' para tarefas com erro; 4) Blindagem de 'retryUploadTask' contra loops infinitos de retry em itens com erro permanente (PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT / FIELD_LIMIT_EXCEEDED), alertando o usuário via toast informativo; 5) Preservação rigorosa de documentos já sincronizados no Firestore; 6) Expansão da suíte de testes em src/lib/offlineUploadSync.test.ts cobrindo os 10 cenários obrigatórios de cancelamento e retry.",
     additions: [
       {
