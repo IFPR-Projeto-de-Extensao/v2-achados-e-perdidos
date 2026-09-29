@@ -686,6 +686,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             payloadSizeBytes,
           });
 
+          // 🔍 Temporary Forensic Runtime Instrumentation (Diagnostic Only)
+          const firebaseUser = auth.currentUser;
+          const tokenResult = firebaseUser ? await firebaseUser.getIdTokenResult(true).catch(() => null) : null;
+          let userDocExists = false;
+          let userDocData: any = null;
+          if (firebaseUser?.uid) {
+            try {
+              const uSnap = await getDoc(doc(db, "users", firebaseUser.uid));
+              userDocExists = uSnap.exists();
+              userDocData = userDocExists ? uSnap.data() : null;
+            } catch (_) {}
+          }
+
+          console.log("[FIRESTORE_FORENSIC_RUNTIME]", {
+            uid: firebaseUser?.uid ?? null,
+            email: firebaseUser?.email ?? null,
+            emailVerifiedClient: firebaseUser?.emailVerified ?? null,
+            tokenEmailVerified: tokenResult?.claims?.email_verified ?? null,
+            tokenRole: tokenResult?.claims?.role ?? null,
+            tokenAdmin: tokenResult?.claims?.admin ?? null,
+            registeredByUserId: itemToSave.registeredByUserId ?? null,
+            registeredByRole: itemToSave.registeredByRole ?? null,
+            itemId: itemToSave.id ?? null,
+            userDocExists,
+            userDocRole: userDocData?.role ?? null,
+            userDocStatus: userDocData?.status ?? null,
+            userDocApprovalStatus: userDocData?.approvalStatus ?? null,
+          });
+
           // 4. Persist to Firestore with merge to prevent duplicate records
           await setDoc(doc(db, "items", itemToSave.id), sanitizedPayload, { merge: true });
           console.log(`[Offline Sync Success] Item #${itemToSave.id} gravado e confirmado no Firestore (${payloadSizeBytes} bytes).`);
@@ -3654,6 +3683,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       throw new Error("Falha de consistência de autenticação: UID do autor não coincide com a sessão ativa.");
     }
+
+    // 🔍 Temporary Forensic Runtime Instrumentation (Diagnostic Only)
+    const firebaseUser = auth.currentUser;
+    const tokenResult = firebaseUser ? await firebaseUser.getIdTokenResult(true).catch(() => null) : null;
+    let userDocExists = false;
+    let userDocData: any = null;
+    if (firebaseUser?.uid) {
+      try {
+        const uSnap = await getDoc(doc(db, "users", firebaseUser.uid));
+        userDocExists = uSnap.exists();
+        userDocData = userDocExists ? uSnap.data() : null;
+      } catch (_) {}
+    }
+
+    console.log("[FIRESTORE_FORENSIC_RUNTIME]", {
+      uid: firebaseUser?.uid ?? null,
+      email: firebaseUser?.email ?? null,
+      emailVerifiedClient: firebaseUser?.emailVerified ?? null,
+      tokenEmailVerified: tokenResult?.claims?.email_verified ?? null,
+      tokenRole: tokenResult?.claims?.role ?? null,
+      tokenAdmin: tokenResult?.claims?.admin ?? null,
+      registeredByUserId: newItem.registeredByUserId ?? null,
+      registeredByRole: newItem.registeredByRole ?? null,
+      itemId: newItem.id ?? null,
+      userDocExists,
+      userDocRole: userDocData?.role ?? null,
+      userDocStatus: userDocData?.status ?? null,
+      userDocApprovalStatus: userDocData?.approvalStatus ?? null,
+    });
 
     try {
       await setDoc(doc(db, "items", newItem.id), sanitizedItemPayload);
