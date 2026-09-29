@@ -777,7 +777,7 @@ describe("Offline / Online Upload & Sync Engine (Localiza+)", () => {
       taskId?: string;
     }
 
-    // Pure logic simulation of the RegisterItemView reactive effect
+    // Pure logic simulation of the RegisterItemView reactive effect (v1.9.38 anti-oscillation)
     const evaluateModalState = (
       currentModal: ModalState | null,
       activeTasks: UploadTaskStatus[],
@@ -787,13 +787,18 @@ describe("Offline / Online Upload & Sync Engine (Localiza+)", () => {
 
       const currentItemId = currentModal.item.id;
 
-      // 1. Direct confirmation in items collection
+      // 1. Terminal State Guard & Authoritative Confirmation:
+      // Once confirmed in Firestore (or already in CONFIRMED state), CONFIRMED is an immutable terminal state.
+      // Stale ERROR tasks in activeUploadTasks must NEVER demote a confirmed item to SYNC_ERROR.
       const confirmedInItems = itemsList.find((i) => i.id === currentItemId && !i.isOfflineQueued);
-      if (confirmedInItems && currentModal.status !== "CONFIRMED") {
-        return {
-          status: "CONFIRMED",
-          item: confirmedInItems,
-        };
+      if (confirmedInItems || currentModal.status === "CONFIRMED") {
+        if (currentModal.status !== "CONFIRMED" && confirmedInItems) {
+          return {
+            status: "CONFIRMED",
+            item: confirmedInItems,
+          };
+        }
+        return currentModal;
       }
 
       // 2. Correlation with activeUploadTasks
@@ -806,12 +811,15 @@ describe("Offline / Online Upload & Sync Engine (Localiza+)", () => {
       );
 
       if (matchingTask) {
-        if (matchingTask.status === "COMPLETED" && currentModal.status !== "CONFIRMED") {
+        if (matchingTask.status === "COMPLETED") {
           return {
             status: "CONFIRMED",
             item: confirmedInItems || currentModal.item,
           };
-        } else if (matchingTask.status === "ERROR" && currentModal.status !== "SYNC_ERROR") {
+        } else if (
+          matchingTask.status === "ERROR" &&
+          currentModal.status === "OFFLINE_QUEUED"
+        ) {
           return {
             status: "SYNC_ERROR",
             item: currentModal.item,
@@ -929,6 +937,159 @@ describe("Offline / Online Upload & Sync Engine (Localiza+)", () => {
       const nextState = evaluateModalState(initialModal, [], itemsList);
       expect(nextState?.status).toBe("CONFIRMED");
       expect(nextState?.item.isOfflineQueued).toBe(false);
+    });
+
+    it("TESTE A (Anti-Oscilação): items contém item confirmado e activeUploadTasks contém mesma tarefa com ERROR -> resultado CONFIRMED e NUNCA SYNC_ERROR", () => {
+      const initialModal: ModalState = {
+        status: "CONFIRMED",
+        item: { ...mockItemNormal, id: "item-osc-1", isOfflineQueued: false },
+      };
+
+      const itemsList: LostFoundItem[] = [
+        {
+          ...mockItemNormal,
+          id: "item-osc-1",
+          isOfflineQueued: false,
+        },
+      ];
+
+      const staleErrorTasks: UploadTaskStatus[] = [
+        {
+          id: "sync-task-item-osc-1",
+          itemId: "item-osc-1",
+          itemTitle: mockItemNormal.title,
+          itemType: "ENCONTRADO",
+          progress: 0,
+          status: "ERROR",
+          statusMessage: "Erro antigo",
+          error: "Erro de conexão",
+          startedAt: new Date().toISOString(),
+        },
+      ];
+
+      const evaluated = evaluateModalState(initialModal, staleErrorTasks, itemsList);
+      expect(evaluated?.status).toBe("CONFIRMED");
+      expect(evaluated?.status).not.toBe("SYNC_ERROR");
+    });
+
+    it("TESTE B: items NÃO contém item confirmado e activeUploadTasks contém ERROR -> resultado SYNC_ERROR", () => {
+      const initialModal: ModalState = {
+        status: "OFFLINE_QUEUED",
+        item: { ...mockItemNormal, id: "item-osc-2", isOfflineQueued: true },
+      };
+
+      const errorTasks: UploadTaskStatus[] = [
+        {
+          id: "sync-task-item-osc-2",
+          itemId: "item-osc-2",
+          itemTitle: mockItemNormal.title,
+          itemType: "ENCONTRADO",
+          progress: 0,
+          status: "ERROR",
+          statusMessage: "Falha remota",
+          error: "Erro de rede",
+          startedAt: new Date().toISOString(),
+        },
+      ];
+
+      const evaluated = evaluateModalState(initialModal, errorTasks, []);
+      expect(evaluated?.status).toBe("SYNC_ERROR");
+      expect(evaluated?.error).toBe("Erro de rede");
+    });
+
+    it("TESTE C: Ciclo completo OFFLINE_QUEUED -> ERROR (SYNC_ERROR) -> retry (UPLOADING) -> CONFIRMED", () => {
+      let state: ModalState | null = {
+        status: "OFFLINE_QUEUED",
+        item: { ...mockItemNormal, id: "item-osc-3", isOfflineQueued: true },
+      };
+
+      // 1. Falha inicial
+      const errorTask: UploadTaskStatus = {
+        id: "sync-task-item-osc-3",
+        itemId: "item-osc-3",
+        itemTitle: mockItemNormal.title,
+        itemType: "ENCONTRADO",
+        progress: 0,
+        status: "ERROR",
+        statusMessage: "Falha",
+        error: "Timeout",
+        startedAt: new Date().toISOString(),
+      };
+      state = evaluateModalState(state, [errorTask], []);
+      expect(state?.status).toBe("SYNC_ERROR");
+
+      // 2. Retry iniciado
+      const retryTask: UploadTaskStatus = {
+        ...errorTask,
+        status: "UPLOADING",
+        progress: 40,
+        statusMessage: "Reenviando...",
+      };
+      state = evaluateModalState(state, [retryTask], []);
+      expect(state?.status).toBe("OFFLINE_QUEUED");
+
+      // 3. Sucesso confirmado
+      const confirmedTask: UploadTaskStatus = {
+        ...retryTask,
+        status: "COMPLETED",
+        progress: 100,
+      };
+      const itemsList: LostFoundItem[] = [
+        { ...mockItemNormal, id: "item-osc-3", isOfflineQueued: false },
+      ];
+      state = evaluateModalState(state, [confirmedTask], itemsList);
+      expect(state?.status).toBe("CONFIRMED");
+    });
+
+    it("TESTE D: item já confirmado e task ERROR chega posteriormente -> estado continua estritamente CONFIRMED", () => {
+      const confirmedModal: ModalState = {
+        status: "CONFIRMED",
+        item: { ...mockItemNormal, id: "item-osc-4", isOfflineQueued: false },
+      };
+
+      const lateArrivingErrorTask: UploadTaskStatus = {
+        id: "sync-task-item-osc-4",
+        itemId: "item-osc-4",
+        itemTitle: mockItemNormal.title,
+        itemType: "ENCONTRADO",
+        progress: 0,
+        status: "ERROR",
+        statusMessage: "Erro tardio",
+        error: "Falha rejeitada",
+        startedAt: new Date().toISOString(),
+      };
+
+      const evaluated = evaluateModalState(confirmedModal, [lateArrivingErrorTask], []);
+      expect(evaluated?.status).toBe("CONFIRMED");
+    });
+
+    it("TESTE E: Execuções sucessivas não geram oscilação entre CONFIRMED e SYNC_ERROR", () => {
+      let state: ModalState | null = {
+        status: "CONFIRMED",
+        item: { ...mockItemNormal, id: "item-osc-5", isOfflineQueued: false },
+      };
+
+      const itemsList: LostFoundItem[] = [
+        { ...mockItemNormal, id: "item-osc-5", isOfflineQueued: false },
+      ];
+
+      const staleErrorTask: UploadTaskStatus = {
+        id: "sync-task-item-osc-5",
+        itemId: "item-osc-5",
+        itemTitle: mockItemNormal.title,
+        itemType: "ENCONTRADO",
+        progress: 0,
+        status: "ERROR",
+        statusMessage: "Stale error",
+        error: "Stale network failure",
+        startedAt: new Date().toISOString(),
+      };
+
+      // 10 avaliações sucessivas simulando 10 re-renders
+      for (let i = 0; i < 10; i++) {
+        state = evaluateModalState(state, [staleErrorTask], itemsList);
+        expect(state?.status).toBe("CONFIRMED");
+      }
     });
   });
 });
