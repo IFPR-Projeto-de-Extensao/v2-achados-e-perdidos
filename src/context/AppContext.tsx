@@ -477,20 +477,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     if (entry) {
-      const isPermanentError =
-        entry.status === "ERRO_PERMANENTE" ||
-        entry.errorType === "PERMANENT" ||
+      const isSizeOrFieldLimitExceeded =
         (typeof entry.error === "string" &&
           (entry.error.includes("PAYLOAD_SIZE") ||
-            entry.error.includes("FIELD_LIMIT") ||
-            entry.error.includes("PERMANENT"))) ||
+            entry.error.includes("FIELD_LIMIT"))) ||
         (task && typeof task.error === "string" &&
           (task.error.includes("PAYLOAD_SIZE") ||
-            task.error.includes("FIELD_LIMIT") ||
-            task.error.includes("PERMANENT")));
+            task.error.includes("FIELD_LIMIT")));
 
-      if (isPermanentError) {
-        console.warn(`[Retry Upload Blocked] Item #${resolvedItemId} possui erro permanente (${entry.error}). O retry foi bloqueado.`);
+      if (isSizeOrFieldLimitExceeded) {
+        console.warn(`[Retry Upload Blocked] Item #${resolvedItemId} possui dados/campos que excedem os limites (${entry.error}). O retry foi bloqueado.`);
         addToast(
           "Este item possui dados/imagens que excedem os limites permitidos. O cadastro precisa ser cancelado ou ajustado.",
           "warning"

@@ -3,7 +3,7 @@ import { classifySyncError, FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES } from "./pa
 
 describe("Diagnóstico de Erros Firestore & Preservação do Erro Original", () => {
   // 1. FirebaseError permission-denied
-  it("1. Diagnóstico: FirebaseError permission-denied é classificado como PERMANENT e preserva o código original", () => {
+  it("1. Diagnóstico: FirebaseError permission-denied é classificado como TEMPORARY e preserva o código original", () => {
     const permissionError = {
       name: "FirebaseError",
       code: "permission-denied",
@@ -12,11 +12,11 @@ describe("Diagnóstico de Erros Firestore & Preservação do Erro Original", () 
 
     const result = classifySyncError(permissionError, 2500);
 
-    expect(result.category).toBe("PERMANENT");
-    expect(result.isPermanent).toBe(true);
+    expect(result.category).toBe("TEMPORARY");
+    expect(result.isPermanent).toBe(false);
     expect(result.originalCode).toBe("permission-denied");
     expect(result.originalName).toBe("FirebaseError");
-    expect(result.userMessage).toBe("Um item precisa de atenção antes de ser sincronizado.");
+    expect(result.userMessage).toBe("Aguardando permissão no Firestore. A sincronização será tentada novamente.");
   });
 
   // 2. FirebaseError unavailable

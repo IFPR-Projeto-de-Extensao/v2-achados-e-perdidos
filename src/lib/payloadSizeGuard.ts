@@ -85,24 +85,39 @@ export function classifySyncError(error: unknown, payloadSizeBytes?: number): Cl
   const errLower = errMessage.toLowerCase();
   const codeLower = typeof originalCode === "string" ? originalCode.toLowerCase() : "";
 
-  // 2. Permanent error patterns (permission-denied, invalid-argument, resource-exhausted)
+  // 2. Unrecoverable data structure & payload boundary errors
   if (
-    codeLower === "permission-denied" ||
     codeLower === "invalid-argument" ||
     codeLower === "resource-exhausted" ||
     errLower.includes("exceeds maximum allowed size") ||
     errLower.includes("payload_size_exceeds_defensive_limit") ||
+    errLower.includes("field_limit_exceeded") ||
     errLower.includes("invalid-argument") ||
-    errLower.includes("invalid argument") ||
+    errLower.includes("invalid argument")
+  ) {
+    return {
+      category: "PERMANENT",
+      isPermanent: true,
+      reason: errMessage || "Erro permanente de validação ou estrutura de dados",
+      userMessage: "Este item possui dados/imagens que excedem os limites permitidos. O cadastro precisa ser cancelado ou ajustado.",
+      payloadSizeBytes,
+      originalCode,
+      originalName,
+    };
+  }
+
+  // 3. Permission and authorization errors (Retryable upon auth resolution / rules sync)
+  if (
+    codeLower === "permission-denied" ||
     errLower.includes("permission-denied") ||
     errLower.includes("permission denied") ||
     errLower.includes("missing or insufficient permissions")
   ) {
     return {
-      category: "PERMANENT",
-      isPermanent: true,
-      reason: errMessage || "Erro permanente de validação ou permissão",
-      userMessage: "Um item precisa de atenção antes de ser sincronizado.",
+      category: "TEMPORARY",
+      isPermanent: false,
+      reason: errMessage || "Aguardando confirmação de autorização ou permissão no Firestore",
+      userMessage: "Aguardando permissão no Firestore. A sincronização será tentada novamente.",
       payloadSizeBytes,
       originalCode,
       originalName,
