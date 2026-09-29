@@ -154,6 +154,12 @@ export interface ItemReturnData {
   signatureIpOrDevice?: string;
 }
 
+export type RegistrationStatus =
+  | "SAVING"
+  | "PENDING_SYNC"
+  | "CONFIRMED"
+  | "ERROR";
+
 export type SyncQueueStatus =
   | "PENDENTE"
   | "SINCRONIZANDO"
@@ -164,6 +170,7 @@ export type SyncQueueStatus =
 
 export interface SyncQueueEntry {
   id: string;
+  itemId?: string;
   type: "REGISTER_ITEM";
   payload: LostFoundItem;
   createdAt: string;

@@ -16,6 +16,7 @@ import {
   ItemHistoryLog,
   UploadTaskStatus,
   UploadStatusType,
+  RegistrationStatus,
   DocumentTemplate,
   GeneratedDocumentRecord,
   ProjectSettings,
@@ -72,9 +73,11 @@ import {
   queueOfflineItemRegistration,
   getPendingSyncQueue,
   removeSyncQueueEntry,
+  removeSyncQueueEntryByItemId,
   updateSyncQueueEntry,
   getSyncQueueCount,
   clearSyncQueue,
+  getUploadTaskId,
 } from "../lib/indexedDB";
 import { clear30DayUptimeRecords } from "../lib/uptimeManager";
 import {
@@ -307,7 +310,7 @@ interface AppContextType {
   setSelectedItemForDetail: (item: LostFoundItem | null) => void;
   addItem: (
     itemData: Omit<LostFoundItem, "id" | "createdAt" | "qrCodeId" | "registeredByUserId" | "registeredByName" | "registeredByRole">
-  ) => Promise<{ newItem: LostFoundItem; matches: AIMatchResult[]; persistenceStatus: "CONFIRMED" | "OFFLINE_QUEUED"; isOffline: boolean }>;
+  ) => Promise<{ newItem: LostFoundItem; matches: AIMatchResult[]; persistenceStatus: RegistrationStatus; isOffline: boolean }>;
   updateItemStatus: (id: string, status: ItemStatus) => void;
   updateItemData: (id: string, updatedFields: Partial<LostFoundItem>) => Promise<void>;
   registerItemReturn: (
@@ -398,7 +401,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeUploadTasks, setActiveUploadTasks] = useState<UploadTaskStatus[]>([]);
 
   const addUploadTask = (task: UploadTaskStatus) => {
-    setActiveUploadTasks((prev) => [task, ...prev.filter((t) => t.id !== task.id)]);
+    // Enforce at most ONE active upload task per itemId
+    setActiveUploadTasks((prev) => [
+      task,
+      ...prev.filter((t) => t.id !== task.id && t.itemId !== task.itemId),
+    ]);
     if (typeof navigator !== "undefined" && "serviceWorker" in navigator && navigator.serviceWorker.controller) {
       try {
         navigator.serviceWorker.controller.postMessage({
@@ -412,7 +419,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateUploadTask = (taskId: string, updates: Partial<UploadTaskStatus>) => {
     setActiveUploadTasks((prev) =>
       prev.map((t) => {
-        if (t.id === taskId) {
+        if (t.id === taskId || (updates.itemId && t.itemId === updates.itemId)) {
           const updated = { ...t, ...updates };
           if (typeof navigator !== "undefined" && "serviceWorker" in navigator && navigator.serviceWorker.controller) {
             try {
@@ -435,35 +442,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const cancelUploadTask = async (taskId: string): Promise<void> => {
     const task = activeUploadTasks.find((t) => t.id === taskId);
-    const queue = await getPendingSyncQueue();
+    const resolvedItemId = task?.itemId || taskId.replace(/^(task|sync-task|upload-task)-/, "");
 
-    // Match queue entry by multiple bindings:
-    // 1. entry.payload?.id === task?.itemId
-    // 2. entry.id === task?.itemId
-    // 3. `sync-task-${entry.id}` === taskId
-    // 4. entry.id === taskId
-    // 5. task?.id === `sync-task-${entry.id}`
-    const entry = queue.find(
-      (e) =>
-        (task && (e.payload?.id === task.itemId || e.id === task.itemId)) ||
-        `sync-task-${e.id}` === taskId ||
-        e.id === taskId ||
-        (task && task.id === `sync-task-${e.id}`)
-    );
-
-    if (entry) {
-      await removeSyncQueueEntry(entry.id);
-      console.info(`[Offline Upload Cancel] Tarefa ${taskId} removida da fila IndexedDB.`);
-    } else {
-      console.info(`[Offline Upload Cancel] Nenhuma entrada IndexedDB encontrada para tarefa ${taskId}.`);
+    // 1. Remove physical entry from IndexedDB by itemId and by entry id
+    await removeSyncQueueEntryByItemId(resolvedItemId);
+    await removeSyncQueueEntry(taskId);
+    if (task) {
+      await removeSyncQueueEntry(task.id);
     }
+    console.info(`[Offline Upload Cancel] Tarefa ${taskId} (Item: ${resolvedItemId}) removida da fila IndexedDB.`);
 
-    // Refresh actual count from IndexedDB
+    // 2. Refresh actual count from IndexedDB
     const remaining = await getSyncQueueCount();
     setPendingSyncCount(remaining);
 
-    // Remove task from React active upload tasks state
-    setActiveUploadTasks((prev) => prev.filter((t) => t.id !== taskId));
+    // 3. Remove task from React active upload tasks state
+    setActiveUploadTasks((prev) => prev.filter((t) => t.id !== taskId && t.itemId !== resolvedItemId));
   };
 
   const triggerManualSync = async () => {
@@ -473,16 +467,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const retryUploadTask = async (taskId: string) => {
     const task = activeUploadTasks.find((t) => t.id === taskId);
-    if (!task) return;
+    const resolvedItemId = task?.itemId || taskId.replace(/^(task|sync-task|upload-task)-/, "");
+    const canonicalTaskId = getUploadTaskId(resolvedItemId);
 
-    // If the task corresponds to a queue entry, check if error is permanent
+    // Check if error is permanent in pending queue
     const queue = await getPendingSyncQueue();
     const entry = queue.find(
-      (e) =>
-        (task && (e.payload?.id === task.itemId || e.id === task.itemId)) ||
-        `sync-task-${e.id}` === taskId ||
-        e.id === taskId ||
-        (task && task.id === `sync-task-${e.id}`)
+      (e) => (e.itemId && e.itemId === resolvedItemId) || (e.payload && e.payload.id === resolvedItemId) || e.id === taskId
     );
 
     if (entry) {
@@ -493,13 +484,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (entry.error.includes("PAYLOAD_SIZE") ||
             entry.error.includes("FIELD_LIMIT") ||
             entry.error.includes("PERMANENT"))) ||
-        (typeof task.error === "string" &&
+        (task && typeof task.error === "string" &&
           (task.error.includes("PAYLOAD_SIZE") ||
             task.error.includes("FIELD_LIMIT") ||
             task.error.includes("PERMANENT")));
 
       if (isPermanentError) {
-        console.warn(`[Retry Upload Blocked] Item #${entry.id} possui erro permanente (${entry.error}). O retry foi bloqueado.`);
+        console.warn(`[Retry Upload Blocked] Item #${resolvedItemId} possui erro permanente (${entry.error}). O retry foi bloqueado.`);
         addToast(
           "Este item possui dados/imagens que excedem os limites permitidos. O cadastro precisa ser cancelado ou ajustado.",
           "warning"
@@ -514,7 +505,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
-    updateUploadTask(taskId, {
+    updateUploadTask(canonicalTaskId, {
       status: "UPLOADING",
       progress: 30,
       statusMessage: "Tentando sincronizar novamente...",
@@ -523,17 +514,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await syncOfflineQueue();
   };
 
-  // Synchronize pending offline registration queue with Firestore
+  // Synchronize pending offline registration queue with Firestore (Idempotent)
   const syncOfflineQueue = async () => {
     if (isSyncingRef.current) {
       console.log("[Offline Sync Notice] Sincronização já em execução. Evitando execução concorrente.");
-      return;
-    }
-
-    const networkOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
-    if (!networkOnline) {
-      console.log("[Offline Sync Notice] Dispositivo sem conexão ativa. Sincronização aguardará reconexão.");
-      setIsOnline(false);
       return;
     }
 
@@ -543,7 +527,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const queue = await getPendingSyncQueue();
       const count = queue ? queue.length : 0;
-      console.log(`[Offline Sync Pipeline] Iniciando verificação de fila: ${count} item(ns) encontrado(s). Conectividade: ONLINE`);
+      console.log(`[Offline Sync Pipeline] Iniciando verificação de fila: ${count} item(ns) encontrado(s).`);
 
       if (!queue || queue.length === 0) {
         setPendingSyncCount(0);
@@ -554,10 +538,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let temporaryErrorCount = 0;
       let permanentErrorCount = 0;
 
+      // Deduplicate queue entries by itemId during sync run
+      const processedItemIds = new Set<string>();
+
       for (const entry of queue) {
-        const taskId = `sync-task-${entry.id}`;
+        const itemId = entry.itemId || entry.payload?.id || entry.id.replace(/^queue-/, "");
+        if (processedItemIds.has(itemId)) {
+          // Remove duplicate legacy entry for already processed item
+          await removeSyncQueueEntry(entry.id);
+          continue;
+        }
+        processedItemIds.add(itemId);
+
+        const taskId = getUploadTaskId(itemId);
         const itemTitle = entry.payload?.title || "Objeto sem título";
-        const itemId = entry.payload?.id || entry.id;
 
         // 1. Guard against PERMANENT errors: Skip automatic retry to prevent loop
         if (entry.status === "ERRO_PERMANENTE" || entry.errorType === "PERMANENT") {
@@ -582,7 +576,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         console.log(`[Offline Sync] Processando item #${entry.id} (Item ID: ${itemId}, Título: "${itemTitle}", Tentativa: ${(entry.attempts || 0) + 1})...`);
 
-        // Create or update real-time progress task for UI visibility
+        // Create or update real-time progress task for UI visibility using deterministic taskId
         addUploadTask({
           id: taskId,
           itemId: itemId,
@@ -597,6 +591,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const itemToSave = {
           ...entry.payload,
+          id: itemId,
           isOfflineQueued: false,
           syncedAt: new Date().toISOString(),
         };
@@ -624,7 +619,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           continue;
         }
 
-        // 2. TEXT FIELDS DEFENSIVE BOUNDARY GUARD
+        // 3. TEXT FIELDS DEFENSIVE BOUNDARY GUARD
         const syncTextValidation = validateItemTextFields({
           title: itemToSave.title,
           description: itemToSave.description,
@@ -657,18 +652,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             payloadSizeBytes,
           });
 
-          // 3. Persist to Firestore with merge to prevent duplicate records
+          // 4. Persist to Firestore with merge to prevent duplicate records
           await setDoc(doc(db, "items", itemToSave.id), sanitizedPayload, { merge: true });
           console.log(`[Offline Sync Success] Item #${itemToSave.id} gravado e confirmado no Firestore (${payloadSizeBytes} bytes).`);
 
-          updateUploadTask(taskId, {
-            progress: 85,
-            statusMessage: "Gravado com sucesso no Firestore. Finalizando...",
-          });
-
-          // 4. Remove successfully synchronized entry from local IndexedDB queue
+          // 5. Remove successfully synchronized entry from local IndexedDB queue
           await removeSyncQueueEntry(entry.id);
-          console.log(`[Offline Sync Success] Item #${entry.id} removido da fila local IndexedDB.`);
+          await removeSyncQueueEntryByItemId(itemId);
+          console.log(`[Offline Sync Success] Item #${entry.id} (${itemId}) removido da fila local IndexedDB.`);
 
           updateUploadTask(taskId, {
             progress: 100,
@@ -679,7 +670,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           syncedCount++;
 
-          // 5. Update local state immediately so item appears as synchronized
+          // 6. Update local state immediately so item appears as confirmed and synchronized (isOfflineQueued: false)
           setItems((prev) => {
             const exists = prev.some((it) => it.id === itemToSave.id);
             if (exists) {
@@ -688,7 +679,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return [itemToSave, ...prev];
           });
 
-          // 6. Asynchronous Discord Webhook dispatch (non-blocking)
+          // 7. Asynchronous Discord Webhook dispatch (non-blocking)
           const discordItemPayload = {
             ...itemToSave,
             imageUrl:
@@ -3369,10 +3360,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Add Item
+  // Add Item (Canonical State Pipeline: SAVING -> PENDING_SYNC -> CONFIRMED / ERROR)
   const addItem = async (
     itemData: Omit<LostFoundItem, "id" | "createdAt" | "qrCodeId" | "registeredByUserId" | "registeredByName" | "registeredByRole">
-  ): Promise<{ newItem: LostFoundItem; matches: AIMatchResult[]; persistenceStatus: "CONFIRMED" | "OFFLINE_QUEUED"; isOffline: boolean }> => {
+  ): Promise<{ newItem: LostFoundItem; matches: AIMatchResult[]; persistenceStatus: RegistrationStatus; isOffline: boolean }> => {
     // 🔒 Security Guard: Only authenticated users can register lost or found items
     if (isGuest || !auth.currentUser) {
       setPendingPostLoginAction({ tab: "register", registerType: itemData.type });
@@ -3409,7 +3400,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const safeTitle = String(itemData.title ?? "ITEM").substring(0, 10).toUpperCase().replace(/[^A-Z0-9]/g, "");
     const qrCodeId = `QR-IFPR-${uniqueTimestamp}-${safeTitle || "ITEM"}`;
 
-    const taskId = `upload-task-${Date.now()}-${uniqueRand}`;
+    // Canonical single task ID per item
+    const taskId = getUploadTaskId(newItemId);
     const initialUploadTask: UploadTaskStatus = {
       id: taskId,
       itemId: newItemId,
@@ -3485,6 +3477,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       history: initialHistory,
       storageDeadlineDays: 90,
       storageDeadlineDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+      isOfflineQueued: false,
     };
 
     // Request Service Worker Background Sync registration
@@ -3504,13 +3497,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn(
         `[Tamanho Defensivo] Ocorrência #${newItem.id} ultrapassa o limite defensivo (${payloadSizeBytes} bytes > ${FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES} bytes). Gravação no Firestore bloqueada.`
       );
-      await queueOfflineItemRegistration(newItem, {
+      const queuedItem: LostFoundItem = { ...newItem, isOfflineQueued: true };
+      await queueOfflineItemRegistration(queuedItem, {
         status: "ERRO_PERMANENTE",
         errorType: "PERMANENT",
         error: `PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT (${payloadSizeBytes} bytes)`,
         payloadSizeBytes,
       });
-      setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
+      setItems((prev) => [queuedItem, ...prev.filter((i) => i.id !== newItem.id)]);
       const queueCount = await getSyncQueueCount();
       setPendingSyncCount(queueCount);
       updateUploadTask(taskId, {
@@ -3524,19 +3518,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         "Este item possui dados ou imagem grandes demais para sincronização. O cadastro foi preservado no dispositivo e precisa ser ajustado.",
         "warning"
       );
-      return { newItem, matches: [], persistenceStatus: "OFFLINE_QUEUED", isOffline: false };
+      return { newItem: queuedItem, matches: [], persistenceStatus: "ERROR", isOffline: false };
     }
 
     // Check offline status before attempting Firestore write
     const isCurrentlyOffline = typeof navigator !== "undefined" && !navigator.onLine;
 
     if (isCurrentlyOffline) {
+      const queuedItem: LostFoundItem = { ...newItem, isOfflineQueued: true };
       try {
-        await queueOfflineItemRegistration(newItem, {
+        await queueOfflineItemRegistration(queuedItem, {
           status: "PENDENTE",
           payloadSizeBytes,
         });
-        setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
+        setItems((prev) => [queuedItem, ...prev.filter((i) => i.id !== newItem.id)]);
         const queueCount = await getSyncQueueCount();
         setPendingSyncCount(queueCount);
         updateUploadTask(taskId, {
@@ -3548,14 +3543,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
       } catch (offErr) {
         console.warn("Aviso ao enfileirar offline:", offErr);
-        setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
+        setItems((prev) => [queuedItem, ...prev.filter((i) => i.id !== newItem.id)]);
         updateUploadTask(taskId, {
           status: "ERROR",
           error: "Falha ao gravar na fila local",
           statusMessage: "Erro ao gravar offline",
         });
       }
-      return { newItem, matches: [], persistenceStatus: "OFFLINE_QUEUED", isOffline: true };
+      return { newItem: queuedItem, matches: [], persistenceStatus: "PENDING_SYNC", isOffline: true };
     }
 
     // Online: Save item to Firestore with strict persistence check
@@ -3567,7 +3562,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await setDoc(doc(db, "items", newItem.id), sanitizedItemPayload);
-      setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
+      const confirmedItem: LostFoundItem = { ...newItem, isOfflineQueued: false, syncedAt: new Date().toISOString() };
+      
+      // Remove any residual pending queue entry for this item
+      await removeSyncQueueEntryByItemId(newItem.id);
+      const queueCount = await getSyncQueueCount();
+      setPendingSyncCount(queueCount);
+
+      setItems((prev) => [confirmedItem, ...prev.filter((i) => i.id !== newItem.id)]);
       
       const itemTxId = `TX-ITEM-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
       await recordAuditLog({
@@ -3598,15 +3600,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Trigger automatic Discord Webhook notification ONLY after confirmed database save
       const discordItemPayload = {
-        ...newItem,
+        ...confirmedItem,
         imageUrl:
-          newItem.imageUrl &&
-          (newItem.imageUrl.startsWith("http://") || newItem.imageUrl.startsWith("https://"))
-            ? newItem.imageUrl
+          confirmedItem.imageUrl &&
+          (confirmedItem.imageUrl.startsWith("http://") || confirmedItem.imageUrl.startsWith("https://"))
+            ? confirmedItem.imageUrl
             : undefined,
       };
 
-      if (newItem.type === "ENCONTRADO") {
+      if (confirmedItem.type === "ENCONTRADO") {
         safeFetchJson(
           "/api/items/notify-novos-achados",
           {
@@ -3618,7 +3620,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ).catch((webhookErr) => {
           console.warn("[Novos Achados Webhook Notice] Envio assíncrono ao Discord:", webhookErr);
         });
-      } else if (newItem.type === "PERDIDO") {
+      } else if (confirmedItem.type === "PERDIDO") {
         safeFetchJson(
           "/api/items/notify-novas-perdas",
           {
@@ -3634,14 +3636,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e: any) {
       const classifiedErr = classifySyncError(e, payloadSizeBytes);
       console.warn(`[Cadastro] Falha ao persistir no Firestore (${classifiedErr.category}):`, e);
+      const queuedItem: LostFoundItem = { ...newItem, isOfflineQueued: true };
       try {
-        await queueOfflineItemRegistration(newItem, {
-          status: classifiedErr.isPermanent ? "ERRO_PERMANENTE" : "ERRO_TEMPORARIO",
+        await queueOfflineItemRegistration(queuedItem, {
+          status: classifiedErr.isPermanent ? "ERRO_PERMANENTE" : "PENDENTE",
           errorType: classifiedErr.category,
           error: classifiedErr.reason,
           payloadSizeBytes,
         });
-        setItems((prev) => [newItem, ...prev.filter((i) => i.id !== newItem.id)]);
+        setItems((prev) => [queuedItem, ...prev.filter((i) => i.id !== newItem.id)]);
         const queueCount = await getSyncQueueCount();
         setPendingSyncCount(queueCount);
         updateUploadTask(taskId, {
@@ -3655,7 +3658,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           completedAt: new Date().toISOString(),
         });
         addToast(classifiedErr.userMessage, classifiedErr.isPermanent ? "warning" : "info");
-        return { newItem, matches: [], persistenceStatus: "OFFLINE_QUEUED", isOffline: true };
+        return { newItem: queuedItem, matches: [], persistenceStatus: classifiedErr.isPermanent ? "ERROR" : "PENDING_SYNC", isOffline: true };
       } catch (_) {}
       updateUploadTask(taskId, {
         status: "ERROR",
@@ -3663,6 +3666,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         statusMessage: classifiedErr.userMessage,
       });
       handleFirestoreError(e, OperationType.WRITE, `items/${newItem.id}`);
+      return { newItem: queuedItem, matches: [], persistenceStatus: "ERROR", isOffline: true };
     }
 
     // AI Match check

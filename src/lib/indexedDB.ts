@@ -106,47 +106,76 @@ export async function saveOfflineErrorLogIndexedDB(logData: any): Promise<void> 
 // SYNC QUEUE STORE (Offline User Registration Requests)
 // -------------------------------------------------------------
 
+export const getUploadTaskId = (itemId: string): string => `task-${itemId}`;
+
 export async function queueOfflineItemRegistration(
   item: LostFoundItem,
   initialOptions?: Partial<Omit<SyncQueueEntry, "id" | "type" | "payload" | "createdAt">>
 ): Promise<SyncQueueEntry> {
   const byteSize = initialOptions?.payloadSizeBytes ?? calculatePayloadSizeBytes(item);
-
-  const queueEntry: SyncQueueEntry = {
-    id: `queue-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-    type: "REGISTER_ITEM",
-    payload: {
-      ...item,
-      isOfflineQueued: true,
-    },
-    createdAt: new Date().toISOString(),
-    status: initialOptions?.status || "PENDENTE",
-    attempts: initialOptions?.attempts || 0,
-    lastAttempt: initialOptions?.lastAttempt,
-    error: initialOptions?.error,
-    errorType: initialOptions?.errorType,
-    payloadSizeBytes: byteSize,
-  };
+  const resolvedItemId = item.id;
 
   try {
     const db = await openDatabase();
     const tx = db.transaction(STORE_SYNC_QUEUE, "readwrite");
     const store = tx.objectStore(STORE_SYNC_QUEUE);
-    store.put(queueEntry);
-
-    // Also persist into local items store so user sees it in views immediately
-    await saveSingleItemIndexedDB(queueEntry.payload);
-
+    
+    // Check if an entry for the same itemId already exists in the queue to prevent duplicates
+    const allEntriesReq = store.getAll();
+    
     return new Promise((resolve, reject) => {
-      tx.oncomplete = () => {
-        console.log(`[Offline Sync] Cadastro de objeto "${item.title}" armazenado na fila IndexedDB (${byteSize} bytes):`, queueEntry.id);
-        resolve(queueEntry);
+      allEntriesReq.onsuccess = () => {
+        const existingEntries = (allEntriesReq.result || []) as SyncQueueEntry[];
+        const existing = existingEntries.find(
+          (e) => (e.itemId && e.itemId === resolvedItemId) || (e.payload && e.payload.id === resolvedItemId)
+        );
+
+        const entryId = existing?.id || `queue-${resolvedItemId}`;
+
+        const queueEntry: SyncQueueEntry = {
+          id: entryId,
+          itemId: resolvedItemId,
+          type: "REGISTER_ITEM",
+          payload: {
+            ...item,
+            id: resolvedItemId,
+            isOfflineQueued: true,
+          },
+          createdAt: existing?.createdAt || new Date().toISOString(),
+          status: initialOptions?.status || existing?.status || "PENDENTE",
+          attempts: initialOptions?.attempts ?? existing?.attempts ?? 0,
+          lastAttempt: initialOptions?.lastAttempt || existing?.lastAttempt,
+          error: initialOptions?.error ?? existing?.error,
+          errorType: initialOptions?.errorType ?? existing?.errorType,
+          payloadSizeBytes: byteSize,
+        };
+
+        store.put(queueEntry);
+
+        // Also persist into local items store so user sees it in views immediately with isOfflineQueued: true
+        saveSingleItemIndexedDB(queueEntry.payload).catch(() => {});
+
+        tx.oncomplete = () => {
+          console.log(`[Offline Sync] Cadastro de objeto "${item.title}" (${resolvedItemId}) salvo deterministicamente na fila IndexedDB (${byteSize} bytes):`, queueEntry.id);
+          resolve(queueEntry);
+        };
+        tx.onerror = () => reject(tx.error);
       };
-      tx.onerror = () => reject(tx.error);
+      allEntriesReq.onerror = () => reject(allEntriesReq.error);
     });
   } catch (err) {
     console.error("Erro ao salvar cadastro na fila IndexedDB:", err);
-    return queueEntry;
+    const fallbackEntry: SyncQueueEntry = {
+      id: `queue-${resolvedItemId}`,
+      itemId: resolvedItemId,
+      type: "REGISTER_ITEM",
+      payload: { ...item, isOfflineQueued: true },
+      createdAt: new Date().toISOString(),
+      status: initialOptions?.status || "PENDENTE",
+      attempts: 0,
+      payloadSizeBytes: byteSize,
+    };
+    return fallbackEntry;
   }
 }
 
@@ -160,9 +189,14 @@ export async function getPendingSyncQueue(): Promise<SyncQueueEntry[]> {
     return new Promise((resolve, reject) => {
       request.onsuccess = () => {
         const all = (request.result || []) as SyncQueueEntry[];
-        // Return sorted by creation date
-        all.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-        resolve(all);
+        // Normalize legacy entries to ensure itemId is always populated
+        const normalized = all.map((entry) => ({
+          ...entry,
+          itemId: entry.itemId || entry.payload?.id || entry.id.replace(/^queue-/, ""),
+        }));
+        // Sort by creation date
+        normalized.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        resolve(normalized);
       };
       request.onerror = () => reject(request.error);
     });
@@ -201,6 +235,31 @@ export async function removeSyncQueueEntry(id: string): Promise<void> {
     });
   } catch (err) {
     console.warn("Aviso ao remover entrada da fila de sincronização:", err);
+  }
+}
+
+export async function removeSyncQueueEntryByItemId(itemId: string): Promise<void> {
+  try {
+    const db = await openDatabase();
+    const tx = db.transaction(STORE_SYNC_QUEUE, "readwrite");
+    const store = tx.objectStore(STORE_SYNC_QUEUE);
+    const allReq = store.getAll();
+
+    return new Promise((resolve, reject) => {
+      allReq.onsuccess = () => {
+        const all = (allReq.result || []) as SyncQueueEntry[];
+        for (const entry of all) {
+          if (entry.itemId === itemId || entry.payload?.id === itemId || entry.id === `queue-${itemId}` || entry.id === itemId) {
+            store.delete(entry.id);
+          }
+        }
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      };
+      allReq.onerror = () => reject(allReq.error);
+    });
+  } catch (err) {
+    console.warn("Aviso ao remover entrada da fila por itemId:", err);
   }
 }
 

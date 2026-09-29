@@ -3,7 +3,8 @@ import { useApp } from "../context/AppContext";
 import { useRouter } from "../context/RouterContext";
 import { useRequireAuth } from "../hooks/useRequireAuth";
 import { IFPR_LOCATIONS } from "../data/mockData";
-import { ItemCategory, LostFoundItem } from "../types";
+import { ItemCategory, LostFoundItem, RegistrationStatus } from "../types";
+import { getUploadTaskId } from "../lib/indexedDB";
 import { auth } from "../lib/firebase";
 import { isAccountBlocked, resolveAccountStatus } from "../lib/accountStatusUtils";
 import { safeFetchJson, clientAnalyzeObject, clientAnalyzeImage, requestCategorySuggestion, AICategorySuggestion } from "../lib/apiHelper";
@@ -595,41 +596,40 @@ export const RegisterItemView: React.FC = () => {
     }
   };
 
-  // Persistence Feedback State (Reativo a mudanças na fila offline / background sync)
+  // Persistence Feedback State (Reativo à máquina de estados canônica do pipeline de persistência)
   const [registrationFeedback, setRegistrationFeedback] = useState<{
-    status: "CONFIRMED" | "OFFLINE_QUEUED" | "SYNC_ERROR";
+    status: RegistrationStatus;
     item: LostFoundItem;
     error?: string;
     taskId?: string;
   } | null>(null);
 
-  // Reactive Sync Monitoring for OFFLINE_QUEUED / SYNC_ERROR registration feedback
+  // Reactive Sync Monitoring for PENDING_SYNC / ERROR registration feedback
   useEffect(() => {
     if (!registrationFeedback) return;
 
-    const currentItemId = registrationFeedback.item.id;
-
     // 1. Terminal State Guard & Authoritative Confirmation:
-    // Once confirmed in Firestore (or already in CONFIRMED state), CONFIRMED is an immutable terminal state.
-    // Stale ERROR tasks in activeUploadTasks must NEVER demote a confirmed item to SYNC_ERROR.
-    const confirmedInItems = items.find((i) => i.id === currentItemId && !i.isOfflineQueued);
-    if (confirmedInItems || registrationFeedback.status === "CONFIRMED") {
-      if (registrationFeedback.status !== "CONFIRMED" && confirmedInItems) {
-        setRegistrationFeedback({
-          status: "CONFIRMED",
-          item: confirmedInItems,
-        });
-      }
+    // Once in CONFIRMED state, it is an immutable terminal state.
+    if (registrationFeedback.status === "CONFIRMED") {
       return;
     }
 
-    // 2. Correlation with activeUploadTasks using itemId and fallback taskId patterns
+    const currentItemId = registrationFeedback.item.id;
+    const canonicalTaskId = getUploadTaskId(currentItemId);
+
+    // Direct confirmation verification: check if item is confirmed in items state
+    const confirmedInItems = items.find((i) => i.id === currentItemId && !i.isOfflineQueued);
+    if (confirmedInItems) {
+      setRegistrationFeedback({
+        status: "CONFIRMED",
+        item: confirmedInItems,
+      });
+      return;
+    }
+
+    // 2. Correlation with activeUploadTasks using canonical single taskId per item
     const matchingTask = activeUploadTasks.find(
-      (t) =>
-        t.itemId === currentItemId ||
-        t.id === currentItemId ||
-        t.id === `sync-task-${currentItemId}` ||
-        t.id === `upload-task-${currentItemId}`
+      (t) => t.itemId === currentItemId || t.id === canonicalTaskId
     );
 
     if (matchingTask) {
@@ -640,10 +640,10 @@ export const RegisterItemView: React.FC = () => {
         });
       } else if (
         matchingTask.status === "ERROR" &&
-        registrationFeedback.status === "OFFLINE_QUEUED"
+        registrationFeedback.status === "PENDING_SYNC"
       ) {
         setRegistrationFeedback({
-          status: "SYNC_ERROR",
+          status: "ERROR",
           item: registrationFeedback.item,
           error: matchingTask.error || "Falha temporária ao sincronizar o cadastro com o servidor em nuvem.",
           taskId: matchingTask.id,
@@ -652,11 +652,11 @@ export const RegisterItemView: React.FC = () => {
         (matchingTask.status === "UPLOADING" ||
           matchingTask.status === "QUEUED_SYNC" ||
           matchingTask.status === "SAVING_LOCAL") &&
-        registrationFeedback.status === "SYNC_ERROR"
+        registrationFeedback.status === "ERROR"
       ) {
-        // If a retry was started or upload resumed, return to OFFLINE_QUEUED
+        // If a retry was started or upload resumed, return to PENDING_SYNC
         setRegistrationFeedback({
-          status: "OFFLINE_QUEUED",
+          status: "PENDING_SYNC",
           item: registrationFeedback.item,
           taskId: matchingTask.id,
         });
@@ -766,10 +766,16 @@ export const RegisterItemView: React.FC = () => {
           status: "CONFIRMED",
           item: res.newItem,
         });
+      } else if (res.persistenceStatus === "ERROR") {
+        addToast(`Atenção: Falha no envio do objeto "${res.newItem.title}". Gravado no dispositivo.`, "warning");
+        setRegistrationFeedback({
+          status: "ERROR",
+          item: res.newItem,
+        });
       } else {
         addToast(`Aguardando sincronização: Objeto "${res.newItem.title}" salvo localmente no dispositivo.`, "info");
         setRegistrationFeedback({
-          status: "OFFLINE_QUEUED",
+          status: "PENDING_SYNC",
           item: res.newItem,
         });
       }
@@ -1841,7 +1847,7 @@ export const RegisterItemView: React.FC = () => {
                   </button>
                 </div>
               </>
-            ) : registrationFeedback.status === "SYNC_ERROR" ? (
+            ) : registrationFeedback.status === "ERROR" || (registrationFeedback.status as string) === "SYNC_ERROR" ? (
               <>
                 <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-3xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-center justify-center text-red-600 dark:text-red-400">
                   <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12" />
