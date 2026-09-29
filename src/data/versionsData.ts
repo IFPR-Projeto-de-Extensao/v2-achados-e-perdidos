@@ -62,10 +62,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "PWA",
         tag: "Correção Crítica",
       },
+      {
+        id: "v1938-fix-2",
+        title: "Eliminação de Fallbacks Inseguros de Autenticação no Cadastro",
+        description: "Remoção total de fallbacks guest-campus e roles artificiais em addItem e syncOfflineQueue, exigindo autenticação Firebase real com UID correspondente e e-mail institucional verificado antes de qualquer escrita no Firestore.",
+        module: "AUTH",
+        tag: "Segurança & Autenticação",
+      },
     ],
     stats: {
       additionsCount: 3,
-      fixesCount: 1,
+      fixesCount: 2,
     },
   },
   {

@@ -27,7 +27,7 @@ import {
 } from "../types";
 import { DEFAULT_DOCUMENT_TEMPLATES } from "../lib/defaultDocumentTemplates";
 import { DEFAULT_PROJECT_SETTINGS } from "../lib/projectSettingsConstants";
-import { sortUsersByCreationDesc } from "../lib/accountStatusUtils";
+import { sortUsersByCreationDesc, isAccountBlocked } from "../lib/accountStatusUtils";
 import { INITIAL_ITEMS, MOCK_NOTIFICATIONS, MOCK_CLAIMS, MOCK_COMMENTS, MOCK_ACTIVITY_LOGS } from "../data/mockData";
 import { safeFetchJson, clientMatchSimilarity, sendMatchEmailAlert } from "../lib/apiHelper";
 import { compressImage } from "../lib/imageCompression";
@@ -640,6 +640,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             status: "ERROR",
             error: "FIELD_LIMIT_EXCEEDED",
             statusMessage: syncTextValidation.error || "Limite de caracteres excedido.",
+          });
+          continue;
+        }
+
+        // 3.5. DEFENSIVE AUTHENTICATION GUARD BEFORE SETDOC
+        const currentAuthUser = auth.currentUser;
+        if (!currentAuthUser || !currentAuthUser.uid) {
+          console.warn(`[Offline Sync Auth Guard] Usuário não autenticado no Firebase Auth. Sincronização do item #${itemToSave.id} pausada.`);
+          updateUploadTask(taskId, {
+            status: "ERROR",
+            error: "AUTH_REQUIRED",
+            statusMessage: "Faça login com sua conta institucional para sincronizar este item.",
+          });
+          continue;
+        }
+
+        const isUserRootAdmin = currentAuthUser.email === "paulocauan39@gmail.com" || currentUser?.role === "ADMIN";
+
+        if (itemToSave.registeredByUserId && itemToSave.registeredByUserId !== currentAuthUser.uid && !isUserRootAdmin) {
+          console.warn(`[Offline Sync Auth Guard] Item #${itemToSave.id} pertence a outro UID (${itemToSave.registeredByUserId} !== ${currentAuthUser.uid}). Sincronização bloqueada.`);
+          updateUploadTask(taskId, {
+            status: "ERROR",
+            error: "AUTH_MISMATCH",
+            statusMessage: "Este item foi cadastrado por outra conta. Faça login com a conta criadora original para sincronizar.",
+          });
+          continue;
+        }
+
+        if (!currentAuthUser.emailVerified && !isUserRootAdmin) {
+          console.warn(`[Offline Sync Auth Guard] E-mail do usuário não verificado (${currentAuthUser.email}). Sincronização pausada.`);
+          updateUploadTask(taskId, {
+            status: "ERROR",
+            error: "EMAIL_NOT_VERIFIED",
+            statusMessage: "Verifique seu e-mail institucional para sincronizar ocorrências com o servidor.",
           });
           continue;
         }
@@ -3388,12 +3422,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addItem = async (
     itemData: Omit<LostFoundItem, "id" | "createdAt" | "qrCodeId" | "registeredByUserId" | "registeredByName" | "registeredByRole">
   ): Promise<{ newItem: LostFoundItem; matches: AIMatchResult[]; persistenceStatus: RegistrationStatus; isOffline: boolean }> => {
-    // 🔒 Security Guard: Only authenticated users can register lost or found items
-    if (isGuest || !auth.currentUser) {
+    // 🔒 Security Guard: Only authenticated users with verified institutional identity can register items
+    if (authLoading) {
+      addToast("Aguardando inicialização da autenticação institucional...", "info");
+      throw new Error("Autenticação em carregamento: Aguarde a inicialização da sessão Firebase.");
+    }
+
+    const authUser = auth.currentUser;
+    if (!authUser || !authUser.uid || !authUser.email || isGuest) {
       setPendingPostLoginAction({ tab: "register", registerType: itemData.type });
       setAuthModalOpen(true);
-      addToast("É necessário fazer login para cadastrar um item.", "warning");
-      throw new Error("É necessário fazer login para cadastrar um item.");
+      addToast("É necessário fazer login com sua conta institucional para cadastrar um item.", "warning");
+      throw new Error("Autenticação obrigatória: Sessão Firebase Authentication ativa não encontrada.");
+    }
+
+    if (!authUser.emailVerified && authUser.email !== "paulocauan39@gmail.com") {
+      addToast("Seu e-mail institucional precisa ser verificado para cadastrar itens no sistema.", "warning");
+      throw new Error("E-mail não verificado: A confirmação de e-mail institucional é obrigatória.");
+    }
+
+    // Role derivation strictly from authenticated profile or verified root admin
+    const isRootAdmin = authUser.email === "paulocauan39@gmail.com";
+    const effectiveUserRole: UserRole | undefined = isRootAdmin
+      ? "ADMIN"
+      : currentUser?.role && currentUser.role !== "INTRUSO"
+      ? currentUser.role
+      : undefined;
+
+    if (!effectiveUserRole) {
+      addToast("Perfil de usuário não carregado ou sem permissão válida. Aguarde a sincronização do perfil.", "error");
+      throw new Error("Perfil institucional não disponível para autorização no Firestore.");
+    }
+
+    if (isAccountBlocked(currentUser)) {
+      addToast("Sua conta institucional está suspensa ou banida.", "error");
+      throw new Error("Ação bloqueada: Conta suspensa ou banida.");
     }
 
     // Strict input and length boundary validations (Defense in Depth)
@@ -3466,9 +3529,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    const effectiveUserId = auth.currentUser?.uid || currentUser?.id || "guest-campus";
-    const effectiveUserName = currentUser?.name || auth.currentUser?.displayName || "Usuário IFPR";
-    const effectiveUserRole: UserRole = currentUser?.role || (auth.currentUser?.email === "paulocauan39@gmail.com" ? "ADMIN" : "ALUNO");
+    const effectiveUserId = authUser.uid;
+    const effectiveUserName = currentUser?.name || authUser.displayName || "Usuário IFPR";
 
     const initialHistory: ItemHistoryLog[] = [
       {
@@ -3583,6 +3645,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: "UPLOADING",
       statusMessage: "Enviando ao servidor em nuvem e aguardando confirmação do Firestore...",
     });
+
+    // Strict identity defensive verification prior to calling Firestore setDoc
+    if (!auth.currentUser || auth.currentUser.uid !== newItem.registeredByUserId) {
+      console.error("[ADD_ITEM_AUTH_MISMATCH]", {
+        authUid: auth.currentUser?.uid || null,
+        registeredByUserId: newItem.registeredByUserId,
+      });
+      throw new Error("Falha de consistência de autenticação: UID do autor não coincide com a sessão ativa.");
+    }
 
     try {
       await setDoc(doc(db, "items", newItem.id), sanitizedItemPayload);
