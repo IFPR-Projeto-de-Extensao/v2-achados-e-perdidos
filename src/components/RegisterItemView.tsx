@@ -608,7 +608,7 @@ export const RegisterItemView: React.FC = () => {
   useEffect(() => {
     if (!registrationFeedback) return;
 
-    // 1. Terminal State Guard & Authoritative Confirmation:
+    // 1. Terminal State Guard:
     // Once in CONFIRMED state, it is an immutable terminal state.
     if (registrationFeedback.status === "CONFIRMED") {
       return;
@@ -617,26 +617,16 @@ export const RegisterItemView: React.FC = () => {
     const currentItemId = registrationFeedback.item.id;
     const canonicalTaskId = getUploadTaskId(currentItemId);
 
-    // Direct confirmation verification: check if item is confirmed in items state
-    const confirmedInItems = items.find((i) => i.id === currentItemId && !i.isOfflineQueued);
-    if (confirmedInItems) {
-      setRegistrationFeedback({
-        status: "CONFIRMED",
-        item: confirmedInItems,
-      });
-      return;
-    }
-
-    // 2. Correlation with activeUploadTasks using canonical single taskId per item
+    // 2. Correlation exclusively with the canonical task task-${itemId}
     const matchingTask = activeUploadTasks.find(
-      (t) => t.itemId === currentItemId || t.id === canonicalTaskId
+      (t) => t.id === canonicalTaskId || t.itemId === currentItemId
     );
 
     if (matchingTask) {
       if (matchingTask.status === "COMPLETED") {
         setRegistrationFeedback({
           status: "CONFIRMED",
-          item: confirmedInItems || registrationFeedback.item,
+          item: registrationFeedback.item,
         });
       } else if (
         matchingTask.status === "ERROR" &&
@@ -646,7 +636,7 @@ export const RegisterItemView: React.FC = () => {
           status: "ERROR",
           item: registrationFeedback.item,
           error: matchingTask.error || "Falha temporária ao sincronizar o cadastro com o servidor em nuvem.",
-          taskId: matchingTask.id,
+          taskId: canonicalTaskId,
         });
       } else if (
         (matchingTask.status === "UPLOADING" ||
@@ -658,11 +648,11 @@ export const RegisterItemView: React.FC = () => {
         setRegistrationFeedback({
           status: "PENDING_SYNC",
           item: registrationFeedback.item,
-          taskId: matchingTask.id,
+          taskId: canonicalTaskId,
         });
       }
     }
-  }, [registrationFeedback, activeUploadTasks, items]);
+  }, [registrationFeedback, activeUploadTasks]);
 
   // Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1884,7 +1874,7 @@ export const RegisterItemView: React.FC = () => {
                       vibrateClick();
                       const taskIdToRetry =
                         registrationFeedback.taskId ||
-                        `sync-task-${registrationFeedback.item.id}`;
+                        getUploadTaskId(registrationFeedback.item.id);
                       await retryUploadTask(taskIdToRetry);
                     }}
                     className="flex-1 py-3.5 px-5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow-lg shadow-red-600/20 transition-all cursor-pointer flex items-center justify-center gap-2"
@@ -1898,7 +1888,7 @@ export const RegisterItemView: React.FC = () => {
                       vibrateClick();
                       const taskIdToCancel =
                         registrationFeedback.taskId ||
-                        `sync-task-${registrationFeedback.item.id}`;
+                        getUploadTaskId(registrationFeedback.item.id);
                       await cancelUploadTask(taskIdToCancel);
                       setRegistrationFeedback(null);
                       addToast("Envio offline cancelado e removido da fila com sucesso.", "info");
