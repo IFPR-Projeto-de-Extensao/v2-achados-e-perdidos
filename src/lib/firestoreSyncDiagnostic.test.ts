@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from "vitest";
 import { classifySyncError, FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES } from "./payloadSizeGuard";
 
 describe("Diagnóstico de Erros Firestore & Preservação do Erro Original", () => {
-  // 1. FirebaseError permission-denied
-  it("1. Diagnóstico: FirebaseError permission-denied é classificado como TEMPORARY e preserva o código original", () => {
+  // 1. FirebaseError permission-denied (AUTHORIZATION / PERMISSION)
+  it("1. Diagnóstico: FirebaseError permission-denied é classificado como AUTHORIZATION e preserva código e mensagem originais", () => {
     const permissionError = {
       name: "FirebaseError",
       code: "permission-denied",
@@ -12,11 +12,13 @@ describe("Diagnóstico de Erros Firestore & Preservação do Erro Original", () 
 
     const result = classifySyncError(permissionError, 2500);
 
-    expect(result.category).toBe("TEMPORARY");
-    expect(result.isPermanent).toBe(false);
+    expect(result.category).toBe("AUTHORIZATION");
+    expect(result.isPermanent).toBe(true);
     expect(result.originalCode).toBe("permission-denied");
     expect(result.originalName).toBe("FirebaseError");
-    expect(result.userMessage).toBe("Aguardando permissão no Firestore. A sincronização será tentada novamente.");
+    expect(result.originalMessage).toBe("Missing or insufficient permissions.");
+    expect(result.userMessage).toContain("Sincronização recusada por falta de autorização/permissão");
+    expect(result.userMessage).toContain("permanece preservado no dispositivo");
   });
 
   // 2. FirebaseError unavailable
@@ -92,8 +94,19 @@ describe("Diagnóstico de Erros Firestore & Preservação do Erro Original", () 
     expect(result.userMessage).toContain("dados ou imagem grandes demais");
   });
 
-  // 7. Preservação do código original antes da classificação e logging
-  it("7. Diagnóstico: Preservação do código e formato completo do erro antes da classificação", () => {
+  // 7. Erro com FIELD_LIMIT_EXCEEDED
+  it("7. Diagnóstico: FIELD_LIMIT_EXCEEDED é classificado como PERMANENT", () => {
+    const fieldError = new Error("FIELD_LIMIT_EXCEEDED: Descrição ultrapassou 1000 caracteres");
+    const result = classifySyncError(fieldError, 1200);
+
+    expect(result.category).toBe("PERMANENT");
+    expect(result.isPermanent).toBe(true);
+    expect(result.reason).toContain("FIELD_LIMIT_EXCEEDED");
+    expect(result.userMessage).toContain("dados/imagens que excedem os limites permitidos");
+  });
+
+  // 8. Preservação do código original antes da classificação e logging
+  it("8. Diagnóstico: Preservação do código e formato completo do erro antes da classificação", () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const mockFirebaseError = {

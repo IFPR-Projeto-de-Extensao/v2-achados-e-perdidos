@@ -71,10 +71,10 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
       },
       {
         id: "v1938-fix-3",
-        title: "Correção de Falso Bloqueio de Limite no Cadastro e Reenvio Offline",
-        description: "Reavaliação real do payload em retryUploadTask e classifySyncError garantindo que ocorrências com imagens válidas dentro do teto defensivo de 900.000 bytes (~118 KiB) não sejam bloqueadas por strings de erro obsoletas, além de sanitização recursiva de arrays no Firestore.",
+        title: "Classificação Precisa de 'permission-denied' como AUTHORIZATION",
+        description: "Correção na classificação de erros no motor payloadSizeGuard e AppContext: exceções do tipo 'permission-denied' são rigorosamente classificadas como AUTHORIZATION (isPermanent: true), diferenciando-as de instabilidade transitória de rede (TEMPORARY), preservando o item intacto no IndexedDB e informando com precisão a recusa de autorização.",
         module: "FIRESTORE",
-        tag: "Correção de Cadastro & Payload",
+        tag: "Classificação & Auditoria",
       },
     ],
     stats: {

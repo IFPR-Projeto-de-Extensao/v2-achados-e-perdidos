@@ -178,7 +178,7 @@ export interface SyncQueueEntry {
   attempts: number;
   lastAttempt?: string;
   error?: string;
-  errorType?: "TEMPORARY" | "PERMANENT";
+  errorType?: "TEMPORARY" | "PERMANENT" | "AUTHORIZATION";
   payloadSizeBytes?: number;
 }
 

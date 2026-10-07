@@ -11,7 +11,7 @@
 
 export const FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES = 900_000;
 
-export type SyncErrorCategory = "TEMPORARY" | "PERMANENT";
+export type SyncErrorCategory = "TEMPORARY" | "PERMANENT" | "AUTHORIZATION";
 
 export interface ClassifiedSyncError {
   category: SyncErrorCategory;
@@ -21,6 +21,7 @@ export interface ClassifiedSyncError {
   payloadSizeBytes?: number;
   originalCode?: string;
   originalName?: string;
+  originalMessage?: string;
 }
 
 /**
@@ -67,6 +68,9 @@ export function isPayloadWithinDefensiveLimit(data: unknown): {
 export function classifySyncError(error: unknown, payloadSizeBytes?: number): ClassifiedSyncError {
   const originalCode = (error as any)?.code;
   const originalName = (error as any)?.name || (error instanceof Error ? error.name : undefined);
+  const originalMessage = error instanceof Error
+    ? error.message
+    : ((error as any)?.message || (typeof error === "string" ? error : String(error || "")));
 
   // 1. Check size guard first
   if (payloadSizeBytes !== undefined && payloadSizeBytes > FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES) {
@@ -78,66 +82,37 @@ export function classifySyncError(error: unknown, payloadSizeBytes?: number): Cl
       payloadSizeBytes,
       originalCode,
       originalName,
+      originalMessage,
     };
   }
 
-  const errMessage = error instanceof Error ? error.message : String(error || "");
+  const errMessage = originalMessage;
   const errLower = errMessage.toLowerCase();
   const codeLower = typeof originalCode === "string" ? originalCode.toLowerCase() : "";
 
   // 2. Unrecoverable data structure & payload boundary errors
-  // Note: If payload is within defensive limits (<= 900KB), it cannot be a payload size limit error.
-  const isActualPayloadSizeExceeded = payloadSizeBytes !== undefined && payloadSizeBytes > FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES;
-
-  if (
-    isActualPayloadSizeExceeded ||
-    codeLower === "resource-exhausted" ||
-    errLower.includes("exceeds maximum allowed size")
-  ) {
-    return {
-      category: "PERMANENT",
-      isPermanent: true,
-      reason: isActualPayloadSizeExceeded
-        ? `PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT (${payloadSizeBytes} bytes > ${FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES} bytes)`
-        : (errMessage || "Payload excede o limite máximo permitido pelo Firestore (1 MiB)."),
-      userMessage: "Este item possui dados ou imagem grandes demais para sincronização. O cadastro foi preservado no dispositivo e precisa ser ajustado.",
-      payloadSizeBytes,
-      originalCode,
-      originalName,
-    };
-  }
-
-  // 2.1 Text field limit errors
-  if (errLower.includes("field_limit_exceeded")) {
-    return {
-      category: "PERMANENT",
-      isPermanent: true,
-      reason: errMessage || "Limite de caracteres de campos de texto excedido",
-      userMessage: errMessage || "Limite de caracteres de campos de texto excedido. O cadastro precisa ser ajustado.",
-      payloadSizeBytes,
-      originalCode,
-      originalName,
-    };
-  }
-
-  // 2.2 Invalid argument / schema structure errors
   if (
     codeLower === "invalid-argument" ||
+    codeLower === "resource-exhausted" ||
+    errLower.includes("exceeds maximum allowed size") ||
+    errLower.includes("payload_size_exceeds_defensive_limit") ||
+    errLower.includes("field_limit_exceeded") ||
     errLower.includes("invalid-argument") ||
     errLower.includes("invalid argument")
   ) {
     return {
       category: "PERMANENT",
       isPermanent: true,
-      reason: errMessage || "Estrutura de dados ou argumento inválido para o Firestore",
-      userMessage: "Estrutura de dados inválida para o banco de dados. O cadastro precisa ser verificado ou ajustado.",
+      reason: errMessage || "Erro permanente de validação ou estrutura de dados",
+      userMessage: "Este item possui dados/imagens que excedem os limites permitidos. O cadastro precisa ser cancelado ou ajustado.",
       payloadSizeBytes,
       originalCode,
       originalName,
+      originalMessage,
     };
   }
 
-  // 3. Permission and authorization errors (Retryable upon auth resolution / rules sync)
+  // 3. Permission and authorization errors (permission-denied is NOT network instability)
   if (
     codeLower === "permission-denied" ||
     errLower.includes("permission-denied") ||
@@ -145,24 +120,26 @@ export function classifySyncError(error: unknown, payloadSizeBytes?: number): Cl
     errLower.includes("missing or insufficient permissions")
   ) {
     return {
-      category: "TEMPORARY",
-      isPermanent: false,
-      reason: errMessage || "Aguardando confirmação de autorização ou permissão no Firestore",
-      userMessage: "Aguardando permissão no Firestore. A sincronização será tentada novamente.",
+      category: "AUTHORIZATION",
+      isPermanent: true,
+      reason: errMessage || "Recusado pelas regras de segurança do Firestore (permission-denied)",
+      userMessage: "Sincronização recusada por falta de autorização/permissão no Firestore. O item permanece preservado no dispositivo.",
       payloadSizeBytes,
       originalCode,
       originalName,
+      originalMessage,
     };
   }
 
-  // 3. Temporary / Transient errors (unavailable, deadline-exceeded, network timeout, offline)
+  // 4. Temporary / Transient errors (unavailable, deadline-exceeded, network timeout, offline, network failure)
   return {
     category: "TEMPORARY",
     isPermanent: false,
     reason: errMessage || "Instabilidade transitória de rede ou serviço",
-    userMessage: "Não foi possível sincronizar agora. Tentaremos novamente.",
+    userMessage: "Não foi possível sincronizar agora devido a instabilidade temporária. Tentaremos novamente.",
     payloadSizeBytes,
     originalCode,
     originalName,
+    originalMessage,
   };
 }

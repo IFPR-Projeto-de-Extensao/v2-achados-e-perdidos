@@ -477,32 +477,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
 
     if (entry) {
-      // Re-evaluate actual payload and fields in real-time instead of relying on stale error strings
-      const payloadToTest = (entry.payload || {}) as Partial<LostFoundItem>;
-      const actualByteSize = calculatePayloadSizeBytes(payloadToTest);
-      const isSizeExceeded = actualByteSize > FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES;
+      const isSizeOrFieldLimitExceeded =
+        (typeof entry.error === "string" &&
+          (entry.error.includes("PAYLOAD_SIZE") ||
+            entry.error.includes("FIELD_LIMIT"))) ||
+        (task && typeof task.error === "string" &&
+          (task.error.includes("PAYLOAD_SIZE") ||
+            task.error.includes("FIELD_LIMIT")));
 
-      const textValidation = validateItemTextFields({
-        title: payloadToTest.title,
-        description: payloadToTest.description,
-        location: payloadToTest.location,
-        color: payloadToTest.color,
-        brand: payloadToTest.brand,
-        contactInfo: payloadToTest.contactInfo,
-      }, false);
-
-      if (isSizeExceeded) {
-        console.warn(`[Retry Upload Blocked] Item #${resolvedItemId} excede o limite defensivo (${actualByteSize} bytes > ${FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES} bytes). O retry foi bloqueado.`);
+      if (isSizeOrFieldLimitExceeded) {
+        console.warn(`[Retry Upload Blocked] Item #${resolvedItemId} possui dados/campos que excedem os limites (${entry.error}). O retry foi bloqueado.`);
         addToast(
-          "Este item possui dados ou imagem grandes demais para sincronização. O cadastro precisa ser ajustado.",
+          "Este item possui dados/imagens que excedem os limites permitidos. O cadastro precisa ser cancelado ou ajustado.",
           "warning"
         );
-        return;
-      }
-
-      if (!textValidation.isValid) {
-        console.warn(`[Retry Upload Blocked] Item #${resolvedItemId} excede limite de caracteres: ${textValidation.error}`);
-        addToast(textValidation.error || "Limite de caracteres excedido.", "warning");
         return;
       }
 
@@ -561,9 +549,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const taskId = getUploadTaskId(itemId);
         const itemTitle = entry.payload?.title || "Objeto sem título";
 
-        // 1. Guard against PERMANENT errors: Skip automatic retry to prevent loop
-        if (entry.status === "ERRO_PERMANENTE" || entry.errorType === "PERMANENT") {
-          console.log(`[Offline Sync] Pulando item com erro permanente #${entry.id} ("${itemTitle}"). Preservado no dispositivo.`);
+        // 1. Guard against PERMANENT and AUTHORIZATION errors: Skip automatic retry to prevent loop
+        if (entry.status === "ERRO_PERMANENTE" || entry.errorType === "PERMANENT" || entry.errorType === "AUTHORIZATION") {
+          console.log(`[Offline Sync] Pulando item com erro permanente/autorização #${entry.id} ("${itemTitle}"). Preservado no dispositivo.`);
           permanentErrorCount++;
           addUploadTask({
             id: taskId,
@@ -573,8 +561,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             thumbnailUrl: entry.payload?.imageUrl,
             progress: 100,
             status: "ERROR",
-            error: entry.error || "ERRO_PERMANENTE",
-            statusMessage: entry.error?.includes("PAYLOAD_SIZE")
+            error: entry.error || (entry.errorType === "AUTHORIZATION" ? "AUTHORIZATION" : "ERRO_PERMANENTE"),
+            statusMessage: entry.errorType === "AUTHORIZATION" || entry.error?.includes("permission-denied") || entry.error?.includes("permissão")
+              ? "Sincronização recusada por falta de autorização/permissão no Firestore. O item permanece preservado no dispositivo."
+              : entry.error?.includes("PAYLOAD_SIZE")
               ? "Este item possui dados ou imagem grandes demais para sincronização. O cadastro foi preservado no dispositivo e precisa ser ajustado."
               : "Um item precisa de atenção antes de ser sincronizado.",
             startedAt: entry.createdAt,
@@ -840,16 +830,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const remainingCount = remainingEntries.length;
       setPendingSyncCount(remainingCount);
 
+      const hasAuthorization = remainingEntries.some(
+        (e) => e.errorType === "AUTHORIZATION" || e.error?.includes("permission-denied")
+      );
       const hasPermanent = remainingEntries.some(
-        (e) => e.status === "ERRO_PERMANENTE" || e.errorType === "PERMANENT"
+        (e) => (e.status === "ERRO_PERMANENTE" || e.errorType === "PERMANENT") && e.errorType !== "AUTHORIZATION"
       );
       const hasTemporary = remainingEntries.some(
-        (e) => e.status === "ERRO_TEMPORARIO" || (e.status === "ERRO" && e.errorType !== "PERMANENT")
+        (e) => (e.status === "ERRO_TEMPORARIO" || (e.status === "ERRO" && e.errorType !== "PERMANENT")) && e.errorType !== "AUTHORIZATION"
       );
 
       if (syncedCount > 0) {
         vibrateSuccess();
-        if (hasPermanent) {
+        if (hasAuthorization) {
+          addToast(
+            `${syncedCount} ${syncedCount === 1 ? "ocorrência sincronizada" : "ocorrências sincronizadas"}. Um item aguarda autorização/permissão e foi mantido no dispositivo.`,
+            "warning"
+          );
+        } else if (hasPermanent) {
           addToast(
             `${syncedCount} ${syncedCount === 1 ? "ocorrência sincronizada" : "ocorrências sincronizadas"}. Um item com dados excessivos foi mantido no dispositivo para ajuste.`,
             "info"
@@ -864,6 +862,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             "success"
           );
         }
+      } else if (hasAuthorization) {
+        addToast(
+          "Sincronização recusada por autorização/permissão no Firestore. O item permanece preservado no dispositivo.",
+          "warning"
+        );
       } else if (hasPermanent && !hasTemporary) {
         addToast(
           "Um item precisa de atenção antes de ser sincronizado.",
