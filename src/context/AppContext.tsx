@@ -466,11 +466,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const retryUploadTask = async (taskId: string) => {
+    // 1. Revalidação da sessão do Firebase Auth
+    const firebaseUser = auth.currentUser;
+    if (!firebaseUser) {
+      console.warn("[Retry Upload Auth Check] Sessão não autenticada no Firebase Auth.");
+      addToast(
+        "Sessão não autenticada. Por favor, faça login com sua conta institucional para tentar novamente.",
+        "warning"
+      );
+      return;
+    }
+
+    try {
+      // Força a renovação das credenciais do token JWT para obter claims atualizados (ex: email_verified)
+      await firebaseUser.getIdTokenResult(true);
+    } catch (authErr) {
+      console.warn("[Retry Upload Token Refresh Warning] Não foi possível renovar o token:", authErr);
+    }
+
     const task = activeUploadTasks.find((t) => t.id === taskId);
     const resolvedItemId = task?.itemId || taskId.replace(/^(task|sync-task|upload-task)-/, "");
     const canonicalTaskId = getUploadTaskId(resolvedItemId);
 
-    // Check if error is permanent in pending queue
+    // 2. Localização da entrada existente na fila mantendo ID original e prevenindo duplicação
     const queue = await getPendingSyncQueue();
     const entry = queue.find(
       (e) => (e.itemId && e.itemId === resolvedItemId) || (e.payload && e.payload.id === resolvedItemId) || e.id === taskId
@@ -494,6 +512,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return;
       }
 
+      // Reativa o item para nova tentativa preservando o ID do item e da entrada da fila
       await updateSyncQueueEntry(entry.id, {
         status: "PENDENTE",
         error: undefined,
@@ -504,9 +523,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateUploadTask(canonicalTaskId, {
       status: "UPLOADING",
       progress: 30,
-      statusMessage: "Tentando sincronizar novamente...",
+      statusMessage: "Revalidando credenciais e tentando enviar ao Firestore...",
       error: undefined,
     });
+
     await syncOfflineQueue();
   };
 

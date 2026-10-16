@@ -855,19 +855,25 @@ export const RegisterItemView: React.FC = () => {
           item: res.newItem,
         });
       } else if (res.persistenceStatus === "ERROR") {
-        addToast(
-          `Atenção: Falha de conexão. O objeto "${res.newItem.title}" foi guardado no dispositivo.`,
-          "warning"
-        );
+        const classifiedMsg =
+          typeof (res as any)?.classifiedMessage === "string" && (res as any).classifiedMessage.trim().length > 0
+            ? (res as any).classifiedMessage
+            : typeof (res as any)?.error === "string" && (res as any).error.trim().length > 0
+            ? (res as any).error
+            : `Sincronização recusada por falta de autorização/permissão no Firestore. O objeto "${res.newItem.title}" permanece preservado no dispositivo.`;
+
+        addToast(classifiedMsg, "warning");
         setRegistrationFeedback({
           status: "ERROR",
           item: res.newItem,
         });
       } else {
-        addToast(
-          `Salvo no dispositivo: O objeto "${res.newItem.title}" será sincronizado assim que a rede voltar.`,
-          "info"
-        );
+        const pendingMsg =
+          typeof (res as any)?.classifiedMessage === "string" && (res as any).classifiedMessage.trim().length > 0
+            ? (res as any).classifiedMessage
+            : `Salvo no dispositivo: O objeto "${res.newItem.title}" será sincronizado assim que a rede voltar.`;
+
+        addToast(pendingMsg, "info");
         setRegistrationFeedback({
           status: "PENDING_SYNC",
           item: res.newItem,

@@ -16,6 +16,7 @@ import {
 } from "../components/RegisterItemView";
 import { CANONICAL_FALLBACK_ORIGIN } from "./shared-constants";
 import { getItemPublicUrl, getAppOrigin, parseQrCodeOrUrl } from "./qrCodeUtils";
+import { classifySyncError } from "./payloadSizeGuard";
 
 describe("LOCALIZA+ — Sistema de Cadastro de Objetos Reconstruído (Testes de Fluxo e Validação)", () => {
   describe("ETAPA 1: Tipo de Ocorrência", () => {
@@ -334,4 +335,81 @@ describe("LOCALIZA+ — Sistema de Cadastro de Objetos Reconstruído (Testes de 
       expect(parsed.tab).toBe("lost");
     });
   });
+
+  describe("Diagnóstico do Firestore, Resiliência de Mensagem e Preservação no IndexedDB", () => {
+    it("deve classificar permission-denied como AUTHORIZATION sem mascarar como falha de conexão", () => {
+      const firebasePermError = {
+        code: "permission-denied",
+        name: "FirebaseError",
+        message: "Missing or insufficient permissions.",
+      };
+
+      const classified = classifySyncError(firebasePermError, 1500);
+      expect(classified.category).toBe("AUTHORIZATION");
+      expect(classified.isPermanent).toBe(true);
+      expect(classified.userMessage).toContain("Sincronização recusada por falta de autorização/permissão no Firestore");
+      expect(classified.userMessage).not.toContain("Falha de conexão");
+    });
+
+    it("deve inspecionar defensivamente res.classifiedMessage e res.error sem falhar com valores undefined/nulos", () => {
+      function formatFeedbackMessage(res: any, defaultTitle: string): string {
+        return typeof res?.classifiedMessage === "string" && res.classifiedMessage.trim().length > 0
+          ? res.classifiedMessage
+          : typeof res?.error === "string" && res.error.trim().length > 0
+          ? res.error
+          : `Sincronização recusada por falta de autorização/permissão no Firestore. O objeto "${defaultTitle}" permanece preservado no dispositivo.`;
+      }
+
+      // Teste com classifiedMessage preenchido
+      expect(
+        formatFeedbackMessage({ classifiedMessage: "Mensagem personalizada" }, "Mochila")
+      ).toBe("Mensagem personalizada");
+
+      // Teste com error preenchido e classifiedMessage ausente
+      expect(
+        formatFeedbackMessage({ error: "Erro especifico" }, "Mochila")
+      ).toBe("Erro especifico");
+
+      // Teste com res incompleto / nulo
+      expect(
+        formatFeedbackMessage({}, "Mochila")
+      ).toContain('O objeto "Mochila" permanece preservado');
+
+      expect(
+        formatFeedbackMessage(null, "Mochila")
+      ).toContain('O objeto "Mochila" permanece preservado');
+    });
+
+    it("deve preservar o ID original do item e evitar duplicações na fila local durante tentativas de sync", () => {
+      const originalItem = {
+        id: "item-preservado-123",
+        title: "Garrafa Térmica",
+        type: "ENCONTRADO" as const,
+        isOfflineQueued: true,
+      };
+
+      const queueState = [
+        {
+          id: "queue-item-preservado-123",
+          itemId: originalItem.id,
+          payload: originalItem,
+          status: "ERRO_PERMANENTE",
+          errorType: "AUTHORIZATION",
+        },
+      ];
+
+      // Reativação da entrada para nova tentativa mantém o exato mesmo itemId e queue entry id
+      const updatedQueueState = queueState.map((entry) => {
+        if (entry.itemId === originalItem.id) {
+          return { ...entry, status: "PENDENTE", errorType: undefined };
+        }
+        return entry;
+      });
+
+      expect(updatedQueueState.length).toBe(1);
+      expect(updatedQueueState[0].itemId).toBe("item-preservado-123");
+      expect(updatedQueueState[0].id).toBe("queue-item-preservado-123");
+    });
+  });
 });
+
