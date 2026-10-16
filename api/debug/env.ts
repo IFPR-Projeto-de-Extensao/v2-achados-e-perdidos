@@ -1,3 +1,7 @@
+import { getAdminAuth, getAdminFirestore } from "../_lib/firebaseAdmin";
+
+const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
+
 export default async function handler(req: any, res: any) {
   // CORS Headers
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -6,6 +10,62 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
+  }
+
+  // Mandatory Admin RBAC Authentication
+  const authHeader = req.headers?.authorization || req.headers?.Authorization;
+  if (!authHeader || typeof authHeader !== "string" || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({
+      success: false,
+      error: "Autenticação obrigatória. Acesso exclusivo a administradores autorizados.",
+      code: "UNAUTHENTICATED",
+    });
+  }
+
+  const token = authHeader.split(" ")[1]?.trim();
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      error: "Token de autenticação não informado.",
+      code: "TOKEN_MISSING",
+    });
+  }
+
+  const adminAuth = getAdminAuth();
+  const adminDb = getAdminFirestore();
+  if (!adminAuth) {
+    return res.status(503).json({ success: false, error: "Serviço de autenticação administrativa indisponível." });
+  }
+
+  let decodedToken: any;
+  try {
+    decodedToken = await adminAuth.verifyIdToken(token);
+  } catch (err: any) {
+    return res.status(401).json({
+      success: false,
+      error: "Token de autenticação inválido ou expirado.",
+      code: "INVALID_TOKEN",
+    });
+  }
+
+  const isRootAdmin = decodedToken.email === ROOT_ADMIN_EMAIL;
+  let isAdmin = isRootAdmin || decodedToken.role === "ADMIN" || decodedToken.admin === true;
+
+  if (adminDb && !isAdmin) {
+    try {
+      const uDoc = await adminDb.collection("users").doc(decodedToken.uid).get();
+      if (uDoc.exists && uDoc.data()?.role === "ADMIN") {
+        isAdmin = true;
+      }
+    } catch (_) {}
+  }
+
+  if (!isAdmin) {
+    return res.status(403).json({
+      success: false,
+      error: "Acesso negado. Apenas administradores do IFPR podem visualizar diagnósticos de ambiente.",
+      code: "FORBIDDEN_NOT_ADMIN",
+    });
   }
 
   const isDiscordConfigured = Boolean(
@@ -54,7 +114,6 @@ export default async function handler(req: any, res: any) {
       userPresent: Boolean(smtpUser),
       passPresent: Boolean(smtpPass),
       fromPresent: Boolean(process.env.SMTP_FROM),
-      host: smtpHost || null,
       port: smtpPort,
       secure: process.env.SMTP_SECURE === "true" || smtpPort === 465,
       userMasked: maskEmail(smtpUser),

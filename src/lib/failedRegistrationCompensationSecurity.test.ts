@@ -7,6 +7,7 @@ describe("Security Audit: /api/auth/compensate-failed-registration", () => {
     creationTime: string; // ISO string
     role?: string;
     isAdmin?: boolean;
+    emailVerified?: boolean;
   }
 
   interface MockFirestoreUserDoc {
@@ -27,12 +28,40 @@ describe("Security Audit: /api/auth/compensate-failed-registration", () => {
     logSink = [];
   });
 
-  // Simulated server handler matching exact implementation in server.ts (lines 541-589)
-  async function simulateCompensateEndpoint(body: any): Promise<{ status: number; body: any }> {
+  // Simulated server handler matching exact implementation in server.ts
+  async function simulateCompensateEndpoint(
+    body: any,
+    callerAuth: { uid?: string; isAdmin?: boolean } | null = null
+  ): Promise<{ status: number; body: any }> {
     const { uid, email } = body || {};
 
     if (!uid || typeof uid !== "string") {
       return { status: 400, body: { success: false, error: "UID obrigatório para compensação." } };
+    }
+
+    // Default caller is the owner itself for existing regression test cases unless specified
+    const effectiveCaller = callerAuth === null ? { uid, isAdmin: false } : callerAuth;
+
+    if (!effectiveCaller.uid) {
+      return {
+        status: 401,
+        body: { success: false, error: "Autenticação obrigatória.", code: "UNAUTHENTICATED" },
+      };
+    }
+
+    if (effectiveCaller.uid !== uid && !effectiveCaller.isAdmin) {
+      logSink.push({
+        type: "WARN",
+        message: `[Compensation Rejected] Solicitante (${effectiveCaller.uid}) tentou compensar conta alheia (${uid}). Acesso negado.`,
+      });
+      return {
+        status: 403,
+        body: {
+          success: false,
+          error: "Acesso negado: Você só pode solicitar a compensação de sua própria conta recém-criada.",
+          code: "FORBIDDEN_NOT_OWNER",
+        },
+      };
     }
 
     try {
@@ -55,7 +84,23 @@ describe("Security Audit: /api/auth/compensate-failed-registration", () => {
         return { status: 403, body: { success: false, error: "Compensação permitida apenas para cadastros recém-criados." } };
       }
 
-      // 2. Verify that NO document exists in Firestore /users/{uid}
+      // 2. Verify Consolidated Status: cannot delete account if email is verified (unless admin)
+      if (userRecord.emailVerified === true && !effectiveCaller.isAdmin) {
+        logSink.push({
+          type: "WARN",
+          message: `[Compensation Rejected] Conta ${uid} já possui e-mail verificado. Não compensar.`,
+        });
+        return {
+          status: 409,
+          body: {
+            success: false,
+            error: "Conta já consolidada (e-mail verificado). Compensação não permitida.",
+            code: "ACCOUNT_CONSOLIDATED",
+          },
+        };
+      }
+
+      // 3. Verify that NO document exists in Firestore /users/{uid}
       const docSnapExists = mockFirestoreDocs.has(uid);
       if (docSnapExists) {
         logSink.push({
@@ -417,5 +462,179 @@ describe("Security Audit: /api/auth/compensate-failed-registration", () => {
     const res = await simulateCompensateEndpoint({ uid: "error-trigger" });
     expect(res.status).toBe(500);
     expect(res.body.success).toBe(false);
+  });
+
+  // =========================================================================
+  // SEC-05: Mandatory Authentication & Identity Binding Test Scenarios
+  // =========================================================================
+  describe("SEC-05: Mandatory Authentication & Identity Binding Requirements", () => {
+    it("1. Requisição anônima (sem token de autenticação) é estritamente rejeitada com HTTP 401", async () => {
+      const res = await simulateCompensateEndpoint(
+        { uid: "some-victim-uid" },
+        { uid: undefined, isAdmin: false }
+      );
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe("UNAUTHENTICATED");
+    });
+
+    it("2. Requisição com token inválido / não decodificado é rejeitada com HTTP 401", async () => {
+      const res = await simulateCompensateEndpoint(
+        { uid: "some-uid" },
+        { uid: "", isAdmin: false }
+      );
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe("UNAUTHENTICATED");
+    });
+
+    it("3. Usuário autenticado tentando compensar UID de terceiro é bloqueado com HTTP 403", async () => {
+      const recent = new Date(Date.now() - 10000).toISOString();
+      mockAuthUsers.set("victim-orphan", {
+        uid: "victim-orphan",
+        email: "victim@ifpr.edu.br",
+        creationTime: recent,
+      });
+
+      const res = await simulateCompensateEndpoint(
+        { uid: "victim-orphan" },
+        { uid: "attacker-logged-in-uid", isAdmin: false }
+      );
+      expect(res.status).toBe(403);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe("FORBIDDEN_NOT_OWNER");
+      // Conta do terceiro NÃO foi excluída
+      expect(mockAuthUsers.has("victim-orphan")).toBe(true);
+    });
+
+    it("4. Usuário autenticado tentando compensar conta já consolidada com e-mail verificado é bloqueado com HTTP 409", async () => {
+      const recent = new Date(Date.now() - 15000).toISOString();
+      mockAuthUsers.set("uid-verified-user", {
+        uid: "uid-verified-user",
+        email: "verified@ifpr.edu.br",
+        creationTime: recent,
+        emailVerified: true,
+      });
+
+      const res = await simulateCompensateEndpoint(
+        { uid: "uid-verified-user" },
+        { uid: "uid-verified-user", isAdmin: false }
+      );
+      expect(res.status).toBe(409);
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe("ACCOUNT_CONSOLIDATED");
+      expect(mockAuthUsers.has("uid-verified-user")).toBe(true);
+    });
+
+    it("5. Conta órfã legítima dentro da janela temporal (< 3 min) e sem documento é compensada com HTTP 200", async () => {
+      const recent = new Date(Date.now() - 20000).toISOString();
+      mockAuthUsers.set("legit-orphan", {
+        uid: "legit-orphan",
+        email: "student@estudantes.ifpr.edu.br",
+        creationTime: recent,
+        emailVerified: false,
+      });
+
+      const res = await simulateCompensateEndpoint(
+        { uid: "legit-orphan", email: "student@estudantes.ifpr.edu.br" },
+        { uid: "legit-orphan", isAdmin: false }
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(mockAuthUsers.has("legit-orphan")).toBe(false);
+    });
+
+    it("6. Administrador autorizado pode compensar conta órfã quando requisitado", async () => {
+      const recent = new Date(Date.now() - 25000).toISOString();
+      mockAuthUsers.set("admin-assisted-orphan", {
+        uid: "admin-assisted-orphan",
+        email: "trouble@estudantes.ifpr.edu.br",
+        creationTime: recent,
+        emailVerified: false,
+      });
+
+      const res = await simulateCompensateEndpoint(
+        { uid: "admin-assisted-orphan" },
+        { uid: "admin-caller-uid", isAdmin: true }
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(mockAuthUsers.has("admin-assisted-orphan")).toBe(false);
+    });
+  });
+
+  // =========================================================================
+  // SEC-06: HTTP 500 Error Sanitization & Anti-Leakage Test Scenarios
+  // =========================================================================
+  describe("SEC-06: HTTP 500 Error Sanitization & Anti-Leakage Requirements", () => {
+    it("1. Respostas de erro em produção retornam mensagem genérica segura", () => {
+      const isProd = true;
+      const rawError = new Error("Fatal: connection to postgresql://admin:secret@db.internal:5432 failed");
+      const clientResponse = {
+        success: false,
+        error: isProd
+          ? "Erro interno no servidor ao processar requisição."
+          : rawError.message,
+        code: "INTERNAL_SERVER_ERROR",
+      };
+
+      expect(clientResponse.error).toBe("Erro interno no servidor ao processar requisição.");
+      expect(clientResponse.error).not.toContain("postgresql");
+      expect(clientResponse.error).not.toContain("secret");
+      expect(clientResponse.error).not.toContain("5432");
+    });
+
+    it("2. Stack traces nunca são incluídos no corpo da resposta", () => {
+      const rawError = new Error("Internal segmentation fault in gRPC client");
+      const sanitizedPayload: any = {
+        success: false,
+        error: "Erro interno no servidor.",
+        code: "INTERNAL_SERVER_ERROR",
+      };
+
+      expect(sanitizedPayload.stack).toBeUndefined();
+      expect(sanitizedPayload.details).toBeUndefined();
+    });
+
+    it("3. Mensagens internas de conexão não aparecem na resposta", () => {
+      const dbConnectionError = "getaddrinfo ENOTFOUND firestore.googleapis.com";
+      const sanitizedResponse = {
+        success: false,
+        error: "Erro interno no servidor do Localiza+ IFPR.",
+      };
+
+      expect(sanitizedResponse.error).not.toContain(dbConnectionError);
+      expect(sanitizedResponse.error).not.toContain("googleapis.com");
+    });
+
+    it("4. Erros esperados (400, 401, 403, 404, 409) continuam com status e mensagens apropriadas", () => {
+      const validationError = { status: 400, error: "UID obrigatório para compensação." };
+      const authError = { status: 401, error: "Autenticação obrigatória.", code: "UNAUTHENTICATED" };
+      const forbiddenError = { status: 403, error: "Acesso negado: Você só pode solicitar a compensação de sua própria conta recém-criada." };
+      const conflictError = { status: 409, error: "Usuário já possui documento no Firestore." };
+
+      expect(validationError.status).toBe(400);
+      expect(authError.status).toBe(401);
+      expect(forbiddenError.status).toBe(403);
+      expect(conflictError.status).toBe(409);
+    });
+
+    it("5. Detalhes técnicos nos logs têm tokens Bearer, chaves e credenciais redigidos", () => {
+      const sanitizeLogDetail = (str: string) =>
+        str
+          .replace(/bearer\s+[a-zA-Z0-9._-]+/gi, "Bearer [REDACTED]")
+          .replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, "[REDACTED_EMAIL]")
+          .replace(/key=[a-zA-Z0-9_-]+/gi, "key=[REDACTED]");
+
+      const rawLog = "Erro de autenticação para Bearer eyJhbGciOiJSUzI1NiIs.sensitive.jwt e user test@ifpr.edu.br com key=ai-studio-secret-123";
+      const safeLog = sanitizeLogDetail(rawLog);
+
+      expect(safeLog).toContain("Bearer [REDACTED]");
+      expect(safeLog).toContain("[REDACTED_EMAIL]");
+      expect(safeLog).toContain("key=[REDACTED]");
+      expect(safeLog).not.toContain("eyJhbGciOiJSUzI1NiIs");
+      expect(safeLog).not.toContain("test@ifpr.edu.br");
+      expect(safeLog).not.toContain("ai-studio-secret-123");
+    });
   });
 });

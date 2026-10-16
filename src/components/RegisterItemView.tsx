@@ -7,63 +7,189 @@ import { ItemCategory, LostFoundItem, RegistrationStatus } from "../types";
 import { getUploadTaskId } from "../lib/indexedDB";
 import { auth } from "../lib/firebase";
 import { isAccountBlocked, resolveAccountStatus } from "../lib/accountStatusUtils";
-import { safeFetchJson, clientAnalyzeObject, clientAnalyzeImage, requestCategorySuggestion, AICategorySuggestion } from "../lib/apiHelper";
-import { triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, safeToLower, safeIncludes, safeTextCorpus, sanitizeQuery, getTodayDateString, formatPhone, isValidPhone, isFutureDate, validateItemOccurrenceDate, validateItemTextFields, ITEM_FIELD_LIMITS } from "../lib/utils";
-import { compressImage, formatBytes } from "../lib/imageCompression";
 import {
-  Sparkles,
+  triggerVibration,
+  vibrateClick,
+  vibrateSuccess,
+  vibrateCritical,
+  getTodayDateString,
+  formatPhone,
+  isValidPhone,
+  validateItemOccurrenceDate,
+  validateItemTextFields,
+  ITEM_FIELD_LIMITS,
+} from "../lib/utils";
+import { compressImage } from "../lib/imageCompression";
+import {
   PlusCircle,
-  PackageSearch,
-  Upload,
   CheckCircle2,
-  AlertCircle,
-  Loader2,
-  Wand2,
-  Image as ImageIcon,
-  MapPin,
-  Tag,
-  Calendar,
-  ShieldCheck,
-  Eye,
-  Mic,
-  MicOff,
-  Search,
-  Compass,
+  PackageSearch,
+  PackagePlus,
+  Upload,
   Camera,
-  CameraOff,
+  Trash2,
+  ArrowRight,
+  ArrowLeft,
   X,
-  Printer,
-  QrCode,
-  WifiOff,
+  ShieldCheck,
+  AlertCircle,
   Clock,
   Save,
-  Trash2,
-  History,
-  RotateCcw,
   Lock,
   LogIn,
-  ArrowRight,
+  MapPin,
+  Calendar,
+  Tag,
   Phone,
+  Mail,
+  FileText,
+  Check,
+  Sparkles,
+  Loader2,
+  Edit3,
+  RotateCcw,
+  Eye,
+  Info,
+  CameraOff,
 } from "lucide-react";
 
-const DRAFT_STORAGE_KEY = "ifpr_achados_register_draft";
+export const getRegisterDraftKey = (uid?: string | null): string | null => {
+  if (!uid || uid === "guest" || uid === "guest_visitor" || uid.trim() === "") return null;
+  return `ifpr_achados_register_draft_${uid.trim()}`;
+};
+
+export const LEGACY_DRAFT_STORAGE_KEY = "ifpr_achados_register_draft";
+
+export interface SanitizedRegisterDraft {
+  currentStep: 1 | 2 | 3 | 4;
+  type: "PERDIDO" | "ENCONTRADO";
+  title: string;
+  category: ItemCategory;
+  description: string;
+  color: string;
+  brand: string;
+  location: string;
+  locationComplement: string;
+  date: string;
+  contactInfo: string;
+  contactPhone: string;
+  imageUrl?: string;
+  savedAt?: string;
+}
+
+export const CATEGORIES_LIST: ItemCategory[] = [
+  "Eletrônicos",
+  "Documentos & Cartões",
+  "Roupas & Calçados",
+  "Chaves",
+  "Material Escolar & Livros",
+  "Acessórios & Bijuterias",
+  "Garrafas & Marmitas",
+  "Guarda-chuvas",
+  "Outros",
+];
+
+export function validateAndSanitizeDraft(
+  draft: any,
+  expectedUid: string
+): { isValid: boolean; sanitized?: SanitizedRegisterDraft } {
+  if (!draft || typeof draft !== "object") return { isValid: false };
+  if (!expectedUid || typeof expectedUid !== "string" || expectedUid.trim() === "") return { isValid: false };
+  if (!draft.savedByUid || typeof draft.savedByUid !== "string" || draft.savedByUid.trim() !== expectedUid.trim()) {
+    return { isValid: false };
+  }
+
+  const hasContent = Boolean(
+    (draft.title && typeof draft.title === "string" && draft.title.trim().length > 0) ||
+    (draft.description && typeof draft.description === "string" && draft.description.trim().length > 0) ||
+    (draft.color && typeof draft.color === "string" && draft.color.trim().length > 0) ||
+    (draft.brand && typeof draft.brand === "string" && draft.brand.trim().length > 0) ||
+    (draft.locationComplement && typeof draft.locationComplement === "string" && draft.locationComplement.trim().length > 0)
+  );
+  if (!hasContent) return { isValid: false };
+
+  const validStep =
+    typeof draft.currentStep === "number" && draft.currentStep >= 1 && draft.currentStep <= 4
+      ? (draft.currentStep as 1 | 2 | 3 | 4)
+      : 1;
+
+  const validType: "PERDIDO" | "ENCONTRADO" =
+    draft.type === "PERDIDO" || draft.type === "ENCONTRADO" ? draft.type : "ENCONTRADO";
+
+  const validCategory: ItemCategory = CATEGORIES_LIST.includes(draft.category)
+    ? draft.category
+    : CATEGORIES_LIST[0];
+
+  const validTitle = typeof draft.title === "string" ? draft.title.slice(0, ITEM_FIELD_LIMITS.TITLE) : "";
+  const validDesc =
+    typeof draft.description === "string" ? draft.description.slice(0, ITEM_FIELD_LIMITS.DESCRIPTION) : "";
+  const validColor = typeof draft.color === "string" ? draft.color.slice(0, ITEM_FIELD_LIMITS.COLOR) : "";
+  const validBrand = typeof draft.brand === "string" ? draft.brand.slice(0, ITEM_FIELD_LIMITS.BRAND) : "";
+
+  const validLoc =
+    typeof draft.location === "string" && IFPR_LOCATIONS.includes(draft.location)
+      ? draft.location
+      : IFPR_LOCATIONS[0];
+
+  const validLocComp =
+    typeof draft.locationComplement === "string" ? draft.locationComplement.slice(0, 120) : "";
+
+  let validDate = getTodayDateString();
+  if (typeof draft.date === "string" && draft.date) {
+    const dateCheck = validateItemOccurrenceDate(draft.date, "A data");
+    if (dateCheck.isValid) {
+      validDate = draft.date;
+    }
+  }
+
+  const validContact =
+    typeof draft.contactInfo === "string" ? draft.contactInfo.slice(0, ITEM_FIELD_LIMITS.CONTACT_INFO) : "";
+  let validPhone = "";
+  if (typeof draft.contactPhone === "string" && draft.contactPhone) {
+    validPhone = formatPhone(draft.contactPhone);
+  }
+
+  let validImgUrl: string | undefined = undefined;
+  if (typeof draft.imageUrl === "string" && draft.imageUrl.trim().length > 0) {
+    const trimmed = draft.imageUrl.trim();
+    if (
+      !trimmed.includes("photo-1584438784894-089d6a62b8fa") &&
+      !trimmed.includes("images.unsplash.com") &&
+      (trimmed.startsWith("data:image/") || trimmed.startsWith("https://") || trimmed.startsWith("http://"))
+    ) {
+      validImgUrl = trimmed;
+    }
+  }
+
+  return {
+    isValid: true,
+    sanitized: {
+      currentStep: validStep,
+      type: validType,
+      title: validTitle,
+      category: validCategory,
+      description: validDesc,
+      color: validColor,
+      brand: validBrand,
+      location: validLoc,
+      locationComplement: validLocComp,
+      date: validDate,
+      contactInfo: validContact,
+      contactPhone: validPhone,
+      imageUrl: validImgUrl,
+      savedAt: typeof draft.savedAt === "string" ? draft.savedAt : new Date().toISOString(),
+    },
+  };
+}
 
 export const RegisterItemView: React.FC = () => {
   const {
     addItem,
-    items,
-    setSelectedItemForDetail,
     currentUser,
     registerTypeSelection,
     setRegisterTypeSelection,
-    setActiveTab,
     addToast,
-    prefilledItemFromAI,
-    setPrefilledItemFromAI,
     isOnline,
-    isAuthenticated,
-    requestAuthForRegistration,
-    setAuthModalOpen,
     activeUploadTasks,
     retryUploadTask,
     cancelUploadTask,
@@ -71,532 +197,74 @@ export const RegisterItemView: React.FC = () => {
 
   const { navigate, goBack } = useRouter();
 
-  // Hook institucional de verificação de autenticação (redireciona visitantes não autenticados)
+  // Institutional Auth Guard
   const { isGuest, requireAuth } = useRequireAuth({
     redirectOnUnauth: true,
     targetTab: "register",
     registerType: registerTypeSelection,
-    customMessage: "Apenas usuários autenticados podem cadastrar novos itens no IFPR. Faça login para continuar.",
+    customMessage:
+      "Apenas usuários autenticados podem cadastrar novos itens no IFPR. Faça login para continuar.",
   });
 
-  // Form State
-  const [type, setType] = useState<"PERDIDO" | "ENCONTRADO">(registerTypeSelection);
+  // Step Management (1: Tipo, 2: Informações, 3: Local e Data, 4: Revisão, 5: Conclusão)
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 
-  // Synchronize type whenever global registerTypeSelection changes (e.g. navigation clicks)
-  useEffect(() => {
-    if (registerTypeSelection) {
-      setType(registerTypeSelection);
-    }
-  }, [registerTypeSelection]);
+  // Form Fields State
+  const [type, setType] = useState<"PERDIDO" | "ENCONTRADO">(
+    registerTypeSelection || "ENCONTRADO"
+  );
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<ItemCategory>("Eletrônicos");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState("");
   const [brand, setBrand] = useState("");
   const [location, setLocation] = useState(IFPR_LOCATIONS[0]);
+  const [locationComplement, setLocationComplement] = useState("");
   const [date, setDate] = useState(getTodayDateString());
-  const [contactInfo, setContactInfo] = useState(currentUser?.email || "localizamais0@gmail.com");
+  const [contactInfo, setContactInfo] = useState(
+    currentUser?.email || "localizamais0@gmail.com"
+  );
   const [contactPhone, setContactPhone] = useState(
     currentUser?.phone ? formatPhone(currentUser.phone) : ""
   );
-  const [imageUrl, setImageUrl] = useState(
-    "https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=600&auto=format&fit=crop&q=80"
-  );
-  const [aiPrompt, setAiPrompt] = useState("");
+  const [imageUrl, setImageUrl] = useState<string>("");
+  const [hasCustomImage, setHasCustomImage] = useState(false);
 
-  // Real-time image compression state
+  // Reliable Authenticated UID derivation (prevents cross-account pollution)
+  const effectiveUid =
+    auth.currentUser?.uid ||
+    (currentUser && currentUser.id !== "guest" && currentUser.id !== "guest_visitor" && currentUser.id !== "guest_user"
+      ? currentUser.id
+      : null);
+
+  // Image Processing & Compression State
+  const [isCompressing, setIsCompressing] = useState(false);
   const [compressionStats, setCompressionStats] = useState<{
     original: string;
     compressed: string;
     savings: number;
   } | null>(null);
-  const [isCompressing, setIsCompressing] = useState(false);
 
-  // Draft Save & Restore State
-  const [draftRestored, setDraftRestored] = useState(false);
-  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
-  const [isSavingDraft, setIsSavingDraft] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // AI Category Suggestion State
-  const [isSuggestingCategory, setIsSuggestingCategory] = useState(false);
-  const [categorySuggestion, setCategorySuggestion] = useState<AICategorySuggestion | null>(null);
-  const [hasManuallySelectedCategory, setHasManuallySelectedCategory] = useState(false);
-  const [categoryAutoFilled, setCategoryAutoFilled] = useState(false);
-  const lastAnalyzedTextRef = useRef<string>("");
-
-  // Debounced AI Category Suggestion Effect
-  useEffect(() => {
-    const cleanT = (title || "").trim();
-    const cleanD = (description || "").trim();
-    const combined = `${cleanT} | ${cleanD}`.trim();
-
-    // Only analyze if there's meaningful text (at least 3 characters)
-    if (cleanT.length < 3 && cleanD.length < 6) {
-      setCategorySuggestion(null);
-      return;
-    }
-
-    // Skip if unchanged
-    if (combined === lastAnalyzedTextRef.current) {
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      lastAnalyzedTextRef.current = combined;
-      setIsSuggestingCategory(true);
-      try {
-        const result = await requestCategorySuggestion(cleanT, cleanD);
-        if (result && result.success && result.suggestedCategory) {
-          setCategorySuggestion(result);
-
-          // Auto-fill if confidence is high and user has not explicitly picked a different category manually
-          if (result.autoFillRecommended && !hasManuallySelectedCategory) {
-            setCategory(result.suggestedCategory);
-            setCategoryAutoFilled(true);
-          }
-        }
-      } catch (err) {
-        console.warn("Aviso ao sugerir categoria:", err);
-      } finally {
-        setIsSuggestingCategory(false);
-      }
-    }, 850);
-
-    return () => clearTimeout(timer);
-  }, [title, description, hasManuallySelectedCategory]);
-
-
-  // Restore Draft on Mount
-  useEffect(() => {
-    try {
-      const savedDraftStr = localStorage.getItem(DRAFT_STORAGE_KEY);
-      if (savedDraftStr) {
-        const draft = JSON.parse(savedDraftStr);
-        if (draft && (draft.title || draft.description || draft.brand || draft.color || draft.aiPrompt)) {
-          if (draft.type) setType(draft.type);
-          if (draft.title) setTitle(draft.title);
-          if (draft.category) setCategory(draft.category);
-          if (draft.description) setDescription(draft.description);
-          if (draft.color) setColor(draft.color);
-          if (draft.brand) setBrand(draft.brand);
-          if (draft.location) setLocation(draft.location);
-          if (draft.date) setDate(draft.date);
-          if (draft.contactInfo) setContactInfo(draft.contactInfo);
-          if (draft.imageUrl) setImageUrl(draft.imageUrl);
-          if (draft.aiPrompt) setAiPrompt(draft.aiPrompt);
-          if (draft.savedAt) setDraftSavedAt(draft.savedAt);
-          setDraftRestored(true);
-        }
-      }
-    } catch (e) {
-      console.warn("Erro ao restaurar rascunho:", e);
-    }
-  }, []);
-
-  // Auto-Save Draft on Form Changes (Debounced)
-  useEffect(() => {
-    if (!title && !description && !color && !brand && !aiPrompt) {
-      return;
-    }
-    setIsSavingDraft(true);
-    const timer = setTimeout(() => {
-      try {
-        const now = new Date().toISOString();
-        const draftObj = {
-          type,
-          title,
-          category,
-          description,
-          color,
-          brand,
-          location,
-          date,
-          contactInfo,
-          imageUrl,
-          aiPrompt,
-          savedAt: now,
-        };
-        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draftObj));
-        setDraftSavedAt(now);
-        setIsSavingDraft(false);
-      } catch (_) {}
-    }, 600);
-
-    return () => clearTimeout(timer);
-  }, [type, title, category, description, color, brand, location, date, contactInfo, imageUrl, aiPrompt]);
-
-  const handleClearDraft = () => {
-    vibrateClick();
-    try {
-      localStorage.removeItem(DRAFT_STORAGE_KEY);
-    } catch (_) {}
-    setTitle("");
-    setDescription("");
-    setColor("");
-    setBrand("");
-    setLocation(IFPR_LOCATIONS[0]);
-    setDate(new Date().toISOString().split("T")[0]);
-    setAiPrompt("");
-    setImageUrl("https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=600&auto=format&fit=crop&q=80");
-    setDraftRestored(false);
-    setDraftSavedAt(null);
-    setCategorySuggestion(null);
-    setHasManuallySelectedCategory(false);
-    setCategoryAutoFilled(false);
-    lastAnalyzedTextRef.current = "";
-    addToast("Rascunho descartado e formulário redefinido com sucesso.", "info");
-  };
-
-  // Camera capture state
+  // Camera Modal State
   const [cameraModalOpen, setCameraModalOpen] = useState(false);
   const [cameraStatus, setCameraStatus] = useState<"idle" | "requesting" | "granted" | "denied">("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    setCameraStatus("idle");
-  };
+  // Draft Management State
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
 
-  const handleOpenCamera = async () => {
-    setCameraModalOpen(true);
-    setCameraStatus("requesting");
-    setCameraError(null);
+  // Review confirmation checkbox state
+  const [hasConfirmedReview, setHasConfirmedReview] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Câmera não suportada no ambiente atual.");
-      }
+  // Step Validation Error Indicators
+  const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: false,
-      });
-
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-
-      setCameraStatus("granted");
-      addToast("Acesso à câmera concedido!", "success");
-    } catch (err: any) {
-      console.error("Erro ao solicitar acesso à câmera:", err);
-      setCameraStatus("denied");
-      setCameraError("Permissão de acesso à câmera negada. Habilite a permissão no navegador para fotografar.");
-      addToast("Erro ao abrir câmera.", "error");
-    }
-  };
-
-  const handleCaptureSnapshot = async () => {
-    if (!videoRef.current) return;
-    const video = videoRef.current;
-    const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const rawDataUrl = canvas.toDataURL("image/jpeg", 0.9);
-      
-      try {
-        setIsCompressing(true);
-        const compressed = await compressImage(rawDataUrl, {
-          maxWidth: 1280,
-          maxHeight: 1280,
-          quality: 0.82,
-          outputFormat: "image/webp",
-        });
-        setImageUrl(compressed.base64);
-        setCompressionStats({
-          original: compressed.formattedOriginalSize,
-          compressed: compressed.formattedCompressedSize,
-          savings: compressed.savingsPercentage,
-        });
-        analyzeImageWithGemini(compressed.base64);
-        addToast(`Foto capturada e comprimida (-${compressed.savingsPercentage}%) com sucesso!`, "success");
-      } catch (_) {
-        setImageUrl(rawDataUrl);
-        analyzeImageWithGemini(rawDataUrl);
-        addToast("Foto capturada da câmera com sucesso!", "success");
-      } finally {
-        setIsCompressing(false);
-        stopCamera();
-        setCameraModalOpen(false);
-      }
-    }
-  };
-
-  // Voice to text state
-  const [isListening, setIsListening] = useState(false);
-  const [listeningTarget, setListeningTarget] = useState<"aiPrompt" | "description">("description");
-  const recognitionRef = useRef<any>(null);
-
-  // AI States
-  const [isAnalyzingAI, setIsAnalyzingAI] = useState(false);
-  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
-
-  // Web Speech API Voice Recognition setup
-  const toggleSpeechRecognition = (targetField: "aiPrompt" | "description") => {
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      addToast(
-        "Reconhecimento de voz não é suportado pelo seu navegador. Tente usar o Google Chrome.",
-        "error"
-      );
-      return;
-    }
-
-    if (isListening) {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      setIsListening(false);
-      return;
-    }
-
-    try {
-      const recognition = new SpeechRecognition();
-      recognition.lang = "pt-BR";
-      recognition.continuous = true;
-      recognition.interimResults = true;
-
-      setListeningTarget(targetField);
-      setIsListening(true);
-      addToast("🎙️ Ditado por voz ativado! Fale pausadamente...", "info");
-
-      recognition.onresult = (event: any) => {
-        let transcript = "";
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
-        }
-
-        if (targetField === "description") {
-          setDescription((prev) => (prev ? `${prev} ${transcript}` : transcript));
-        } else {
-          setAiPrompt((prev) => (prev ? `${prev} ${transcript}` : transcript));
-        }
-      };
-
-      recognition.onerror = (event: any) => {
-        console.warn("Erro no reconhecimento de voz:", event.error);
-        setIsListening(false);
-        addToast("Não foi possível capturar o áudio. Tente novamente.", "error");
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
-      recognitionRef.current = recognition;
-      recognition.start();
-    } catch (e) {
-      console.error(e);
-      setIsListening(false);
-      addToast("Erro ao iniciar captura de voz.", "error");
-    }
-  };
-
-  // Apply prefilled item from AI if available
-  useEffect(() => {
-    if (prefilledItemFromAI) {
-      if (prefilledItemFromAI.title) setTitle(prefilledItemFromAI.title);
-      if (prefilledItemFromAI.category) setCategory(prefilledItemFromAI.category);
-      if (prefilledItemFromAI.description) setDescription(prefilledItemFromAI.description);
-      if (prefilledItemFromAI.color) setColor(prefilledItemFromAI.color);
-      if (prefilledItemFromAI.brand) setBrand(prefilledItemFromAI.brand);
-      if (prefilledItemFromAI.imageUrl) setImageUrl(prefilledItemFromAI.imageUrl);
-      if (prefilledItemFromAI.location) setLocation(prefilledItemFromAI.location);
-      // Clear after consuming
-      setPrefilledItemFromAI(null);
-    }
-  }, [prefilledItemFromAI, setPrefilledItemFromAI]);
-
-  const categoriesList: ItemCategory[] = [
-    "Eletrônicos",
-    "Documentos & Cartões",
-    "Roupas & Calçados",
-    "Chaves",
-    "Material Escolar & Livros",
-    "Acessórios & Bijuterias",
-    "Garrafas & Marmitas",
-    "Guarda-chuvas",
-    "Outros",
-  ];
-
-  // AI Auto-Fill Functionality
-  const handleAIExtract = async () => {
-    if (!aiPrompt.trim()) {
-      addToast("Por favor, digite uma breve frase ou relato para a IA analisar.", "error");
-      return;
-    }
-
-    if (!auth.currentUser) {
-      addToast("Faça login com sua conta institucional para utilizar o Extrator Inteligente.", "error");
-      return;
-    }
-
-    setIsAnalyzingAI(true);
-    try {
-      const idToken = await auth.currentUser.getIdToken();
-      const res = await fetch("/api/ai/analyze-object", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({ promptText: aiPrompt }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || `Erro ${res.status}: Não foi possível processar a extração com Gemini.`);
-      }
-
-      if (data.success && data.extracted) {
-        const { title: aiTitle, category: aiCat, color: aiColor, brand: aiBrand, location: aiLoc, description: aiDesc } = data.extracted;
-
-        if (aiTitle) setTitle(aiTitle);
-        if (aiCat && categoriesList.includes(aiCat as ItemCategory)) {
-          setCategory(aiCat as ItemCategory);
-        }
-        if (aiColor) setColor(aiColor);
-        if (aiBrand) setBrand(aiBrand);
-        if (aiDesc) setDescription(aiDesc);
-
-        // Match location if present
-        if (aiLoc) {
-          const foundLoc = IFPR_LOCATIONS.find((loc) =>
-            safeIncludes(loc, aiLoc) || safeIncludes(aiLoc, loc)
-          );
-          if (foundLoc) setLocation(foundLoc);
-        }
-
-        addToast("IA Gemini extraiu os detalhes com sucesso e preencheu o formulário!", "success");
-      } else {
-        throw new Error("Resposta da IA não continha os dados esperados.");
-      }
-    } catch (err: any) {
-      console.error("Erro ao chamar IA de extração:", err);
-      addToast(err.message || "Falha na comunicação com o Gemini. Preencha os campos manualmente.", "error");
-    } finally {
-      setIsAnalyzingAI(false);
-    }
-  };
-
-  // Image Upload presets or Custom URL preview
-  const handleImagePreset = (url: string) => {
-    setImageUrl(url);
-  };
-
-  // Handle direct file upload for photo with real-time PWA compression
-  const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 15 * 1024 * 1024) {
-      addToast("Por favor, selecione uma imagem menor que 15MB.", "error");
-      return;
-    }
-
-    try {
-      setIsCompressing(true);
-      const compressed = await compressImage(file, {
-        maxWidth: 1280,
-        maxHeight: 1280,
-        quality: 0.82,
-        outputFormat: "image/webp",
-      });
-
-      setImageUrl(compressed.base64);
-      setCompressionStats({
-        original: compressed.formattedOriginalSize,
-        compressed: compressed.formattedCompressedSize,
-        savings: compressed.savingsPercentage,
-      });
-
-      addToast(
-        `Imagem otimizada com sucesso! Economia de ${compressed.savingsPercentage}% nos seus dados móveis (${compressed.formattedOriginalSize} ➔ ${compressed.formattedCompressedSize}).`,
-        "success"
-      );
-
-      analyzeImageWithGemini(compressed.base64);
-    } catch (compErr) {
-      console.warn("Aviso na compressão de arquivo:", compErr);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        setImageUrl(base64);
-        analyzeImageWithGemini(base64);
-      };
-      reader.readAsDataURL(file);
-    } finally {
-      setIsCompressing(false);
-    }
-  };
-
-  // Analyze image with Gemini
-  const analyzeImageWithGemini = async (base64Data: string) => {
-    if (!auth.currentUser) {
-      addToast("Faça login com sua conta institucional para utilizar a análise de foto com Gemini.", "error");
-      return;
-    }
-
-    setIsAnalyzingImage(true);
-    try {
-      const idToken = await auth.currentUser.getIdToken();
-      const res = await fetch("/api/ai/analyze-image", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${idToken}`,
-        },
-        body: JSON.stringify({ imageBase64: base64Data }),
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || `Erro ${res.status}: Falha na análise visual com Gemini.`);
-      }
-
-      if (data.success && data.analysis) {
-        const a = data.analysis;
-        if (a.title) setTitle(a.title);
-        if (a.category && categoriesList.includes(a.category as ItemCategory)) {
-          setCategory(a.category as ItemCategory);
-        }
-        if (a.color) setColor(a.color);
-        if (a.brand) setBrand(a.brand);
-        if (a.description) {
-          setDescription(
-            `${a.description}${
-              a.distinctiveFeatures?.length
-                ? `\n\n• Marcas identificadas pela IA: ${a.distinctiveFeatures.join(", ")}`
-                : ""
-            }`
-          );
-        }
-        addToast("IA Gemini analisou a foto e preencheu o formulário com sucesso!", "success");
-      } else {
-        throw new Error("Resposta da análise de foto não continha os dados esperados.");
-      }
-    } catch (err: any) {
-      console.error("Erro na visão Gemini:", err);
-      addToast(err.message || "Não foi possível analisar a foto com Gemini. Preencha os campos manualmente.", "error");
-    } finally {
-      setIsAnalyzingImage(false);
-    }
-  };
-
-  // Persistence Feedback State (Reativo à máquina de estados canônica do pipeline de persistência)
+  // Real Persistence Feedback State (Reativo à máquina canônica)
   const [registrationFeedback, setRegistrationFeedback] = useState<{
     status: RegistrationStatus;
     item: LostFoundItem;
@@ -604,20 +272,155 @@ export const RegisterItemView: React.FC = () => {
     taskId?: string;
   } | null>(null);
 
-  // Reactive Sync Monitoring for PENDING_SYNC / ERROR registration feedback
+  // Synchronize initial type from global registerTypeSelection if passed
   useEffect(() => {
-    if (!registrationFeedback) return;
+    if (registerTypeSelection) {
+      setType(registerTypeSelection);
+    }
+  }, [registerTypeSelection]);
 
-    // 1. Terminal State Guard:
-    // Once in CONFIRMED state, it is an immutable terminal state.
-    if (registrationFeedback.status === "CONFIRMED") {
+  // Restore Scoped Draft on Mount or UID change (Strict account isolation)
+  useEffect(() => {
+    // 1. Conservative migration: safely expunge legacy un-scoped draft without attributing it to anyone
+    try {
+      localStorage.removeItem(LEGACY_DRAFT_STORAGE_KEY);
+    } catch (_) {}
+
+    // Helper to reset form fields to clean defaults
+    const resetFormFields = () => {
+      setTitle("");
+      setDescription("");
+      setColor("");
+      setBrand("");
+      setLocation(IFPR_LOCATIONS[0]);
+      setLocationComplement("");
+      setDate(getTodayDateString());
+      setContactInfo(currentUser?.email || "localizamais0@gmail.com");
+      setContactPhone(currentUser?.phone ? formatPhone(currentUser.phone) : "");
+      setImageUrl("");
+      setHasCustomImage(false);
+      setCompressionStats(null);
+      setCurrentStep(1);
+      setDraftRestored(false);
+      setDraftSavedAt(null);
+      setHasConfirmedReview(false);
+      setStepErrors({});
+    };
+
+    // 2. Unauthenticated sessions MUST NEVER restore drafts and must show a clean form
+    if (!effectiveUid) {
+      resetFormFields();
       return;
     }
+
+    // Reset before checking if this specific user has a saved draft
+    resetFormFields();
+
+    const storageKey = getRegisterDraftKey(effectiveUid);
+    if (!storageKey) return;
+
+    try {
+      const savedDraftStr = localStorage.getItem(storageKey);
+      if (savedDraftStr) {
+        const rawDraft = JSON.parse(savedDraftStr);
+        const { isValid, sanitized } = validateAndSanitizeDraft(rawDraft, effectiveUid);
+        if (isValid && sanitized) {
+          if (sanitized.type) setType(sanitized.type);
+          if (sanitized.title) setTitle(sanitized.title);
+          if (sanitized.category) setCategory(sanitized.category);
+          if (sanitized.description) setDescription(sanitized.description);
+          if (sanitized.color) setColor(sanitized.color);
+          if (sanitized.brand) setBrand(sanitized.brand);
+          if (sanitized.location) setLocation(sanitized.location);
+          if (sanitized.locationComplement) setLocationComplement(sanitized.locationComplement);
+          if (sanitized.date) setDate(sanitized.date);
+          if (sanitized.contactInfo) setContactInfo(sanitized.contactInfo);
+          if (sanitized.contactPhone) setContactPhone(sanitized.contactPhone);
+          if (sanitized.imageUrl) {
+            setImageUrl(sanitized.imageUrl);
+            setHasCustomImage(true);
+          } else {
+            setImageUrl("");
+            setHasCustomImage(false);
+          }
+          if (sanitized.currentStep) {
+            setCurrentStep(sanitized.currentStep);
+          }
+          if (sanitized.savedAt) setDraftSavedAt(sanitized.savedAt);
+          setDraftRestored(true);
+        }
+      }
+    } catch (e) {
+      console.warn("Aviso ao carregar rascunho de cadastro:", e);
+    }
+  }, [effectiveUid]);
+
+  // Debounced Auto-Save Draft (Strictly scoped by authentic UID)
+  useEffect(() => {
+    if (!effectiveUid) return;
+    if (!title && !description && !color && !brand && !locationComplement) {
+      return;
+    }
+
+    const storageKey = getRegisterDraftKey(effectiveUid);
+    if (!storageKey) return;
+
+    setIsSavingDraft(true);
+    const timer = setTimeout(() => {
+      try {
+        const now = new Date().toISOString();
+        const draftObj = {
+          savedByUid: effectiveUid,
+          currentStep,
+          type,
+          title,
+          category,
+          description,
+          color,
+          brand,
+          location,
+          locationComplement,
+          date,
+          contactInfo,
+          contactPhone,
+          imageUrl: hasCustomImage && imageUrl ? imageUrl.trim() : undefined,
+          savedAt: now,
+        };
+        localStorage.setItem(storageKey, JSON.stringify(draftObj));
+        setDraftSavedAt(now);
+        setIsSavingDraft(false);
+      } catch (_) {
+        setIsSavingDraft(false);
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [
+    effectiveUid,
+    currentStep,
+    type,
+    title,
+    category,
+    description,
+    color,
+    brand,
+    location,
+    locationComplement,
+    date,
+    contactInfo,
+    contactPhone,
+    imageUrl,
+    hasCustomImage,
+  ]);
+
+  // Reactive Sync Monitoring for Offline Queue
+  useEffect(() => {
+    if (!registrationFeedback) return;
+    if (registrationFeedback.status === "CONFIRMED") return;
 
     const currentItemId = registrationFeedback.item.id;
     const canonicalTaskId = getUploadTaskId(currentItemId);
 
-    // 2. Correlation exclusively with the canonical task task-${itemId}
     const matchingTask = activeUploadTasks.find(
       (t) => t.id === canonicalTaskId || t.itemId === currentItemId
     );
@@ -635,7 +438,9 @@ export const RegisterItemView: React.FC = () => {
         setRegistrationFeedback({
           status: "ERROR",
           item: registrationFeedback.item,
-          error: matchingTask.error || "Falha temporária ao sincronizar o cadastro com o servidor em nuvem.",
+          error:
+            matchingTask.error ||
+            "Falha temporária ao sincronizar o cadastro com o servidor em nuvem.",
           taskId: canonicalTaskId,
         });
       } else if (
@@ -644,7 +449,6 @@ export const RegisterItemView: React.FC = () => {
           matchingTask.status === "SAVING_LOCAL") &&
         registrationFeedback.status === "ERROR"
       ) {
-        // If a retry was started or upload resumed, return to PENDING_SYNC
         setRegistrationFeedback({
           status: "PENDING_SYNC",
           item: registrationFeedback.item,
@@ -654,23 +458,321 @@ export const RegisterItemView: React.FC = () => {
     }
   }, [registrationFeedback, activeUploadTasks]);
 
-  // Submit Handler
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    vibrateCritical();
+  // Clean Draft Handler
+  const handleClearDraft = () => {
+    vibrateClick();
+    if (effectiveUid) {
+      const storageKey = getRegisterDraftKey(effectiveUid);
+      if (storageKey) {
+        try {
+          localStorage.removeItem(storageKey);
+        } catch (_) {}
+      }
+    }
+    try {
+      localStorage.removeItem(LEGACY_DRAFT_STORAGE_KEY);
+    } catch (_) {}
+    setTitle("");
+    setDescription("");
+    setColor("");
+    setBrand("");
+    setLocation(IFPR_LOCATIONS[0]);
+    setLocationComplement("");
+    setDate(getTodayDateString());
+    setContactPhone(currentUser?.phone ? formatPhone(currentUser.phone) : "");
+    setContactInfo(currentUser?.email || "localizamais0@gmail.com");
+    setImageUrl("");
+    setHasCustomImage(false);
+    setCompressionStats(null);
+    setDraftRestored(false);
+    setDraftSavedAt(null);
+    setCurrentStep(1);
+    setHasConfirmedReview(false);
+    setStepErrors({});
+    addToast("Rascunho descartado com sucesso. Formulário pronto.", "info");
+  };
 
-    // Check if current account is suspended or banned
+  // Image File Upload with WebP Compression
+  const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      addToast("Por favor, selecione um arquivo de imagem válido (JPG, PNG, WebP).", "error");
+      return;
+    }
+
+    if (file.size > 15 * 1024 * 1024) {
+      addToast("A imagem selecionada é muito pesada (máximo 15MB).", "error");
+      return;
+    }
+
+    try {
+      setIsCompressing(true);
+      const compressed = await compressImage(file, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.82,
+        outputFormat: "image/webp",
+      });
+
+      setImageUrl(compressed.base64);
+      setHasCustomImage(true);
+      setCompressionStats({
+        original: compressed.formattedOriginalSize,
+        compressed: compressed.formattedCompressedSize,
+        savings: compressed.savingsPercentage,
+      });
+
+      addToast(
+        `Foto anexada e otimizada com sucesso! Redução de ${compressed.savingsPercentage}%.`,
+        "success"
+      );
+    } catch (compErr) {
+      console.warn("Aviso ao comprimir arquivo:", compErr);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImageUrl(reader.result as string);
+        setHasCustomImage(true);
+        addToast("Foto anexada com sucesso!", "success");
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsCompressing(false);
+    }
+  };
+
+  // Camera Management
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setCameraStatus("idle");
+  };
+
+  const handleOpenCamera = async () => {
+    setCameraModalOpen(true);
+    setCameraStatus("requesting");
+    setCameraError(null);
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Câmera não suportada neste dispositivo ou navegador.");
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+
+      setCameraStatus("granted");
+      addToast("Câmera conectada com sucesso!", "success");
+    } catch (err: any) {
+      console.error("Erro ao acessar câmera:", err);
+      setCameraStatus("denied");
+      setCameraError(
+        "Permissão de câmera negada. Habilite a permissão no navegador ou escolha uma foto do seu dispositivo."
+      );
+      addToast("Não foi possível acessar a câmera.", "error");
+    }
+  };
+
+  const handleCaptureCamera = async () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const rawDataUrl = canvas.toDataURL("image/jpeg", 0.9);
+
+    try {
+      setIsCompressing(true);
+      const compressed = await compressImage(rawDataUrl, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.82,
+        outputFormat: "image/webp",
+      });
+      setImageUrl(compressed.base64);
+      setHasCustomImage(true);
+      setCompressionStats({
+        original: compressed.formattedOriginalSize,
+        compressed: compressed.formattedCompressedSize,
+        savings: compressed.savingsPercentage,
+      });
+      addToast("Foto capturada e otimizada com sucesso!", "success");
+    } catch (_) {
+      setImageUrl(rawDataUrl);
+      setHasCustomImage(true);
+      addToast("Foto capturada com sucesso!", "success");
+    } finally {
+      setIsCompressing(false);
+      stopCamera();
+      setCameraModalOpen(false);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    vibrateClick();
+    setImageUrl("");
+    setHasCustomImage(false);
+    setCompressionStats(null);
+    addToast("Foto removida.", "info");
+  };
+
+  // Step Validation Functions
+  const validateStep1 = () => {
+    if (type !== "PERDIDO" && type !== "ENCONTRADO") {
+      addToast("Selecione se o objeto foi perdido ou encontrado.", "error");
+      return false;
+    }
+    return true;
+  };
+
+  const validateStep2 = () => {
+    const errors: Record<string, string> = {};
+    if (!title.trim()) {
+      errors.title = "Informe o nome ou título do objeto.";
+    }
+    if (!description.trim()) {
+      errors.description = "Escreva uma descrição detalhada para ajudar na identificação.";
+    }
+    const textCheck = validateItemTextFields(
+      {
+        title,
+        description,
+        color,
+        brand,
+      },
+      true
+    );
+    if (!textCheck.isValid) {
+      errors.general = textCheck.error || "Limite de caracteres excedido.";
+    }
+
+    setStepErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      vibrateCritical();
+      addToast(
+        errors.title || errors.description || errors.general || "Preencha os campos obrigatórios.",
+        "error"
+      );
+      return false;
+    }
+    return true;
+  };
+
+  const validateStep3 = () => {
+    const errors: Record<string, string> = {};
+    if (!location.trim()) {
+      errors.location = "Selecione o local no campus.";
+    }
+    if (!date) {
+      errors.date = "Informe a data da ocorrência.";
+    } else {
+      const dateCheck = validateItemOccurrenceDate(date, "A data da ocorrência");
+      if (!dateCheck.isValid) {
+        errors.date = dateCheck.error || "A data não pode ser futura.";
+      }
+    }
+
+    if (!contactInfo.trim()) {
+      errors.contactInfo = "Informe o e-mail ou ponto de contato para devolução.";
+    }
+
+    const textCheck = validateItemTextFields(
+      {
+        location,
+        contactInfo,
+      },
+      true
+    );
+    if (!textCheck.isValid) {
+      errors.general = textCheck.error || "Limite de caracteres excedido.";
+    }
+
+    if (contactPhone.trim() && !isValidPhone(contactPhone)) {
+      errors.contactPhone = "Telefone inválido. Utilize o formato (XX) 9XXXX-XXXX.";
+    }
+
+    setStepErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      vibrateCritical();
+      addToast(
+        errors.location ||
+          errors.date ||
+          errors.contactInfo ||
+          errors.contactPhone ||
+          "Corrija os campos indicados.",
+        "error"
+      );
+      return false;
+    }
+    return true;
+  };
+
+  // Step Navigation Handlers
+  const handleNextStep = () => {
+    vibrateClick();
+    if (currentStep === 1) {
+      if (validateStep1()) setCurrentStep(2);
+    } else if (currentStep === 2) {
+      if (validateStep2()) setCurrentStep(3);
+    } else if (currentStep === 3) {
+      if (validateStep3()) setCurrentStep(4);
+    }
+  };
+
+  const handlePrevStep = () => {
+    vibrateClick();
+    setStepErrors({});
+    if (currentStep > 1) {
+      setCurrentStep((prev) => (prev - 1) as 1 | 2 | 3 | 4);
+    }
+  };
+
+  // Final Form Submission
+  const handleFinalSubmit = async () => {
+    vibrateClick();
+
+    if (!hasConfirmedReview) {
+      addToast("Marque a confirmação de que revisou os dados antes de prosseguir.", "warning");
+      return;
+    }
+
+    // Account block safety check
     if (isAccountBlocked(currentUser)) {
       const resolved = resolveAccountStatus(currentUser);
       if (resolved.status === "banned") {
-        addToast(`Ação Bloqueada: Sua conta foi banida permanentemente do Localiza+. Motivo: ${currentUser?.statusReason || "Violação das diretrizes institucionais"}.`, "error");
+        addToast(
+          `Ação Bloqueada: Sua conta institucional está banida. Motivo: ${
+            currentUser?.statusReason || "Violação das diretrizes"
+          }.`,
+          "error"
+        );
       } else {
-        addToast(`Ação Bloqueada: Sua conta está temporariamente suspensa. Motivo: ${currentUser?.statusReason || "Suspensão administrativa"}.`, "warning");
+        addToast(
+          `Ação Bloqueada: Sua conta institucional está temporariamente suspensa. Motivo: ${
+            currentUser?.statusReason || "Suspensão administrativa"
+          }.`,
+          "warning"
+        );
       }
       return;
     }
 
-    // Strict Auth Verification for Visitors
+    // Auth verification
     if (isGuest) {
       requireAuth(
         type,
@@ -691,41 +793,26 @@ export const RegisterItemView: React.FC = () => {
       return;
     }
 
-    if (!title.trim() || !description.trim() || !location.trim()) {
-      addToast("Preencha todos os campos obrigatórios (título, descrição e local).", "error");
-      return;
-    }
-
-    const textValidation = validateItemTextFields({
-      title,
-      description,
-      location,
-      color,
-      brand,
-      contactInfo,
-    }, false);
-    if (!textValidation.isValid) {
-      addToast(textValidation.error || "Limite de caracteres excedido.", "error");
-      return;
-    }
-
-    const dateValidation = validateItemOccurrenceDate(date, "A data da ocorrência");
-    if (!dateValidation.isValid) {
-      addToast(dateValidation.error || "Data inválida ou futura não permitida.", "error");
-      return;
-    }
-
-    if (contactPhone && !isValidPhone(contactPhone)) {
-      addToast("Telefone de contato inválido. Informe o DDD e o número completo no formato (XX) 9XXXX-XXXX.", "error");
+    // Re-verify core validations
+    if (!validateStep2() || !validateStep3()) {
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const fullContact = [
-        contactPhone.trim() ? `WhatsApp: ${contactPhone.trim()}` : "",
-        contactInfo.trim() ? `Ref: ${contactInfo.trim()}` : "",
-      ].filter(Boolean).join(" | ") || currentUser?.email || "Contato Institucional IFPR";
+      const fullLocation = locationComplement.trim()
+        ? `${location.trim()} — ${locationComplement.trim()}`
+        : location.trim();
+
+      const fullContact =
+        [
+          contactPhone.trim() ? `WhatsApp: ${contactPhone.trim()}` : "",
+          contactInfo.trim() ? `Contato/Ponto: ${contactInfo.trim()}` : "",
+        ]
+          .filter(Boolean)
+          .join(" | ") ||
+        currentUser?.email ||
+        "Contato Institucional IFPR";
 
       const res = await addItem({
         title: title.trim(),
@@ -735,49 +822,88 @@ export const RegisterItemView: React.FC = () => {
         description: description.trim(),
         color: color.trim() || "Não informada",
         brand: brand.trim() || "Desconhecida",
-        location: location.trim(),
+        location: fullLocation,
         date,
-        imageUrl,
+        imageUrl: hasCustomImage && imageUrl ? imageUrl.trim() : "",
         contactInfo: fullContact,
       });
 
-      // Clear saved draft on successful submission
+      // Clear draft on successful persistence
+      if (effectiveUid) {
+        const storageKey = getRegisterDraftKey(effectiveUid);
+        if (storageKey) {
+          try {
+            localStorage.removeItem(storageKey);
+          } catch (_) {}
+        }
+      }
       try {
-        localStorage.removeItem(DRAFT_STORAGE_KEY);
-        setDraftSavedAt(null);
-        setDraftRestored(false);
+        localStorage.removeItem(LEGACY_DRAFT_STORAGE_KEY);
       } catch (_) {}
+      setDraftSavedAt(null);
+      setDraftRestored(false);
 
       vibrateSuccess();
 
       if (res.persistenceStatus === "CONFIRMED") {
-        addToast(`Cadastro Concluído! O objeto "${res.newItem.title}" foi confirmado e persistido no Firestore.`, "success");
+        addToast(
+          `Cadastro Concluído! O objeto "${res.newItem.title}" foi gravado com sucesso no Firestore.`,
+          "success"
+        );
         setRegistrationFeedback({
           status: "CONFIRMED",
           item: res.newItem,
         });
       } else if (res.persistenceStatus === "ERROR") {
-        addToast(`Atenção: Falha no envio do objeto "${res.newItem.title}". Gravado no dispositivo.`, "warning");
+        addToast(
+          `Atenção: Falha de conexão. O objeto "${res.newItem.title}" foi guardado no dispositivo.`,
+          "warning"
+        );
         setRegistrationFeedback({
           status: "ERROR",
           item: res.newItem,
         });
       } else {
-        addToast(`Aguardando sincronização: Objeto "${res.newItem.title}" salvo localmente no dispositivo.`, "info");
+        addToast(
+          `Salvo no dispositivo: O objeto "${res.newItem.title}" será sincronizado assim que a rede voltar.`,
+          "info"
+        );
         setRegistrationFeedback({
           status: "PENDING_SYNC",
           item: res.newItem,
         });
       }
+
+      setCurrentStep(5);
     } catch (submitErr: any) {
-      console.error("Erro ao cadastrar item:", submitErr);
+      console.error("Erro ao salvar objeto no banco de dados:", submitErr);
       addToast(submitErr?.message || "Erro ao salvar item no banco de dados.", "error");
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // If user is a visitor/guest, render the friendly and secure Auth Guard Screen
+  // Reset form to register another item
+  const handleRegisterAnother = () => {
+    vibrateClick();
+    setTitle("");
+    setDescription("");
+    setColor("");
+    setBrand("");
+    setLocation(IFPR_LOCATIONS[0]);
+    setLocationComplement("");
+    setDate(getTodayDateString());
+    setContactPhone(currentUser?.phone ? formatPhone(currentUser.phone) : "");
+    setContactInfo(currentUser?.email || "localizamais0@gmail.com");
+    setImageUrl("");
+    setHasCustomImage(false);
+    setCompressionStats(null);
+    setHasConfirmedReview(false);
+    setRegistrationFeedback(null);
+    setCurrentStep(1);
+  };
+
+  // If visitor / guest, render friendly security guard screen
   if (isGuest) {
     return (
       <div className="max-w-2xl mx-auto py-12 px-4 sm:px-6">
@@ -794,19 +920,20 @@ export const RegisterItemView: React.FC = () => {
               Identifique-se para Cadastrar
             </h1>
             <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400 max-w-md mx-auto">
-              Para garantir a segurança, integridade e rastreabilidade dos registros no IFPR Campus Ivaiporã, apenas usuários autenticados podem cadastrar novos itens.
+              Para garantir a integridade, segurança e rastreabilidade dos registros no IFPR Campus
+              Ivaiporã, apenas usuários autenticados podem cadastrar novos pertences.
             </p>
           </div>
 
           <div className="p-4 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200/80 dark:border-neutral-700/60 text-left space-y-2 text-xs sm:text-sm text-neutral-600 dark:text-neutral-300">
             <div className="flex items-center gap-2 font-bold text-neutral-800 dark:text-neutral-200">
-              <ShieldCheck className="w-4 h-4 text-[#00843D]" /> O que você pode fazer como visitante:
+              <ShieldCheck className="w-4 h-4 text-[#00843D]" /> O que você pode fazer sem login:
             </div>
             <ul className="list-disc list-inside space-y-1 pl-1 text-neutral-500 dark:text-neutral-400">
-              <li>Consultar o mural de itens perdidos e encontrados</li>
-              <li>Utilizar a busca e filtros avançados</li>
-              <li>Escanear QR Codes de etiquetas nos murais do campus</li>
-              <li>Visualizar detalhes públicos dos pertences</li>
+              <li>Consultar todos os itens perdidos e encontrados</li>
+              <li>Fazer buscas por local, cor e categoria</li>
+              <li>Escanear QR Codes de etiquetas físicas no campus</li>
+              <li>Ver detalhes públicos dos pertences</li>
             </ul>
           </div>
 
@@ -857,49 +984,56 @@ export const RegisterItemView: React.FC = () => {
     );
   }
 
+  // Step definitions for visual progress bar
+  const STEPS_NAV = [
+    { number: 1, label: "Ocorrência", desc: "Tipo" },
+    { number: 2, label: "Objeto", desc: "Informações" },
+    { number: 3, label: "Local & Data", desc: "Onde ocorreu" },
+    { number: 4, label: "Revisão", desc: "Confirmação" },
+  ];
+
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-16">
-      {/* Top Header */}
-      <div className="border-b border-neutral-200 dark:border-neutral-800 pb-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
-              <PlusCircle className="w-7 h-7 text-[#00843D]" /> Cadastro de Objeto • IFPR Campus Ivaiporã
-            </h1>
-            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
-              Informe os detalhes para ajudar a comunidade a localizar ou devolver este pertence.
-            </p>
+    <div className="max-w-3xl mx-auto space-y-6 pb-20">
+      {/* Top Header Card */}
+      <div className="bg-white dark:bg-[#1E1E1E] p-5 sm:p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-[#00843D]/10 text-[#00843D] dark:text-green-400 flex items-center justify-center shrink-0">
+              <PlusCircle className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#00843D] dark:text-green-400">
+                  IFPR Campus Ivaiporã
+                </span>
+                {draftSavedAt && currentStep < 5 && (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md font-medium">
+                    <Save className="w-3 h-3" />
+                    <span>Rascunho salvo</span>
+                  </span>
+                )}
+              </div>
+              <h1 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
+                Cadastro de Objeto
+              </h1>
+            </div>
           </div>
 
-          {/* Auto-save draft status indicator and Close Button */}
-          <div className="flex items-center space-x-2 shrink-0 self-end sm:self-auto">
-            {isSavingDraft ? (
-              <span className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 text-[11px] font-bold border border-neutral-200 dark:border-neutral-700 animate-pulse">
-                <Save className="w-3.5 h-3.5 animate-spin text-[#00843D]" />
-                <span>Salvando...</span>
-              </span>
-            ) : draftSavedAt ? (
-              <span
-                title={`Último rascunho salvo em ${new Date(draftSavedAt).toLocaleTimeString()}`}
-                className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[11px] font-bold border border-emerald-500/20"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Rascunho salvo</span>
-              </span>
-            ) : null}
-
-            {(title || description || color || brand) && (
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            {/* Clear draft button */}
+            {(title || description || color || brand || locationComplement) && currentStep < 5 && (
               <button
                 type="button"
                 onClick={handleClearDraft}
-                title="Descartar rascunho e limpar campos"
-                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-500/10 border border-red-500/20 transition-colors"
+                title="Limpar formulário e apagar rascunho"
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-500/10 border border-red-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Limpar</span>
               </button>
             )}
 
+            {/* Close button */}
             <button
               id="btn-header-close-register"
               type="button"
@@ -911,743 +1045,1182 @@ export const RegisterItemView: React.FC = () => {
                   navigate("/");
                 }
               }}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-bold transition-all border border-neutral-200 dark:border-neutral-700 cursor-pointer"
-              title="Fechar formulário e voltar"
+              className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-bold transition-all border border-neutral-200 dark:border-neutral-700 flex items-center gap-1.5 cursor-pointer"
+              title="Fechar e voltar à tela inicial"
             >
               <X className="w-4 h-4" />
-              <span>Fechar</span>
+              <span className="hidden sm:inline">Fechar</span>
             </button>
           </div>
         </div>
+
+        {/* Step Indicator / Stepper (Only visible during steps 1 to 4) */}
+        {currentStep <= 4 && (
+          <div className="pt-2">
+            <div className="grid grid-cols-4 gap-2 sm:gap-3">
+              {STEPS_NAV.map((step) => {
+                const isActive = currentStep === step.number;
+                const isCompleted = currentStep > step.number;
+
+                return (
+                  <button
+                    key={step.number}
+                    type="button"
+                    onClick={() => {
+                      if (step.number < currentStep) {
+                        vibrateClick();
+                        setCurrentStep(step.number as 1 | 2 | 3 | 4);
+                      }
+                    }}
+                    disabled={step.number > currentStep}
+                    className={`relative p-2.5 sm:p-3 rounded-2xl border text-left transition-all ${
+                      isActive
+                        ? "bg-[#00843D]/10 border-[#00843D] text-[#00843D] dark:text-green-400 shadow-xs"
+                        : isCompleted
+                        ? "bg-neutral-50 dark:bg-neutral-800/60 border-neutral-200 dark:border-neutral-700 hover:border-[#00843D]/50 text-neutral-800 dark:text-neutral-200 cursor-pointer"
+                        : "bg-neutral-50/50 dark:bg-neutral-900/40 border-neutral-200/60 dark:border-neutral-800 text-neutral-400 dark:text-neutral-600 opacity-60 cursor-not-allowed"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${
+                          isActive
+                            ? "bg-[#00843D] text-white"
+                            : isCompleted
+                            ? "bg-emerald-600 text-white"
+                            : "bg-neutral-200 dark:bg-neutral-800 text-neutral-500"
+                        }`}
+                      >
+                        {isCompleted ? <Check className="w-3.5 h-3.5" /> : step.number}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold truncate">{step.label}</p>
+                        <p className="text-[10px] text-neutral-500 dark:text-neutral-400 hidden sm:block truncate">
+                          {step.desc}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Linear Progress Bar */}
+            <div className="w-full bg-neutral-100 dark:bg-neutral-800 h-1.5 rounded-full mt-3 overflow-hidden">
+              <div
+                className="bg-[#00843D] h-full transition-all duration-300 rounded-full"
+                style={{ width: `${(currentStep / 4) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Restored Draft Alert Banner */}
-      {draftRestored && (
-        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between gap-3 animate-in fade-in duration-300">
+      {draftRestored && currentStep < 5 && (
+        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between gap-3 animate-in fade-in duration-200">
           <div className="flex items-center space-x-3 text-xs text-emerald-900 dark:text-emerald-200">
             <div className="p-2 rounded-xl bg-[#00843D] text-white shrink-0">
-              <History className="w-4 h-4" />
+              <Save className="w-4 h-4" />
             </div>
             <div>
-              <span className="font-bold">Rascunho salvo recuperado automaticamente!</span>
+              <p className="font-bold">Rascunho recuperado!</p>
               <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
-                Seus dados foram preservados para que você não perca o preenchimento.
+                Seus dados salvos anteriormente foram restaurados para você continuar.
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={handleClearDraft}
-            className="px-3 py-1.5 rounded-xl bg-white dark:bg-neutral-800 border border-emerald-500/30 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 text-xs font-bold text-neutral-700 dark:text-neutral-300 transition-colors shrink-0 flex items-center space-x-1"
+            className="px-3 py-1.5 rounded-xl bg-white dark:bg-neutral-800 border border-emerald-500/30 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 text-xs font-bold text-neutral-700 dark:text-neutral-300 transition-colors shrink-0 flex items-center space-x-1 cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Descartar Rascunho</span>
+            <span>Descartar</span>
           </button>
         </div>
       )}
 
-      {/* TYPE TOGGLE: PERDIDO vs ENCONTRADO */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-1.5 bg-neutral-100 dark:bg-[#1E1E1E] rounded-2xl border border-neutral-200 dark:border-neutral-800 w-full max-w-full">
-        <button
-          type="button"
-          onClick={() => {
-            setType("PERDIDO");
-            setRegisterTypeSelection("PERDIDO");
-          }}
-          className={`py-3 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center space-x-2 transition-all ${
-            type === "PERDIDO"
-              ? "bg-[#EF4444] text-white shadow-md"
-              : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
-          }`}
-        >
-          <PackageSearch className="w-4 h-4" />
-          <span>Objeto PERDIDO (Perdi algo)</span>
-        </button>
+      {/* =========================================================================
+          ETAPA 1: TIPO DE OCORRÊNCIA
+          ========================================================================= */}
+      {currentStep === 1 && (
+        <div className="bg-white dark:bg-[#1E1E1E] p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6 animate-in fade-in duration-200">
+          <div className="space-y-1">
+            <span className="text-[11px] font-black uppercase text-[#00843D] tracking-wider">
+              Etapa 1 de 4 • Tipo de Ocorrência
+            </span>
+            <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
+              O que aconteceu com o objeto?
+            </h2>
+            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+              Selecione se você achou um pertence de outra pessoa ou se você perdeu algo seu no
+              campus.
+            </p>
+          </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setType("ENCONTRADO");
-            setRegisterTypeSelection("ENCONTRADO");
-          }}
-          className={`py-3 rounded-xl text-xs sm:text-sm font-extrabold flex items-center justify-center space-x-2 transition-all ${
-            type === "ENCONTRADO"
-              ? "bg-[#00843D] text-white shadow-md"
-              : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
-          }`}
-        >
-          <CheckCircle2 className="w-4 h-4" />
-          <span>Objeto ENCONTRADO (Achei algo)</span>
-        </button>
-      </div>
-
-      {/* IA AUTO-FILL BANNER ASSISTANT */}
-      <div className="p-5 rounded-3xl bg-gradient-to-r from-[#00843D]/10 via-emerald-50 to-teal-50 dark:from-[#00843D]/20 dark:via-emerald-950/40 dark:to-neutral-900 border border-[#00843D]/30 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-black uppercase tracking-wider text-[#00843D] dark:text-green-400 flex items-center gap-1.5">
-            <Sparkles className="w-4 h-4 text-amber-500 fill-amber-500" />
-            Preenchimento Inteligente com Gemini IA
-          </h3>
-          <span className="text-[10px] bg-white dark:bg-neutral-800 px-2 py-0.5 rounded-full text-neutral-500 font-semibold border border-neutral-200 dark:border-neutral-700">
-            Servidor Oficial Google AI
-          </span>
-        </div>
-
-        <p className="text-xs text-neutral-600 dark:text-neutral-300">
-          Escreva ou <strong className="text-[#00843D]">fale por voz</strong> em linguagem natural o que aconteceu e a IA extrairá automaticamente o título, categoria, cor, marca e local!
-        </p>
-
-        <div className="flex flex-col sm:flex-row gap-2">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              value={aiPrompt}
-              onChange={(e) => setAiPrompt(e.target.value)}
-              maxLength={ITEM_FIELD_LIMITS.AI_PROMPT}
-              placeholder="Ex: Encontrei uma calculadora científica Casio prata no lab de informática B2..."
-              className="w-full pr-10 px-4 py-2.5 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+            {/* Opção ENCONTRADO */}
             <button
               type="button"
-              onClick={() => toggleSpeechRecognition("aiPrompt")}
-              aria-label="Ativar ditado por voz para preenchimento de inteligência artificial"
-              title="Ditado por voz (Web Speech API)"
-              className={`absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors ${
-                isListening && listeningTarget === "aiPrompt"
-                  ? "bg-red-500 text-white animate-pulse"
-                  : "text-neutral-500 hover:text-[#00843D] hover:bg-neutral-100 dark:hover:bg-neutral-700"
+              onClick={() => {
+                vibrateClick();
+                setType("ENCONTRADO");
+                setRegisterTypeSelection("ENCONTRADO");
+              }}
+              className={`p-6 rounded-3xl border-2 text-left transition-all flex flex-col justify-between space-y-4 cursor-pointer ${
+                type === "ENCONTRADO"
+                  ? "border-[#00843D] bg-emerald-50/50 dark:bg-emerald-950/20 shadow-md ring-2 ring-[#00843D]/20"
+                  : "border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 bg-white dark:bg-neutral-800/40"
               }`}
             >
-              {isListening && listeningTarget === "aiPrompt" ? (
-                <MicOff className="w-4 h-4" />
-              ) : (
-                <Mic className="w-4 h-4" />
-              )}
+              <div className="flex items-start justify-between">
+                <div
+                  className={`w-14 h-14 rounded-2xl flex items-center justify-center ${
+                    type === "ENCONTRADO"
+                      ? "bg-[#00843D] text-white"
+                      : "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400"
+                  }`}
+                >
+                  <PackagePlus className="w-7 h-7" />
+                </div>
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
+                    type === "ENCONTRADO"
+                      ? "bg-[#00843D] text-white"
+                      : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                  }`}
+                >
+                  Achado
+                </span>
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-lg font-black text-neutral-900 dark:text-white">
+                  Encontrei um objeto
+                </h3>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                  Achei um pertence esquecido por alguém no IFPR e quero registrá-lo para localizar o
+                  dono e providenciar a devolução.
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#00843D] dark:text-green-400">
+                <span>Selecionar esta opção</span>
+                <ArrowRight className="w-4 h-4" />
+              </div>
+            </button>
+
+            {/* Opção PERDIDO */}
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                setType("PERDIDO");
+                setRegisterTypeSelection("PERDIDO");
+              }}
+              className={`p-6 rounded-3xl border-2 text-left transition-all flex flex-col justify-between space-y-4 cursor-pointer ${
+                type === "PERDIDO"
+                  ? "border-[#EF4444] bg-red-50/50 dark:bg-red-950/20 shadow-md ring-2 ring-[#EF4444]/20"
+                  : "border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 bg-white dark:bg-neutral-800/40"
+              }`}
+            >
+              <div className="flex items-start justify-between">
+                <div
+                  className={`w-14 h-14 rounded-2xl flex items-center justify-center ${
+                    type === "PERDIDO"
+                      ? "bg-[#EF4444] text-white"
+                      : "bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400"
+                  }`}
+                >
+                  <PackageSearch className="w-7 h-7" />
+                </div>
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
+                    type === "PERDIDO"
+                      ? "bg-[#EF4444] text-white"
+                      : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                  }`}
+                >
+                  Perdido
+                </span>
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-lg font-black text-neutral-900 dark:text-white">
+                  Perdi um objeto
+                </h3>
+                <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                  Esqueci ou perdi um pertence meu no campus e quero registrar a ocorrência para que
+                  quem encontrá-lo possa me avisar.
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#EF4444] dark:text-red-400">
+                <span>Selecionar esta opção</span>
+                <ArrowRight className="w-4 h-4" />
+              </div>
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleAIExtract}
-            disabled={isAnalyzingAI}
-            className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-xs flex items-center justify-center space-x-1.5 shadow-xs shrink-0 disabled:opacity-50"
-          >
-            {isAnalyzingAI ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Analisando...</span>
-              </>
-            ) : (
-              <>
-                <Wand2 className="w-4 h-4 text-amber-300" />
-                <span>Preencher com IA</span>
-              </>
-            )}
-          </button>
+          <div className="pt-6 border-t border-neutral-200 dark:border-neutral-800 flex justify-end">
+            <button
+              id="btn-step1-continue"
+              type="button"
+              onClick={handleNextStep}
+              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-extrabold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Continuar</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* FORM FIELDS */}
-      <form
-        role="form"
-        aria-label="Formulário de cadastro de objeto achado ou perdido"
-        onSubmit={handleSubmit}
-        className="bg-white dark:bg-[#1E1E1E] p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6"
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Título */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label
-                htmlFor="title-input"
-                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
-              >
-                Título do Objeto <span className="text-red-500" aria-hidden="true">*</span>
-              </label>
+      {/* =========================================================================
+          ETAPA 2: INFORMAÇÕES DO OBJETO
+          ========================================================================= */}
+      {currentStep === 2 && (
+        <div className="bg-white dark:bg-[#1E1E1E] p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6 animate-in fade-in duration-200">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-black uppercase text-[#00843D] tracking-wider">
+                Etapa 2 de 4 • Informações do Objeto
+              </span>
               <span
-                id="title-char-counter"
-                className={`text-[10px] font-mono font-medium ${
-                  title.length >= ITEM_FIELD_LIMITS.TITLE
-                    ? "text-amber-600 dark:text-amber-400 font-bold"
-                    : "text-neutral-400 dark:text-neutral-500"
+                className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                  type === "ENCONTRADO"
+                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+                    : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
                 }`}
-                title={`Limite máximo: ${ITEM_FIELD_LIMITS.TITLE} caracteres`}
               >
-                {title.length} / {ITEM_FIELD_LIMITS.TITLE} caracteres
+                {type === "ENCONTRADO" ? "Objeto Encontrado" : "Objeto Perdido"}
               </span>
             </div>
-            <input
-              id="title-input"
-              type="text"
-              required
-              aria-required="true"
-              aria-label="Título ou nome descritivo do objeto"
-              maxLength={ITEM_FIELD_LIMITS.TITLE}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ex: Garrafa Térmica Kouda Verde 750ml"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
-            />
+            <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
+              {type === "ENCONTRADO"
+                ? "Quais são as características do objeto encontrado?"
+                : "Como é o objeto que você perdeu?"}
+            </h2>
+            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+              Preencha os detalhes para facilitar a identificação visual por qualquer pessoa.
+            </p>
           </div>
 
-          {/* Categoria */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
+          <div className="space-y-5">
+            {/* Nome do Objeto */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label
+                  htmlFor="title-input"
+                  className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+                >
+                  Nome do Objeto <span className="text-red-500">*</span>
+                </label>
+                <span
+                  id="title-char-counter"
+                  className={`text-[10px] font-mono ${
+                    title.length >= ITEM_FIELD_LIMITS.TITLE
+                      ? "text-amber-600 font-bold"
+                      : "text-neutral-400"
+                  }`}
+                >
+                  {title.length} / {ITEM_FIELD_LIMITS.TITLE} caracteres
+                </span>
+              </div>
+              <input
+                id="title-input"
+                type="text"
+                required
+                maxLength={ITEM_FIELD_LIMITS.TITLE}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Ex: Garrafa térmica Kouda azul marinho 750ml"
+                className={`w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all ${
+                  stepErrors.title
+                    ? "border-red-500 bg-red-50/20"
+                    : "border-neutral-300 dark:border-neutral-700"
+                }`}
+              />
+              {stepErrors.title && (
+                <p className="text-xs text-red-500 mt-1 font-medium">{stepErrors.title}</p>
+              )}
+            </div>
+
+            {/* Categoria */}
+            <div>
               <label
                 htmlFor="category-input"
-                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
               >
-                Categoria <span className="text-red-500" aria-hidden="true">*</span>
+                Categoria do Objeto <span className="text-red-500">*</span>
               </label>
+              <select
+                id="category-input"
+                value={category}
+                onChange={(e) => setCategory(e.target.value as ItemCategory)}
+                className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all cursor-pointer"
+              >
+                {CATEGORIES_LIST.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              {isSuggestingCategory && (
-                <span className="flex items-center space-x-1 text-[10px] font-semibold text-[#00843D] dark:text-[#38a169] animate-pulse">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  <span>IA analisando categoria...</span>
+            {/* Descrição Detalhada */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label
+                  htmlFor="description-input"
+                  className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+                >
+                  Descrição Detalhada <span className="text-red-500">*</span>
+                </label>
+                <span
+                  id="description-char-counter"
+                  className={`text-[10px] font-mono ${
+                    description.length >= ITEM_FIELD_LIMITS.DESCRIPTION
+                      ? "text-amber-600 font-bold"
+                      : "text-neutral-400"
+                  }`}
+                >
+                  {description.length} / {ITEM_FIELD_LIMITS.DESCRIPTION} caracteres
                 </span>
+              </div>
+              <textarea
+                id="description-input"
+                required
+                rows={4}
+                maxLength={ITEM_FIELD_LIMITS.DESCRIPTION}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Descreva características que ajudem a reconhecer o objeto (marcas de uso, arranhões, chaveiros, adesivos, conteúdo interno, etc.)..."
+                className={`w-full p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all ${
+                  stepErrors.description
+                    ? "border-red-500 bg-red-50/20"
+                    : "border-neutral-300 dark:border-neutral-700"
+                }`}
+              />
+              {stepErrors.description && (
+                <p className="text-xs text-red-500 mt-1 font-medium">{stepErrors.description}</p>
               )}
             </div>
 
-            <select
-              id="category-input"
-              aria-required="true"
-              aria-label="Categoria do objeto"
-              value={category}
-              onChange={(e) => {
-                setCategory(e.target.value as ItemCategory);
-                setHasManuallySelectedCategory(true);
-                setCategoryAutoFilled(false);
-              }}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
-            >
-              {categoriesList.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
+            {/* Cor Predominante e Marca/Modelo (Linha Dupla) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label
+                    htmlFor="color-input"
+                    className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+                  >
+                    Cor Principal <span className="text-neutral-400 font-normal">(Opcional)</span>
+                  </label>
+                  <span className="text-[10px] text-neutral-400 font-mono">
+                    Máx. {ITEM_FIELD_LIMITS.COLOR}
+                  </span>
+                </div>
+                <input
+                  id="color-input"
+                  type="text"
+                  maxLength={ITEM_FIELD_LIMITS.COLOR}
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  placeholder="Ex: Azul marinho, Preto, Prata"
+                  className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all"
+                />
+              </div>
 
-            {/* AI Suggestion Chip / Auto-fill Badge */}
-            {categorySuggestion && (
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                {categoryAutoFilled && category === categorySuggestion.suggestedCategory ? (
-                  <div className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-300 font-medium">
-                    <Sparkles className="w-3 h-3 text-[#00843D] flex-shrink-0" />
-                    <span>
-                      Preenchido por IA: <strong>{categorySuggestion.suggestedCategory}</strong> ({categorySuggestion.confidenceScore}% de certeza)
-                    </span>
-                  </div>
-                ) : category !== categorySuggestion.suggestedCategory ? (
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label
+                    htmlFor="brand-input"
+                    className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+                  >
+                    Marca ou Modelo <span className="text-neutral-400 font-normal">(Opcional)</span>
+                  </label>
+                  <span className="text-[10px] text-neutral-400 font-mono">
+                    Máx. {ITEM_FIELD_LIMITS.BRAND}
+                  </span>
+                </div>
+                <input
+                  id="brand-input"
+                  type="text"
+                  maxLength={ITEM_FIELD_LIMITS.BRAND}
+                  value={brand}
+                  onChange={(e) => setBrand(e.target.value)}
+                  placeholder="Ex: Dell, Nike, Casio, Faber-Castell"
+                  className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Foto do Objeto (Upload Limpo, Otimização e Prévia) */}
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200">
+                    Foto do Objeto <span className="text-neutral-400 font-normal">(Opcional)</span>
+                  </label>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                    Uma foto nítida aumenta em até 80% as chances de devolução.
+                  </p>
+                </div>
+                {hasCustomImage && (
                   <button
                     type="button"
-                    onClick={() => {
-                      vibrateClick();
-                      setCategory(categorySuggestion.suggestedCategory);
-                      setCategoryAutoFilled(true);
-                      setHasManuallySelectedCategory(false);
-                      addToast(`Categoria alterada para "${categorySuggestion.suggestedCategory}" conforme sugestão da IA!`, "success");
-                    }}
-                    className="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-300 transition-colors font-medium text-left"
-                    title={categorySuggestion.reasoning}
+                    onClick={handleRemoveImage}
+                    className="text-xs text-red-600 hover:text-red-700 dark:text-red-400 font-bold flex items-center gap-1 cursor-pointer"
                   >
-                    <Sparkles className="w-3 h-3 text-amber-600 flex-shrink-0" />
-                    <span>
-                      Sugestão da IA: <strong>{categorySuggestion.suggestedCategory}</strong> ({categorySuggestion.confidenceScore}%) — <u>Aplicar</u>
-                    </span>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Remover foto</span>
                   </button>
-                ) : (
-                  <div className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800 text-[10px] text-neutral-600 dark:text-neutral-400">
-                    <CheckCircle2 className="w-3 h-3 text-[#00843D]" />
-                    <span>Confirmado com a IA ({categorySuggestion.confidenceScore}% de certeza)</span>
-                  </div>
                 )}
               </div>
-            )}
-          </div>
 
-          {/* Cor */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label
-                htmlFor="color-input"
-                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
-              >
-                Cor Predominante
-              </label>
-              <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
-                Máx. {ITEM_FIELD_LIMITS.COLOR} carac.
-              </span>
-            </div>
-            <input
-              id="color-input"
-              type="text"
-              aria-label="Cor predominante do objeto"
-              maxLength={ITEM_FIELD_LIMITS.COLOR}
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              placeholder="Ex: Verde escuro / Prata"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
-            />
-          </div>
+              {hasCustomImage ? (
+                /* Card com Prévia da Imagem Selecionada */
+                <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 flex flex-col sm:flex-row items-center gap-4">
+                  <div className="w-28 h-28 rounded-2xl overflow-hidden bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 shrink-0 shadow-xs">
+                    <img
+                      src={imageUrl}
+                      alt="Prévia do objeto"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
 
-          {/* Marca */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label
-                htmlFor="brand-input"
-                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
-              >
-                Marca / Modelo / Fabricante
-              </label>
-              <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
-                Máx. {ITEM_FIELD_LIMITS.BRAND} carac.
-              </span>
-            </div>
-            <input
-              id="brand-input"
-              type="text"
-              aria-label="Marca ou fabricante do objeto"
-              maxLength={ITEM_FIELD_LIMITS.BRAND}
-              value={brand}
-              onChange={(e) => setBrand(e.target.value)}
-              placeholder="Ex: Casio, Nike, Kouda, JBL, IFPR"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
-            />
-          </div>
-
-          {/* Local no IFPR */}
-          <div>
-            <label
-              htmlFor="location-input"
-              className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
-            >
-              Local no Campus Ivaiporã <span className="text-red-500" aria-hidden="true">*</span>
-            </label>
-            <select
-              id="location-input"
-              aria-required="true"
-              aria-label="Local no campus Ivaiporã onde o objeto foi achado ou perdido"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
-            >
-              {IFPR_LOCATIONS.map((loc) => (
-                <option key={loc} value={loc}>
-                  {loc}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Data */}
-          <div>
-            <label
-              htmlFor="date-input"
-              className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
-            >
-              Data Aproximada <span className="text-red-500" aria-hidden="true">*</span>
-            </label>
-            <input
-              id="date-input"
-              type="date"
-              required
-              aria-required="true"
-              aria-label="Data da ocorrência"
-              max={getTodayDateString()}
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
-            />
-          </div>
-        </div>
-
-        {/* Descrição Completa */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-2">
-              <label
-                htmlFor="description-input"
-                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
-              >
-                Descrição Completa e Detalhes <span className="text-red-500" aria-hidden="true">*</span>
-              </label>
-              <span
-                id="description-char-counter"
-                className={`text-[10px] font-mono font-medium ${
-                  description.length >= ITEM_FIELD_LIMITS.DESCRIPTION
-                    ? "text-amber-600 dark:text-amber-400 font-bold"
-                    : "text-neutral-400 dark:text-neutral-500"
-                }`}
-                title={`Limite máximo: ${ITEM_FIELD_LIMITS.DESCRIPTION} caracteres`}
-              >
-                {description.length} / {ITEM_FIELD_LIMITS.DESCRIPTION} caracteres
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => toggleSpeechRecognition("description")}
-              className={`px-2.5 py-1 rounded-lg text-xs font-extrabold flex items-center space-x-1.5 transition-colors ${
-                isListening && listeningTarget === "description"
-                  ? "bg-red-500 text-white animate-pulse"
-                  : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-[#00843D] hover:text-white"
-              }`}
-            >
-              {isListening && listeningTarget === "description" ? (
-                <>
-                  <MicOff className="w-3.5 h-3.5" />
-                  <span>Gravando voz...</span>
-                </>
-              ) : (
-                <>
-                  <Mic className="w-3.5 h-3.5 text-[#00843D]" />
-                  <span>Ditar Descrição (Voz)</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          <textarea
-            id="description-input"
-            required
-            aria-required="true"
-            aria-label="Descrição detalhada do objeto"
-            rows={4}
-            maxLength={ITEM_FIELD_LIMITS.DESCRIPTION}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Descreva o estado de conservação, marcas de uso, sinais particulares ou circunstâncias em que o pertence foi visto/encontrado..."
-            className="w-full p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
-          />
-        </div>
-
-        {/* SMART SEARCH: PAREAMENTO INTELIGENTE EM TEMPO REAL */}
-        {(() => {
-          if (!title && !description && !color) return null;
-
-          const targetType = type === "PERDIDO" ? "ENCONTRADO" : "PERDIDO";
-          const candidates = items.filter(
-            (item) => item.status !== "DEVOLVIDO" && (item.type === targetType || item.status === targetType)
-          );
-
-          const matches = candidates
-            .map((item) => {
-              if (!item) return { item, matchPercentage: 0 };
-              let score = 0;
-              const itemText = safeTextCorpus(item.title, item.category, item.color, item.brand, item.location, item.description);
-
-              if (item.category === category) score += 35;
-              if (item.location === location) score += 25;
-              
-              const titleWords = sanitizeQuery(title).split(/\s+/).filter((w) => w.length > 2);
-              for (const word of titleWords) {
-                if (itemText.includes(word)) score += 15;
-              }
-              if (color && safeIncludes(item.color, color)) score += 15;
-              if (brand && safeIncludes(item.brand, brand)) score += 15;
-
-              return { item, matchPercentage: Math.min(Math.round(score), 98) };
-            })
-            .filter((m) => m.matchPercentage >= 25)
-            .sort((a, b) => b.matchPercentage - a.matchPercentage)
-            .slice(0, 3);
-
-          if (matches.length === 0) return null;
-
-          return (
-            <div className="p-4 sm:p-5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-800/50 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-600 dark:text-amber-400 fill-amber-500 animate-bounce" />
-                  <h4 className="text-xs font-black uppercase text-amber-900 dark:text-amber-200 tracking-wider">
-                    Smart Search • Possíveis Correspondências Encontradas no IFPR
-                  </h4>
-                </div>
-                <span className="text-[10px] font-extrabold bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 px-2 py-0.5 rounded-full">
-                  {matches.length} {matches.length === 1 ? "item similar" : "itens similares"}
-                </span>
-              </div>
-
-              <p className="text-xs text-amber-800 dark:text-amber-300">
-                A Inteligência Artificial identificou objetos já cadastrados que correspondem aos seus critérios:
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {matches.map(({ item, matchPercentage }) => (
-                  <div
-                    key={item.id}
-                    className="p-3 bg-white dark:bg-neutral-800 rounded-xl border border-amber-200 dark:border-amber-900/50 flex flex-col justify-between space-y-2 shadow-xs"
-                  >
-                    <div className="flex items-start space-x-2">
-                      <img
-                        src={item.imageUrl}
-                        alt={item.title}
-                        className="w-12 h-12 rounded-lg object-cover border border-neutral-200 dark:border-neutral-700 shrink-0"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <span className="text-[10px] font-extrabold text-[#00843D] dark:text-green-400 bg-green-50 dark:bg-green-950 px-1.5 py-0.5 rounded">
-                          {matchPercentage}% de Similaridade
+                  <div className="space-y-2 flex-1 text-center sm:text-left">
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-xs font-bold">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#00843D]" />
+                        <span>Foto pronta para envio</span>
+                      </span>
+                      {compressionStats && (
+                        <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">
+                          Otimizada: {compressionStats.compressed} (-{compressionStats.savings}%)
                         </span>
-                        <h5 className="text-xs font-extrabold text-neutral-900 dark:text-white truncate mt-1">
-                          {item.title}
-                        </h5>
-                        <p className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
-                          {item.location}
-                        </p>
-                      </div>
+                      )}
                     </div>
+
+                    <div className="flex flex-wrap gap-2 justify-center sm:justify-start pt-1">
+                      <label className="px-3.5 py-2 rounded-xl bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Substituir Foto</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageFileUpload}
+                          className="hidden"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleOpenCamera}
+                        className="px-3.5 py-2 rounded-xl bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Camera className="w-3.5 h-3.5" />
+                        <span>Tirar Nova Foto</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* Card para Escolher Foto quando ainda não houver */
+                <div className="p-6 rounded-3xl border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-[#00843D] dark:hover:border-[#00843D] bg-neutral-50/50 dark:bg-neutral-800/30 text-center space-y-3 transition-colors">
+                  <div className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 mx-auto flex items-center justify-center">
+                    <Upload className="w-6 h-6 text-[#00843D]" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-xs sm:text-sm font-bold text-neutral-800 dark:text-neutral-200">
+                      Adicionar foto do pertence
+                    </p>
+                    <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                      Formatos aceitos: JPG, PNG ou WebP (máx. 15MB). A foto é comprimida
+                      automaticamente.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                    <label className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#007033] text-white text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-2">
+                      <Upload className="w-4 h-4" />
+                      <span>Escolher do dispositivo</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageFileUpload}
+                        className="hidden"
+                      />
+                    </label>
 
                     <button
                       type="button"
-                      onClick={() => setSelectedItemForDetail(item)}
-                      className="w-full py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 dark:hover:bg-amber-900/70 text-amber-900 dark:text-amber-200 text-[11px] font-extrabold transition-colors flex items-center justify-center space-x-1"
+                      onClick={handleOpenCamera}
+                      className="px-4 py-2.5 rounded-xl bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-2"
                     >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Ver Este Objeto</span>
+                      <Camera className="w-4 h-4" />
+                      <span>Tirar com a câmera</span>
                     </button>
                   </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
+                </div>
+              )}
 
-        {/* Foto do Objeto e Visão Gemini */}
-        <div className="space-y-3 p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700/60">
-          <div className="flex items-center justify-between">
-            <label
-              htmlFor="image-url-input"
-              className="block text-xs font-bold text-neutral-800 dark:text-neutral-200"
-            >
-              Foto do Objeto
-            </label>
-            <span className="text-[10px] text-[#00843D] dark:text-green-400 font-bold flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-amber-500 fill-amber-500" /> Visão Gemini 3.1 Pro Ativa
-            </span>
+              {isCompressing && (
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 text-xs font-semibold animate-pulse">
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                  <span>Otimizando e comprimindo imagem para o PWA...</span>
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-2 items-center">
-            <div className="relative flex-1 w-full">
-              <ImageIcon className="absolute left-3 top-3 w-4 h-4 text-neutral-400" />
-              <input
-                id="image-url-input"
-                type="text"
-                aria-label="URL da imagem do objeto"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="Cole a URL da foto ou selecione um arquivo ao lado..."
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
-              />
-            </div>
-
+          <div className="pt-6 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
             <button
               type="button"
-              onClick={handleOpenCamera}
-              className="px-3.5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold transition-colors flex items-center space-x-1.5 shrink-0 shadow-xs"
+              onClick={handlePrevStep}
+              className="px-6 py-3.5 rounded-2xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer"
             >
-              <Camera className="w-4 h-4 text-amber-300" />
-              <span>Tirar Foto</span>
+              <ArrowLeft className="w-4 h-4" />
+              <span>Voltar</span>
             </button>
 
-            <label
-              tabIndex={0}
-              role="button"
-              aria-label="Upload de foto do objeto do seu computador"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  const fileInput = e.currentTarget.querySelector("input[type=file]") as HTMLInputElement;
-                  fileInput?.click();
-                }
-              }}
-              className="px-3.5 py-2.5 rounded-xl bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 text-neutral-800 dark:text-neutral-100 text-xs font-bold cursor-pointer transition-colors flex items-center space-x-1.5 shrink-0 focus:outline-none focus:ring-2 focus:ring-[#00843D]"
+            <button
+              id="btn-step2-continue"
+              type="button"
+              onClick={handleNextStep}
+              className="px-8 py-3.5 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-extrabold text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 cursor-pointer"
             >
-              <Upload className="w-4 h-4 text-[#00843D]" />
-              <span>Arquivo</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageFileUpload}
-                className="hidden"
-              />
-            </label>
+              <span>Continuar</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
-            <div className="w-12 h-12 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 overflow-hidden shrink-0">
-              <img src={imageUrl} alt="Visualização do objeto" className="w-full h-full object-cover" />
+      {/* =========================================================================
+          ETAPA 3: LOCAL E DATA
+          ========================================================================= */}
+      {currentStep === 3 && (
+        <div className="bg-white dark:bg-[#1E1E1E] p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6 animate-in fade-in duration-200">
+          <div className="space-y-1">
+            <span className="text-[11px] font-black uppercase text-[#00843D] tracking-wider">
+              Etapa 3 de 4 • Local e Data
+            </span>
+            <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
+              {type === "ENCONTRADO"
+                ? "Onde e quando você encontrou o objeto?"
+                : "Onde e quando você viu o objeto pela última vez?"}
+            </h2>
+            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+              Essas informações são essenciais para que o dono e a equipe do campus localizem o
+              pertence.
+            </p>
+          </div>
+
+          <div className="space-y-5">
+            {/* Local no Campus */}
+            <div>
+              <label
+                htmlFor="location-input"
+                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
+              >
+                Local no Campus Ivaiporã <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <MapPin className="w-4 h-4 absolute left-3.5 top-3.5 text-neutral-400 pointer-events-none" />
+                <select
+                  id="location-input"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all cursor-pointer"
+                >
+                  {IFPR_LOCATIONS.map((loc) => (
+                    <option key={loc} value={loc}>
+                      {loc}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Ponto de Referência / Complemento */}
+            <div>
+              <label
+                htmlFor="location-complement-input"
+                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
+              >
+                Ponto de Referência / Detalhes do Local{" "}
+                <span className="text-neutral-400 font-normal">(Opcional)</span>
+              </label>
+              <input
+                id="location-complement-input"
+                type="text"
+                maxLength={120}
+                value={locationComplement}
+                onChange={(e) => setLocationComplement(e.target.value)}
+                placeholder="Ex: Em cima da mesa 04 da biblioteca, ou próximo aos bebedouros do bloco"
+                className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all"
+              />
+            </div>
+
+            {/* Data da Ocorrência */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label
+                  htmlFor="date-input"
+                  className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+                >
+                  Data da Ocorrência <span className="text-red-500">*</span>
+                </label>
+                <span className="text-[10px] text-neutral-400">Não pode ser data futura</span>
+              </div>
+              <div className="relative">
+                <Calendar className="w-4 h-4 absolute left-3.5 top-3.5 text-neutral-400 pointer-events-none" />
+                <input
+                  id="date-input"
+                  type="date"
+                  required
+                  max={getTodayDateString()}
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className={`w-full pl-10 pr-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all cursor-pointer ${
+                    stepErrors.date
+                      ? "border-red-500 bg-red-50/20"
+                      : "border-neutral-300 dark:border-neutral-700"
+                  }`}
+                />
+              </div>
+              {stepErrors.date && (
+                <p className="text-xs text-red-500 mt-1 font-medium">{stepErrors.date}</p>
+              )}
+            </div>
+
+            {/* Informações de Contato / Ponto de Guarda */}
+            <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 space-y-4">
+              <div>
+                <h4 className="text-xs font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
+                  <Info className="w-4 h-4 text-[#00843D]" />
+                  {type === "ENCONTRADO"
+                    ? "Onde o pertence está guardado atualmente?"
+                    : "Como podemos falar com você quando o objeto for encontrado?"}
+                </h4>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
+                  {type === "ENCONTRADO"
+                    ? "Informe o ponto institucional onde o objeto foi entregue (ex: Guarita, Secretaria) ou seu e-mail institucional."
+                    : "Informe seu e-mail institucional ou número de WhatsApp para receber avisos sobre seu pertence."}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {/* E-mail ou Ponto de Guarda */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label
+                      htmlFor="contact-input"
+                      className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+                    >
+                      {type === "ENCONTRADO" ? "Ponto de Guarda / E-mail" : "E-mail de Contato"}{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+                  </div>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 absolute left-3 top-3.5 text-neutral-400" />
+                    <input
+                      id="contact-input"
+                      type="text"
+                      required
+                      maxLength={ITEM_FIELD_LIMITS.CONTACT_INFO}
+                      value={contactInfo}
+                      onChange={(e) => setContactInfo(e.target.value)}
+                      placeholder={
+                        type === "ENCONTRADO"
+                          ? "Ex: Guarita Principal ou meu.email@ifpr.edu.br"
+                          : "seu.email@escola.ifpr.edu.br"
+                      }
+                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* Telefone / WhatsApp */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label
+                      htmlFor="contact-phone-input"
+                      className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+                    >
+                      Telefone / WhatsApp{" "}
+                      <span className="text-neutral-400 font-normal">(Opcional)</span>
+                    </label>
+                  </div>
+                  <div className="relative">
+                    <Phone className="w-4 h-4 absolute left-3 top-3.5 text-neutral-400" />
+                    <input
+                      id="contact-phone-input"
+                      type="text"
+                      maxLength={15}
+                      value={contactPhone}
+                      onChange={(e) => setContactPhone(formatPhone(e.target.value))}
+                      placeholder="(43) 99876-5432"
+                      className={`w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-white dark:bg-neutral-800 border text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all ${
+                        stepErrors.contactPhone
+                          ? "border-red-500"
+                          : "border-neutral-300 dark:border-neutral-700"
+                      }`}
+                    />
+                  </div>
+                  {stepErrors.contactPhone && (
+                    <p className="text-[11px] text-red-500 mt-1 font-medium">
+                      {stepErrors.contactPhone}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Real-time Compression Status Pill */}
-          {isCompressing && (
-            <div className="flex items-center space-x-2 px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 text-blue-800 dark:text-blue-200 text-xs font-semibold animate-pulse">
-              <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-              <span>Otimizando e comprimindo imagem em alta resolução para o PWA...</span>
-            </div>
-          )}
-
-          {compressionStats && !isCompressing && (
-            <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-200 text-xs font-bold">
-              <div className="flex items-center space-x-2">
-                <CheckCircle2 className="w-4 h-4 text-[#00843D] dark:text-green-400 shrink-0" />
-                <span>
-                  Otimização PWA: Economia de {compressionStats.savings}% nos dados móveis ({compressionStats.original} ➔ {compressionStats.compressed})
-                </span>
-              </div>
-              <span className="text-[10px] bg-[#00843D] text-white px-2 py-0.5 rounded-md font-extrabold uppercase">
-                WebP Otimizado
-              </span>
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <div className="pt-6 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
             <button
               type="button"
-              aria-label="Analisar foto da URL fornecida usando inteligência artificial"
-              onClick={() => analyzeImageWithGemini(imageUrl)}
-              disabled={isAnalyzingImage}
-              className="px-3.5 py-1.5 rounded-xl bg-[#00843D]/10 hover:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 text-xs font-extrabold transition-colors border border-[#00843D]/20 flex items-center space-x-1.5 disabled:opacity-50 focus:ring-2 focus:ring-[#00843D]"
+              onClick={handlePrevStep}
+              className="px-6 py-3.5 rounded-2xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer"
             >
-              {isAnalyzingImage ? (
+              <ArrowLeft className="w-4 h-4" />
+              <span>Voltar</span>
+            </button>
+
+            <button
+              id="btn-step3-continue"
+              type="button"
+              onClick={handleNextStep}
+              className="px-8 py-3.5 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-extrabold text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <span>Revisar Cadastro</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          ETAPA 4: REVISÃO DO CADASTRO
+          ========================================================================= */}
+      {currentStep === 4 && (
+        <div className="bg-white dark:bg-[#1E1E1E] p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6 animate-in fade-in duration-200">
+          <div className="space-y-1">
+            <span className="text-[11px] font-black uppercase text-[#00843D] tracking-wider">
+              Etapa 4 de 4 • Revisão Final
+            </span>
+            <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
+              Revise as informações antes de cadastrar
+            </h2>
+            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+              Verifique com atenção se todos os dados estão corretos. Você pode clicar em "Editar"
+              em qualquer seção para fazer alterações sem reiniciar o formulário.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {/* Bloco 1: Ocorrência */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
+                  Tipo de Ocorrência
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep(1)}
+                  className="text-xs text-[#00843D] dark:text-green-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Editar</span>
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-black uppercase ${
+                    type === "ENCONTRADO"
+                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                      : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
+                  }`}
+                >
+                  {type === "ENCONTRADO"
+                    ? "✓ Objeto Encontrado (Achado)"
+                    : "⚠️ Objeto Perdido"}
+                </span>
+                <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                  {type === "ENCONTRADO"
+                    ? "Aguardando devolução ao legítimo dono"
+                    : "Aguardando localização por alguém do campus"}
+                </span>
+              </div>
+            </div>
+
+            {/* Bloco 2: Informações do Objeto */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 space-y-3">
+              <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-700 pb-2">
+                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
+                  Dados do Objeto
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep(2)}
+                  className="text-xs text-[#00843D] dark:text-green-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Editar</span>
+                </button>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4 items-start">
+                {hasCustomImage && imageUrl ? (
+                  <div className="w-20 h-20 rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 shrink-0">
+                    <img
+                      src={imageUrl}
+                      alt={title}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className="w-20 h-20 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center text-neutral-400 p-2 text-center shrink-0"
+                    aria-label="Sem foto anexada"
+                  >
+                    <CameraOff className="w-5 h-5 mb-1" />
+                    <span className="text-[10px] font-semibold text-neutral-500 leading-tight">
+                      Sem foto
+                    </span>
+                  </div>
+                )}
+
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  <h4 className="text-base font-black text-neutral-900 dark:text-white truncate">
+                    {title || "Nome não informado"}
+                  </h4>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="px-2.5 py-0.5 rounded-md bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-medium">
+                      Categoria: <strong>{category}</strong>
+                    </span>
+                    {color && (
+                      <span className="px-2.5 py-0.5 rounded-md bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-medium">
+                        Cor: <strong>{color}</strong>
+                      </span>
+                    )}
+                    {brand && (
+                      <span className="px-2.5 py-0.5 rounded-md bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-medium">
+                        Marca: <strong>{brand}</strong>
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed pt-1">
+                    {description || "Sem descrição"}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Bloco 3: Local, Data e Contato */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 space-y-3">
+              <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-700 pb-2">
+                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
+                  Local, Data & Contato
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep(3)}
+                  className="text-xs text-[#00843D] dark:text-green-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Editar</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-neutral-500 font-semibold block">Local:</span>
+                  <span className="font-bold text-neutral-900 dark:text-white">
+                    {location}
+                    {locationComplement && ` — ${locationComplement}`}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-neutral-500 font-semibold block">Data da Ocorrência:</span>
+                  <span className="font-bold text-neutral-900 dark:text-white">
+                    {date.split("-").reverse().join("/")}
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-neutral-500 font-semibold block">
+                    {type === "ENCONTRADO" ? "Ponto de Guarda / E-mail:" : "E-mail de Contato:"}
+                  </span>
+                  <span className="font-bold text-neutral-900 dark:text-white">{contactInfo}</span>
+                </div>
+
+                {contactPhone && (
+                  <div>
+                    <span className="text-neutral-500 font-semibold block">
+                      Telefone / WhatsApp:
+                    </span>
+                    <span className="font-bold text-neutral-900 dark:text-white">
+                      {contactPhone}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Offline Alert Advisory if Network is Offline */}
+            {!isOnline && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-3 text-xs text-amber-800 dark:text-amber-300">
+                <Clock className="w-5 h-5 text-amber-600 shrink-0" />
+                <div>
+                  <p className="font-bold">Modo Offline Detectado</p>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                    Ao confirmar, o cadastro será armazenado com segurança no seu dispositivo
+                    (IndexedDB) e sincronizado com o Firestore assim que a conexão retornar.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Checkbox de Confirmação do Usuário */}
+            <div className="p-4 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-500/30">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  id="confirm-review-checkbox"
+                  type="checkbox"
+                  checked={hasConfirmedReview}
+                  onChange={(e) => setHasConfirmedReview(e.target.checked)}
+                  className="w-5 h-5 mt-0.5 rounded-lg text-[#00843D] focus:ring-[#00843D] border-neutral-300 cursor-pointer"
+                />
+                <span className="text-xs sm:text-sm font-semibold text-neutral-800 dark:text-neutral-200 leading-snug">
+                  Revisei todas as informações e confirmo que os dados prestados são verdadeiros e
+                  condizem com a ocorrência no IFPR Campus Ivaiporã.
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div className="pt-6 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              disabled={isSubmitting}
+              onClick={handlePrevStep}
+              className="px-6 py-3.5 rounded-2xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Voltar</span>
+            </button>
+
+            <button
+              id="btn-submit-register-form"
+              type="button"
+              disabled={!hasConfirmedReview || isSubmitting}
+              onClick={handleFinalSubmit}
+              className="px-8 py-3.5 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-emerald-700/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? (
                 <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Analisando foto...</span>
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <span>Cadastrando Objeto...</span>
                 </>
               ) : (
                 <>
-                  <Eye className="w-3.5 h-3.5 text-[#00843D]" />
-                  <span>Analisar Foto da URL com Gemini 3.1 Pro</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                  <span>Cadastrar Objeto</span>
                 </>
               )}
             </button>
+          </div>
+        </div>
+      )}
 
-            <div className="flex space-x-1.5 overflow-x-auto" role="group" aria-label="Imagens de exemplo">
-              {[
-                { label: "Garrafa", url: "https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=600&auto=format&fit=crop&q=80" },
-                { label: "Calculadora", url: "https://images.unsplash.com/photo-1594980596870-8aa52a78d8cd?w=600&auto=format&fit=crop&q=80" },
-                { label: "Casio", url: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=600&auto=format&fit=crop&q=80" },
-                { label: "Carteira", url: "https://images.unsplash.com/photo-1627123424574-724758594e93?w=600&auto=format&fit=crop&q=80" },
-              ].map((preset) => (
+      {/* =========================================================================
+          ETAPA 5: CONFIRMAÇÃO DE SUCESSO (OU STATUS OFFLINE / ERRO)
+          ========================================================================= */}
+      {currentStep === 5 && registrationFeedback && (
+        <div className="bg-white dark:bg-[#1E1E1E] p-6 sm:p-10 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-xl space-y-6 text-center animate-in fade-in zoom-in-95 duration-200">
+          {registrationFeedback.status === "CONFIRMED" ? (
+            <>
+              <div className="w-20 h-20 mx-auto rounded-3xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center text-[#00843D] dark:text-emerald-400">
+                <CheckCircle2 className="w-12 h-12" />
+              </div>
+
+              <div className="space-y-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">
+                  <ShieldCheck className="w-3.5 h-3.5" /> Persistência Confirmada no Firestore
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                  Objeto Cadastrado com Sucesso!
+                </h2>
+                <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 max-w-lg mx-auto">
+                  O pertence{" "}
+                  <strong className="text-neutral-900 dark:text-white">
+                    "{registrationFeedback.item.title}"
+                  </strong>{" "}
+                  foi registrado e autenticado com sucesso no sistema do IFPR Campus Ivaiporã.
+                </p>
+              </div>
+
+              <div className="p-4 sm:p-5 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200/80 dark:border-neutral-700/60 text-left space-y-2.5 text-xs text-neutral-600 dark:text-neutral-300 max-w-md mx-auto">
+                <div className="flex justify-between items-center pb-2 border-b border-neutral-200 dark:border-neutral-700">
+                  <span className="text-neutral-500 font-semibold">Identificador (ID):</span>
+                  <span className="font-mono font-bold text-neutral-900 dark:text-white">
+                    {registrationFeedback.item.id}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-neutral-200 dark:border-neutral-700">
+                  <span className="text-neutral-500 font-semibold">Código QR da Etiqueta:</span>
+                  <span className="font-mono text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                    {registrationFeedback.item.qrCodeId}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-neutral-200 dark:border-neutral-700">
+                  <span className="text-neutral-500 font-semibold">Local Registrado:</span>
+                  <span className="font-semibold text-neutral-900 dark:text-white">
+                    {registrationFeedback.item.location}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-neutral-500 font-semibold">Status do Objeto:</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400 uppercase">
+                    {registrationFeedback.item.status}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 max-w-md mx-auto">
                 <button
                   type="button"
-                  key={preset.label}
-                  aria-label={`Usar imagem pré-definida de ${preset.label}`}
-                  onClick={() => handleImagePreset(preset.url)}
-                  className="px-2 py-1 rounded-lg bg-white dark:bg-neutral-800 text-[10px] font-medium text-neutral-700 dark:text-neutral-300 hover:bg-[#00843D] hover:text-white transition-colors border border-neutral-200 dark:border-neutral-700 shrink-0 focus:ring-2 focus:ring-[#00843D]"
+                  onClick={() => {
+                    vibrateClick();
+                    navigate(type === "PERDIDO" ? "/perdidos" : "/encontrados");
+                  }}
+                  className="flex-1 py-3.5 px-5 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-700/20 transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
-                  {preset.label}
+                  <Eye className="w-4 h-4" />
+                  <span>Ver no Mural de {type === "PERDIDO" ? "Perdidos" : "Encontrados"}</span>
                 </button>
-              ))}
-            </div>
-          </div>
+
+                <button
+                  type="button"
+                  onClick={handleRegisterAnother}
+                  className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-bold text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <PlusCircle className="w-4 h-4 text-[#00843D]" />
+                  <span>Cadastrar Outro</span>
+                </button>
+              </div>
+            </>
+          ) : registrationFeedback.status === "ERROR" ? (
+            <>
+              <div className="w-20 h-20 mx-auto rounded-3xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-center justify-center text-red-600 dark:text-red-400">
+                <AlertCircle className="w-12 h-12" />
+              </div>
+
+              <div className="space-y-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300">
+                  <AlertCircle className="w-3.5 h-3.5" /> Falha no Envio ao Servidor
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                  Salvo Localmente no Dispositivo
+                </h2>
+                <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 max-w-lg mx-auto">
+                  Não foi possível completar o envio para o Firestore em nuvem neste momento. Seu
+                  item{" "}
+                  <strong className="text-neutral-900 dark:text-white">
+                    "{registrationFeedback.item.title}"
+                  </strong>{" "}
+                  foi protegido com segurança no banco local (IndexedDB) para não se perder.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 max-w-md mx-auto">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    vibrateClick();
+                    const taskIdToRetry =
+                      registrationFeedback.taskId ||
+                      getUploadTaskId(registrationFeedback.item.id);
+                    await retryUploadTask(taskIdToRetry);
+                  }}
+                  className="flex-1 py-3.5 px-5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Tentar Novamente</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    vibrateClick();
+                    navigate("/");
+                  }}
+                  className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-bold text-xs sm:text-sm transition-all cursor-pointer"
+                >
+                  Voltar ao Início
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="w-20 h-20 mx-auto rounded-3xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                <Clock className="w-12 h-12" />
+              </div>
+
+              <div className="space-y-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
+                  <Clock className="w-3.5 h-3.5" /> Aguardando Sincronização
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                  Objeto Salvo no Dispositivo
+                </h2>
+                <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 max-w-lg mx-auto">
+                  O objeto{" "}
+                  <strong className="text-neutral-900 dark:text-white">
+                    "{registrationFeedback.item.title}"
+                  </strong>{" "}
+                  foi armazenado localmente com segurança no dispositivo. A sincronização com a nuvem
+                  ocorrerá assim que você se conectar à internet.
+                </p>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 pt-4 max-w-md mx-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    vibrateClick();
+                    navigate(type === "PERDIDO" ? "/perdidos" : "/encontrados");
+                  }}
+                  className="flex-1 py-3.5 px-5 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer"
+                >
+                  Ver no Mural
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    vibrateClick();
+                    navigate("/");
+                  }}
+                  className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-bold text-xs sm:text-sm transition-all cursor-pointer"
+                >
+                  Início
+                </button>
+              </div>
+            </>
+          )}
         </div>
+      )}
 
-        {/* Contato de Referência e Telefone */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-          <div>
-            <label
-              htmlFor="contact-phone-input"
-              className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
-            >
-              Telefone / WhatsApp de Contato
-            </label>
-            <div className="relative">
-              <Phone className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />
-              <input
-                id="contact-phone-input"
-                type="text"
-                aria-label="Telefone ou WhatsApp para contato"
-                value={contactPhone}
-                onChange={(e) => setContactPhone(formatPhone(e.target.value))}
-                maxLength={15}
-                placeholder="(43) 99876-5432"
-                className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
-              />
-            </div>
-            {contactPhone && !isValidPhone(contactPhone) && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1 font-medium">
-                ⚠️ Digite o número completo com DDD (ex: (43) 99876-5432).
-              </p>
-            )}
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label
-                htmlFor="contact-input"
-                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
-              >
-                E-mail / Ponto de Guarda <span className="text-red-500" aria-hidden="true">*</span>
-              </label>
-              <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
-                Máx. {ITEM_FIELD_LIMITS.CONTACT_INFO} carac.
-              </span>
-            </div>
-            <input
-              id="contact-input"
-              type="text"
-              required
-              aria-required="true"
-              aria-label="E-mail ou ponto onde o objeto se encontra guardado"
-              maxLength={ITEM_FIELD_LIMITS.CONTACT_INFO}
-              value={contactInfo}
-              onChange={(e) => setContactInfo(e.target.value)}
-              placeholder="Ex: Guarita da Portaria Principal ou email@ifpr.edu.br"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
-            />
-          </div>
-        </div>
-
-        {/* Offline Status Advisory */}
-        {!isOnline && (
-          <div className="flex items-center gap-2.5 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 text-xs">
-            <WifiOff className="w-4 h-4 text-amber-500 shrink-0" />
-            <span>
-              <strong>Modo Offline Ativo:</strong> Você não perderá nenhum dado. Ao clicar em salvar, este cadastro será armazenado com segurança no seu dispositivo (IndexedDB) e sincronizado com o Firestore assim que a conexão retornar.
-            </span>
-          </div>
-        )}
-
-        {/* Submit Actions */}
-        <div className="pt-4 flex justify-end space-x-3 border-t border-neutral-200 dark:border-neutral-800">
-          <button
-            id="btn-cancel-register-form"
-            type="button"
-            aria-label="Cancelar cadastro e retornar à página inicial"
-            disabled={isSubmitting}
-            onClick={() => {
-              vibrateClick();
-              if (window.history.length > 1) {
-                goBack();
-              } else {
-                navigate("/");
-              }
-            }}
-            className="px-5 py-3 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors focus:ring-2 focus:ring-neutral-400 disabled:opacity-50 cursor-pointer"
-          >
-            Cancelar
-          </button>
-          <button
-            id="btn-submit-register-form"
-            type="submit"
-            disabled={isSubmitting}
-            aria-label="Salvar registro do objeto no banco de dados"
-            className="px-6 py-3 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md shadow-[#00843D]/20 transition-all flex items-center space-x-2 focus:ring-2 focus:ring-offset-2 focus:ring-[#00843D] disabled:opacity-75 disabled:cursor-not-allowed cursor-pointer"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin text-white" />
-                <span>Salvando Objeto...</span>
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Salvar Registro de Objeto</span>
-              </>
-            )}
-          </button>
-        </div>
-      </form>
-
-      {/* Camera Capture Modal */}
+      {/* =========================================================================
+          MODAL DA CÂMERA (LIMPO E DIRECIONADO)
+          ========================================================================= */}
       {cameraModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
           <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-md w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4">
@@ -1672,7 +2245,7 @@ export const RegisterItemView: React.FC = () => {
                   stopCamera();
                   setCameraModalOpen(false);
                 }}
-                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1684,7 +2257,9 @@ export const RegisterItemView: React.FC = () => {
                 ref={videoRef}
                 playsInline
                 muted
-                className={`absolute inset-0 w-full h-full object-cover ${cameraStatus === "granted" ? "block" : "hidden"}`}
+                className={`absolute inset-0 w-full h-full object-cover ${
+                  cameraStatus === "granted" ? "block" : "hidden"
+                }`}
               />
 
               {cameraStatus !== "granted" && (
@@ -1695,7 +2270,8 @@ export const RegisterItemView: React.FC = () => {
                     </p>
                   ) : (
                     <p className="text-xs font-bold text-amber-300 animate-pulse">
-                      Solicitando permissão para usar a câmera... Por favor, confirme no seu navegador.
+                      Solicitando permissão para usar a câmera... Por favor, confirme no seu
+                      navegador.
                     </p>
                   )}
                 </div>
@@ -1709,7 +2285,7 @@ export const RegisterItemView: React.FC = () => {
                   stopCamera();
                   setCameraModalOpen(false);
                 }}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
               >
                 Cancelar
               </button>
@@ -1717,254 +2293,14 @@ export const RegisterItemView: React.FC = () => {
               {cameraStatus === "granted" && (
                 <button
                   type="button"
-                  onClick={handleCaptureSnapshot}
-                  className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md flex items-center gap-2"
+                  onClick={handleCaptureCamera}
+                  className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#007033] text-white font-extrabold text-xs shadow-md flex items-center gap-2 cursor-pointer"
                 >
-                  <Camera className="w-4 h-4 text-amber-300" />
+                  <Camera className="w-4 h-4 text-emerald-300" />
                   <span>Capturar Foto</span>
                 </button>
               )}
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Registration Persistence Feedback Modal */}
-      {registrationFeedback && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) {
-              vibrateClick();
-              setRegistrationFeedback(null);
-              navigate("/");
-            }
-          }}
-        >
-          <div className="relative bg-white dark:bg-neutral-900 rounded-3xl p-6 sm:p-8 max-w-lg w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-6 text-center animate-in fade-in zoom-in-95 duration-200">
-            {/* Modal top-right close X */}
-            <button
-              type="button"
-              onClick={() => {
-                vibrateClick();
-                setRegistrationFeedback(null);
-                navigate("/");
-              }}
-              className="absolute top-4 right-4 p-2 rounded-full text-neutral-400 hover:text-neutral-700 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
-              aria-label="Fechar confirmação"
-              title="Fechar e ir para o Início"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            {registrationFeedback.status === "CONFIRMED" ? (
-              <>
-                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-3xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center text-[#00843D] dark:text-emerald-400">
-                  <CheckCircle2 className="w-10 h-10 sm:w-12 sm:h-12" />
-                </div>
-
-                <div className="space-y-2">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">
-                    <ShieldCheck className="w-3.5 h-3.5" /> Persistência Confirmada no Firestore
-                  </span>
-                  <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
-                    Cadastro Concluído!
-                  </h2>
-                  <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">
-                    O registro do pertence <strong className="text-neutral-900 dark:text-white">"{registrationFeedback.item.title}"</strong> foi gravado, autenticado e verificado com sucesso no banco de dados do IFPR Campus Ivaiporã.
-                  </p>
-                </div>
-
-                <div className="p-4 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200/80 dark:border-neutral-700/60 text-left space-y-2 text-xs text-neutral-600 dark:text-neutral-300">
-                  <div className="flex justify-between items-center pb-1.5 border-b border-neutral-200 dark:border-neutral-700">
-                    <span className="text-neutral-500">Identificador (ID):</span>
-                    <span className="font-mono font-bold text-neutral-900 dark:text-white">{registrationFeedback.item.id}</span>
-                  </div>
-                  <div className="flex justify-between items-center pb-1.5 border-b border-neutral-200 dark:border-neutral-700">
-                    <span className="text-neutral-500">Código QR:</span>
-                    <span className="font-mono text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">{registrationFeedback.item.qrCodeId}</span>
-                  </div>
-                  <div className="flex justify-between items-center pb-1.5 border-b border-neutral-200 dark:border-neutral-700">
-                    <span className="text-neutral-500">Local Registrado:</span>
-                    <span className="font-semibold text-neutral-900 dark:text-white">{registrationFeedback.item.location}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-neutral-500">Status no Sistema:</span>
-                    <span className="font-bold text-emerald-600 dark:text-emerald-400 uppercase">{registrationFeedback.item.status}</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      vibrateClick();
-                      setRegistrationFeedback(null);
-                      navigate(type === "PERDIDO" ? "/perdidos" : "/encontrados");
-                    }}
-                    className="flex-1 py-3.5 px-5 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-bold text-sm shadow-lg shadow-emerald-700/20 transition-all cursor-pointer"
-                  >
-                    Ver no Mural de {type === "PERDIDO" ? "Perdidos" : "Encontrados"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      vibrateClick();
-                      setRegistrationFeedback(null);
-                      setTitle("");
-                      setDescription("");
-                      setLocation("");
-                      setColor("");
-                      setBrand("");
-                      setImageUrl(undefined);
-                    }}
-                    className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold text-xs transition-all cursor-pointer"
-                  >
-                    Cadastrar Outro
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      vibrateClick();
-                      setRegistrationFeedback(null);
-                      navigate("/");
-                    }}
-                    className="py-3.5 px-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-400 font-bold text-xs transition-all cursor-pointer"
-                  >
-                    Fechar
-                  </button>
-                </div>
-              </>
-            ) : registrationFeedback.status === "ERROR" || (registrationFeedback.status as string) === "SYNC_ERROR" ? (
-              <>
-                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-3xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-center justify-center text-red-600 dark:text-red-400">
-                  <AlertCircle className="w-10 h-10 sm:w-12 sm:h-12" />
-                </div>
-
-                <div className="space-y-2">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300">
-                    <AlertCircle className="w-3.5 h-3.5" /> Atenção: Falha na Sincronização
-                  </span>
-                  <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
-                    Falha no Envio
-                  </h2>
-                  <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">
-                    Não foi possível enviar o pertence <strong className="text-neutral-900 dark:text-white">"{registrationFeedback.item.title}"</strong> para o banco de dados no momento. O item permanece salvo localmente com segurança no dispositivo (IndexedDB).
-                  </p>
-                </div>
-
-                <div className="p-4 bg-red-50/60 dark:bg-red-950/20 rounded-2xl border border-red-200/80 dark:border-red-800/40 text-left space-y-2 text-xs text-red-800 dark:text-red-300">
-                  <div className="font-bold flex items-center gap-1.5">
-                    <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" /> Detalhes da Ocorrência:
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-red-700 dark:text-red-400 font-mono">
-                    {registrationFeedback.error || "Falha temporária ao sincronizar com o servidor em nuvem."}
-                  </p>
-                  <p className="text-[10px] text-neutral-500 dark:text-neutral-400 pt-1">
-                    Você pode tentar o reenvio manual ou cancelar a operação da fila offline.
-                  </p>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      vibrateClick();
-                      const taskIdToRetry =
-                        registrationFeedback.taskId ||
-                        getUploadTaskId(registrationFeedback.item.id);
-                      await retryUploadTask(taskIdToRetry);
-                    }}
-                    className="flex-1 py-3.5 px-5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm shadow-lg shadow-red-600/20 transition-all cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                    <span>Tentar Novamente Agora</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      vibrateClick();
-                      const taskIdToCancel =
-                        registrationFeedback.taskId ||
-                        getUploadTaskId(registrationFeedback.item.id);
-                      await cancelUploadTask(taskIdToCancel);
-                      setRegistrationFeedback(null);
-                      addToast("Envio offline cancelado e removido da fila com sucesso.", "info");
-                    }}
-                    className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-red-600 dark:text-red-400 font-semibold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                    title="Cancelar envio e remover da fila"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    <span>Cancelar Upload</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      vibrateClick();
-                      setRegistrationFeedback(null);
-                      navigate("/");
-                    }}
-                    className="py-3.5 px-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-400 font-bold text-xs transition-all cursor-pointer"
-                  >
-                    Fechar
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-3xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-center text-amber-600 dark:text-amber-400">
-                  <Clock className="w-10 h-10 sm:w-12 sm:h-12" />
-                </div>
-
-                <div className="space-y-2">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
-                    <Clock className="w-3.5 h-3.5" /> Aguardando sincronização
-                  </span>
-                  <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
-                    Aguardando Sincronização
-                  </h2>
-                  <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">
-                    O objeto <strong className="text-neutral-900 dark:text-white">"{registrationFeedback.item.title}"</strong> foi armazenado com segurança localmente no dispositivo (IndexedDB) devido ao estado offline da rede.
-                  </p>
-                </div>
-
-                <div className="p-4 bg-amber-50/60 dark:bg-amber-950/20 rounded-2xl border border-amber-200/80 dark:border-amber-800/40 text-left space-y-2 text-xs text-amber-800 dark:text-amber-300">
-                  <div className="font-bold flex items-center gap-1.5">
-                    <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" /> Diretriz RNF-04:
-                  </div>
-                  <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
-                    Conforme os requisitos de governança do IFPR, o status final de persistência somente será emitido após a confirmação de recebimento pelo Firestore em nuvem. A sincronização ocorrerá automaticamente em segundo plano assim que a conectividade for restabelecida.
-                  </p>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      vibrateClick();
-                      setRegistrationFeedback(null);
-                      navigate(type === "PERDIDO" ? "/perdidos" : "/encontrados");
-                    }}
-                    className="flex-1 py-3.5 px-5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-sm shadow-lg shadow-amber-600/20 transition-all cursor-pointer"
-                  >
-                    Entendido, Explorar Itens
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      vibrateClick();
-                      setRegistrationFeedback(null);
-                      navigate("/");
-                    }}
-                    className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold text-xs transition-all cursor-pointer"
-                  >
-                    Fechar
-                  </button>
-                </div>
-              </>
-            )}
           </div>
         </div>
       )}

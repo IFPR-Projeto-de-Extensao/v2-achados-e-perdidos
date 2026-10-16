@@ -180,6 +180,7 @@ app.use((req, res, next) => {
   res.header("X-Content-Type-Options", "nosniff");
   res.header("Referrer-Policy", "strict-origin-when-cross-origin");
   res.header("X-XSS-Protection", "1; mode=block");
+  res.header("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=(), usb=()");
 
   if (req.secure || req.headers["x-forwarded-proto"] === "https") {
     res.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
@@ -614,48 +615,105 @@ app.post(
   ["/api/auth/compensate-failed-registration", "/auth/compensate-failed-registration"],
   generalRateLimiter,
   async (req: Request, res: Response) => {
+    // 0. Mandatory Cryptographic Authentication Verification
+    const callerUid = req.authUser?.uid;
+    if (!callerUid) {
+      return res.status(401).json({
+        success: false,
+        error: "Autenticação obrigatória. Forneça o token Bearer válido para compensação de cadastro.",
+        code: "UNAUTHENTICATED",
+      });
+    }
+
     const { uid, email } = req.body || {};
-    if (!uid || typeof uid !== "string") {
-      return res.status(400).json({ success: false, error: "UID obrigatório para compensação." });
+    const requestedUid = typeof uid === "string" ? uid.trim() : "";
+
+    // 1. Validate Identity Binding: non-admins can only compensate their own account
+    if (requestedUid && requestedUid !== callerUid && !req.authUser?.isAdmin) {
+      console.warn(`[Compensation Rejected] Solicitante (${callerUid}) tentou compensar conta alheia (${requestedUid}). Acesso negado.`);
+      return res.status(403).json({
+        success: false,
+        error: "Acesso negado: Você só pode solicitar a compensação de sua própria conta recém-criada.",
+        code: "FORBIDDEN_NOT_OWNER",
+      });
+    }
+
+    const targetUid = req.authUser?.isAdmin ? (requestedUid || callerUid) : callerUid;
+    if (!targetUid) {
+      return res.status(400).json({
+        success: false,
+        error: "UID obrigatório para compensação.",
+        code: "UID_REQUIRED",
+      });
     }
 
     try {
       const adminAuth = getAdminAuth();
       const adminFirestore = getAdminFirestore();
 
-      if (!adminAuth) {
-        return res.status(503).json({ success: false, error: "Admin Auth indisponível para compensação." });
+      if (!adminAuth || !adminFirestore) {
+        return res.status(503).json({
+          success: false,
+          error: "Serviço de autenticação ou banco indisponível para compensação.",
+          code: "SERVICE_UNAVAILABLE",
+        });
       }
 
-      // 1. Fetch user to verify creation time
-      const userRecord = await adminAuth.getUser(uid);
+      // 2. Fetch User Record from Admin Auth
+      const userRecord = await adminAuth.getUser(targetUid);
+
+      // 3. Verify Creation Time Window (must be recently created, <= 3 minutes)
       const creationTime = new Date(userRecord.metadata.creationTime).getTime();
       const now = Date.now();
       const elapsedMs = now - creationTime;
 
-      // Only compensate recently created accounts (within last 3 minutes) to prevent accidental deletion of existing accounts
       if (elapsedMs > 3 * 60 * 1000) {
-        console.warn(`[Compensation Rejected] Tentativa de compensação em conta antiga (${uid}, criada há ${Math.round(elapsedMs / 1000)}s). Abortando.`);
-        return res.status(403).json({ success: false, error: "Compensação permitida apenas para cadastros recém-criados." });
+        console.warn(`[Compensation Rejected] Tentativa de compensação em conta antiga (${targetUid}, criada há ${Math.round(elapsedMs / 1000)}s). Abortando.`);
+        return res.status(403).json({
+          success: false,
+          error: "Compensação permitida apenas para cadastros recém-criados.",
+          code: "ACCOUNT_EXPIRED",
+        });
       }
 
-      // 2. Verify that NO document exists in Firestore /users/{uid}
-      if (adminFirestore) {
-        const docSnap = await adminFirestore.collection("users").doc(uid).get();
-        if (docSnap.exists) {
-          console.warn(`[Compensation Rejected] Documento Firestore /users/${uid} já existe. Não compensar.`);
-          return res.status(409).json({ success: false, error: "Usuário já possui documento no Firestore." });
-        }
+      // 4. Verify Consolidated Status: cannot delete account if email is verified (unless admin)
+      if (userRecord.emailVerified === true && !req.authUser?.isAdmin) {
+        return res.status(409).json({
+          success: false,
+          error: "Conta já consolidada (e-mail verificado). Compensação não permitida.",
+          code: "ACCOUNT_CONSOLIDATED",
+        });
       }
 
-      // 3. Delete the orphaned newly created account
-      await adminAuth.deleteUser(uid);
-      console.log(`[Compensation Success] Conta órfã recém-criada ${uid} (${email || userRecord.email}) removida do Firebase Auth com sucesso.`);
+      // 5. Verify absence of document in Firestore /users/{targetUid}
+      const docSnap = await adminFirestore.collection("users").doc(targetUid).get();
+      if (docSnap.exists) {
+        console.warn(`[Compensation Rejected] Documento Firestore /users/${targetUid} já existe. Não compensar.`);
+        return res.status(409).json({
+          success: false,
+          error: "Usuário já possui documento no Firestore.",
+          code: "ACCOUNT_CONSOLIDATED",
+        });
+      }
 
-      return res.json({ success: true, message: "Compensação realizada com sucesso." });
+      // 6. Delete the orphaned newly created account
+      await adminAuth.deleteUser(targetUid);
+      console.log(`[Compensation Success] Conta órfã recém-criada ${targetUid} (${email || userRecord.email}) removida do Firebase Auth com sucesso.`);
+
+      return res.json({
+        success: true,
+        message: "Compensação realizada com sucesso.",
+      });
     } catch (err: any) {
-      console.error(`[Compensation Error] Erro ao compensar conta ${uid}:`, err);
-      return res.status(500).json({ success: false, error: err?.message || "Erro interno na compensação." });
+      console.error(`[Compensation Error] Falha ao compensar conta ${targetUid}:`, err?.message || err);
+      const isProd = process.env.NODE_ENV === "production";
+      return res.status(500).json({
+        success: false,
+        error: isProd
+          ? "Erro interno ao processar compensação de cadastro."
+          : (err?.message || "Erro interno na compensação."),
+        code: "COMPENSATION_ERROR",
+      });
     }
   }
 );
@@ -2757,8 +2815,8 @@ app.post(
   }
 });
 
-// Diagnostic Environment Endpoint (Boolean flags only, strictly no secrets)
-app.get(["/api/debug/env", "/debug/env"], (req, res) => {
+// Diagnostic Environment Endpoint (Restricted strictly to authorized Administrators)
+app.get(["/api/debug/env", "/debug/env"], requireAuth, requireAdmin, (req, res) => {
   const isDiscordConfigured = Boolean(
     process.env.DISCORD_FEEDBACK_WEBHOOK_URL ||
     process.env.DISCORD_WEBHOOK_URL_FEEDBACK ||
@@ -2804,7 +2862,6 @@ app.get(["/api/debug/env", "/debug/env"], (req, res) => {
       userPresent: Boolean(smtpUser),
       passPresent: Boolean(smtpPass),
       fromPresent: Boolean(process.env.SMTP_FROM),
-      host: smtpHost || null,
       port: smtpPort,
       secure: process.env.SMTP_SECURE === "true" || smtpPort === 465,
       userMasked: maskEmail(smtpUser),
@@ -3066,30 +3123,94 @@ async function sendNovoAchadoToDiscord(item: {
   }
 }
 
-app.post(["/api/items/notify-novos-achados", "/items/notify-novos-achados"], generalRateLimiter, async (req, res) => {
+app.post(["/api/items/notify-novos-achados", "/items/notify-novos-achados"], requireAuth, generalRateLimiter, async (req, res) => {
   try {
-    const item = req.body?.item || req.body;
-    if (!item || !item.title) {
-      return res.status(400).json({ success: false, error: "Dados do item ausentes ou incompletos." });
+    const rawItem = req.body?.item || req.body;
+    const itemId = rawItem?.id || req.body?.itemId;
+    if (!itemId || typeof itemId !== "string" || !itemId.trim()) {
+      return res.status(400).json({ success: false, error: "Identificador do item (id) ausente ou inválido." });
     }
 
-    const normalizedType = String(item?.type || "").toUpperCase().trim();
-    if (normalizedType !== "ENCONTRADO" && normalizedType !== "ACHADO") {
-      return res.json({
-        success: true,
-        message: `Item com tipo "${item?.type}" não é ENCONTRADO/ACHADO. Ignorado para o canal #novos-achados.`,
+    const cleanItemId = itemId.trim();
+    const adminDb = getAdminFirestore();
+    if (!adminDb) {
+      return res.status(503).json({ success: false, error: "Serviço de banco de dados indisponível no servidor." });
+    }
+
+    // 1. Verify existence of item in Firestore using Admin SDK
+    const docSnap = await adminDb.collection("items").doc(cleanItemId).get();
+    if (!docSnap.exists) {
+      return res.status(404).json({ success: false, error: `Ocorrência #${cleanItemId} não encontrada no banco de dados.` });
+    }
+
+    const dbItem: any = docSnap.data();
+
+    // 2. Authorization check: legitimate author, admin, or servidor
+    const callerUid = req.authUser!.uid;
+    const isAuthor = dbItem.registeredByUserId === callerUid;
+    const isStaffOrAdmin = req.authUser!.isAdmin || req.authUser!.role === "SERVIDOR";
+
+    if (!isAuthor && !isStaffOrAdmin) {
+      console.warn(`[Discord Novos Achados Security Alert] Usuário ${callerUid} tentou despachar notificação para item de terceiro (${cleanItemId}). Acesso negado.`);
+      return res.status(403).json({
+        success: false,
+        error: "Acesso negado. Apenas o autor do cadastro ou servidores/administradores do IFPR podem notificar este item.",
       });
     }
 
+    const normalizedType = String(dbItem.type || "").toUpperCase().trim();
+    if (normalizedType !== "ENCONTRADO" && normalizedType !== "ACHADO") {
+      return res.status(400).json({
+        success: false,
+        error: `Ocorrência #${cleanItemId} possui tipo '${dbItem.type}' e não é um item ENCONTRADO/ACHADO.`,
+      });
+    }
+
+    // 3. Prevent duplicate Discord notification spam
+    if (dbItem.discordNotified === true) {
+      return res.json({
+        success: true,
+        message: "Item já notificado anteriormente no canal #novos-achados.",
+        itemId: cleanItemId,
+        alreadyNotified: true,
+      });
+    }
+
+    // 4. Sanitize and prepare verified item data
+    const sanitizedItem = {
+      id: cleanItemId,
+      title: String(dbItem.title || "").trim().substring(0, 100),
+      description: String(dbItem.description || "").trim().substring(0, 1000),
+      category: String(dbItem.category || "Outros").trim().substring(0, 60),
+      location: String(dbItem.location || "Campus IFPR").trim().substring(0, 120),
+      status: String(dbItem.status || "DISPONIVEL").trim(),
+      date: String(dbItem.date || new Date().toISOString().split("T")[0]).trim(),
+      color: dbItem.color ? String(dbItem.color).trim().substring(0, 50) : undefined,
+      brand: dbItem.brand ? String(dbItem.brand).trim().substring(0, 60) : undefined,
+      imageUrl: (dbItem.imageUrl && (dbItem.imageUrl.startsWith("http://") || dbItem.imageUrl.startsWith("https://"))) ? dbItem.imageUrl : undefined,
+      qrCodeId: dbItem.qrCodeId ? String(dbItem.qrCodeId).trim() : undefined,
+      registeredByName: dbItem.registeredByName ? String(dbItem.registeredByName).trim() : undefined,
+      registeredByRole: dbItem.registeredByRole ? String(dbItem.registeredByRole).trim() : undefined,
+      createdAt: dbItem.createdAt || new Date().toISOString(),
+      updatedAt: dbItem.updatedAt || undefined,
+      type: "ENCONTRADO",
+    };
+
+    // Mark as notified to prevent duplicate calls
+    docSnap.ref.update({
+      discordNotified: true,
+      discordNotifiedAt: new Date().toISOString(),
+    }).catch(() => {});
+
     // Envio assíncrono e resiliente
-    sendNovoAchadoToDiscord(item).catch((err) => {
+    sendNovoAchadoToDiscord(sanitizedItem).catch((err) => {
       console.error("[Discord Novos Achados Background Error]:", err);
     });
 
     return res.json({
       success: true,
       message: "Notificação de novo achado encaminhada para o canal #novos-achados.",
-      itemId: item.id,
+      itemId: cleanItemId,
     });
   } catch (error: any) {
     console.error("Erro no endpoint notify-novos-achados:", error);
@@ -3259,30 +3380,94 @@ async function sendNovaPerdaToDiscord(item: {
   }
 }
 
-app.post(["/api/items/notify-novas-perdas", "/items/notify-novas-perdas"], generalRateLimiter, async (req, res) => {
+app.post(["/api/items/notify-novas-perdas", "/items/notify-novas-perdas"], requireAuth, generalRateLimiter, async (req, res) => {
   try {
-    const item = req.body?.item || req.body;
-    if (!item || !item.title) {
-      return res.status(400).json({ success: false, error: "Dados do item ausentes ou incompletos." });
+    const rawItem = req.body?.item || req.body;
+    const itemId = rawItem?.id || req.body?.itemId;
+    if (!itemId || typeof itemId !== "string" || !itemId.trim()) {
+      return res.status(400).json({ success: false, error: "Identificador do item (id) ausente ou inválido." });
     }
 
-    const normalizedType = String(item?.type || "").toUpperCase().trim();
-    if (normalizedType !== "PERDIDO" && normalizedType !== "PERDA") {
-      return res.json({
-        success: true,
-        message: `Item com tipo "${item?.type}" não é PERDIDO/PERDA. Ignorado para o canal #novas-perdas.`,
+    const cleanItemId = itemId.trim();
+    const adminDb = getAdminFirestore();
+    if (!adminDb) {
+      return res.status(503).json({ success: false, error: "Serviço de banco de dados indisponível no servidor." });
+    }
+
+    // 1. Verify existence of item in Firestore using Admin SDK
+    const docSnap = await adminDb.collection("items").doc(cleanItemId).get();
+    if (!docSnap.exists) {
+      return res.status(404).json({ success: false, error: `Ocorrência #${cleanItemId} não encontrada no banco de dados.` });
+    }
+
+    const dbItem: any = docSnap.data();
+
+    // 2. Authorization check: legitimate author, admin, or servidor
+    const callerUid = req.authUser!.uid;
+    const isAuthor = dbItem.registeredByUserId === callerUid;
+    const isStaffOrAdmin = req.authUser!.isAdmin || req.authUser!.role === "SERVIDOR";
+
+    if (!isAuthor && !isStaffOrAdmin) {
+      console.warn(`[Discord Novas Perdas Security Alert] Usuário ${callerUid} tentou despachar notificação para item de terceiro (${cleanItemId}). Acesso negado.`);
+      return res.status(403).json({
+        success: false,
+        error: "Acesso negado. Apenas o autor do cadastro ou servidores/administradores do IFPR podem notificar este item.",
       });
     }
 
+    const normalizedType = String(dbItem.type || "").toUpperCase().trim();
+    if (normalizedType !== "PERDIDO" && normalizedType !== "PERDA") {
+      return res.status(400).json({
+        success: false,
+        error: `Ocorrência #${cleanItemId} possui tipo '${dbItem.type}' e não é um item PERDIDO/PERDA.`,
+      });
+    }
+
+    // 3. Prevent duplicate Discord notification spam
+    if (dbItem.discordNotified === true) {
+      return res.json({
+        success: true,
+        message: "Item já notificado anteriormente no canal #novas-perdas.",
+        itemId: cleanItemId,
+        alreadyNotified: true,
+      });
+    }
+
+    // 4. Sanitize and prepare verified item data
+    const sanitizedItem = {
+      id: cleanItemId,
+      title: String(dbItem.title || "").trim().substring(0, 100),
+      description: String(dbItem.description || "").trim().substring(0, 1000),
+      category: String(dbItem.category || "Outros").trim().substring(0, 60),
+      location: String(dbItem.location || "Campus IFPR").trim().substring(0, 120),
+      status: String(dbItem.status || "PERDIDO").trim(),
+      date: String(dbItem.date || new Date().toISOString().split("T")[0]).trim(),
+      color: dbItem.color ? String(dbItem.color).trim().substring(0, 50) : undefined,
+      brand: dbItem.brand ? String(dbItem.brand).trim().substring(0, 60) : undefined,
+      imageUrl: (dbItem.imageUrl && (dbItem.imageUrl.startsWith("http://") || dbItem.imageUrl.startsWith("https://"))) ? dbItem.imageUrl : undefined,
+      qrCodeId: dbItem.qrCodeId ? String(dbItem.qrCodeId).trim() : undefined,
+      registeredByName: dbItem.registeredByName ? String(dbItem.registeredByName).trim() : undefined,
+      registeredByRole: dbItem.registeredByRole ? String(dbItem.registeredByRole).trim() : undefined,
+      createdAt: dbItem.createdAt || new Date().toISOString(),
+      updatedAt: dbItem.updatedAt || undefined,
+      type: "PERDIDO",
+    };
+
+    // Mark as notified to prevent duplicate calls
+    docSnap.ref.update({
+      discordNotified: true,
+      discordNotifiedAt: new Date().toISOString(),
+    }).catch(() => {});
+
     // Envio assíncrono e resiliente
-    sendNovaPerdaToDiscord(item).catch((err) => {
+    sendNovaPerdaToDiscord(sanitizedItem).catch((err) => {
       console.error("[Discord Novas Perdas Background Error]:", err);
     });
 
     return res.json({
       success: true,
       message: "Notificação de nova perda encaminhada para o canal #novas-perdas.",
-      itemId: item.id,
+      itemId: cleanItemId,
     });
   } catch (error: any) {
     console.error("Erro no endpoint notify-novas-perdas:", error);
@@ -3990,9 +4175,15 @@ app.get(["/api", "/api/status"], (_req, res) => {
 
 // Global Express Error Handler Middleware
 app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
+  const sanitizedMsg = String(err?.message || err)
+    .replace(/bearer\s+[a-zA-Z0-9._-]+/gi, "Bearer [REDACTED]")
+    .replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, "[REDACTED_EMAIL]")
+    .replace(/key=[a-zA-Z0-9_-]+/gi, "key=[REDACTED]")
+    .replace(/token=[a-zA-Z0-9._-]+/gi, "token=[REDACTED]");
+
   console.error("[Global Error Handler] Exceção capturada no servidor:", {
-    message: err?.message || String(err),
-    stack: err?.stack,
+    name: err?.name,
+    message: sanitizedMsg,
     method: req.method,
     url: req.originalUrl || req.url,
     ip: getClientIp(req),
@@ -4003,7 +4194,7 @@ app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
     res.status(500).json({
       success: false,
       error: "Erro interno no servidor do Localiza+ IFPR.",
-      details: process.env.NODE_ENV !== "production" ? err?.message : undefined,
+      code: "INTERNAL_SERVER_ERROR",
     });
   }
 });

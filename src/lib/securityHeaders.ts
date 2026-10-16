@@ -73,10 +73,30 @@ export function buildContentSecurityPolicy(): string {
   );
 }
 
+export const PERMISSIONS_POLICY_DIRECTIVES = {
+  camera: ["self"],
+  microphone: ["self"],
+  geolocation: [],
+  payment: [],
+  usb: [],
+} as const;
+
+export function buildPermissionsPolicy(): string {
+  return Object.entries(PERMISSIONS_POLICY_DIRECTIVES)
+    .map(([directive, values]) => {
+      if (!values || values.length === 0) {
+        return `${directive}=()`;
+      }
+      return `${directive}=(${values.join(" ")})`;
+    })
+    .join(", ");
+}
+
 export const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-XSS-Protection": "1; mode=block",
+  "Permissions-Policy": buildPermissionsPolicy(),
   "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
   "Content-Security-Policy": buildContentSecurityPolicy(),
 } as const;

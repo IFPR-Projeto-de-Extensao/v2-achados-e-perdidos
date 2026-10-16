@@ -2,7 +2,7 @@ import React from "react";
 import { LostFoundItem } from "../types";
 import { formatDate, isItemNew } from "../lib/utils";
 import { getItemPublicUrl } from "../lib/qrCodeUtils";
-import { MapPin, Calendar, Tag, ArrowRight, ShieldCheck, QrCode, CheckSquare, Square, Printer, Sparkles } from "lucide-react";
+import { MapPin, Calendar, Tag, ArrowRight, ShieldCheck, QrCode, CheckSquare, Square, Printer, Sparkles, CameraOff } from "lucide-react";
 import { motion } from "motion/react";
 
 interface ItemCardProps {
@@ -22,6 +22,8 @@ export const ItemCard: React.FC<ItemCardProps> = ({
   onToggleSelect,
   index,
 }) => {
+  const [imgFailed, setImgFailed] = React.useState(false);
+
   const getStatusBadge = (status: LostFoundItem["status"], type: LostFoundItem["type"]) => {
     switch (status) {
       case "PERDIDO":
@@ -163,13 +165,34 @@ export const ItemCard: React.FC<ItemCardProps> = ({
       <div>
         {/* Image Container with Top Badges */}
         <div className="relative h-48 w-full bg-neutral-100 dark:bg-neutral-800 overflow-hidden">
-          <img
-            src={item.imageUrl}
-            alt={item.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            loading="lazy"
-            decoding="async"
-          />
+          {item.imageUrl &&
+          item.imageUrl.trim() !== "" &&
+          !item.imageUrl.includes("photo-1584438784894-089d6a62b8fa") &&
+          !imgFailed ? (
+            <img
+              src={item.imageUrl}
+              alt={item.title}
+              onError={() => setImgFailed(true)}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              loading="lazy"
+              decoding="async"
+            />
+          ) : (
+            <div
+              className="w-full h-full flex flex-col items-center justify-center bg-neutral-100 dark:bg-neutral-800/80 text-neutral-400 dark:text-neutral-500 p-4 text-center"
+              aria-label="Sem foto anexada"
+            >
+              <div className="w-10 h-10 rounded-2xl bg-neutral-200/70 dark:bg-neutral-700/60 flex items-center justify-center text-neutral-400 dark:text-neutral-500 mb-2">
+                <CameraOff className="w-5 h-5" />
+              </div>
+              <span className="text-xs font-semibold text-neutral-600 dark:text-neutral-300">
+                Sem foto anexada
+              </span>
+              <span className="text-[10px] text-neutral-400 dark:text-neutral-500 mt-0.5">
+                {item.category}
+              </span>
+            </div>
+          )}
 
           {/* Select Checkbox for Bulk Ops */}
           {selectable && (

@@ -2,6 +2,25 @@ import { LostFoundItem } from "../types";
 import { db } from "./firebase";
 import { doc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { safeToLower } from "./utils";
+import { CANONICAL_FALLBACK_ORIGIN } from "./shared-constants";
+
+/**
+ * Returns the effective application origin.
+ * Preserves the actual browser origin at runtime (window.location.origin)
+ * and safely falls back to the centralized institutional origin in non-browser/SSR/test contexts.
+ */
+export function getAppOrigin(): string {
+  if (
+    typeof window !== "undefined" &&
+    window.location &&
+    window.location.origin &&
+    window.location.origin !== "null" &&
+    window.location.origin !== "undefined"
+  ) {
+    return window.location.origin;
+  }
+  return CANONICAL_FALLBACK_ORIGIN;
+}
 
 /**
  * Returns the public canonical deep-link URL for an item.
@@ -10,11 +29,7 @@ import { safeToLower } from "./utils";
 export function getItemPublicUrl(item: { id: string; qrCodeId?: string; type?: string }): string {
   if (!item || !item.id) return "";
   
-  const origin =
-    typeof window !== "undefined" && window.location?.origin && window.location.origin !== "null"
-      ? window.location.origin
-      : "https://localizamais.ifpr.edu.br";
-
+  const origin = getAppOrigin();
   const tab = item.type === "PERDIDO" ? "lost" : "found";
   const params = new URLSearchParams();
   params.set("tab", tab);
@@ -56,7 +71,7 @@ export function parseQrCodeOrUrl(input: string): ParsedQrResult {
     if (rawQuery.startsWith("http://") || rawQuery.startsWith("https://")) {
       urlObj = new URL(rawQuery);
     } else if (rawQuery.startsWith("/")) {
-      urlObj = new URL(rawQuery, "https://localizamais.ifpr.edu.br");
+      urlObj = new URL(rawQuery, CANONICAL_FALLBACK_ORIGIN);
     } else if (
       rawQuery.includes("?itemId=") ||
       rawQuery.includes("&itemId=") ||
@@ -68,7 +83,7 @@ export function parseQrCodeOrUrl(input: string): ParsedQrResult {
       rawQuery.includes("&qr=")
     ) {
       urlObj = new URL(
-        `https://localizamais.ifpr.edu.br/${rawQuery.startsWith("?") ? "" : "?"}${rawQuery}`
+        `${CANONICAL_FALLBACK_ORIGIN}/${rawQuery.startsWith("?") ? "" : "?"}${rawQuery}`
       );
     }
 

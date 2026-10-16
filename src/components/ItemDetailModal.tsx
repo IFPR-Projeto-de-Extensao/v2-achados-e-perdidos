@@ -98,6 +98,7 @@ import {
   MailCheck,
   RefreshCw,
   FileSignature,
+  CameraOff,
 } from "lucide-react";
 import { DigitalSignaturePad } from "./DigitalSignaturePad";
 import { RemoteSignatureModal } from "./RemoteSignatureModal";
@@ -131,6 +132,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const ownership = usePossessionVerification(currentItem);
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [mainImageError, setMainImageError] = useState(false);
 
   // Edit Item Modal State (Authorized users: Owner, Staff, Admin)
   const [editItemModalOpen, setEditItemModalOpen] = useState(false);
@@ -1100,7 +1102,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     }
   };
 
-  const allImages = [currentItem.imageUrl, ...(currentItem.additionalImages || [])];
+  const allImages = [currentItem.imageUrl, ...(currentItem.additionalImages || [])].filter(
+    (img): img is string => Boolean(img && img.trim().length > 0)
+  );
 
   const isOwner = Boolean(
     !isGuest &&
@@ -1300,21 +1304,42 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           {/* Left Column: Image Gallery & QR Code */}
           <div className="space-y-4">
             <div className="relative h-64 sm:h-80 w-full rounded-2xl bg-neutral-100 dark:bg-neutral-800 overflow-hidden border border-neutral-200 dark:border-neutral-800">
-              <img
-                src={allImages[activeImageIndex]}
-                alt={item.title}
-                className="w-full h-full object-cover"
-              />
+              {allImages.length > 0 && allImages[activeImageIndex] && !mainImageError ? (
+                <img
+                  src={allImages[activeImageIndex]}
+                  alt={item.title}
+                  onError={() => setMainImageError(true)}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div
+                  className="w-full h-full flex flex-col items-center justify-center bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 p-6 text-center"
+                  aria-label="Sem foto anexada"
+                >
+                  <div className="w-16 h-16 rounded-2xl bg-neutral-200/70 dark:bg-neutral-700/60 flex items-center justify-center text-neutral-400 dark:text-neutral-500 mb-3">
+                    <CameraOff className="w-8 h-8" />
+                  </div>
+                  <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                    Sem foto anexada
+                  </span>
+                  <span className="text-xs text-neutral-400 dark:text-neutral-500 mt-1 max-w-xs">
+                    Este objeto foi registrado no IFPR Campus Ivaiporã sem fotografia.
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Thumbnails if multiple */}
-            {allImages.length > 1 && (
+            {allImages.length > 1 && !mainImageError && (
               <div className="flex space-x-2">
                 {allImages.map((img, idx) => (
                   <button
                     key={idx}
-                    onClick={() => setActiveImageIndex(idx)}
-                    className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all ${
+                    onClick={() => {
+                      setMainImageError(false);
+                      setActiveImageIndex(idx);
+                    }}
+                    className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
                       activeImageIndex === idx
                         ? "border-[#00843D] scale-105"
                         : "border-transparent opacity-60 hover:opacity-100"

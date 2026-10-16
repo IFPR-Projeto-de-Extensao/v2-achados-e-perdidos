@@ -1,3 +1,5 @@
+import { getAdminAuth, getAdminFirestore } from "../_lib/firebaseAdmin";
+
 function getDiscordNovasPerdasWebhookUrl(): string {
   return (
     process.env.DISCORD_NOVAS_PERDAS_WEBHOOK_URL ||
@@ -182,30 +184,140 @@ export default async function handler(req: any, res: any) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ success: false, error: "Method not allowed. Use POST." });
 
+  // 1. Mandatory Token Verification
+  const authHeader = req.headers?.authorization || req.headers?.Authorization;
+  if (!authHeader || typeof authHeader !== "string" || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({
+      success: false,
+      error: "Autenticação obrigatória. Forneça o token Bearer.",
+      code: "UNAUTHENTICATED",
+    });
+  }
+
+  const token = authHeader.split(" ")[1]?.trim();
+  if (!token) {
+    return res.status(401).json({
+      success: false,
+      error: "Token de autenticação não informado.",
+      code: "TOKEN_MISSING",
+    });
+  }
+
+  const adminAuth = getAdminAuth();
+  const adminDb = getAdminFirestore();
+  if (!adminAuth || !adminDb) {
+    return res.status(503).json({ success: false, error: "Serviço de autenticação ou banco indisponível." });
+  }
+
+  let decodedToken: any;
+  try {
+    decodedToken = await adminAuth.verifyIdToken(token);
+  } catch (err: any) {
+    return res.status(401).json({
+      success: false,
+      error: "Token de autenticação inválido ou expirado.",
+      code: "INVALID_TOKEN",
+    });
+  }
+
+  const callerUid = decodedToken.uid;
+  const isRootAdmin = decodedToken.email === "paulocauan39@gmail.com";
+  let isAdmin = isRootAdmin || decodedToken.role === "ADMIN" || decodedToken.admin === true;
+  let callerRole = decodedToken.role || "ALUNO";
+
+  try {
+    const userDoc = await adminDb.collection("users").doc(callerUid).get();
+    if (userDoc.exists) {
+      const uData = userDoc.data();
+      if (uData?.role === "ADMIN") isAdmin = true;
+      if (uData?.role) callerRole = uData.role;
+    }
+  } catch (_) {}
+
   try {
     const body = await parseBody(req);
-    const item = body?.item || body;
-    if (!item || !item.title) {
-      return res.status(400).json({ success: false, error: "Dados do item ausentes ou incompletos." });
+    const rawItem = body?.item || body;
+    const itemId = rawItem?.id || body?.itemId;
+    if (!itemId || typeof itemId !== "string" || !itemId.trim()) {
+      return res.status(400).json({ success: false, error: "Identificador do item (id) ausente ou inválido." });
     }
 
-    const normalizedType = String(item?.type || "").toUpperCase().trim();
-    if (normalizedType !== "PERDIDO" && normalizedType !== "PERDA") {
-      return res.status(200).json({
-        success: true,
-        message: `Item com tipo "${item?.type}" não é PERDIDO/PERDA. Ignorado para o canal #novas-perdas.`,
+    const cleanItemId = itemId.trim();
+
+    // 2. Query Firestore Admin to confirm real existence of item
+    const docSnap = await adminDb.collection("items").doc(cleanItemId).get();
+    if (!docSnap.exists) {
+      return res.status(404).json({ success: false, error: `Ocorrência #${cleanItemId} não encontrada no banco de dados.` });
+    }
+
+    const dbItem: any = docSnap.data();
+
+    // 3. Authorization check
+    const isAuthor = dbItem.registeredByUserId === callerUid;
+    const isStaffOrAdmin = isAdmin || callerRole === "SERVIDOR";
+
+    if (!isAuthor && !isStaffOrAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: "Acesso negado. Apenas o autor do cadastro ou servidores/administradores do IFPR podem notificar este item.",
       });
     }
 
-    const dispatched = await sendNovaPerdaToDiscord(item);
+    const normalizedType = String(dbItem.type || "").toUpperCase().trim();
+    if (normalizedType !== "PERDIDO" && normalizedType !== "PERDA") {
+      return res.status(400).json({
+        success: false,
+        error: `Ocorrência #${cleanItemId} possui tipo '${dbItem.type}' e não é um item PERDIDO/PERDA.`,
+      });
+    }
+
+    if (dbItem.discordNotified === true) {
+      return res.status(200).json({
+        success: true,
+        message: "Item já notificado anteriormente no canal #novas-perdas.",
+        itemId: cleanItemId,
+        alreadyNotified: true,
+      });
+    }
+
+    const sanitizedItem = {
+      id: cleanItemId,
+      title: String(dbItem.title || "").trim().substring(0, 100),
+      description: String(dbItem.description || "").trim().substring(0, 1000),
+      category: String(dbItem.category || "Outros").trim().substring(0, 60),
+      location: String(dbItem.location || "Campus IFPR").trim().substring(0, 120),
+      status: String(dbItem.status || "PERDIDO").trim(),
+      date: String(dbItem.date || new Date().toISOString().split("T")[0]).trim(),
+      color: dbItem.color ? String(dbItem.color).trim().substring(0, 50) : undefined,
+      brand: dbItem.brand ? String(dbItem.brand).trim().substring(0, 60) : undefined,
+      imageUrl: (dbItem.imageUrl && (dbItem.imageUrl.startsWith("http://") || dbItem.imageUrl.startsWith("https://"))) ? dbItem.imageUrl : undefined,
+      qrCodeId: dbItem.qrCodeId ? String(dbItem.qrCodeId).trim() : undefined,
+      registeredByName: dbItem.registeredByName ? String(dbItem.registeredByName).trim() : undefined,
+      registeredByRole: dbItem.registeredByRole ? String(dbItem.registeredByRole).trim() : undefined,
+      createdAt: dbItem.createdAt || new Date().toISOString(),
+      updatedAt: dbItem.updatedAt || undefined,
+      type: "PERDIDO",
+    };
+
+    docSnap.ref.update({
+      discordNotified: true,
+      discordNotifiedAt: new Date().toISOString(),
+    }).catch(() => {});
+
+    const dispatched = await sendNovaPerdaToDiscord(sanitizedItem);
     return res.status(200).json({
       success: true,
       message: "Notificação de nova perda processada.",
-      itemId: item.id,
+      itemId: cleanItemId,
       discordDispatched: dispatched,
     });
   } catch (error: any) {
-    console.error("[notify-novas-perdas API Error]:", error);
-    return res.status(500).json({ success: false, error: error?.message || "Erro ao processar notificação." });
+    console.error("[notify-novas-perdas API Error]:", error?.message || error);
+    const isProd = process.env.NODE_ENV === "production";
+    return res.status(500).json({
+      success: false,
+      error: isProd ? "Erro interno ao processar notificação." : (error?.message || "Erro ao processar notificação."),
+      code: "NOTIFICATION_ERROR",
+    });
   }
 }

@@ -123,6 +123,18 @@ service cloud.firestore {
       return resource.data;
     }
 
+    // Defensive input limits matching ITEM_FIELD_LIMITS (SEC-04 Hardening)
+    function isValidItemTextFields(data) {
+      return (!('title' in data) || (data.title is string && data.title.size() <= 100)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
+             (!('location' in data) || (data.location is string && data.location.size() <= 120)) &&
+             (!('color' in data) || data.color == null || (data.color is string && data.color.size() <= 50)) &&
+             (!('brand' in data) || data.brand == null || (data.brand is string && data.brand.size() <= 60)) &&
+             (!('contactInfo' in data) || data.contactInfo == null || (data.contactInfo is string && data.contactInfo.size() <= 150)) &&
+             (!('contact' in data) || data.contact == null || (data.contact is string && data.contact.size() <= 150)) &&
+             (!('aiPrompt' in data) || data.aiPrompt == null || (data.aiPrompt is string && data.aiPrompt.size() <= 500));
+    }
+
     // ==========================================
     // 1. Users Collection (Least Privilege & Anti-Enumeration)
     // ==========================================
@@ -204,18 +216,20 @@ service cloud.firestore {
       // Creation: ONLY Authenticated users with verified email, real UID and active account standing:
       // - Author ID must match request.auth.uid
       // - Cannot falsify author role as ADMIN or SERVIDOR unless possessing real credentials
+      // - Text fields must obey ITEM_FIELD_LIMITS (title <= 100, description <= 1000, location <= 120, etc.)
       allow create: if isEmailVerified() && 
                     isAccountActive() &&
                     !isIntruso() &&
                     incoming().registeredByUserId == request.auth.uid && 
+                    isValidItemTextFields(incoming()) &&
                     (
                       incoming().registeredByRole == 'ALUNO' ||
                       (incoming().registeredByRole == 'SERVIDOR' && isServidor()) ||
                       (incoming().registeredByRole == 'ADMIN' && isAdmin())
                     );
 
-      // Update: Admin, Servidor, or the authenticated author preserving immutable fields
-      allow update: if isAdmin() ||
+      // Update: Admin, Servidor, or the authenticated author preserving immutable fields and respecting text limits
+      allow update: if (isAdmin() ||
                        isServidor() ||
                        (
                          isSignedIn() && 
@@ -224,7 +238,7 @@ service cloud.firestore {
                          incoming().registeredByUserId == existing().registeredByUserId &&
                          incoming().createdAt == existing().createdAt &&
                          incoming().registeredByRole == existing().registeredByRole
-                       );
+                       )) && isValidItemTextFields(incoming());
 
       // Delete: Admin or the authenticated author who registered the item
       allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && existing().registeredByUserId == request.auth.uid);
@@ -237,12 +251,13 @@ service cloud.firestore {
                     isAccountActive() &&
                     !isIntruso() &&
                     incoming().registeredByUserId == request.auth.uid && 
+                    isValidItemTextFields(incoming()) &&
                     (
                       incoming().registeredByRole == 'ALUNO' ||
                       (incoming().registeredByRole == 'SERVIDOR' && isServidor()) ||
                       (incoming().registeredByRole == 'ADMIN' && isAdmin())
                     );
-      allow update: if isAdmin() ||
+      allow update: if (isAdmin() ||
                        isServidor() ||
                        (
                          isSignedIn() && 
@@ -252,7 +267,7 @@ service cloud.firestore {
                          incoming().registeredByUserId == existing().registeredByUserId &&
                          incoming().createdAt == existing().createdAt &&
                          incoming().registeredByRole == existing().registeredByRole
-                       );
+                       )) && isValidItemTextFields(incoming());
       allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && existing().registeredByUserId == request.auth.uid);
     }
 
@@ -263,12 +278,13 @@ service cloud.firestore {
                     isAccountActive() &&
                     !isIntruso() &&
                     incoming().registeredByUserId == request.auth.uid && 
+                    isValidItemTextFields(incoming()) &&
                     (
                       incoming().registeredByRole == 'ALUNO' ||
                       (incoming().registeredByRole == 'SERVIDOR' && isServidor()) ||
                       (incoming().registeredByRole == 'ADMIN' && isAdmin())
                     );
-      allow update: if isAdmin() ||
+      allow update: if (isAdmin() ||
                        isServidor() ||
                        (
                          isSignedIn() && 
@@ -278,7 +294,7 @@ service cloud.firestore {
                          incoming().registeredByUserId == existing().registeredByUserId &&
                          incoming().createdAt == existing().createdAt &&
                          incoming().registeredByRole == existing().registeredByRole
-                       );
+                       )) && isValidItemTextFields(incoming());
       allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && existing().registeredByUserId == request.auth.uid);
     }
 

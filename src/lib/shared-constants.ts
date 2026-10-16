@@ -142,3 +142,10 @@ export function sanitizeFirestoreData<T extends Record<string, any>>(data: T): R
 }
 
 export const OFFICIAL_DISCORD_INVITE_URL = "https://discord.gg/uV2qUDrHcw";
+
+/**
+ * Canonical Institutional Fallback Origin
+ * Centralized constant for generating QR Codes, deep-links and receipt verification URLs
+ * when running outside an interactive browser context (e.g. SSR, tests, background workers).
+ */
+export const CANONICAL_FALLBACK_ORIGIN = "https://localizamais.ifpr.edu.br";

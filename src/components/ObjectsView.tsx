@@ -41,6 +41,7 @@ import {
   HelpCircle,
   Mic,
   WifiOff,
+  CameraOff,
 } from "lucide-react";
 import {
   cacheSearchedItems,
@@ -1114,13 +1115,24 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                       >
                         <td className="p-4">
                           <div className="flex items-center space-x-3">
-                            <img
-                              src={item.imageUrl}
-                              alt={item.title}
-                              loading="lazy"
-                              decoding="async"
-                              className="w-10 h-10 rounded-xl object-cover border border-neutral-200 dark:border-neutral-700"
-                            />
+                            {item.imageUrl &&
+                            item.imageUrl.trim() !== "" &&
+                            !item.imageUrl.includes("photo-1584438784894-089d6a62b8fa") ? (
+                              <img
+                                src={item.imageUrl}
+                                alt={item.title}
+                                loading="lazy"
+                                decoding="async"
+                                className="w-10 h-10 rounded-xl object-cover border border-neutral-200 dark:border-neutral-700 shrink-0"
+                              />
+                            ) : (
+                              <div
+                                className="w-10 h-10 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 flex items-center justify-center shrink-0 text-neutral-400 dark:text-neutral-500"
+                                aria-label="Sem foto anexada"
+                              >
+                                <CameraOff className="w-4 h-4" />
+                              </div>
+                            )}
                             <div>
                               <div className="flex items-center gap-1.5">
                                 <p className="font-bold text-neutral-900 dark:text-white text-xs">{item.title}</p>
@@ -1229,13 +1241,24 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                     className="p-4 flex items-center justify-between hover:bg-neutral-50 dark:hover:bg-neutral-800/50 cursor-pointer transition-colors"
                   >
                     <div className="flex items-center space-x-3">
-                      <img
-                        src={item.imageUrl}
-                        alt={item.title}
-                        loading="lazy"
-                        decoding="async"
-                        className="w-12 h-12 rounded-2xl object-cover border border-neutral-200 dark:border-neutral-700"
-                      />
+                      {item.imageUrl &&
+                      item.imageUrl.trim() !== "" &&
+                      !item.imageUrl.includes("photo-1584438784894-089d6a62b8fa") ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.title}
+                          loading="lazy"
+                          decoding="async"
+                          className="w-12 h-12 rounded-2xl object-cover border border-neutral-200 dark:border-neutral-700 shrink-0"
+                        />
+                      ) : (
+                        <div
+                          className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 flex items-center justify-center shrink-0 text-neutral-400 dark:text-neutral-500"
+                          aria-label="Sem foto anexada"
+                        >
+                          <CameraOff className="w-5 h-5" />
+                        </div>
+                      )}
                       <div>
                         <div className="flex items-center gap-1.5">
                           <h4 className="font-extrabold text-xs text-neutral-900 dark:text-white">

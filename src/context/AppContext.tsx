@@ -3112,9 +3112,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         } catch (delErr: any) {
           console.warn("[Compensação Client Falhou]: Acionando endpoint de compensação no servidor...", delErr);
           try {
+            const idToken =
+              (await newlyCreatedAuthUser.getIdToken(true).catch(() => null)) ||
+              (await auth.currentUser?.getIdToken(true).catch(() => null));
             await fetch("/api/auth/compensate-failed-registration", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+              },
               body: JSON.stringify({ uid: newlyCreatedAuthUser.uid, email: cleanEmail }),
             });
             console.log("[Compensação Backend Concluída]: Conta Auth removida via Admin SDK.");
@@ -3221,6 +3227,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn("Aviso ao sair do Firebase Auth:", e);
     }
     try {
+      const activeUid =
+        auth.currentUser?.uid ||
+        (currentUser && currentUser.id !== "guest" && currentUser.id !== "guest_visitor"
+          ? currentUser.id
+          : null);
+      if (activeUid) {
+        localStorage.removeItem(`ifpr_achados_register_draft_${activeUid}`);
+      }
+      localStorage.removeItem("ifpr_achados_register_draft");
       localStorage.removeItem(LOCAL_STORAGE_CURRENT_USER_KEY);
       sessionStorage.removeItem("ifpr_pending_post_login");
     } catch (_) {}

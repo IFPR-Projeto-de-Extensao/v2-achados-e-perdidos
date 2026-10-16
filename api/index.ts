@@ -1,4 +1,15 @@
 import app from "../server";
+import { applySecurityHeaders } from "./_lib/securityHeaders";
+
+function sanitizeLogDetail(value: any): any {
+  if (!value) return value;
+  const str = typeof value === "string" ? value : String(value);
+  return str
+    .replace(/bearer\s+[a-zA-Z0-9._-]+/gi, "Bearer [REDACTED]")
+    .replace(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g, "[REDACTED_EMAIL]")
+    .replace(/key=[a-zA-Z0-9_-]+/gi, "key=[REDACTED]")
+    .replace(/token=[a-zA-Z0-9._-]+/gi, "token=[REDACTED]");
+}
 
 export default async function handler(req: any, res: any) {
   // 1. Recover the true original request URL
@@ -75,23 +86,26 @@ export default async function handler(req: any, res: any) {
       app(req, res, (err: any) => {
         if (err) {
           console.error("[Vercel Serverless Express Error]:", {
-            error: err?.message || String(err),
-            stack: err?.stack,
+            error: sanitizeLogDetail(err?.message || String(err)),
+            name: err?.name,
             method: req.method,
             url: req.url,
           });
           if (!res.headersSent) {
+            applySecurityHeaders(res);
             res.statusCode = 500;
             res.setHeader("Content-Type", "application/json");
             res.end(
               JSON.stringify({
                 success: false,
-                error: "Erro interno no servidor: " + (err?.message || String(err)),
+                error: "Erro interno no servidor ao processar requisição.",
+                code: "INTERNAL_SERVER_ERROR",
               })
             );
           }
         } else if (!res.headersSent) {
           // If Express reached the end of the router without sending a response (404)
+          applySecurityHeaders(res);
           res.statusCode = 404;
           res.setHeader("Content-Type", "application/json");
           res.end(
@@ -104,14 +118,19 @@ export default async function handler(req: any, res: any) {
         safeResolve();
       });
     } catch (handlerErr: any) {
-      console.error("[Vercel Serverless Fatal Invocation Error]:", handlerErr);
+      console.error("[Vercel Serverless Fatal Invocation Error]:", {
+        error: sanitizeLogDetail(handlerErr?.message || String(handlerErr)),
+        name: handlerErr?.name,
+      });
       if (!res.headersSent) {
+        applySecurityHeaders(res);
         res.statusCode = 500;
         res.setHeader("Content-Type", "application/json");
         res.end(
           JSON.stringify({
             success: false,
-            error: "Erro fatal na execução da função serverless: " + (handlerErr?.message || String(handlerErr)),
+            error: "Erro interno no servidor ao processar requisição.",
+            code: "INTERNAL_SERVER_ERROR",
           })
         );
       }

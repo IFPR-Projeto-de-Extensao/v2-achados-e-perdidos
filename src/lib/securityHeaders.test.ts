@@ -5,6 +5,8 @@ import {
   SECURITY_HEADERS,
   CSP_DIRECTIVES,
   buildContentSecurityPolicy,
+  PERMISSIONS_POLICY_DIRECTIVES,
+  buildPermissionsPolicy,
 } from "./securityHeaders";
 
 describe("Security Hardening: Security Headers & Source Maps (Correção 11)", () => {
@@ -30,6 +32,29 @@ describe("Security Hardening: Security Headers & Source Maps (Correção 11)", (
 
     it("should NOT set X-Frame-Options: DENY or SAMEORIGIN which would break AI Studio iframe preview", () => {
       expect((SECURITY_HEADERS as any)["X-Frame-Options"]).toBeUndefined();
+    });
+
+    it("should enforce Permissions-Policy header matching least privilege requirements (SEC-07)", () => {
+      expect(SECURITY_HEADERS["Permissions-Policy"]).toBeDefined();
+      expect(SECURITY_HEADERS["Permissions-Policy"]).toBe(
+        "camera=(self), microphone=(self), geolocation=(), payment=(), usb=()"
+      );
+    });
+
+    it("should restrict Permissions-Policy directives to self for camera/mic and block geolocation, payment, and usb (SEC-07)", () => {
+      expect(PERMISSIONS_POLICY_DIRECTIVES.camera).toEqual(["self"]);
+      expect(PERMISSIONS_POLICY_DIRECTIVES.microphone).toEqual(["self"]);
+      expect(PERMISSIONS_POLICY_DIRECTIVES.geolocation).toEqual([]);
+      expect(PERMISSIONS_POLICY_DIRECTIVES.payment).toEqual([]);
+      expect(PERMISSIONS_POLICY_DIRECTIVES.usb).toEqual([]);
+
+      const serialized = buildPermissionsPolicy();
+      expect(serialized).toContain("camera=(self)");
+      expect(serialized).toContain("microphone=(self)");
+      expect(serialized).toContain("geolocation=()");
+      expect(serialized).toContain("payment=()");
+      expect(serialized).toContain("usb=()");
+      expect(serialized).not.toContain("*");
     });
   });
 
@@ -182,10 +207,23 @@ describe("Security Hardening: Security Headers & Source Maps (Correção 11)", (
       expect(headerMap["X-Content-Type-Options"]).toBe("nosniff");
       expect(headerMap["Referrer-Policy"]).toBe("strict-origin-when-cross-origin");
       expect(headerMap["Strict-Transport-Security"]).toBe("max-age=31536000; includeSubDomains");
+      expect(headerMap["Permissions-Policy"]).toBe("camera=(self), microphone=(self), geolocation=(), payment=(), usb=()");
       expect(headerMap["Content-Security-Policy"]).toBeDefined();
       expect(headerMap["Content-Security-Policy"]).toContain("default-src 'self'");
       expect(headerMap["Content-Security-Policy"]).toContain("https://api.dicebear.com");
       expect(headerMap["X-Frame-Options"]).toBeUndefined();
+    });
+
+    it("should verify server.ts contains consistent Permissions-Policy and security headers", () => {
+      const serverPath = path.join(process.cwd(), "server.ts");
+      expect(fs.existsSync(serverPath)).toBe(true);
+
+      const serverContent = fs.readFileSync(serverPath, "utf-8");
+      expect(serverContent).toContain(
+        'res.header("Permissions-Policy", "camera=(self), microphone=(self), geolocation=(), payment=(), usb=()");'
+      );
+      expect(serverContent).toContain('res.header("X-Content-Type-Options", "nosniff");');
+      expect(serverContent).toContain('res.header("Referrer-Policy", "strict-origin-when-cross-origin");');
     });
 
     it("should verify vite.config.ts disables sourcemaps in production builds", () => {
