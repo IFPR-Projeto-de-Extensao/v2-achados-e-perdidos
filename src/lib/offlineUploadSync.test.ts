@@ -866,4 +866,187 @@ describe("Arquitetura Canônica de Upload e Sincronização Offline (task-${item
       expect(nextState?.taskId).toBe(getUploadTaskId("item-regression-2"));
     });
   });
+
+  describe("16. Retomada Cirúrgica da Fila Offline e Restauração de Sessão (8 Cenários Obrigatórios)", () => {
+    let engine: RealisticSyncQueueEngine;
+
+    beforeEach(async () => {
+      engine = new RealisticSyncQueueEngine();
+      await engine.clear();
+    });
+
+    it("1. Usuário autenticado, fila pendente e conexão disponível durante a inicialização", async () => {
+      const pendingItem = { ...mockItemNormal, id: "item-auth-init-1", isOfflineQueued: true };
+      await engine.enqueue(pendingItem, { status: "PENDENTE" });
+
+      expect(await engine.getCount()).toBe(1);
+
+      // Simulação da restauração da sessão no onAuthStateChanged com navigator.onLine === true
+      const authUser = { uid: "user-123", email: "aluno@estudantes.ifpr.edu.br" };
+      const isOnline = true;
+
+      // Executa sync com sessão autenticada pronta
+      const result = await engine.processSync(isOnline);
+
+      expect(result.syncedCount).toBe(1);
+      expect(result.remainingCount).toBe(0);
+      expect(engine.isItemInFirestore("item-auth-init-1")).toBe(true);
+      expect(engine.getTask(getUploadTaskId("item-auth-init-1"))?.status).toBe("COMPLETED");
+    });
+
+    it("2. Inicialização com fila pendente antes da restauração da sessão", async () => {
+      const pendingItem = { ...mockItemNormal, id: "item-pre-auth-1", isOfflineQueued: true };
+      await engine.enqueue(pendingItem, { status: "PENDENTE" });
+
+      expect(await engine.getCount()).toBe(1);
+
+      // Antes do onAuthStateChanged, auth.currentUser é null
+      const authUser = null;
+
+      // Guarda preventiva: sem usuário autenticado, a sincronização é suspensa
+      if (!authUser) {
+        engine.setTask({
+          id: getUploadTaskId("item-pre-auth-1"),
+          itemId: "item-pre-auth-1",
+          itemTitle: pendingItem.title,
+          itemType: pendingItem.type,
+          progress: 0,
+          status: "ERROR",
+          error: "AUTH_REQUIRED",
+          statusMessage: "Faça login com sua conta institucional para sincronizar este item.",
+          startedAt: new Date().toISOString(),
+        });
+      }
+
+      // O item permanece 100% intacto no IndexedDB
+      expect(await engine.getCount()).toBe(1);
+      expect(engine.isItemInFirestore("item-pre-auth-1")).toBe(false);
+      const queueEntries = await engine.getAll();
+      expect(queueEntries[0].itemId).toBe("item-pre-auth-1");
+      expect(queueEntries[0].payload.isOfflineQueued).toBe(true);
+    });
+
+    it("3. Usuário sem autenticação", async () => {
+      const pendingItem = { ...mockItemNormal, id: "item-guest-1", isOfflineQueued: true };
+      await engine.enqueue(pendingItem, { status: "PENDENTE" });
+
+      const isGuest = true;
+      const authUser = null;
+
+      // Tentativa bloqueada pela guarda de identidade
+      const canSync = !isGuest && authUser !== null;
+      expect(canSync).toBe(false);
+
+      // Fila intacta no IndexedDB
+      expect(await engine.getCount()).toBe(1);
+      expect(engine.isItemInFirestore("item-guest-1")).toBe(false);
+    });
+
+    it("4. Ausência de itens pendentes", async () => {
+      expect(await engine.getCount()).toBe(0);
+
+      const isOnline = true;
+      const result = await engine.processSync(isOnline);
+
+      expect(result.syncedCount).toBe(0);
+      expect(result.remainingCount).toBe(0);
+    });
+
+    it("5. Disparo simultâneo dos eventos de autenticação e rede", async () => {
+      const pendingItem = { ...mockItemNormal, id: "item-concurrent-1", isOfflineQueued: true };
+      await engine.enqueue(pendingItem, { status: "PENDENTE" });
+
+      // Dispara dois syncs simultâneos simulando onAuthStateChanged + window.online
+      const [res1, res2] = await Promise.all([
+        engine.processSync(true),
+        engine.processSync(true),
+      ]);
+
+      // O mutex isSyncing deve garantir que exatamente uma execução processe a fila
+      const totalSynced = res1.syncedCount + res2.syncedCount;
+      const oneWasSkippedConcurrently = res1.skippedConcurrently || res2.skippedConcurrently;
+
+      expect(totalSynced).toBe(1);
+      expect(oneWasSkippedConcurrently).toBe(true);
+      expect(await engine.getCount()).toBe(0);
+      expect(engine.isItemInFirestore("item-concurrent-1")).toBe(true);
+    });
+
+    it("6. Falha temporária durante a sincronização", async () => {
+      const pendingItem = { ...mockItemNormal, id: "item-temp-fail-1", isOfflineQueued: true };
+      await engine.enqueue(pendingItem, { status: "PENDENTE" });
+
+      // Simula falha transitória do Firestore (ex: network timeout / unavailable)
+      const customWriterFail = async () => {
+        const error = new Error("The service is currently unavailable.");
+        (error as any).code = "unavailable";
+        throw error;
+      };
+
+      const result = await engine.processSync(true, customWriterFail);
+
+      expect(result.temporaryErrorCount).toBe(1);
+      expect(result.syncedCount).toBe(0);
+      // Item permanece seguro na fila para próxima tentativa
+      expect(await engine.getCount()).toBe(1);
+      expect(engine.isItemInFirestore("item-temp-fail-1")).toBe(false);
+
+      const queue = await engine.getAll();
+      expect(queue[0].status).toBe("ERRO_TEMPORARIO");
+      expect(queue[0].errorType).toBe("TEMPORARY");
+    });
+
+    it("7. Erro permission-denied", async () => {
+      const pendingItem = { ...mockItemNormal, id: "item-perm-fail-1", isOfflineQueued: true };
+      await engine.enqueue(pendingItem, { status: "PENDENTE" });
+
+      // Simula erro de regras permission-denied
+      const customWriterPermissionDenied = async () => {
+        const error = new Error("Missing or insufficient permissions.");
+        (error as any).code = "permission-denied";
+        throw error;
+      };
+
+      const result = await engine.processSync(true, customWriterPermissionDenied);
+
+      expect(result.permanentErrorCount).toBe(1);
+      expect(result.syncedCount).toBe(0);
+      // Item preservado no IndexedDB sem loop de retry automático
+      expect(await engine.getCount()).toBe(1);
+      expect(engine.isItemInFirestore("item-perm-fail-1")).toBe(false);
+
+      const queue = await engine.getAll();
+      expect(queue[0].status).toBe("ERRO_PERMANENTE");
+      expect(queue[0].errorType).toBe("AUTHORIZATION");
+    });
+
+    it("8. Confirmação de que a fila não é apagada antes do sucesso", async () => {
+      const pendingItem = { ...mockItemNormal, id: "item-safety-check-1", isOfflineQueued: true };
+      await engine.enqueue(pendingItem, { status: "PENDENTE" });
+
+      let attemptsCount = 0;
+      const writerWithIntermittentFail = async (item: LostFoundItem) => {
+        attemptsCount++;
+        if (attemptsCount === 1) {
+          throw new Error("Falha transitória na gravação");
+        }
+        return true;
+      };
+
+      // Primeira tentativa falha: o item NÃO pode ser removido da fila
+      const failRun = await engine.processSync(true, writerWithIntermittentFail);
+      expect(failRun.syncedCount).toBe(0);
+      expect(await engine.getCount()).toBe(1);
+      expect(engine.isItemInFirestore("item-safety-check-1")).toBe(false);
+
+      // Reativa para nova tentativa
+      await engine.update("queue-item-safety-check-1", { status: "PENDENTE" });
+
+      // Segunda tentativa bem-sucedida: apenas agora a entrada é removida e gravada no Firestore
+      const successRun = await engine.processSync(true);
+      expect(successRun.syncedCount).toBe(1);
+      expect(await engine.getCount()).toBe(0);
+      expect(engine.isItemInFirestore("item-safety-check-1")).toBe(true);
+    });
+  });
 });

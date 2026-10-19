@@ -948,7 +948,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     getSyncQueueCount()
       .then((count) => {
         setPendingSyncCount(count);
-        if (count > 0 && typeof navigator !== "undefined" && navigator.onLine) {
+        if (count > 0 && typeof navigator !== "undefined" && navigator.onLine && auth.currentUser) {
           console.log(`[Offline Sync Boot] ${count} item(ns) pendente(s) na fila IndexedDB na inicialização. Iniciando sincronização automática...`);
           syncOfflineQueue();
         }
@@ -2292,6 +2292,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.warn("Aviso ao escutar perfil no Firestore:", e);
           }
         );
+
+        // Disparo seguro da sincronização offline após a restauração e confirmação da sessão/perfil
+        if (typeof navigator !== "undefined" && navigator.onLine) {
+          getSyncQueueCount()
+            .then((count) => {
+              if (count > 0 && !isSyncingRef.current) {
+                console.log(
+                  `[Offline Sync Auth Restore] Sessão autenticada confirmada (${fbUser.email}). ${count} item(ns) pendente(s) na fila IndexedDB. Disparando sincronização...`
+                );
+                syncOfflineQueue();
+              }
+            })
+            .catch(() => {});
+        }
       } catch (profileErr) {
         console.warn("Aviso ao sincronizar perfil do Firestore:", profileErr);
         // Reset to guest user to prevent unauthenticated/rejected access
