@@ -376,7 +376,7 @@ const MainContent: React.FC = () => {
       <AccountStatusBanner user={currentUser} />
 
       {/* Main View Container with dynamic Breadcrumbs and route hierarchy transitions */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 xs:px-4 sm:px-6 lg:px-8 pt-3 xs:pt-4 sm:pt-6 pb-24 sm:pb-20 lg:pb-12">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 xs:px-4 sm:px-6 lg:px-8 pt-3 xs:pt-4 sm:pt-6 pb-32 sm:pb-28 lg:pb-14">
         {/* Dynamic Structural Breadcrumbs Navigation */}
         <Breadcrumbs />
 

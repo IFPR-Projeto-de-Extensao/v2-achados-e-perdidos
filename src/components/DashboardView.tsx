@@ -845,69 +845,69 @@ export const DashboardView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 pb-12 animate-in fade-in duration-300">
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-[#1E1E1E] p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
-        <div>
-          <div className="flex items-center space-x-3">
-            <div className="p-3 rounded-2xl bg-[#00843D]/10 text-[#00843D]">
-              <BarChart3 className="w-7 h-7" />
+    <div className="space-y-6 pb-12 animate-in fade-in duration-300">
+      {/* Compact Operational Header & Role Segmented Control */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white/90 dark:bg-[#0f1420]/90 backdrop-blur-md p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs">
+        <div className="flex items-center space-x-3 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-[#00843D]/10 text-[#00843D] dark:text-emerald-400 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-4.5 h-4.5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center space-x-1.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              <span>Gestão Institucional</span>
+              <span>•</span>
+              <span>IFPR Campus Ivaiporã</span>
             </div>
-            <div>
-              <h1 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight">
-                Painel do Achados & Perdidos
-              </h1>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                Módulos de Gestão • IFPR Campus Ivaiporã
-              </p>
-            </div>
+            <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight truncate">
+              Painel de Operações &amp; Gestão
+            </h1>
           </div>
         </div>
 
-        {/* Role Panel Navigation */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+        {/* Role Panel Segmented Control & Actions */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           {currentUser.role === "ADMIN" ? (
-            <div className="bg-neutral-100 dark:bg-neutral-800/80 p-1.5 rounded-2xl flex items-center space-x-1 border border-neutral-200 dark:border-neutral-700">
+            <div className="bg-slate-100 dark:bg-slate-800/90 p-0.5 rounded-lg flex items-center border border-slate-200/60 dark:border-slate-700/60">
               <button
                 onClick={() => setActiveDashboardRole("ALUNO")}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all flex items-center space-x-1 cursor-pointer ${
                   activeDashboardRole === "ALUNO"
-                    ? "bg-[#00843D] text-white shadow-xs"
-                    : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+                    ? "bg-white dark:bg-slate-900 text-[#00843D] dark:text-emerald-400 shadow-xs font-bold"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 <GraduationCap className="w-3.5 h-3.5" />
-                <span>Módulo Aluno</span>
+                <span>Aluno</span>
               </button>
 
               <button
                 onClick={() => setActiveDashboardRole("SERVIDOR")}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all flex items-center space-x-1 cursor-pointer ${
                   activeDashboardRole === "SERVIDOR"
-                    ? "bg-[#00843D] text-white shadow-xs"
-                    : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+                    ? "bg-white dark:bg-slate-900 text-[#00843D] dark:text-emerald-400 shadow-xs font-bold"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 <Building2 className="w-3.5 h-3.5" />
-                <span>Módulo Servidor</span>
+                <span>Servidor</span>
               </button>
 
               <button
                 onClick={() => setActiveDashboardRole("ADMIN")}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer ${
                   activeDashboardRole === "ADMIN"
-                    ? "bg-purple-600 text-white shadow-xs"
-                    : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+                    ? "bg-[#00843D] text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                 }`}
               >
                 <Shield className="w-3.5 h-3.5" />
-                <span>Módulo Admin TI</span>
+                <span>Admin TI</span>
               </button>
             </div>
           ) : (
-            <div className="px-4 py-2 rounded-2xl bg-[#00843D]/10 text-[#00843D] border border-[#00843D]/20 text-xs font-black flex items-center space-x-2">
-              <UserCheck className="w-4 h-4" />
-              <span>Painel do {currentUser.role} ({currentUser.name})</span>
+            <div className="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium flex items-center space-x-2 border border-slate-200 dark:border-slate-700">
+              <UserCheck className="w-3.5 h-3.5 text-[#00843D]" />
+              <span>Painel: {currentUser.role}</span>
             </div>
           )}
 
@@ -918,10 +918,10 @@ export const DashboardView: React.FC = () => {
               type="button"
               aria-label="Exportar relatório completo de itens em CSV"
               title="Download do Relatório Completo de Achados & Perdidos (CSV)"
-              className="px-4 py-2 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold transition-all flex items-center justify-center space-x-2 shadow-xs cursor-pointer"
+              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs"
             >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Exportar Base (CSV)</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-[#00843D]" />
+              <span>Exportar CSV</span>
             </button>
           )}
         </div>
@@ -1067,23 +1067,27 @@ export const DashboardView: React.FC = () => {
             </button>
           </div>
 
-          {/* Servidor Summary Metrics (RNF03 Responsive CSS Grid) */}
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
-            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-1">
-              <span className="text-[11px] font-bold text-neutral-500 uppercase">Total de Itens</span>
-              <p className="text-2xl font-black text-neutral-900 dark:text-white">{totalItems}</p>
+          {/* Servidor Summary Metrics */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-white/95 dark:bg-[#0f1420]/95 p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total de Itens</span>
+              <p className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{totalItems}</p>
+              <p className="text-[11px] text-slate-400">Acervo acumulado</p>
             </div>
-            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-1">
-              <span className="text-[11px] font-bold text-amber-600 uppercase">Em Análise / Recepção</span>
-              <p className="text-2xl font-black text-amber-600">{inAnalysisCount}</p>
+            <div className="bg-white/95 dark:bg-[#0f1420]/95 p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-1">
+              <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">Em Análise / Recepção</span>
+              <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 tracking-tight">{inAnalysisCount}</p>
+              <p className="text-[11px] text-slate-400">Guarda na guarita</p>
             </div>
-            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-1">
-              <span className="text-[11px] font-bold text-blue-600 uppercase">Devoluções Concluídas</span>
-              <p className="text-2xl font-black text-blue-600">{returnedCount}</p>
+            <div className="bg-white/95 dark:bg-[#0f1420]/95 p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-1">
+              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">Devoluções Concluídas</span>
+              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 tracking-tight">{returnedCount}</p>
+              <p className="text-[11px] text-slate-400">Entregues aos donos</p>
             </div>
-            <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-1">
-              <span className="text-[11px] font-bold text-[#00843D] uppercase">Taxa de Sucesso</span>
-              <p className="text-2xl font-black text-[#00843D]">{successRate}%</p>
+            <div className="bg-white/95 dark:bg-[#0f1420]/95 p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-1">
+              <span className="text-[10px] font-bold text-[#00843D] dark:text-emerald-400 uppercase tracking-wider block">Taxa de Sucesso</span>
+              <p className="text-2xl font-bold text-[#00843D] dark:text-emerald-400 tracking-tight">{successRate}%</p>
+              <p className="text-[11px] text-slate-400">Resoluções no campus</p>
             </div>
           </div>
 
@@ -1223,47 +1227,73 @@ export const DashboardView: React.FC = () => {
             {/* Charts Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Chart 1: Categorias Mais Comuns */}
-              <div className="bg-neutral-50 dark:bg-neutral-900/50 p-5 rounded-3xl border border-neutral-200 dark:border-neutral-800/80 space-y-4">
+              <div className="bg-white/95 dark:bg-[#0f1420]/95 p-4 sm:p-5 rounded-xl border border-slate-200/80 dark:border-slate-800/80 space-y-3 shadow-xs">
                 <div>
-                  <h3 className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 tracking-wider">
-                    Categorias Mais Comuns (Distribuição)
+                  <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider flex items-center justify-between">
+                    <span>Categorias de Objetos</span>
+                    <span className="text-[10px] text-slate-400 font-mono font-normal">
+                      {Object.keys(categoryCounts).length} tipos mapeados
+                    </span>
                   </h3>
-                  <p className="text-[11px] text-neutral-500">
-                    Proporção de tipos de objetos perdidos e achados cadastrados
+                  <p className="text-[11px] text-slate-500">
+                    Proporção e contagem no acervo do campus
                   </p>
                 </div>
 
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={pieCategoryData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={50}
-                        outerRadius={80}
-                        paddingAngle={4}
-                        dataKey="value"
-                      >
-                        {pieCategoryData.map((_, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "#1E1E1E",
-                          borderColor: "#333",
-                          borderRadius: "12px",
-                          color: "#fff",
-                          fontSize: "12px",
-                        }}
-                      />
-                      <Legend
-                        wrapperStyle={{ fontSize: "11px", paddingTop: "10px" }}
-                        formatter={(value) => <span className="text-neutral-700 dark:text-neutral-300 font-bold">{value}</span>}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
+                {/* Compact category breakdown list + mini donut */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                  <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                    {pieCategoryData.map((cat, idx) => {
+                      const totalCount = items.length || 1;
+                      const pct = Math.round((cat.value / totalCount) * 100);
+                      return (
+                        <div key={cat.name} className="flex items-center justify-between text-xs py-1 px-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                          <div className="flex items-center space-x-2 min-w-0">
+                            <span
+                              className="w-2 h-2 rounded-full shrink-0"
+                              style={{ backgroundColor: COLORS[idx % COLORS.length] }}
+                            />
+                            <span className="text-slate-700 dark:text-slate-300 truncate text-[11px] font-medium">
+                              {cat.name}
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2 shrink-0">
+                            <span className="font-bold text-slate-900 dark:text-white text-xs">{cat.value}</span>
+                            <span className="text-[10px] text-slate-400 font-mono w-7 text-right">{pct}%</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="h-44 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={pieCategoryData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={40}
+                          outerRadius={65}
+                          paddingAngle={3}
+                          dataKey="value"
+                        >
+                          {pieCategoryData.map((_, index) => (
+                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: "#0f172a",
+                            borderColor: "#334155",
+                            borderRadius: "8px",
+                            color: "#fff",
+                            fontSize: "11px",
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               </div>
 
@@ -1623,10 +1653,10 @@ export const DashboardView: React.FC = () => {
             </div>
           ) : (
             <>
-              {/* Admin Navigation Categorized Hierarchy */}
-              <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-5 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-3">
+              {/* Admin Navigation Cohesive Toolbar */}
+              <div className="bg-white/95 dark:bg-[#0f1420]/95 backdrop-blur-md rounded-xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-3">
                 {/* Level 1: Context Categories */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 dark:border-neutral-800 pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-3">
                   <div className="flex flex-wrap items-center gap-1.5">
                     {[
                       {
@@ -1673,16 +1703,16 @@ export const DashboardView: React.FC = () => {
                               setAdminSubTab(cat.tabs[0] as any);
                             }
                           }}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer border ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             isCatActive
-                              ? "bg-neutral-900 text-white border-neutral-900 dark:bg-white dark:text-neutral-900 dark:border-white shadow-xs"
-                              : "bg-neutral-50 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-400 border-neutral-200/80 dark:border-neutral-700 hover:border-neutral-400"
+                              ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs font-bold"
+                              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60"
                           }`}
                         >
                           <Icon className="w-3.5 h-3.5" />
                           <span>{cat.label}</span>
                           {cat.badge && cat.badge > 0 ? (
-                            <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-black animate-pulse">
+                            <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
                               {cat.badge}
                             </span>
                           ) : null}
@@ -1695,42 +1725,42 @@ export const DashboardView: React.FC = () => {
                   <div className="flex items-center space-x-2 shrink-0">
                     <button
                       onClick={toggleMaintenanceMode}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all flex items-center space-x-1.5 cursor-pointer border ${
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer border ${
                         maintenanceMode
-                          ? "bg-amber-500 text-black border-amber-600 animate-pulse shadow-xs"
-                          : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-amber-500 hover:text-black hover:border-amber-500"
+                          ? "bg-amber-500 text-black border-amber-600 animate-pulse font-bold"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
                       }`}
                     >
                       <ShieldAlert className="w-3.5 h-3.5" />
-                      <span>{maintenanceMode ? "Manutenção ATIVA" : "Modo Manutenção"}</span>
+                      <span>{maintenanceMode ? "Manutenção Ativa" : "Modo Manutenção"}</span>
                     </button>
                   </div>
                 </div>
 
                 {/* Level 2: Specific Sub-Tabs of Active Category */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                  <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {/* Category: Users & Access */}
                     {(adminSubTab === "accounts" || adminSubTab === "users" || adminSubTab === "approvals") && (
                       <>
                         <button
                           onClick={() => setAdminSubTab("accounts")}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "accounts"
-                              ? "bg-emerald-600 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
-                          <ShieldAlert className="w-3.5 h-3.5 text-emerald-300" />
+                          <ShieldAlert className="w-3.5 h-3.5" />
                           <span>Gestão de Contas (Status)</span>
                         </button>
 
                         <button
                           onClick={() => setAdminSubTab("users")}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "users"
-                              ? "bg-purple-600 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
                           <Users className="w-3.5 h-3.5" />
@@ -1739,16 +1769,16 @@ export const DashboardView: React.FC = () => {
 
                         <button
                           onClick={() => setAdminSubTab("approvals")}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "approvals"
-                              ? "bg-blue-600 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
                           <GraduationCap className="w-3.5 h-3.5" />
                           <span>Aprovação (@ifpr)</span>
                           {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-black animate-pulse">
+                            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-bold">
                               {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length}
                             </span>
                           )}
@@ -1761,10 +1791,10 @@ export const DashboardView: React.FC = () => {
                       <>
                         <button
                           onClick={() => setAdminSubTab("audit")}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "audit"
-                              ? "bg-indigo-600 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
                           <History className="w-3.5 h-3.5" />
@@ -1773,10 +1803,10 @@ export const DashboardView: React.FC = () => {
 
                         <button
                           onClick={() => setAdminSubTab("health")}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "health"
-                              ? "bg-emerald-600 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
                           <Activity className="w-3.5 h-3.5" />
@@ -1785,10 +1815,10 @@ export const DashboardView: React.FC = () => {
 
                         <button
                           onClick={() => setAdminSubTab("backups")}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "backups"
-                              ? "bg-amber-600 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
                           <HardDrive className="w-3.5 h-3.5" />
@@ -1802,16 +1832,16 @@ export const DashboardView: React.FC = () => {
                       <>
                         <button
                           onClick={() => setAdminSubTab("custody_reminders")}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "custody_reminders"
-                              ? "bg-amber-600 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
-                          <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                          <AlertTriangle className="w-3.5 h-3.5" />
                           <span>Lembretes (+90 Dias)</span>
                           {itemsOver90DaysCount > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full bg-red-500 text-white text-[10px] font-black animate-pulse">
+                            <span className="px-1.5 py-0.2 rounded-full bg-red-500 text-white text-[10px] font-bold">
                               {itemsOver90DaysCount}
                             </span>
                           )}
@@ -1819,16 +1849,16 @@ export const DashboardView: React.FC = () => {
 
                         <button
                           onClick={() => setAdminSubTab("digital_returns")}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "digital_returns"
-                              ? "bg-[#00843D] text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
-                          <FileCheck2 className="w-3.5 h-3.5 text-emerald-300" />
+                          <FileCheck2 className="w-3.5 h-3.5" />
                           <span>Métricas Devoluções (D3)</span>
                           {digitalReturnedItemsCount > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-300 text-[10px] font-black">
+                            <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
                               {digitalReturnedItemsCount}
                             </span>
                           )}
@@ -1841,26 +1871,26 @@ export const DashboardView: React.FC = () => {
                       <>
                         <button
                           onClick={() => setAdminSubTab("test_batteries")}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "test_batteries"
-                              ? "bg-purple-600 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
-                          <ShieldCheck className="w-3.5 h-3.5 text-amber-300" />
+                          <ShieldCheck className="w-3.5 h-3.5" />
                           <span>Bateria de Testes QA</span>
                         </button>
 
                         <button
                           id="btn-tab-test-distribution"
                           onClick={() => setAdminSubTab("test_distribution")}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "test_distribution"
-                              ? "bg-emerald-600 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
-                          <Shuffle className="w-3.5 h-3.5 text-emerald-300" />
+                          <Shuffle className="w-3.5 h-3.5" />
                           <span>Distribuição de Testes</span>
                         </button>
                       </>
@@ -1871,10 +1901,10 @@ export const DashboardView: React.FC = () => {
                       <>
                         <button
                           onClick={() => setAdminSubTab("documents")}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "documents"
-                              ? "bg-emerald-600 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
                           <FileText className="w-3.5 h-3.5" />
@@ -1883,10 +1913,10 @@ export const DashboardView: React.FC = () => {
 
                         <button
                           onClick={() => setAdminSubTab("project_settings")}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "project_settings"
-                              ? "bg-teal-600 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
                           <Sparkles className="w-3.5 h-3.5" />
@@ -1895,22 +1925,22 @@ export const DashboardView: React.FC = () => {
 
                         <button
                           onClick={() => setAdminSubTab("ai_efficiency")}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "ai_efficiency"
-                              ? "bg-purple-700 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
-                          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                          <Sparkles className="w-3.5 h-3.5" />
                           <span>Eficiência da IA</span>
                         </button>
 
                         <button
                           onClick={() => setAdminSubTab("versions")}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "versions"
-                              ? "bg-[#00843D] text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
                           <GitBranch className="w-3.5 h-3.5" />
@@ -1933,7 +1963,7 @@ export const DashboardView: React.FC = () => {
                           setNotifyMessage("Olá! Informamos que há uma atualização referente aos seus registros no sistema do IFPR.");
                           setNotifyRelatedItemId("");
                         }}
-                        className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all flex items-center space-x-1.5 shadow-xs cursor-pointer"
+                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition-all flex items-center space-x-1.5 shadow-xs cursor-pointer"
                       >
                         <Send className="w-3.5 h-3.5" />
                         <span>Notificar Alunos</span>
@@ -1941,7 +1971,7 @@ export const DashboardView: React.FC = () => {
 
                       <button
                         onClick={() => setIsAddingUserOpen(true)}
-                        className="px-3.5 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold transition-all flex items-center space-x-1 shadow-xs cursor-pointer"
+                        className="px-3 py-1.5 rounded-lg bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold transition-all flex items-center space-x-1 shadow-xs cursor-pointer"
                       >
                         <UserCheck className="w-3.5 h-3.5" />
                         <span>+ Usuário</span>

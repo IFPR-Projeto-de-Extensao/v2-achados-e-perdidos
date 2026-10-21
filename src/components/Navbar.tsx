@@ -37,6 +37,7 @@ import {
   Settings,
   Layers,
   ExternalLink,
+  GitBranch,
 } from "lucide-react";
 
 export const Navbar: React.FC = () => {
@@ -473,209 +474,252 @@ export const Navbar: React.FC = () => {
         </div>
       </div>
 
-      {/* Mobile Drawer Menu */}
+      {/* Mobile Hierarchical Navigation Drawer */}
       {mobileMenuOpen && (
-        <div role="navigation" aria-label="Menu Móvel" className="lg:hidden border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-[#181818] px-4 pt-3 pb-6 space-y-2 animate-in slide-in-from-top-2 duration-200">
-          <button
-            onClick={() => handleNavClick("/")}
-            aria-label="Início"
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-              routeKey === "home"
-                ? "bg-[#00843D]/10 text-[#00843D] font-bold"
-                : "text-neutral-700 dark:text-neutral-200"
-            }`}
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 top-[57px] bg-slate-900/40 dark:bg-black/60 backdrop-blur-xs z-30 lg:hidden animate-in fade-in duration-150"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-hidden="true"
+          />
+
+          <div
+            role="navigation"
+            aria-label="Menu Móvel de Navegação"
+            className="lg:hidden fixed top-[57px] right-0 left-0 max-h-[calc(100vh-4.25rem)] overflow-y-auto bg-white/98 dark:bg-[#0c121e]/98 backdrop-blur-xl border-b border-slate-200/90 dark:border-slate-800/90 z-40 shadow-2xl animate-in slide-in-from-top-2 duration-200 p-4 space-y-3.5"
           >
-            <Home className="w-5 h-5 text-[#00843D]" />
-            <span>Início</span>
-          </button>
-
-          <button
-            onClick={() => handleNavClick("/buscar")}
-            aria-label="Buscar Itens"
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-              routeKey === "search"
-                ? "bg-[#00843D]/10 text-[#00843D] font-bold"
-                : "text-neutral-700 dark:text-neutral-200"
-            }`}
-          >
-            <Search className="w-5 h-5 text-[#00843D]" />
-            <span>Buscar Objetos</span>
-          </button>
-
-          <button
-            onClick={() => handleNavClick("/perdidos")}
-            aria-label="Objetos Perdidos"
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-              pathname === "/perdidos"
-                ? "bg-[#EF4444]/10 text-[#EF4444] font-bold"
-                : "text-neutral-700 dark:text-neutral-200"
-            }`}
-          >
-            <PackageSearch className="w-5 h-5 text-[#EF4444]" />
-            <span>Objetos Perdidos</span>
-          </button>
-
-          <button
-            onClick={() => handleNavClick("/encontrados")}
-            aria-label="Objetos Encontrados"
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-              pathname === "/encontrados"
-                ? "bg-[#22C55E]/10 text-[#22C55E] font-bold"
-                : "text-neutral-700 dark:text-neutral-200"
-            }`}
-          >
-            <CheckCircle2 className="w-5 h-5 text-[#22C55E]" />
-            <span>Objetos Encontrados</span>
-          </button>
-
-          <button
-            onClick={() => handleNavClick("/meus-registros")}
-            aria-label="Meus Registros"
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-              routeKey === "my_items"
-                ? "bg-[#00843D]/10 text-[#00843D] font-bold"
-                : "text-neutral-700 dark:text-neutral-200"
-            }`}
-          >
-            <Layers className="w-5 h-5 text-[#00843D]" />
-            <span>Meus Registros</span>
-          </button>
-
-          <button
-            onClick={() => handleNavClick("/analisador-ia")}
-            aria-label="Analisar Fotos com Inteligência Artificial Gemini"
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold ${
-              routeKey === "image_analyzer"
-                ? "bg-emerald-500/15 text-[#00843D] dark:text-green-400 font-extrabold"
-                : "text-emerald-700 dark:text-emerald-400"
-            }`}
-          >
-            <Sparkles className="w-5 h-5 text-amber-500 fill-amber-500" />
-            <span>Analisar Fotos com IA</span>
-          </button>
-
-          <div className="grid grid-cols-2 gap-2 pt-2">
-            <button
-              onClick={() => handleRegisterClick("PERDIDO")}
-              role="button"
-              aria-label="Cadastrar novo item perdido"
-              className="flex items-center justify-center space-x-1.5 px-3 py-2.5 rounded-xl bg-[#EF4444]/10 text-[#EF4444] font-bold text-xs border border-[#EF4444]/20"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Cadastrar Perdido</span>
-            </button>
-            <button
-              onClick={() => handleRegisterClick("ENCONTRADO")}
-              role="button"
-              aria-label="Cadastrar novo item encontrado"
-              className="flex items-center justify-center space-x-1.5 px-3 py-2.5 rounded-xl bg-[#00843D] text-white font-bold text-xs shadow-xs"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Cadastrar Encontrado</span>
-            </button>
-          </div>
-
-          {/* Admin Panel Link on Mobile */}
-          {currentUser.role === "ADMIN" && (
-            <button
-              onClick={() => handleNavClick("/admin")}
-              aria-label="Painel Administrativo do Campus"
-              className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold ${
-                routeKey === "admin"
-                  ? "bg-purple-600 text-white"
-                  : "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300"
-              }`}
-            >
-              <LayoutDashboard className="w-5 h-5" />
-              <span>Painel Administrativo (/admin)</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => handleNavClick("/suporte")}
-            role="button"
-            aria-label="Central de Suporte e Dúvidas"
-            className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-colors"
-          >
-            <LifeBuoy className="w-5 h-5" />
-            <span>Central de Suporte & Dúvidas</span>
-          </button>
-
-          <button
-            onClick={() => handleNavClick("/configuracoes")}
-            aria-label="Configurações & Preferências"
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-              routeKey === "settings"
-                ? "bg-[#00843D]/10 text-[#00843D] font-bold"
-                : "text-neutral-700 dark:text-neutral-200"
-            }`}
-          >
-            <Settings className="w-5 h-5 text-neutral-500" />
-            <span>Configurações & Preferências</span>
-          </button>
-
-          <button
-            onClick={() => handleNavClick("/perfil")}
-            aria-label={`Meu Perfil (${currentUser.role})`}
-            className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-medium ${
-              routeKey === "profile"
-                ? "bg-[#00843D]/10 text-[#00843D] font-bold"
-                : "text-neutral-700 dark:text-neutral-200"
-            }`}
-          >
-            <UserCheck className="w-5 h-5 text-[#00843D]" />
-            <span>Meu Perfil ({currentUser.role})</span>
-          </button>
-
-          {/* PWA Install Button in Mobile Menu */}
-          {!isInstalled && (
-            <button
-              onClick={() => {
-                promptInstall();
-                setMobileMenuOpen(false);
-              }}
-              role="button"
-              aria-label="Instalar aplicativo Localiza+"
-              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-bold bg-[#00843D]/10 text-[#00843D] dark:text-green-400 border border-[#00843D]/20 hover:bg-[#00843D]/20 transition-colors"
-            >
-              <div className="flex items-center space-x-3">
-                <Smartphone className="w-5 h-5" />
-                <span>Instalar App Localiza+</span>
+            {/* User Session Row */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800/80">
+              <div className="flex items-center space-x-2.5 min-w-0">
+                <img
+                  src={getSafeAvatarUrl(currentUser.avatarUrl, currentUser.name)}
+                  alt={currentUser.name}
+                  onError={(e) => handleAvatarError(e, currentUser.name)}
+                  className="w-9 h-9 rounded-full object-cover border border-[#00843D]/50 shrink-0"
+                />
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                    {currentUser.name}
+                  </p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                    {currentUser.role === "ADMIN"
+                      ? "Administrador TI • IFPR"
+                      : currentUser.role === "SERVIDOR"
+                      ? "Servidor / Portaria"
+                      : "Discente / Aluno IFPR"}
+                  </p>
+                </div>
               </div>
-              <Download className="w-4 h-4" />
-            </button>
-          )}
 
-          {(currentUser.id !== "guest_visitor" || firebaseUser) ? (
-            <button
-              onClick={() => {
-                vibrateClick();
-                logout();
-                setMobileMenuOpen(false);
-              }}
-              role="button"
-              aria-label="Sair da Conta"
-              className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-colors"
-            >
-              <LogOut className="w-5 h-5" />
-              <span>Sair da Conta ({currentUser.name})</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => {
-                vibrateClick();
-                setAuthModalOpen(true);
-                setMobileMenuOpen(false);
-              }}
-              role="button"
-              aria-label="Entrar ou criar conta"
-              className="w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl text-sm font-bold bg-[#00843D] text-white transition-colors shadow-xs"
-            >
-              <LogIn className="w-5 h-5" />
-              <span>Entrar / Cadastrar</span>
-            </button>
-          )}
-        </div>
+              {currentUser.id === "guest_visitor" && !firebaseUser ? (
+                <button
+                  onClick={() => {
+                    vibrateClick();
+                    setAuthModalOpen(true);
+                    setMobileMenuOpen(false);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold shadow-xs shrink-0 cursor-pointer transition-colors"
+                >
+                  Entrar
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    vibrateClick();
+                    logout();
+                    setMobileMenuOpen(false);
+                  }}
+                  title="Sair da conta"
+                  aria-label="Sair da conta"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors shrink-0 cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Quick Registration Row: Compact dual-action */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => handleRegisterClick("PERDIDO")}
+                className="flex items-center justify-center space-x-2 px-3 py-2 rounded-xl text-xs font-bold text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/15 border border-red-500/20 transition-all cursor-pointer"
+              >
+                <PlusCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>Perdi um Objeto</span>
+              </button>
+
+              <button
+                onClick={() => handleRegisterClick("ENCONTRADO")}
+                className="flex items-center justify-center space-x-2 px-3 py-2 rounded-xl text-xs font-bold text-[#00843D] dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/15 border border-[#00843D]/25 transition-all cursor-pointer"
+              >
+                <PlusCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>Achei um Objeto</span>
+              </button>
+            </div>
+
+            {/* Group 1: Navegação Principal */}
+            <div className="space-y-0.5">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2.5 pb-1">
+                Navegação
+              </span>
+
+              <button
+                onClick={() => handleNavClick("/buscar")}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  routeKey === "search"
+                    ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
+                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                }`}
+              >
+                <div className="flex items-center space-x-2.5">
+                  <Search className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                  <span>Catálogo de Achados & Perdidos</span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono">{items.length} itens</span>
+              </button>
+
+              <button
+                onClick={() => handleNavClick("/meus-registros")}
+                className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  routeKey === "my_items"
+                    ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
+                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                }`}
+              >
+                <Layers className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                <span>Meus Registros & Ocorrências</span>
+              </button>
+            </div>
+
+            {/* Group 2: Ferramentas Inteligentes */}
+            <div className="space-y-0.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2.5 pb-1">
+                Ferramentas do Campus
+              </span>
+
+              <button
+                onClick={() => handleNavClick("/analisador-ia")}
+                className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  routeKey === "image_analyzer"
+                    ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
+                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                }`}
+              >
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                <span>Identificador com IA Gemini</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  handleQrScannerClick();
+                }}
+                className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors"
+              >
+                <QrCode className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                <span>Leitor de QR Code</span>
+              </button>
+            </div>
+
+            {/* Group 3: Administração & Gestão (Restricted) */}
+            {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && (
+              <div className="space-y-0.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2.5 pb-1">
+                  Administração & Gestão
+                </span>
+
+                <button
+                  onClick={() => handleNavClick("/admin")}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
+                    routeKey === "admin"
+                      ? "bg-[#00843D] text-white"
+                      : "text-[#00843D] dark:text-emerald-400 hover:bg-emerald-500/10"
+                  }`}
+                >
+                  <div className="flex items-center space-x-2.5">
+                    <LayoutDashboard className="w-4 h-4" />
+                    <span>Painel Administrativo Institucional</span>
+                  </div>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-700/20 dark:bg-emerald-400/20">
+                    {currentUser.role}
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {/* Group 4: Conta, Suporte & Sistema */}
+            <div className="space-y-0.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2.5 pb-1">
+                Conta & Apoio
+              </span>
+
+              <button
+                onClick={() => handleNavClick("/perfil")}
+                className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  routeKey === "profile"
+                    ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
+                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                }`}
+              >
+                <UserCheck className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                <span>Meu Perfil</span>
+              </button>
+
+              <button
+                onClick={() => handleNavClick("/configuracoes")}
+                className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  routeKey === "settings"
+                    ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
+                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                }`}
+              >
+                <Settings className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                <span>Configurações & Acessibilidade</span>
+              </button>
+
+              <button
+                onClick={() => handleNavClick("/suporte")}
+                className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  routeKey === "support"
+                    ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
+                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                }`}
+              >
+                <LifeBuoy className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                <span>Central de Suporte & Dúvidas</span>
+              </button>
+
+              <button
+                onClick={() => handleNavClick("/versoes")}
+                className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                  pathname === "/versoes"
+                    ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
+                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                }`}
+              >
+                <GitBranch className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                <span>Histórico de Versões</span>
+              </button>
+
+              {!isInstalled && (
+                <button
+                  onClick={() => {
+                    promptInstall();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold text-[#00843D] dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/15 transition-colors cursor-pointer"
+                >
+                  <div className="flex items-center space-x-2.5">
+                    <Smartphone className="w-4 h-4" />
+                    <span>Instalar Aplicativo (PWA)</span>
+                  </div>
+                  <Download className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       {/* Quick Support Modal */}
