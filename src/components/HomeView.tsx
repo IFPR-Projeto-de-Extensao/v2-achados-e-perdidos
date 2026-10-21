@@ -168,177 +168,206 @@ export const HomeView: React.FC = () => {
     setSemanticMode(true);
   };
 
-  return (
-    <div className="space-y-6 sm:space-y-8 lg:space-y-12 pb-10 sm:pb-16">
-      {/* HERO BANNER SECTION */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#006e33] via-[#00843D] to-[#004822] text-white p-6 sm:p-10 lg:p-12 shadow-[0_12px_36px_rgba(0,132,61,0.22)] border border-[#00843D]/40">
-        {/* Modern Depth Accents & Radial Highlights */}
-        <div className="absolute top-0 right-0 -mt-16 -mr-16 w-96 h-96 bg-white/12 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -mb-16 -ml-16 w-80 h-80 bg-black/25 rounded-full blur-2xl pointer-events-none" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.12),transparent_60%)] pointer-events-none" />
-        <div className="absolute inset-0 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:24px_24px] opacity-10 pointer-events-none" />
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [statusFilter, setStatusFilter] = useState<"TODOS" | "PERDIDO" | "ENCONTRADO" | "DEVOLVIDO">("TODOS");
 
-        <div className="relative z-10 grid grid-cols-1 md:grid-cols-12 gap-6 sm:gap-8 lg:gap-12 items-center">
-          <div className="md:col-span-8 space-y-4 sm:space-y-6">
-            <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-bold text-white shadow-xs">
+  const totalLost = items.filter((i) => i.type === "PERDIDO" || i.status === "PERDIDO").length;
+
+  const finalHomeItems = statusFilter === "TODOS"
+    ? displayedItems
+    : displayedItems.filter((i) =>
+        statusFilter === "DEVOLVIDO"
+          ? i.status === "DEVOLVIDO"
+          : i.type === statusFilter || i.status === statusFilter
+      );
+
+  return (
+    <div className="space-y-8 sm:space-y-10 pb-16">
+      {/* 1. ARCHITECTURAL HERO & LIVE CAMPUS MONITOR */}
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        {/* Left Wing (7 Cols): Institutional Statement & Action Tiles */}
+        <div className="lg:col-span-7 rounded-3xl p-6 sm:p-8 lg:p-10 bg-gradient-to-br from-[#006e33] via-[#00843D] to-[#004822] text-white shadow-[0_12px_36px_rgba(0,132,61,0.22)] border border-[#00843D]/40 flex flex-col justify-between relative overflow-hidden">
+          {/* Subtle Ambient Radial Lighting */}
+          <div className="absolute top-0 right-0 -mt-16 -mr-16 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-0 -mb-16 -ml-16 w-64 h-64 bg-black/20 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="relative z-10 space-y-4">
+            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-black uppercase tracking-wider text-emerald-100">
               <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
-              <span>IFPR Campus Ivaiporã • Sistema Oficial</span>
+              <span>IFPR • Campus Ivaiporã</span>
             </div>
 
             <div className="space-y-2">
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-[1.12]">
-                Achados &amp; Perdidos <br className="hidden sm:inline" />
-                <span className="text-emerald-200 drop-shadow-xs">Campus Ivaiporã</span>
+              <h1 className="text-2xl sm:text-4xl lg:text-[2.6rem] font-black tracking-tight leading-[1.15]">
+                Central Institucional de Achados &amp; Pertences
               </h1>
-              <p className="text-xs sm:text-base text-emerald-50/95 font-medium leading-relaxed max-w-2xl pt-1">
-                A plataforma institucional inteligente para localização, registro, cruzamento automatizado e devolução segura de pertences no campus.
+              <p className="text-xs sm:text-sm text-emerald-50/90 font-medium leading-relaxed max-w-xl">
+                Sistema oficial para registro, controle de custódia na Guarita/SEBAC, cruzamento automatizado com inteligência artificial e devolução formal aos proprietários.
+              </p>
+            </div>
+          </div>
+
+          {/* 3 Dedicated Action Tiles */}
+          <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3 pt-6 sm:pt-8">
+            {/* Tile 1: Cadastrar */}
+            <div
+              onClick={() => handleRegister("ENCONTRADO")}
+              className="p-4 rounded-2xl bg-white text-slate-900 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col justify-between group active:scale-98"
+            >
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-[#00843D]/10 text-[#00843D] flex items-center justify-center font-bold mb-3 group-hover:scale-110 transition-transform">
+                  <PlusCircle className="w-5 h-5" />
+                </div>
+                <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 leading-tight">
+                  Cadastrar Pertence
+                </h4>
+                <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                  Abra uma ocorrência oficial com protocolo e foto.
+                </p>
+              </div>
+              <div className="pt-3 flex items-center text-[11px] font-bold text-[#00843D] group-hover:translate-x-1 transition-transform">
+                <span>Registrar agora</span>
+                <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              </div>
+            </div>
+
+            {/* Tile 2: Perdi um Item */}
+            <div
+              onClick={() => handleRegister("PERDIDO")}
+              className="p-4 rounded-2xl bg-white/12 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white shadow-xs hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col justify-between group active:scale-98"
+            >
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-red-500/20 text-red-200 flex items-center justify-center font-bold mb-3 group-hover:scale-110 transition-transform border border-red-400/30">
+                  <PackageSearch className="w-5 h-5" />
+                </div>
+                <h4 className="font-extrabold text-xs sm:text-sm text-white leading-tight">
+                  Perdi um Objeto
+                </h4>
+                <p className="text-[11px] text-emerald-100/80 mt-1 leading-snug">
+                  Notifique o campus para busca e cruzamento automático.
+                </p>
+              </div>
+              <div className="pt-3 flex items-center text-[11px] font-bold text-white group-hover:translate-x-1 transition-transform">
+                <span>Relatar perda</span>
+                <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              </div>
+            </div>
+
+            {/* Tile 3: Scanner QR */}
+            <div
+              onClick={() => {
+                vibrateClick();
+                setQrScannerOpen(true);
+              }}
+              className="p-4 rounded-2xl bg-white/12 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white shadow-xs hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col justify-between group active:scale-98"
+            >
+              <div>
+                <div className="w-10 h-10 rounded-xl bg-emerald-400/20 text-emerald-200 flex items-center justify-center font-bold mb-3 group-hover:scale-110 transition-transform border border-emerald-400/30">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <h4 className="font-extrabold text-xs sm:text-sm text-white leading-tight">
+                  Escanear Etiqueta
+                </h4>
+                <p className="text-[11px] text-emerald-100/80 mt-1 leading-snug">
+                  Leitura de código QR para identificação na portaria.
+                </p>
+              </div>
+              <div className="pt-3 flex items-center text-[11px] font-bold text-emerald-200 group-hover:translate-x-1 transition-transform">
+                <span>Abrir câmera</span>
+                <ArrowRight className="w-3.5 h-3.5 ml-1" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Wing (5 Cols): Live Campus Operational Monitor */}
+        <div className="lg:col-span-5 rounded-3xl p-6 sm:p-7 bg-white dark:bg-[#151c28] border border-slate-200/90 dark:border-slate-800 shadow-[0_4px_20px_rgba(0,0,0,0.04)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.3)] flex flex-col justify-between">
+          <div className="space-y-5">
+            {/* Monitor Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center space-x-2.5">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <div>
+                  <h3 className="font-black text-xs uppercase tracking-wider text-slate-900 dark:text-white">
+                    Monitor Operacional
+                  </h3>
+                  <span className="text-[10px] font-bold text-slate-400 block">
+                    Campus Ivaiporã • Atualizado em tempo real
+                  </span>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-black bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                PRODUÇÃO
+              </span>
+            </div>
+
+            {/* Success Rate Gauge */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold">
+                <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                  <TrendingUp className="w-4 h-4 text-[#00843D] dark:text-emerald-400" />
+                  Taxa de Efetividade de Devolução
+                </span>
+                <span className="text-lg font-black text-[#00843D] dark:text-emerald-400">
+                  {successRate}%
+                </span>
+              </div>
+              <div className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-500 to-[#00843D] rounded-full transition-all duration-700"
+                  style={{ width: `${Math.max(successRate, 6)}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Proporção de pertences formalmente devolvidos sobre o total catalogado.
               </p>
             </div>
 
-            {/* Clear Action Hierarchy */}
-            <div className="pt-2 space-y-3.5">
-              {/* Primary Action Group */}
-              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
-                <button
-                  onClick={() => handleRegister("ENCONTRADO")}
-                  className="px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-white text-[#00843D] hover:bg-emerald-50 font-extrabold text-xs sm:text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-2 cursor-pointer active:scale-98"
-                >
-                  <PlusCircle className="w-4.5 h-4.5 text-[#00843D]" />
-                  <span>Cadastrar Objeto</span>
-                </button>
-
-                <button
-                  onClick={() => navigate("/buscar")}
-                  className="px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-white/15 hover:bg-white/25 text-white font-extrabold text-xs sm:text-sm backdrop-blur-md border border-white/30 transition-all flex items-center justify-center space-x-2 cursor-pointer active:scale-98"
-                >
-                  <Search className="w-4.5 h-4.5 text-white" />
-                  <span>Explorar Acervo</span>
-                </button>
-
-                <button
-                  onClick={() => handleRegister("PERDIDO")}
-                  className="px-4.5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-red-600/95 hover:bg-red-600 text-white font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center space-x-1.5 cursor-pointer shadow-sm active:scale-98 border border-red-400/40"
-                >
-                  <PackageSearch className="w-4.5 h-4.5" />
-                  <span>Perdi um Pertence</span>
-                </button>
+            {/* 3 Metric Counts in Grid */}
+            <div className="grid grid-cols-3 gap-2.5">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800 text-center">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                  Registrados
+                </span>
+                <span className="text-xl font-black text-slate-900 dark:text-white mt-0.5 block">
+                  {totalRegistered}
+                </span>
               </div>
-
-              {/* Utility Quick Links */}
-              <div className="flex flex-wrap items-center gap-2 text-xs text-white/90 pt-1">
-                <button
-                  onClick={() => navigate("/analisador-ia")}
-                  className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-white/12 hover:bg-white/22 backdrop-blur-xs transition-colors text-white font-semibold cursor-pointer border border-white/15 shadow-2xs"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-                  <span>Analisar Foto com IA</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    vibrateClick();
-                    window.dispatchEvent(new CustomEvent("open-tour-guide"));
-                  }}
-                  className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-white/12 hover:bg-white/22 backdrop-blur-xs transition-colors text-white font-semibold cursor-pointer border border-white/15 shadow-2xs"
-                  title="Tutorial do Sistema"
-                >
-                  <Compass className="w-3.5 h-3.5 text-emerald-200" />
-                  <span>Tutorial Rápido</span>
-                </button>
+              <div className="p-3 rounded-xl bg-emerald-500/5 dark:bg-emerald-950/20 border border-emerald-500/20 text-center">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
+                  Achados
+                </span>
+                <span className="text-xl font-black text-emerald-700 dark:text-emerald-300 mt-0.5 block">
+                  {totalFound}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-blue-500/5 dark:bg-blue-950/20 border border-blue-500/20 text-center">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 block">
+                  Devolvidos
+                </span>
+                <span className="text-xl font-black text-blue-700 dark:text-blue-300 mt-0.5 block">
+                  {totalReturned}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Hero Brand Emblem IFPR */}
-          <div className="hidden md:flex md:col-span-4 items-center justify-center p-2 sm:p-4">
-            <div className="relative flex items-center justify-center w-full max-w-[150px] sm:max-w-[180px] lg:max-w-[210px] aspect-[216/292] group">
-              <div className="absolute inset-0 bg-white/10 rounded-full blur-2xl group-hover:bg-white/20 transition-all" />
-              <img
-                src="/ifpr-logo.svg"
-                alt="Instituto Federal do Paraná - IFPR"
-                className="relative w-full h-full object-contain select-none drop-shadow-2xl transition-transform hover:scale-105 duration-300"
-              />
-            </div>
+          {/* Custody Physical Location Notice */}
+          <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-start space-x-2.5 text-xs text-slate-500 dark:text-slate-400">
+            <MapPin className="w-4 h-4 text-[#00843D] dark:text-emerald-400 shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-relaxed">
+              <strong className="text-slate-800 dark:text-slate-200">Setor de Custódia Física:</strong> Guarita de Entrada Principal / SEBAC (Bloco Administrativo). Atendimento presencial das 07h às 22h.
+            </p>
           </div>
         </div>
       </section>
 
-      {/* HIGHLIGHTED STATISTICS CARDS */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-        <motion.div
-          whileHover={{ y: -3 }}
-          className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#181818] border border-neutral-200/80 dark:border-neutral-800 shadow-[0_2px_8px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.2)] hover:border-[#00843D]/40 dark:hover:border-[#00843D]/50 transition-all flex items-center space-x-3 sm:space-x-4 min-w-0"
-        >
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#00843D]/15 to-[#00843D]/5 dark:from-[#00843D]/25 dark:to-[#00843D]/10 text-[#00843D] dark:text-green-400 flex items-center justify-center shrink-0 border border-[#00843D]/20">
-            <Layers className="w-5 h-5 sm:w-6 sm:h-6" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[10px] sm:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
-              Cadastrados
-            </span>
-            <span className="text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 dark:text-white truncate block tracking-tight">
-              {totalRegistered}
-            </span>
-          </div>
-        </motion.div>
-
-        <motion.div
-          whileHover={{ y: -3 }}
-          className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#181818] border border-neutral-200/80 dark:border-neutral-800 shadow-[0_2px_8px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.2)] hover:border-[#22C55E]/40 dark:hover:border-[#22C55E]/50 transition-all flex items-center space-x-3 sm:space-x-4 min-w-0"
-        >
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#22C55E]/15 to-[#22C55E]/5 dark:from-[#22C55E]/25 dark:to-[#22C55E]/10 text-[#22C55E] dark:text-green-400 flex items-center justify-center shrink-0 border border-[#22C55E]/20">
-            <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[10px] sm:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
-              Encontrados
-            </span>
-            <span className="text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 dark:text-white truncate block tracking-tight">
-              {totalFound}
-            </span>
-          </div>
-        </motion.div>
-
-        <motion.div
-          whileHover={{ y: -3 }}
-          className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#181818] border border-neutral-200/80 dark:border-neutral-800 shadow-[0_2px_8px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.2)] hover:border-[#3B82F6]/40 dark:hover:border-[#3B82F6]/50 transition-all flex items-center space-x-3 sm:space-x-4 min-w-0"
-        >
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#3B82F6]/15 to-[#3B82F6]/5 dark:from-[#3B82F6]/25 dark:to-[#3B82F6]/10 text-[#3B82F6] dark:text-blue-400 flex items-center justify-center shrink-0 border border-[#3B82F6]/20">
-            <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[10px] sm:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
-              Devolvidos
-            </span>
-            <span className="text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 dark:text-white truncate block tracking-tight">
-              {totalReturned}
-            </span>
-          </div>
-        </motion.div>
-
-        <motion.div
-          whileHover={{ y: -3 }}
-          className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#181818] border border-neutral-200/80 dark:border-neutral-800 shadow-[0_2px_8px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.2)] hover:border-amber-500/40 dark:hover:border-amber-500/50 transition-all flex items-center space-x-3 sm:space-x-4 min-w-0"
-        >
-          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-amber-500/15 to-amber-500/5 dark:from-amber-500/25 dark:to-amber-500/10 text-amber-500 flex items-center justify-center shrink-0 border border-amber-500/20">
-            <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6" />
-          </div>
-          <div className="min-w-0">
-            <span className="text-[10px] sm:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
-              Taxa de Sucesso
-            </span>
-            <span className="text-xl sm:text-2xl lg:text-3xl font-black text-[#00843D] dark:text-green-400 truncate block tracking-tight">
-              {successRate}%
-            </span>
-          </div>
-        </motion.div>
-      </section>
-
-      {/* QUICK SEARCH & GEMINI SEMANTIC SEARCH BAR */}
-      <section id="home-semantic-search-section" className="space-y-4">
+      {/* 2. UNIFIED INVENTORY SEARCH & COMMAND BAR */}
+      <section className="bg-white dark:bg-[#151c28] rounded-3xl p-5 sm:p-7 border border-slate-200/90 dark:border-slate-800 shadow-[0_4px_24px_rgba(0,0,0,0.03)] space-y-5">
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 sm:gap-4">
+          {/* Main Search Input */}
           <div className="relative flex-1">
-            <div className="absolute left-4 top-3.5 flex items-center space-x-1 text-neutral-400">
+            <div className="absolute left-4 top-3.5 flex items-center space-x-1 text-slate-400">
               {isSearchingSemantic ? (
                 <Loader2 className="w-5 h-5 text-[#00843D] animate-spin" />
               ) : semanticMode ? (
@@ -352,25 +381,15 @@ export const HomeView: React.FC = () => {
               type="text"
               value={homeSearch}
               onChange={(e) => setHomeSearch(e?.target?.value ?? "")}
-              placeholder={
-                language === "pt"
-                  ? "Busca Semântica IA: ex: 'chave azul perto da biblioteca' ou 'garrafa térmica preta'..."
-                  : "Gemini AI Semantic Search: e.g. 'blue key near library' or 'black bottle'..."
-              }
-              className={`w-full pl-12 pr-32 py-3.5 rounded-2xl bg-white dark:bg-[#181818] border text-neutral-900 dark:text-white text-sm shadow-[0_2px_8px_rgba(0,0,0,0.03)] outline-none transition-all ${
+              placeholder="Pesquisar por título, marca, cor, local no campus ou use IA Gemini..."
+              className={`w-full pl-12 pr-32 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border text-slate-900 dark:text-white text-sm outline-none transition-all ${
                 isSearchingSemantic
                   ? "border-[#00843D] ring-2 ring-[#00843D]/20"
-                  : "border-neutral-200/90 dark:border-neutral-800 focus:ring-2 focus:ring-[#00843D] focus:border-[#00843D]"
+                  : "border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-[#00843D] focus:border-[#00843D]"
               }`}
             />
-            {/* Semantic Mode & Status Badge inside input */}
+            {/* Semantic Mode Toggle Chip inside input */}
             <div className="absolute right-3 top-2.5 flex items-center space-x-1.5">
-              {isSearchingSemantic && (
-                <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold text-[#00843D] dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-lg animate-pulse border border-emerald-200 dark:border-emerald-800">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  <span>{language === "pt" ? "Processando..." : "Processing..."}</span>
-                </span>
-              )}
               <button
                 type="button"
                 onClick={() => {
@@ -380,168 +399,126 @@ export const HomeView: React.FC = () => {
                 className={`px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center space-x-1.5 transition-all border cursor-pointer ${
                   semanticMode
                     ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 shadow-2xs"
-                    : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border-neutral-200 dark:border-neutral-700"
+                    : "bg-slate-200 dark:bg-slate-800 text-slate-500 border-slate-300 dark:border-slate-700"
                 }`}
                 title="Alternar Busca Semântica por IA"
               >
-                <Sparkles className={`w-3.5 h-3.5 ${semanticMode ? "text-amber-500 fill-amber-500" : "text-neutral-400"}`} />
+                <Sparkles className={`w-3.5 h-3.5 ${semanticMode ? "text-amber-500 fill-amber-500" : "text-slate-400"}`} />
                 <span className="hidden sm:inline">IA Gemini</span>
               </button>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2 shrink-0">
+          {/* Quick Status Filter Tabs */}
+          <div className="flex items-center p-1 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 shrink-0 space-x-1 overflow-x-auto">
             <button
               onClick={() => {
                 vibrateClick();
-                setQrScannerOpen(true);
+                setStatusFilter("TODOS");
               }}
-              className="w-full md:w-auto px-5 py-3.5 rounded-2xl bg-neutral-900 text-white dark:bg-neutral-800 hover:bg-[#00843D] dark:hover:bg-[#00843D] font-extrabold text-xs flex items-center justify-center space-x-2 shrink-0 shadow-xs transition-all cursor-pointer group"
+              className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                statusFilter === "TODOS"
+                  ? "bg-white dark:bg-slate-900 text-[#00843D] dark:text-emerald-400 shadow-xs"
+                  : "text-slate-600 dark:text-slate-300 hover:text-slate-900"
+              }`}
             >
-              <QrCode className="w-4 h-4 text-emerald-400 group-hover:text-white transition-colors" />
-              <span>{language === "pt" ? "Escanear Etiqueta QR" : "Scan QR Label"}</span>
+              Todos ({items.length})
+            </button>
+            <button
+              onClick={() => {
+                vibrateClick();
+                setStatusFilter("PERDIDO");
+              }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                statusFilter === "PERDIDO"
+                  ? "bg-red-500 text-white shadow-xs"
+                  : "text-slate-600 dark:text-slate-300 hover:text-red-500"
+              }`}
+            >
+              Perdidos ({totalLost})
+            </button>
+            <button
+              onClick={() => {
+                vibrateClick();
+                setStatusFilter("ENCONTRADO");
+              }}
+              className={`px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                statusFilter === "ENCONTRADO"
+                  ? "bg-emerald-600 text-white shadow-xs"
+                  : "text-slate-600 dark:text-slate-300 hover:text-emerald-600"
+              }`}
+            >
+              Achados ({totalFound})
             </button>
           </div>
         </div>
 
-        {/* Global Error Banner for API/Network Connection Issues */}
-        <AnimatePresence>
-          {semanticError?.hasError && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
-            >
-              <div className="flex items-start sm:items-center space-x-2.5">
-                <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5 sm:mt-0">
-                  <AlertTriangle className="w-4 h-4" />
-                </div>
-                <div>
-                  <p className="font-bold text-amber-800 dark:text-amber-300">
-                    {language === "pt" ? "Aviso de Conexão Gemini AI" : "Gemini AI Connection Notice"}
-                  </p>
-                  <p className="text-neutral-600 dark:text-neutral-300">
-                    {semanticError.message}{" "}
-                    <span className="font-semibold text-neutral-700 dark:text-neutral-200">
-                      {language === "pt"
-                        ? "(Modo de busca local por palavras-chave ativo)"
-                        : "(Fallback local keyword search active)"}
-                    </span>
-                  </p>
-                </div>
-              </div>
+        {/* Categories Bar & View Mode Toggle */}
+        <div className="flex items-center justify-between gap-4 pt-1">
+          {/* Category Chips Slider */}
+          <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none flex-1">
+            {categoriesList.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => {
+                  vibrateClick();
+                  setSelectedCategory(cat);
+                }}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer active:scale-95 ${
+                  selectedCategory === cat
+                    ? "bg-[#00843D] text-white shadow-xs"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
 
-              <div className="flex items-center space-x-2 shrink-0 self-end sm:self-auto">
-                <button
-                  type="button"
-                  onClick={() => {
-                    vibrateClick();
-                    setRetryCount((c) => c + 1);
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold flex items-center space-x-1.5 transition-all shadow-xs text-xs cursor-pointer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>{language === "pt" ? "Tentar Novamente" : "Retry"}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    vibrateClick();
-                    setSemanticError(null);
-                  }}
-                  className="p-1.5 rounded-lg hover:bg-amber-500/20 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-white transition-all cursor-pointer"
-                  title="Fechar aviso"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Quick Semantic Examples Suggestions */}
-        <div className="flex items-center space-x-2 overflow-x-auto pb-1 text-xs text-neutral-500 scrollbar-none">
-          <span className="font-bold text-neutral-600 dark:text-neutral-400 whitespace-nowrap flex items-center gap-1.5">
-            <Bot className="w-3.5 h-3.5 text-[#00843D]" /> {t("semanticSearchPrompt", "Busca rápida:")}
-          </span>
-          {semanticExampleQueries.map((exQuery) => (
+          {/* View Mode Toggle: Grid vs List */}
+          <div className="hidden sm:flex items-center space-x-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800 shrink-0">
             <button
-              key={exQuery}
-              onClick={() => handleSelectExampleQuery(exQuery)}
-              className="px-3 py-1 rounded-xl bg-[#00843D]/5 dark:bg-[#00843D]/10 hover:bg-[#00843D]/15 text-[#00843D] dark:text-green-400 border border-[#00843D]/20 font-semibold whitespace-nowrap transition-all flex items-center space-x-1 cursor-pointer active:scale-95"
-            >
-              <span>{exQuery}</span>
-            </button>
-          ))}
-        </div>
-
-        {/* Category Pills Slider */}
-        <div className="flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-none">
-          {categoriesList.map((cat) => (
-            <button
-              key={cat}
               onClick={() => {
                 vibrateClick();
-                setSelectedCategory(cat);
+                setViewMode("grid");
               }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer active:scale-95 ${
-                selectedCategory === cat
-                  ? "bg-[#00843D] text-white shadow-xs"
-                  : "bg-white dark:bg-[#181818] text-neutral-600 dark:text-neutral-300 border border-neutral-200/90 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:border-[#00843D]/30"
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                viewMode === "grid"
+                  ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
+                  : "text-slate-500 hover:text-slate-900"
               }`}
+              title="Visualização em Grade"
             >
-              {cat}
+              Grade
             </button>
-          ))}
+            <button
+              onClick={() => {
+                vibrateClick();
+                setViewMode("list");
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                viewMode === "list"
+                  ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs"
+                  : "text-slate-500 hover:text-slate-900"
+              }`}
+              title="Visualização em Lista"
+            >
+              Lista
+            </button>
+          </div>
         </div>
       </section>
 
-      {/* RECENT ACTIVITY FEED WIDGET */}
-      <section>
-        <RecentActivityWidget
-          items={items}
-          notifications={notifications}
-          onSelectItem={setSelectedItemForDetail}
-        />
-      </section>
-
-      {/* RECENT / SEMANTIC ITEMS GRID */}
-      <section className="space-y-6">
+      {/* 3. INVENTORY ITEMS SHOWCASE */}
+      <section className="space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
-              {isSearchingSemantic ? (
-                <>
-                  <Loader2 className="w-5 h-5 text-[#00843D] animate-spin" />
-                  <span>{language === "pt" ? "Consultando IA Gemini..." : "Searching with Gemini AI..."}</span>
-                </>
-              ) : semanticResults && semanticResults.length > 0 && homeSearch.trim().length >= 3 ? (
-                <>
-                  <Sparkles className="w-5 h-5 text-amber-500 fill-amber-500" />
-                  <span>
-                    {language === "pt" ? "Correspondências Semânticas IA" : "AI Semantic Matches"} ({displayedItems.length})
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Zap className="w-5 h-5 text-[#00843D]" />
-                  <span>{t("recentItems", "Objetos Recentes no Campus")}</span>
-                </>
-              )}
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <Zap className="w-5 h-5 text-[#00843D]" />
+              <span>Inventário de Pertences no Campus</span>
             </h2>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              {isSearchingSemantic
-                ? language === "pt"
-                  ? "Analisando descrições, cores, marcas e locais em linguagem natural..."
-                  : "Analyzing descriptions, colors, brands, and campus locations in natural language..."
-                : semanticResults && semanticResults.length > 0 && homeSearch.trim().length >= 3
-                ? language === "pt"
-                  ? `Resultados classificados por relevância semântica no campus com o modelo ${semanticModelUsed || "Gemini"}`
-                  : `Results ranked by semantic relevance at campus with ${semanticModelUsed || "Gemini"}`
-                : language === "pt"
-                ? "Últimos itens registrados no sistema de achados e perdidos"
-                : "Latest items registered in the campus lost and found system"}
+            <p className="text-xs text-slate-500">
+              Mostrando {finalHomeItems.length} ocorrência(s) encontrada(s) no campus
             </p>
           </div>
 
@@ -550,128 +527,149 @@ export const HomeView: React.FC = () => {
               vibrateClick();
               navigate("/buscar");
             }}
-            className="text-xs font-bold text-[#00843D] dark:text-green-400 hover:underline flex items-center space-x-1"
+            className="text-xs font-bold text-[#00843D] dark:text-emerald-400 hover:underline flex items-center space-x-1 cursor-pointer"
           >
-            <span>{language === "pt" ? `Ver todos (${items.length})` : `View all (${items.length})`}</span>
+            <span>Ver acervo completo</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        {/* Visual Loading State Skeletons while Gemini is processing */}
-        {isSearchingSemantic ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-full min-w-0">
-            {[1, 2, 3].map((skeletonId) => (
+        {/* Grid or List View Mode */}
+        {finalHomeItems.length === 0 ? (
+          <div className="text-center py-14 bg-white dark:bg-[#151c28] rounded-3xl border border-slate-200/90 dark:border-slate-800 p-8 space-y-3 shadow-xs">
+            <PackageSearch className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto" />
+            <h4 className="font-extrabold text-base text-slate-700 dark:text-slate-300">
+              Nenhum pertence encontrado com estes filtros.
+            </h4>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              Tente redefinir a categoria, pesquisar por termos mais amplos ou faça um novo registro caso tenha encontrado ou perdido algo.
+            </p>
+          </div>
+        ) : viewMode === "grid" ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
+            {finalHomeItems.map((item) => (
+              <ItemCard key={item.id} item={item} onSelect={setSelectedItemForDetail} />
+            ))}
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-[#151c28] rounded-2xl border border-slate-200/90 dark:border-slate-800 overflow-hidden divide-y divide-slate-100 dark:divide-slate-800 shadow-xs">
+            {finalHomeItems.map((item) => (
               <div
-                key={skeletonId}
-                className="p-5 rounded-3xl bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-4 animate-pulse min-w-0"
+                key={item.id}
+                onClick={() => setSelectedItemForDetail(item)}
+                className="p-4 sm:p-5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group"
               >
-                <div className="h-44 rounded-2xl bg-neutral-200 dark:bg-neutral-800 w-full relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 dark:via-neutral-700/30 to-transparent animate-shimmer" />
+                <div className="flex items-center space-x-4 min-w-0">
+                  <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700">
+                    {item.imageUrl && !item.imageUrl.includes("photo-1584438784894-089d6a62b8fa") ? (
+                      <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-slate-400">
+                        <PackageSearch className="w-5 h-5" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[10px] font-bold text-[#00843D] dark:text-emerald-400">
+                        {item.id}
+                      </span>
+                      <span className="text-slate-300">·</span>
+                      <span className="text-xs font-bold text-slate-500">{item.category}</span>
+                    </div>
+                    <h4 className="font-extrabold text-sm text-slate-900 dark:text-white truncate group-hover:text-[#00843D] transition-colors">
+                      {item.title}
+                    </h4>
+                    <p className="text-xs text-slate-500 truncate flex items-center gap-1 mt-0.5">
+                      <MapPin className="w-3 h-3 text-[#00843D]" /> {item.location}
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <div className="h-4 bg-neutral-200 dark:bg-neutral-800 rounded-md w-3/4" />
-                  <div className="h-3 bg-neutral-200 dark:bg-neutral-800 rounded-md w-1/2" />
-                </div>
-                <div className="pt-2 flex items-center justify-between">
-                  <div className="h-3 bg-neutral-200 dark:bg-neutral-800 rounded-md w-1/3" />
-                  <div className="h-6 bg-neutral-200 dark:bg-neutral-800 rounded-full w-20" />
-                </div>
-                <div className="px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center space-x-2">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-spin" />
-                  <span className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
-                    {language === "pt" ? "Calculando relevância IA..." : "Calculating AI relevance..."}
+
+                <div className="flex items-center space-x-3 shrink-0">
+                  <span
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${
+                      item.type === "ENCONTRADO"
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        : "bg-red-500/10 text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {item.type}
                   </span>
+                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
                 </div>
               </div>
             ))}
           </div>
-        ) : displayedItems.length === 0 ? (
-          <div className="text-center py-12 bg-white dark:bg-[#1E1E1E] rounded-3xl border border-neutral-200 dark:border-neutral-800 p-8 space-y-3">
-            <PackageSearch className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto" />
-            <h4 className="font-bold text-base text-neutral-700 dark:text-neutral-300">
-              {language === "pt" ? "Nenhum objeto encontrado com estes termos." : "No items found matching these terms."}
-            </h4>
-            <p className="text-xs text-neutral-500">
-              {language === "pt"
-                ? "Tente pesquisar em linguagem natural (ex: 'chave azul perto da biblioteca') ou selecione outra categoria."
-                : "Try a natural language description (e.g. 'blue key near the library') or choose another category."}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-full min-w-0">
-            {displayedItems.map((item) => {
-              const semMatch = semanticResults?.find((r) => r.itemId === item.id);
-              return (
-                <div key={item.id} className="flex flex-col space-y-2 min-w-0 w-full">
-                  <ItemCard item={item} onSelect={setSelectedItemForDetail} />
-                  {semMatch && (
-                    <div className="px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-neutral-800 dark:text-neutral-200 text-xs flex items-start space-x-2">
-                      <Sparkles className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                      <div className="space-y-0.5">
-                        <div className="flex items-center space-x-2 font-bold text-[11px] text-amber-700 dark:text-amber-400">
-                          <span>Relevância IA: {semMatch.relevanceScore}%</span>
-                        </div>
-                        <p className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-tight">
-                          {semMatch.explanation}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         )}
       </section>
 
-      {/* HOW IT WORKS / AI BENEFIT SECTION */}
-      <section className="relative overflow-hidden p-6 sm:p-10 rounded-3xl bg-neutral-900 text-white space-y-6 border border-neutral-800 shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
-        <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 border-b border-neutral-800/80 pb-6">
-          <div className="space-y-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-bold border border-emerald-500/30">
-              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Diferencial Inteligente</span>
+      {/* 4. RECENT ACTIVITY STREAM */}
+      <section>
+        <RecentActivityWidget
+          items={items}
+          notifications={notifications}
+          onSelectItem={setSelectedItemForDetail}
+        />
+      </section>
+
+      {/* 5. PROTOCOLO INSTITUCIONAL IFPR (COMO FUNCIONA) */}
+      <section className="rounded-3xl p-6 sm:p-8 bg-slate-900 text-white space-y-6 border border-slate-800 shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+          <div className="space-y-1">
+            <span className="text-[10px] font-mono font-black uppercase tracking-widest text-emerald-400">
+              Protocolo Oficial IFPR
             </span>
-            <h3 className="text-xl sm:text-2xl font-black tracking-tight">Tecnologia com IA para Cruzamento Automático</h3>
+            <h3 className="text-xl sm:text-2xl font-black">
+              Como funciona o ciclo de custódia e restituição
+            </h3>
           </div>
           <button
-            onClick={() => handleRegister("PERDIDO")}
-            className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-emerald-600 text-white font-bold text-xs transition-all shadow-xs cursor-pointer active:scale-95"
+            onClick={() => handleRegister("ENCONTRADO")}
+            className="px-4 py-2 rounded-xl bg-[#00843D] hover:bg-emerald-600 text-white font-bold text-xs transition-all cursor-pointer shadow-xs active:scale-95"
           >
-            Experimentar Cadastro IA
+            Iniciar Ocorrência
           </button>
         </div>
 
-        <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 text-xs leading-relaxed text-neutral-300">
-          <div className="p-5 rounded-2xl bg-neutral-800/50 hover:bg-neutral-800/80 border border-neutral-700/60 transition-all space-y-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#00843D]/30 to-[#00843D]/10 text-emerald-400 border border-[#00843D]/30 flex items-center justify-center font-black text-sm">
-              1
-            </div>
-            <h4 className="font-extrabold text-sm text-white">Extrator Inteligente</h4>
-            <p className="text-neutral-400 leading-relaxed">
-              Ao descrever o objeto em texto livre, o modelo Gemini extrai automaticamente a categoria, cor, marca e local citado no campus.
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs leading-relaxed text-slate-300">
+          <div className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700/60 space-y-2">
+            <span className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center text-xs">
+              01
+            </span>
+            <h4 className="font-extrabold text-sm text-white">Triagem Inicial</h4>
+            <p className="text-slate-400 leading-relaxed text-[11px]">
+              O item é cadastrado no sistema com descrição minuciosa, fotos e indicação precisa do local no campus.
             </p>
           </div>
 
-          <div className="p-5 rounded-2xl bg-neutral-800/50 hover:bg-neutral-800/80 border border-neutral-700/60 transition-all space-y-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#00843D]/30 to-[#00843D]/10 text-emerald-400 border border-[#00843D]/30 flex items-center justify-center font-black text-sm">
-              2
-            </div>
-            <h4 className="font-extrabold text-sm text-white">Similaridade Textual</h4>
-            <p className="text-neutral-400 leading-relaxed">
-              O sistema compara instantaneamente a descrição com os objetos cadastrados no banco de dados e notifica caso haja correspondência.
+          <div className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700/60 space-y-2">
+            <span className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center text-xs">
+              02
+            </span>
+            <h4 className="font-extrabold text-sm text-white">Etiqueta Física QR</h4>
+            <p className="text-slate-400 leading-relaxed text-[11px]">
+              O setor de Achados gera e fixa a etiqueta física padronizada com identificador QR Code único na peça.
             </p>
           </div>
 
-          <div className="p-5 rounded-2xl bg-neutral-800/50 hover:bg-neutral-800/80 border border-neutral-700/60 transition-all space-y-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#00843D]/30 to-[#00843D]/10 text-emerald-400 border border-[#00843D]/30 flex items-center justify-center font-black text-sm">
-              3
-            </div>
-            <h4 className="font-extrabold text-sm text-white">Devolução por QR Code</h4>
-            <p className="text-neutral-400 leading-relaxed">
-              Cada item recebe uma etiqueta digital com QR Code para retirada ágil e segura no setor de Achados & Perdidos do IFPR.
+          <div className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700/60 space-y-2">
+            <span className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center text-xs">
+              03
+            </span>
+            <h4 className="font-extrabold text-sm text-white">Cruzamento por IA</h4>
+            <p className="text-slate-400 leading-relaxed text-[11px]">
+              O Gemini analisa relatos de perda e correlaciona automaticamente novos achados com seus possíveis donos.
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-800/60 border border-slate-700/60 space-y-2">
+            <span className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center text-xs">
+              04
+            </span>
+            <h4 className="font-extrabold text-sm text-white">Termo de Devolução</h4>
+            <p className="text-slate-400 leading-relaxed text-[11px]">
+              A restituição ao dono é validada na portaria com recibo oficial assinado e baixa imediata no acervo.
             </p>
           </div>
         </div>

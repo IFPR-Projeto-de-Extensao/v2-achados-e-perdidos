@@ -70,6 +70,10 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         tag: "Dark Mode & Contraste",
       },
     ],
+    stats: {
+      additionsCount: 4,
+      fixesCount: 1,
+    },
   },
   {
     version: "v1.9.45",

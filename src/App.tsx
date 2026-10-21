@@ -306,7 +306,12 @@ const MainContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F5F5] dark:bg-[#121212] text-neutral-900 dark:text-neutral-100 flex flex-col font-sans transition-colors duration-200 selection:bg-[#00843D] selection:text-white">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0B0F17] text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 selection:bg-[#00843D] selection:text-white relative">
+      {/* Ambient Institutional Lighting Mesh */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[320px] bg-gradient-to-b from-[#00843D]/6 via-[#00843D]/2 to-transparent dark:from-emerald-500/8 dark:via-emerald-500/2 dark:to-transparent blur-3xl opacity-75" />
+      </div>
+
       {/* Toast Notifications */}
       <ToastContainer />
 

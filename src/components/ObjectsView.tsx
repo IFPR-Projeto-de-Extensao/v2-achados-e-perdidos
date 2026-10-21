@@ -412,57 +412,72 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
   return (
     <div className="space-y-8 pb-16">
       {/* Title Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-neutral-200 dark:border-neutral-800 pb-5">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-neutral-900 dark:text-white">
-            Catálogo de Objetos IFPR Campus Ivaiporã
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
+        <div className="space-y-1">
+          <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-emerald-400 text-[10px] font-black uppercase tracking-wider">
+            <span>Inventário Geral • Campus Ivaiporã</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+            Catálogo Oficial de Achados &amp; Perdidos
           </h1>
-          <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
-            Pesquise, filtre e encontre itens perdidos ou encontrados no Campus Ivaiporã.
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+            Pesquise, filtre por blocos acadêmicos e acompanhe itens em custódia ou restituídos.
           </p>
         </div>
 
         {/* Filter Tabs */}
-        <div className="flex items-center space-x-1 p-1 bg-neutral-100 dark:bg-[#1E1E1E] rounded-2xl border border-neutral-200 dark:border-neutral-800">
+        <div className="flex items-center space-x-1 p-1 bg-slate-100 dark:bg-[#151c28] rounded-2xl border border-slate-200 dark:border-slate-700/80 shrink-0 overflow-x-auto">
           <button
-            onClick={() => setFilterType("TODOS")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+            onClick={() => {
+              vibrateClick();
+              setFilterType("TODOS");
+            }}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               filterType === "TODOS"
-                ? "bg-white dark:bg-neutral-800 text-[#00843D] dark:text-green-400 shadow-xs"
-                : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
+                ? "bg-white dark:bg-slate-900 text-[#00843D] dark:text-emerald-400 shadow-xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
             }`}
           >
             Todos ({activeItemsPool.length})
           </button>
 
           <button
-            onClick={() => setFilterType("PERDIDO")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+            onClick={() => {
+              vibrateClick();
+              setFilterType("PERDIDO");
+            }}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               filterType === "PERDIDO"
-                ? "bg-[#EF4444] text-white shadow-xs"
-                : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
+                ? "bg-red-500 text-white shadow-xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-red-500"
             }`}
           >
             Perdidos ({activeItemsPool.filter((i) => i.type === "PERDIDO").length})
           </button>
 
           <button
-            onClick={() => setFilterType("ENCONTRADO")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+            onClick={() => {
+              vibrateClick();
+              setFilterType("ENCONTRADO");
+            }}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               filterType === "ENCONTRADO"
-                ? "bg-[#22C55E] text-white shadow-xs"
-                : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
+                ? "bg-[#00843D] text-white shadow-xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-emerald-600"
             }`}
           >
-            Encontrados ({activeItemsPool.filter((i) => i.type === "ENCONTRADO").length})
+            Achados ({activeItemsPool.filter((i) => i.type === "ENCONTRADO").length})
           </button>
 
           <button
-            onClick={() => setFilterType("DEVOLVIDO")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+            onClick={() => {
+              vibrateClick();
+              setFilterType("DEVOLVIDO");
+            }}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               filterType === "DEVOLVIDO"
-                ? "bg-[#3B82F6] text-white shadow-xs"
-                : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
+                ? "bg-blue-600 text-white shadow-xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-blue-500"
             }`}
           >
             Devolvidos ({activeItemsPool.filter((i) => i.status === "DEVOLVIDO").length})

@@ -99,42 +99,42 @@ export const Navbar: React.FC = () => {
   };
 
   return (
-    <header role="banner" className="navbar-main-container sticky top-0 z-40 w-full border-b border-gray-200 dark:border-neutral-800 bg-white/95 dark:bg-[#181818]/95 backdrop-blur-md transition-colors duration-200">
-      {/* Top green accent border bar IFPR */}
-      <div className="h-1 w-full bg-gradient-to-r from-[#00843D] via-[#00843D] to-[#C8102E]" />
+    <header role="banner" className="navbar-main-container sticky top-0 z-40 w-full border-b border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-[#0a0f18]/90 backdrop-blur-xl transition-colors duration-200 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+      {/* Top Emerald Accent Line IFPR */}
+      <div className="h-[2.5px] w-full bg-gradient-to-r from-[#00843D] via-emerald-400 to-[#00843D]" />
 
-      <div className="max-w-7xl mx-auto px-2.5 sm:px-4 lg:px-6">
-        <div className="flex items-center justify-between h-13 sm:h-14 gap-1.5 sm:gap-2">
-          {/* Logo & Brand Name */}
-          <div className="flex items-center space-x-2 shrink-0 min-w-0">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-15 sm:h-16 gap-2 sm:gap-4">
+          {/* Brand Lockup */}
+          <div className="flex items-center space-x-3 shrink-0">
             <Link
               to="/"
-              className="flex items-center space-x-2 cursor-pointer select-none shrink-0"
+              className="flex items-center space-x-2.5 cursor-pointer select-none group"
               title="Ir para a página inicial do Localiza+ IFPR"
             >
-              <div className="relative flex items-center justify-center w-8 h-8 hover:scale-105 transition-transform shrink-0">
+              <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 group-hover:scale-105 transition-all shrink-0">
                 <img
                   src="/ifpr-logo.svg"
                   alt="IFPR Logo"
-                  className="w-full h-full object-contain select-none drop-shadow-xs"
+                  className="w-5 h-5 object-contain select-none drop-shadow-xs"
                 />
               </div>
               <div className="min-w-0">
-                <div className="flex items-center space-x-1">
-                  <span className="font-extrabold text-base sm:text-lg tracking-tight text-neutral-900 dark:text-white whitespace-nowrap">
-                    Localiza+
+                <div className="flex items-center space-x-1.5">
+                  <span className="font-black text-base sm:text-lg tracking-tight text-slate-900 dark:text-white uppercase">
+                    Localiza<span className="text-[#00843D] dark:text-emerald-400">+</span>
                   </span>
-                  <span className="px-1 py-0.2 text-[9px] font-bold rounded bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 border border-[#00843D]/20 shrink-0">
+                  <span className="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-[#00843D] text-white tracking-widest uppercase">
                     IFPR
                   </span>
                 </div>
-                <p className="text-[10px] text-neutral-500 dark:text-neutral-400 hidden xl:block truncate max-w-[150px]">
-                  Achados &amp; Perdidos
+                <p className="text-[10px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider hidden sm:block">
+                  Campus Ivaiporã
                 </p>
               </div>
             </Link>
 
-            {/* Floating Status Indicator in Navbar for Offline Mode */}
+            {/* Offline Sync Status Badge */}
             {!isOnline ? (
               <div
                 role="status"
@@ -142,18 +142,18 @@ export const Navbar: React.FC = () => {
                 title={
                   pendingSyncCount > 0
                     ? `Modo Offline ativado. ${pendingSyncCount} ocorrência(s) salva(s) aguardando sincronização.`
-                    : "Modo Offline: Registros são salvos localmente com segurança."
+                    : "Modo Offline: Registros salvos localmente com segurança."
                 }
-                className="hidden md:flex items-center space-x-1 px-1.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] font-bold shrink-0 whitespace-nowrap"
+                className="hidden md:flex items-center space-x-1.5 px-2 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold shrink-0"
               >
-                <span className="relative flex h-1.5 w-1.5">
+                <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                 </span>
                 <WifiOff className="w-3 h-3" />
-                <span className="hidden xl:inline">Offline</span>
+                <span>Offline</span>
                 {pendingSyncCount > 0 && (
-                  <span className="px-1 rounded-full bg-amber-500 text-white text-[9px]">
+                  <span className="px-1.5 rounded-full bg-amber-500 text-white text-[9px]">
                     {pendingSyncCount}
                   </span>
                 )}
@@ -165,7 +165,7 @@ export const Navbar: React.FC = () => {
                   syncOfflineQueue();
                 }}
                 title="Sincronizar dados pendentes do IndexedDB com o Firestore"
-                className="hidden md:flex items-center space-x-1 px-1.5 py-0.5 rounded-full bg-[#00843D]/10 hover:bg-[#00843D]/20 border border-[#00843D]/30 text-[#00843D] dark:text-green-400 text-[10px] font-bold transition-colors animate-pulse shrink-0 whitespace-nowrap"
+                className="hidden md:flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-[#00843D]/10 hover:bg-[#00843D]/20 border border-[#00843D]/30 text-[#00843D] dark:text-emerald-400 text-[10px] font-extrabold transition-colors animate-pulse shrink-0 cursor-pointer"
               >
                 <RefreshCw className="w-3 h-3" />
                 <span>Sincronizar ({pendingSyncCount})</span>
@@ -173,106 +173,94 @@ export const Navbar: React.FC = () => {
             ) : null}
           </div>
 
-          {/* Desktop Navigation Links - Compact, clean hierarchy, whitespace-nowrap */}
-          <nav role="navigation" aria-label="Navegação Principal do Sistema" className="hidden lg:flex items-center space-x-0.5 xl:space-x-1 shrink-0">
-            {/* Navegação principal */}
+          {/* Segmented Desktop Navigation */}
+          <nav role="navigation" aria-label="Navegação Principal do Sistema" className="hidden lg:flex items-center p-1 rounded-xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 shrink-0 space-x-0.5">
             <Link
               to="/"
-              className={`flex items-center space-x-1.5 px-2 xl:px-2.5 py-1.5 rounded-lg text-xs xl:text-sm font-semibold whitespace-nowrap transition-colors shrink-0 ${
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
                 routeKey === "home"
-                  ? "bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 font-bold"
-                  : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  ? "bg-white dark:bg-slate-900 text-[#00843D] dark:text-emerald-400 shadow-xs"
+                  : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
-              <Home className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0" />
-              <span>{t("home", "Início")}</span>
+              <Home className="w-3.5 h-3.5" />
+              <span>Início</span>
             </Link>
 
             <Link
               to="/buscar"
-              className={`flex items-center space-x-1.5 px-2 xl:px-2.5 py-1.5 rounded-lg text-xs xl:text-sm font-semibold whitespace-nowrap transition-colors shrink-0 ${
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
                 routeKey === "search"
-                  ? "bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 font-bold"
-                  : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  ? "bg-white dark:bg-slate-900 text-[#00843D] dark:text-emerald-400 shadow-xs"
+                  : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
               }`}
             >
-              <Search className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0" />
-              <span>Buscar</span>
+              <Search className="w-3.5 h-3.5" />
+              <span>Catálogo</span>
             </Link>
 
             <Link
               to="/perdidos"
-              className={`flex items-center space-x-1.5 px-2 xl:px-2.5 py-1.5 rounded-lg text-xs xl:text-sm font-semibold whitespace-nowrap transition-colors shrink-0 ${
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
                 pathname === "/perdidos"
-                  ? "bg-[#EF4444]/10 text-[#EF4444] dark:text-red-400 font-bold"
-                  : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  ? "bg-red-500/15 text-red-600 dark:text-red-400 shadow-xs"
+                  : "text-slate-600 dark:text-slate-300 hover:text-red-600"
               }`}
             >
-              <PackageSearch className="w-3.5 h-3.5 xl:w-4 xl:h-4 text-[#EF4444] shrink-0" />
-              <span>{t("lostItems", "Perdidos")}</span>
+              <PackageSearch className="w-3.5 h-3.5 text-red-500" />
+              <span>Perdidos</span>
             </Link>
 
             <Link
               to="/encontrados"
-              className={`flex items-center space-x-1.5 px-2 xl:px-2.5 py-1.5 rounded-lg text-xs xl:text-sm font-semibold whitespace-nowrap transition-colors shrink-0 ${
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
                 pathname === "/encontrados"
-                  ? "bg-[#22C55E]/10 text-[#22C55E] dark:text-green-400 font-bold"
-                  : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shadow-xs"
+                  : "text-slate-600 dark:text-slate-300 hover:text-emerald-600"
               }`}
             >
-              <CheckCircle2 className="w-3.5 h-3.5 xl:w-4 xl:h-4 text-[#22C55E] shrink-0" />
-              <span>{t("foundItems", "Encontrados")}</span>
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Achados</span>
             </Link>
 
-            {/* Divisor sutil */}
-            <div className="h-3.5 w-px bg-neutral-200 dark:bg-neutral-800 mx-0.5 shrink-0" />
-
-            {/* Ações específicas */}
             <Link
               to="/analisador-ia"
-              title="Analisar Fotos de Itens com Inteligência Artificial"
-              className={`flex items-center space-x-1 px-2 xl:px-2.5 py-1.5 rounded-lg text-xs xl:text-sm font-semibold whitespace-nowrap transition-all shrink-0 ${
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
                 routeKey === "image_analyzer"
-                  ? "bg-amber-500/15 text-amber-700 dark:text-amber-400 font-bold border border-amber-500/30"
-                  : "text-neutral-700 dark:text-neutral-300 hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400"
+                  ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 shadow-xs"
+                  : "text-slate-600 dark:text-slate-300 hover:text-amber-600"
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 xl:w-4 xl:h-4 text-amber-500 fill-amber-500 shrink-0" />
-              <span>Analisar IA</span>
+              <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+              <span>Analisador IA</span>
             </Link>
 
-            <Link
-              to="/cadastrar"
-              title="Cadastrar Novo Objeto Perdido ou Encontrado"
-              className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs xl:text-sm font-semibold whitespace-nowrap transition-colors shrink-0 ${
-                routeKey === "register"
-                  ? "bg-[#00843D] text-white shadow-xs font-bold"
-                  : "bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 hover:bg-[#00843D] hover:text-white"
-              }`}
-            >
-              <PlusCircle className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0" />
-              <span>Registrar</span>
-            </Link>
-
-            {/* Acesso administrativo */}
             {currentUser.role === "ADMIN" && (
               <Link
                 to="/admin"
-                title="Painel Administrativo do Campus"
-                className={`flex items-center space-x-1 px-2 xl:px-2.5 py-1.5 rounded-lg text-xs xl:text-sm font-semibold whitespace-nowrap transition-colors shrink-0 ${
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
                   routeKey === "admin"
-                    ? "bg-purple-600 text-white shadow-xs font-bold"
-                    : "text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-950/40"
+                    ? "bg-purple-600 text-white shadow-xs"
+                    : "text-purple-600 dark:text-purple-400 hover:bg-purple-500/10"
                 }`}
               >
-                <LayoutDashboard className="w-3.5 h-3.5 xl:w-4 xl:h-4 shrink-0" />
+                <LayoutDashboard className="w-3.5 h-3.5" />
                 <span>Admin</span>
               </Link>
             )}
           </nav>
 
-          {/* Right Action Icons & Profile Switcher */}
-          <div className="flex items-center space-x-1 sm:space-x-1.5 shrink-0">
+          {/* Right Action Cluster */}
+          <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+            {/* Primary Action CTA: Novo Registro */}
+            <Link
+              to="/cadastrar"
+              title="Cadastrar Novo Objeto Perdido ou Encontrado"
+              className="hidden sm:inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-black tracking-wide uppercase shadow-[0_2px_10px_rgba(0,132,61,0.28)] transition-all cursor-pointer active:scale-95"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Novo Registro</span>
+            </Link>
             {/* Quick Action Icons Group (Suporte, QR Code, Notificações, Tema) */}
             <div className="navbar-icons-group flex items-center space-x-1 sm:space-x-1.5 shrink-0">
               {/* Quick Support Link to /suporte - Desktop only */}
