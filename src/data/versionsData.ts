@@ -24,12 +24,60 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.45",
+    codename: "Harmonização e Reformulação Visual do Sistema com Design Limpo e Responsivo",
+    releaseDate: "20/10/2026",
+    releaseDateTime: "20 de Outubro de 2026 • 21:30 BRT",
+    type: "MINOR",
+    isCurrent: true,
+    summary: "Reformulação visual ampla e modernização da interface do Localiza+ tomando como referência arquitetural e estética a clareza do formulário de cadastro de objetos: 1) Despoluição do Hero da tela inicial (HomeView) com hierarquia objetiva de botões de ação e acesso rápido a funcionalidades secundárias; 2) Modernização dos cartões de itens (ItemCard) com metadados desencaixotados e separadores tipográficos limpos, eliminando excesso de pílulas visuais sobrepostas; 3) Reestruturação responsiva dos botões de ação e exportação no modal de detalhes do objeto (ItemDetailModal); 4) Otimização de espaçamentos e consistência visual institucional IFPR em todas as telas em conformidade com o Frontend Design Constitution; 5) Preservação integral de todas as integrações, rotas, regras de segurança do Firestore e fluxos funcionais.",
+    additions: [
+      {
+        id: "v1945-add-1",
+        title: "Harmonização Visual da Tela Inicial (HomeView)",
+        description: "Redesenho dos botões de ação e métricas da tela inicial em padrão limpo e sem poluição, com botões primários bem delimitados e ações utilitárias secundárias discretas.",
+        module: "GERAL",
+        tag: "Design & UX",
+      },
+      {
+        id: "v1945-add-2",
+        title: "Apresentação Tipográfica Desencaixotada nos Cards (ItemCard)",
+        description: "Substituição de cápsulas e pílulas estáticas repetitivas por metadados limpos com separadores tipográficos e badge único de status institucional nos cards do mural.",
+        module: "GERAL",
+        tag: "Frontend Design",
+      },
+      {
+        id: "v1945-add-3",
+        title: "Responsividade e Enquadramento Mobile de Ações no Modal",
+        description: "Reorganização em grade flexível e adaptativa dos botões de exportação e impressão de etiquetas/laudos em ItemDetailModal.",
+        module: "GERAL",
+        tag: "Mobile & Responsividade",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1945-fix-1",
+        title: "Eliminação de Poluição Visual e Sobreposição de Botões no Hero",
+        description: "Remoção de botões empilhados concorrentes no cabeçalho inicial, separando navegação direta para cadastro e busca com visual leve e institucional.",
+        module: "GERAL",
+        tag: "Polimento Visual",
+      },
+      {
+        id: "v1945-fix-2",
+        title: "Ajuste de Quebra de Botões de Ação de Etiqueta e Laudo",
+        description: "Correção do grid de 5 botões em ItemDetailModal que causava quebra e rolagem indesejada em telas de smartphones.",
+        module: "PWA",
+        tag: "Mobile UX",
+      },
+    ],
+  },
+  {
     version: "v1.9.44",
     codename: "Blindagem de Privacidade dos Rascunhos e Integridade Visual de Imagens",
     releaseDate: "16/10/2026",
     releaseDateTime: "16 de Outubro de 2026 • 00:50 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Correções pontuais de privacidade, integridade de dados e padronização visual decorrentes da auditoria complementar da v1.9.43: 1) Eliminação definitiva de imagens genéricas externas (Unsplash) gravadas como se fossem fotos reais do objeto no Firestore, adotando string vazia segura e exibindo estado visual neutro com ícone acessível 'Sem foto anexada' no mural, detalhes e lista de custódia; 2) Isolamento estrito de rascunhos de cadastro no LocalStorage por UID do usuário autenticado (ifpr_achados_register_draft_{uid}), impedindo vazamento de dados entre contas no mesmo dispositivo, bloqueando restauração anônima e limpando o formulário na troca de conta ou logout; 3) Validação sanitizadora de dados recuperados de rascunhos e expurgo preventivo de URLs externas não autênticas; 4) Centralização da URL canônica de fallback (CANONICAL_FALLBACK_ORIGIN) para geração e leitura de QR Codes deep-link; 5) Expansão da suíte de testes automatizados com cobertura para isolamento de rascunhos, ausência de imagem e links de QR Code.",
     additions: [
       {

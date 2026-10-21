@@ -171,79 +171,85 @@ export const HomeView: React.FC = () => {
   return (
     <div className="space-y-6 sm:space-y-8 lg:space-y-12 pb-10 sm:pb-16">
       {/* HERO BANNER SECTION */}
-      <section className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-gradient-to-br from-[#00843D] via-[#006e33] to-[#004f24] text-white p-4 xs:p-6 sm:p-10 lg:p-14 shadow-xl border border-[#00843D]/30">
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#00843D] via-[#006e33] to-[#004f24] text-white p-6 sm:p-10 lg:p-12 shadow-lg border border-[#00843D]/30">
         {/* Background Decorative Patterns */}
         <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-80 h-80 bg-[#C8102E]/20 rounded-full blur-2xl pointer-events-none" />
-        <div className="absolute inset-0 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:24px_24px] opacity-10" />
+        <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-80 h-80 bg-black/15 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute inset-0 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:24px_24px] opacity-10 pointer-events-none" />
 
         <div className="relative z-10 grid grid-cols-1 md:grid-cols-12 gap-6 sm:gap-8 lg:gap-12 items-center">
-          <div className="md:col-span-8 space-y-3.5 xs:space-y-4 sm:space-y-6">
-            <div className="inline-flex items-center space-x-1.5 xs:space-x-2 px-2.5 xs:px-3.5 py-1 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-[10px] xs:text-xs font-bold tracking-wide max-w-full truncate">
-              <Sparkles className="w-3.5 h-3.5 text-amber-300 shrink-0" />
-              <span className="truncate">Achados &amp; Perdidos • IFPR Campus Ivaiporã</span>
+          <div className="md:col-span-8 space-y-4 sm:space-y-5">
+            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-xl bg-white/15 backdrop-blur-md border border-white/20 text-xs font-semibold text-white/95">
+              <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
+              <span>IFPR Campus Ivaiporã • Sistema Oficial</span>
             </div>
 
-            <h1 className="text-2xl xs:text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">
+            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">
               Achados &amp; Perdidos <br className="hidden sm:inline" />
               <span className="text-emerald-200">Campus Ivaiporã</span>
             </h1>
 
-            <p className="text-xs xs:text-sm sm:text-base lg:text-lg text-emerald-50/90 font-medium leading-relaxed max-w-2xl">
-              Conectando alunos, professores e servidores do Campus Ivaiporã aos seus objetos de forma rápida, inteligente e segura.
+            <p className="text-xs sm:text-base text-emerald-50/90 font-medium leading-relaxed max-w-2xl">
+              Conectando alunos, professores e servidores aos seus objetos de forma rápida, inteligente e segura.
             </p>
 
-            {/* Action Buttons Grid on Mobile / Flex on Large Screens */}
-            <div className="pt-1 xs:pt-2 grid grid-cols-1 xs:grid-cols-2 lg:flex lg:flex-wrap items-stretch lg:items-center gap-2 xs:gap-2.5 sm:gap-3">
-              <button
-                onClick={() => navigate("/analisador-ia")}
-                className="col-span-1 xs:col-span-2 lg:col-span-auto px-4 xs:px-5 py-2.5 xs:py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center space-x-2 border border-emerald-400/30"
-              >
-                <Sparkles className="w-4 h-4 text-amber-300 fill-amber-300" />
-                <span>Analisar Foto com IA Gemini</span>
-              </button>
+            {/* Clear, Streamlined Action Hierarchy */}
+            <div className="pt-2 space-y-3">
+              {/* Primary Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                <button
+                  onClick={() => handleRegister("ENCONTRADO")}
+                  className="px-5 py-3 rounded-xl sm:rounded-2xl bg-white text-[#00843D] hover:bg-emerald-50 font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                >
+                  <PlusCircle className="w-4 h-4 text-[#00843D]" />
+                  <span>Cadastrar Objeto</span>
+                </button>
 
-              <button
-                onClick={() => handleRegister("PERDIDO")}
-                className="px-3.5 xs:px-4 py-2.5 xs:py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-[#EF4444] hover:bg-red-600 text-white font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center space-x-1.5"
-              >
-                <PackageSearch className="w-4 h-4" />
-                <span>Cadastrar Perdido</span>
-              </button>
+                <button
+                  onClick={() => navigate("/buscar")}
+                  className="px-5 py-3 rounded-xl sm:rounded-2xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs sm:text-sm backdrop-blur-md border border-white/25 transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                >
+                  <Search className="w-4 h-4" />
+                  <span>Explorar Acervo</span>
+                </button>
 
-              <button
-                onClick={() => handleRegister("ENCONTRADO")}
-                className="px-3.5 xs:px-4 py-2.5 xs:py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-white text-[#00843D] hover:bg-emerald-50 font-extrabold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center space-x-1.5"
-              >
-                <PlusCircle className="w-4 h-4" />
-                <span>Cadastrar Encontrado</span>
-              </button>
+                <button
+                  onClick={() => handleRegister("PERDIDO")}
+                  className="px-4 py-3 rounded-xl sm:rounded-2xl bg-red-600/90 hover:bg-red-600 text-white font-bold text-xs sm:text-sm transition-all flex items-center justify-center space-x-1.5 cursor-pointer shadow-sm"
+                >
+                  <PackageSearch className="w-4 h-4" />
+                  <span>Perdi um Item</span>
+                </button>
+              </div>
 
-              <button
-                onClick={() => navigate("/buscar")}
-                className="px-3.5 xs:px-4 py-2.5 xs:py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs sm:text-sm backdrop-blur-md border border-white/20 transition-all flex items-center justify-center space-x-1.5"
-              >
-                <Search className="w-3.5 h-3.5" />
-                <span>Pesquisar Todos</span>
-              </button>
+              {/* Quiet Secondary Action Utilities */}
+              <div className="flex flex-wrap items-center gap-2 text-xs text-white/80 pt-1">
+                <button
+                  onClick={() => navigate("/analisador-ia")}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-white font-medium cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Analisar Foto com IA</span>
+                </button>
 
-              <button
-                onClick={() => {
-                  vibrateClick();
-                  window.dispatchEvent(new CustomEvent("open-tour-guide"));
-                }}
-                className="col-span-1 xs:col-span-2 lg:col-span-auto px-3.5 xs:px-4 py-2.5 xs:py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-amber-400 hover:bg-amber-300 text-neutral-900 font-black text-xs sm:text-sm shadow-md transition-all flex items-center justify-center space-x-1.5 border border-amber-300"
-                title="Iniciar Tutorial Passo a Passo do Sistema"
-              >
-                <Compass className="w-3.5 h-3.5 text-neutral-950" />
-                <span>Tutorial do Sistema</span>
-              </button>
+                <button
+                  onClick={() => {
+                    vibrateClick();
+                    window.dispatchEvent(new CustomEvent("open-tour-guide"));
+                  }}
+                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-white font-medium cursor-pointer"
+                  title="Tutorial do Sistema"
+                >
+                  <Compass className="w-3.5 h-3.5 text-emerald-200" />
+                  <span>Tutorial Rápido</span>
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Hero Brand Image (Transparent IF Logo) */}
           <div className="hidden md:flex md:col-span-4 items-center justify-center p-2 sm:p-4">
-            <div className="relative flex items-center justify-center w-full max-w-[150px] sm:max-w-[180px] lg:max-w-[220px] aspect-[216/292]">
+            <div className="relative flex items-center justify-center w-full max-w-[150px] sm:max-w-[180px] lg:max-w-[200px] aspect-[216/292]">
               <img
                 src="/ifpr-logo.svg"
                 alt="Instituto Federal do Paraná - IFPR"

@@ -1436,11 +1436,20 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowRestrictedQRView(true)}
+                  className="flex-1 min-w-[110px] py-2 px-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition-all flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer"
+                >
+                  <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Modo QR</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={handleDownloadQRCodePNG}
-                  className="w-full py-2 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                  className="flex-1 min-w-[110px] py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer"
                   title="Baixar imagem PNG do QR Code em alta resolução"
                 >
                   <Download className="w-3.5 h-3.5" />
@@ -1449,38 +1458,27 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
                 <button
                   type="button"
-                  onClick={() => setShowRestrictedQRView(true)}
-                  className="w-full py-2 px-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
-                >
-                  <Eye className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Modo QR</span>
-                </button>
-
-                <button
-                  type="button"
                   onClick={handlePrintQRTag}
-                  className="w-full py-2 px-2 rounded-xl bg-white dark:bg-neutral-800 border border-[#00843D]/30 text-[#00843D] dark:text-green-400 font-bold text-xs hover:bg-[#00843D] hover:text-white transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                  className="flex-1 min-w-[100px] py-2 px-3 rounded-xl bg-white dark:bg-neutral-800 border border-[#00843D]/30 text-[#00843D] dark:text-green-400 font-bold text-xs hover:bg-[#00843D] hover:text-white transition-all flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>Etiqueta</span>
                 </button>
 
-                {/* Generate jsPDF Campus Summary Report Button */}
                 <button
                   type="button"
                   onClick={handleGenerateItemSummaryPDF}
-                  className="w-full py-2 px-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                  className="flex-1 min-w-[100px] py-2 px-3 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs transition-all flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer"
                   title="Gerar Ficha / Relatório Oficial do Campus em PDF (jsPDF)"
                 >
                   <FileText className="w-3.5 h-3.5 text-emerald-300" />
                   <span>Laudo PDF</span>
                 </button>
 
-                {/* Generate PDF Receipt Button */}
                 <button
                   type="button"
                   onClick={handlePrintReceiptPDF}
-                  className="w-full py-2 px-2 rounded-xl bg-[#00843D] text-white font-bold text-xs hover:bg-[#006e33] transition-all flex items-center justify-center space-x-1 shadow-xs cursor-pointer"
+                  className="flex-1 min-w-[100px] py-2 px-3 rounded-xl bg-[#00843D] text-white font-bold text-xs hover:bg-[#006e33] transition-all flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer"
                   title="Recibo de Devolução Individual"
                 >
                   <FileCheck className="w-3.5 h-3.5" />

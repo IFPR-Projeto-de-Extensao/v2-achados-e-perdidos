@@ -151,20 +151,20 @@ export const ItemCard: React.FC<ItemCardProps> = ({
   return (
     <motion.div
       layout="position"
-      initial={{ opacity: 0, y: 18 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.96, y: -10 }}
-      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+      exit={{ opacity: 0, scale: 0.96, y: -8 }}
+      whileHover={{ y: -3, transition: { duration: 0.2 } }}
       transition={{
-        duration: 0.32,
+        duration: 0.28,
         ease: [0.16, 1, 0.3, 1],
-        delay: index !== undefined ? Math.min(index * 0.035, 0.25) : 0,
+        delay: index !== undefined ? Math.min(index * 0.03, 0.2) : 0,
       }}
-      className="group bg-white dark:bg-[#1E1E1E] rounded-2xl border border-neutral-200/80 dark:border-neutral-800/80 overflow-hidden shadow-xs hover:shadow-xl hover:border-[#00843D]/30 dark:hover:border-[#00843D]/50 transition-all flex flex-col justify-between"
+      className="group bg-white dark:bg-[#1E1E1E] rounded-2xl border border-neutral-200/90 dark:border-neutral-800/90 overflow-hidden shadow-xs hover:shadow-lg hover:border-[#00843D]/40 dark:hover:border-[#00843D]/50 transition-all flex flex-col justify-between"
     >
       <div>
         {/* Image Container with Top Badges */}
-        <div className="relative h-48 w-full bg-neutral-100 dark:bg-neutral-800 overflow-hidden">
+        <div className="relative h-48 w-full bg-neutral-100 dark:bg-neutral-850 overflow-hidden">
           {item.imageUrl &&
           item.imageUrl.trim() !== "" &&
           !item.imageUrl.includes("photo-1584438784894-089d6a62b8fa") &&
@@ -179,10 +179,10 @@ export const ItemCard: React.FC<ItemCardProps> = ({
             />
           ) : (
             <div
-              className="w-full h-full flex flex-col items-center justify-center bg-neutral-100 dark:bg-neutral-800/80 text-neutral-400 dark:text-neutral-500 p-4 text-center"
+              className="w-full h-full flex flex-col items-center justify-center bg-neutral-50 dark:bg-neutral-900/60 text-neutral-400 dark:text-neutral-500 p-4 text-center"
               aria-label="Sem foto anexada"
             >
-              <div className="w-10 h-10 rounded-2xl bg-neutral-200/70 dark:bg-neutral-700/60 flex items-center justify-center text-neutral-400 dark:text-neutral-500 mb-2">
+              <div className="w-10 h-10 rounded-xl bg-neutral-200/70 dark:bg-neutral-800/80 flex items-center justify-center text-neutral-400 dark:text-neutral-500 mb-2">
                 <CameraOff className="w-5 h-5" />
               </div>
               <span className="text-xs font-semibold text-neutral-600 dark:text-neutral-300">
@@ -203,7 +203,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
                   e.stopPropagation();
                   onToggleSelect?.(item.id, !isSelected);
                 }}
-                className={`p-1.5 rounded-lg backdrop-blur-md border shadow-md transition-all flex items-center justify-center ${
+                className={`p-1.5 rounded-lg backdrop-blur-md border shadow-sm transition-all flex items-center justify-center ${
                   isSelected
                     ? "bg-[#00843D] text-white border-[#00843D]"
                     : "bg-black/60 text-white border-white/30 hover:bg-black/80"
@@ -217,14 +217,14 @@ export const ItemCard: React.FC<ItemCardProps> = ({
                 )}
               </button>
               <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase border backdrop-blur-md ${badge.bgColor} ${badge.textColor} ${badge.borderColor}`}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wide border backdrop-blur-md ${badge.bgColor} ${badge.textColor} ${badge.borderColor}`}
               >
                 {badge.label}
               </span>
               {isNew && (
                 <span
                   id={`item-card-new-badge-${item.id}`}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-600/95 text-white border border-emerald-400/60 shadow-sm backdrop-blur-md animate-pulse"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-emerald-600/95 text-white border border-emerald-400/60 shadow-xs backdrop-blur-md"
                   title="Item registrado no campus nas últimas 24 horas"
                 >
                   <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
@@ -236,20 +236,20 @@ export const ItemCard: React.FC<ItemCardProps> = ({
 
           {/* Type/Status Badge & New Item Badge (when not selectable) */}
           {!selectable && (
-            <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5 z-10 max-w-[70%]">
+            <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5 z-10 max-w-[75%]">
               <span
-                className={`px-2.5 py-1 rounded-full text-[11px] font-extrabold tracking-wide uppercase border backdrop-blur-md ${badge.bgColor} ${badge.textColor} ${badge.borderColor}`}
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold tracking-wide uppercase border backdrop-blur-md ${badge.bgColor} ${badge.textColor} ${badge.borderColor}`}
               >
                 {badge.label}
               </span>
               {isNew && (
                 <span
                   id={`item-card-new-badge-${item.id}`}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-emerald-600 to-[#00843D] text-white border border-emerald-300/60 shadow-sm backdrop-blur-md animate-pulse"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-xl text-[10px] font-bold uppercase tracking-wider bg-emerald-600 text-white border border-emerald-400/60 shadow-xs backdrop-blur-md"
                   title="Item registrado no campus nas últimas 24 horas"
                 >
                   <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
-                  <span>Novo • 24h</span>
+                  <span>Novo</span>
                 </span>
               )}
             </div>
@@ -263,19 +263,23 @@ export const ItemCard: React.FC<ItemCardProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-4 space-y-3">
-          <div className="flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
-            <span className="flex items-center gap-1 font-semibold text-[#00843D] dark:text-green-400 bg-[#00843D]/10 dark:bg-[#00843D]/20 px-2 py-0.5 rounded-md">
-              <Tag className="w-3 h-3" />
+        <div className="p-4 space-y-2.5">
+          {/* Unboxed Metadata with Typographic Separator */}
+          <div className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400 truncate">
+            <span className="font-semibold text-[#00843D] dark:text-green-400">
               {item.category}
             </span>
-            <span className="flex items-center gap-1">
-              <Calendar className="w-3 h-3 text-neutral-400" />
-              {formatDate(item.date)}
-            </span>
+            <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
+            <span>{formatDate(item.date)}</span>
+            {item.color && (
+              <>
+                <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
+                <span className="truncate">{item.color}</span>
+              </>
+            )}
           </div>
 
-          <h3 className="font-bold text-base text-neutral-900 dark:text-white line-clamp-1 group-hover:text-[#00843D] dark:group-hover:text-green-400 transition-colors">
+          <h3 className="font-bold text-sm sm:text-base text-neutral-900 dark:text-white line-clamp-1 group-hover:text-[#00843D] dark:group-hover:text-green-400 transition-colors">
             {item.title}
           </h3>
 
@@ -295,7 +299,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
         <button
           type="button"
           onClick={() => onSelect(item)}
-          className="flex-1 flex items-center justify-center space-x-1.5 py-2.5 px-3 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white dark:hover:bg-[#00843D] dark:hover:text-white text-neutral-800 dark:text-neutral-200 font-bold text-xs transition-all shadow-2xs cursor-pointer group-hover:bg-[#00843D] group-hover:text-white"
+          className="flex-1 flex items-center justify-center space-x-1.5 py-2 px-3 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white dark:hover:bg-[#00843D] dark:hover:text-white text-neutral-800 dark:text-neutral-200 font-bold text-xs transition-all cursor-pointer group-hover:bg-[#00843D] group-hover:text-white"
         >
           <span>Ver Detalhes</span>
           <ArrowRight className="w-3.5 h-3.5" />
@@ -304,11 +308,11 @@ export const ItemCard: React.FC<ItemCardProps> = ({
         <button
           type="button"
           onClick={handleQuickPrintTag}
-          className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:text-[#00843D] hover:border-[#00843D]/50 dark:hover:text-green-400 font-bold text-xs transition-all shadow-2xs cursor-pointer"
+          className="p-2 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:text-[#00843D] hover:border-[#00843D]/50 dark:hover:text-green-400 font-bold text-xs transition-all cursor-pointer"
           title="Imprimir Etiqueta Física QR"
           aria-label="Imprimir Etiqueta Física QR"
         >
-          <Printer className="w-4 h-4" />
+          <Printer className="w-3.5 h-3.5" />
         </button>
       </div>
     </motion.div>
