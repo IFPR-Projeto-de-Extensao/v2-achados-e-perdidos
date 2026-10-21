@@ -171,64 +171,66 @@ export const HomeView: React.FC = () => {
   return (
     <div className="space-y-6 sm:space-y-8 lg:space-y-12 pb-10 sm:pb-16">
       {/* HERO BANNER SECTION */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#00843D] via-[#006e33] to-[#004f24] text-white p-6 sm:p-10 lg:p-12 shadow-lg border border-[#00843D]/30">
-        {/* Background Decorative Patterns */}
-        <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-80 h-80 bg-black/15 rounded-full blur-2xl pointer-events-none" />
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#006e33] via-[#00843D] to-[#004822] text-white p-6 sm:p-10 lg:p-12 shadow-[0_12px_36px_rgba(0,132,61,0.22)] border border-[#00843D]/40">
+        {/* Modern Depth Accents & Radial Highlights */}
+        <div className="absolute top-0 right-0 -mt-16 -mr-16 w-96 h-96 bg-white/12 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 -mb-16 -ml-16 w-80 h-80 bg-black/25 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.12),transparent_60%)] pointer-events-none" />
         <div className="absolute inset-0 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:24px_24px] opacity-10 pointer-events-none" />
 
         <div className="relative z-10 grid grid-cols-1 md:grid-cols-12 gap-6 sm:gap-8 lg:gap-12 items-center">
-          <div className="md:col-span-8 space-y-4 sm:space-y-5">
-            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-xl bg-white/15 backdrop-blur-md border border-white/20 text-xs font-semibold text-white/95">
+          <div className="md:col-span-8 space-y-4 sm:space-y-6">
+            <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-bold text-white shadow-xs">
               <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
               <span>IFPR Campus Ivaiporã • Sistema Oficial</span>
             </div>
 
-            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight">
-              Achados &amp; Perdidos <br className="hidden sm:inline" />
-              <span className="text-emerald-200">Campus Ivaiporã</span>
-            </h1>
+            <div className="space-y-2">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-[1.12]">
+                Achados &amp; Perdidos <br className="hidden sm:inline" />
+                <span className="text-emerald-200 drop-shadow-xs">Campus Ivaiporã</span>
+              </h1>
+              <p className="text-xs sm:text-base text-emerald-50/95 font-medium leading-relaxed max-w-2xl pt-1">
+                A plataforma institucional inteligente para localização, registro, cruzamento automatizado e devolução segura de pertences no campus.
+              </p>
+            </div>
 
-            <p className="text-xs sm:text-base text-emerald-50/90 font-medium leading-relaxed max-w-2xl">
-              Conectando alunos, professores e servidores aos seus objetos de forma rápida, inteligente e segura.
-            </p>
-
-            {/* Clear, Streamlined Action Hierarchy */}
-            <div className="pt-2 space-y-3">
-              {/* Primary Action Buttons */}
+            {/* Clear Action Hierarchy */}
+            <div className="pt-2 space-y-3.5">
+              {/* Primary Action Group */}
               <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
                 <button
                   onClick={() => handleRegister("ENCONTRADO")}
-                  className="px-5 py-3 rounded-xl sm:rounded-2xl bg-white text-[#00843D] hover:bg-emerald-50 font-bold text-xs sm:text-sm shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                  className="px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-white text-[#00843D] hover:bg-emerald-50 font-extrabold text-xs sm:text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-2 cursor-pointer active:scale-98"
                 >
-                  <PlusCircle className="w-4 h-4 text-[#00843D]" />
+                  <PlusCircle className="w-4.5 h-4.5 text-[#00843D]" />
                   <span>Cadastrar Objeto</span>
                 </button>
 
                 <button
                   onClick={() => navigate("/buscar")}
-                  className="px-5 py-3 rounded-xl sm:rounded-2xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs sm:text-sm backdrop-blur-md border border-white/25 transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                  className="px-5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-white/15 hover:bg-white/25 text-white font-extrabold text-xs sm:text-sm backdrop-blur-md border border-white/30 transition-all flex items-center justify-center space-x-2 cursor-pointer active:scale-98"
                 >
-                  <Search className="w-4 h-4" />
+                  <Search className="w-4.5 h-4.5 text-white" />
                   <span>Explorar Acervo</span>
                 </button>
 
                 <button
                   onClick={() => handleRegister("PERDIDO")}
-                  className="px-4 py-3 rounded-xl sm:rounded-2xl bg-red-600/90 hover:bg-red-600 text-white font-bold text-xs sm:text-sm transition-all flex items-center justify-center space-x-1.5 cursor-pointer shadow-sm"
+                  className="px-4.5 py-3 sm:py-3.5 rounded-xl sm:rounded-2xl bg-red-600/95 hover:bg-red-600 text-white font-extrabold text-xs sm:text-sm transition-all flex items-center justify-center space-x-1.5 cursor-pointer shadow-sm active:scale-98 border border-red-400/40"
                 >
-                  <PackageSearch className="w-4 h-4" />
-                  <span>Perdi um Item</span>
+                  <PackageSearch className="w-4.5 h-4.5" />
+                  <span>Perdi um Pertence</span>
                 </button>
               </div>
 
-              {/* Quiet Secondary Action Utilities */}
-              <div className="flex flex-wrap items-center gap-2 text-xs text-white/80 pt-1">
+              {/* Utility Quick Links */}
+              <div className="flex flex-wrap items-center gap-2 text-xs text-white/90 pt-1">
                 <button
                   onClick={() => navigate("/analisador-ia")}
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-white font-medium cursor-pointer"
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-white/12 hover:bg-white/22 backdrop-blur-xs transition-colors text-white font-semibold cursor-pointer border border-white/15 shadow-2xs"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
                   <span>Analisar Foto com IA</span>
                 </button>
 
@@ -237,7 +239,7 @@ export const HomeView: React.FC = () => {
                     vibrateClick();
                     window.dispatchEvent(new CustomEvent("open-tour-guide"));
                   }}
-                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-white font-medium cursor-pointer"
+                  className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-white/12 hover:bg-white/22 backdrop-blur-xs transition-colors text-white font-semibold cursor-pointer border border-white/15 shadow-2xs"
                   title="Tutorial do Sistema"
                 >
                   <Compass className="w-3.5 h-3.5 text-emerald-200" />
@@ -247,13 +249,14 @@ export const HomeView: React.FC = () => {
             </div>
           </div>
 
-          {/* Hero Brand Image (Transparent IF Logo) */}
+          {/* Hero Brand Emblem IFPR */}
           <div className="hidden md:flex md:col-span-4 items-center justify-center p-2 sm:p-4">
-            <div className="relative flex items-center justify-center w-full max-w-[150px] sm:max-w-[180px] lg:max-w-[200px] aspect-[216/292]">
+            <div className="relative flex items-center justify-center w-full max-w-[150px] sm:max-w-[180px] lg:max-w-[210px] aspect-[216/292] group">
+              <div className="absolute inset-0 bg-white/10 rounded-full blur-2xl group-hover:bg-white/20 transition-all" />
               <img
                 src="/ifpr-logo.svg"
                 alt="Instituto Federal do Paraná - IFPR"
-                className="w-full h-full object-contain select-none drop-shadow-2xl transition-transform hover:scale-105 duration-300"
+                className="relative w-full h-full object-contain select-none drop-shadow-2xl transition-transform hover:scale-105 duration-300"
               />
             </div>
           </div>
@@ -261,70 +264,70 @@ export const HomeView: React.FC = () => {
       </section>
 
       {/* HIGHLIGHTED STATISTICS CARDS */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 xs:gap-3.5 sm:gap-4 lg:gap-6">
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
         <motion.div
-          whileHover={{ y: -2 }}
-          className="p-3 xs:p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200/80 dark:border-neutral-800 shadow-xs flex items-center space-x-2.5 xs:space-x-3.5 sm:space-x-4 min-w-0"
+          whileHover={{ y: -3 }}
+          className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#181818] border border-neutral-200/80 dark:border-neutral-800 shadow-[0_2px_8px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.2)] hover:border-[#00843D]/40 dark:hover:border-[#00843D]/50 transition-all flex items-center space-x-3 sm:space-x-4 min-w-0"
         >
-          <div className="w-8 h-8 xs:w-10 xs:h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-[#00843D]/10 dark:bg-[#00843D]/20 text-[#00843D] dark:text-green-400 flex items-center justify-center shrink-0">
-            <Layers className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6" />
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#00843D]/15 to-[#00843D]/5 dark:from-[#00843D]/25 dark:to-[#00843D]/10 text-[#00843D] dark:text-green-400 flex items-center justify-center shrink-0 border border-[#00843D]/20">
+            <Layers className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div className="min-w-0">
-            <span className="text-[10px] xs:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
+            <span className="text-[10px] sm:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
               Cadastrados
             </span>
-            <span className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 dark:text-white truncate block">
+            <span className="text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 dark:text-white truncate block tracking-tight">
               {totalRegistered}
             </span>
           </div>
         </motion.div>
 
         <motion.div
-          whileHover={{ y: -2 }}
-          className="p-3 xs:p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200/80 dark:border-neutral-800 shadow-xs flex items-center space-x-2.5 xs:space-x-3.5 sm:space-x-4 min-w-0"
+          whileHover={{ y: -3 }}
+          className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#181818] border border-neutral-200/80 dark:border-neutral-800 shadow-[0_2px_8px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.2)] hover:border-[#22C55E]/40 dark:hover:border-[#22C55E]/50 transition-all flex items-center space-x-3 sm:space-x-4 min-w-0"
         >
-          <div className="w-8 h-8 xs:w-10 xs:h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-[#22C55E]/10 dark:bg-[#22C55E]/20 text-[#22C55E] dark:text-green-400 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6" />
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#22C55E]/15 to-[#22C55E]/5 dark:from-[#22C55E]/25 dark:to-[#22C55E]/10 text-[#22C55E] dark:text-green-400 flex items-center justify-center shrink-0 border border-[#22C55E]/20">
+            <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div className="min-w-0">
-            <span className="text-[10px] xs:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
+            <span className="text-[10px] sm:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
               Encontrados
             </span>
-            <span className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 dark:text-white truncate block">
+            <span className="text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 dark:text-white truncate block tracking-tight">
               {totalFound}
             </span>
           </div>
         </motion.div>
 
         <motion.div
-          whileHover={{ y: -2 }}
-          className="p-3 xs:p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200/80 dark:border-neutral-800 shadow-xs flex items-center space-x-2.5 xs:space-x-3.5 sm:space-x-4 min-w-0"
+          whileHover={{ y: -3 }}
+          className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#181818] border border-neutral-200/80 dark:border-neutral-800 shadow-[0_2px_8px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.2)] hover:border-[#3B82F6]/40 dark:hover:border-[#3B82F6]/50 transition-all flex items-center space-x-3 sm:space-x-4 min-w-0"
         >
-          <div className="w-8 h-8 xs:w-10 xs:h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-[#3B82F6]/10 dark:bg-[#3B82F6]/20 text-[#3B82F6] dark:text-blue-400 flex items-center justify-center shrink-0">
-            <CheckCircle className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6" />
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[#3B82F6]/15 to-[#3B82F6]/5 dark:from-[#3B82F6]/25 dark:to-[#3B82F6]/10 text-[#3B82F6] dark:text-blue-400 flex items-center justify-center shrink-0 border border-[#3B82F6]/20">
+            <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div className="min-w-0">
-            <span className="text-[10px] xs:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
+            <span className="text-[10px] sm:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
               Devolvidos
             </span>
-            <span className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 dark:text-white truncate block">
+            <span className="text-xl sm:text-2xl lg:text-3xl font-black text-neutral-900 dark:text-white truncate block tracking-tight">
               {totalReturned}
             </span>
           </div>
         </motion.div>
 
         <motion.div
-          whileHover={{ y: -2 }}
-          className="p-3 xs:p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200/80 dark:border-neutral-800 shadow-xs flex items-center space-x-2.5 xs:space-x-3.5 sm:space-x-4 min-w-0"
+          whileHover={{ y: -3 }}
+          className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#181818] border border-neutral-200/80 dark:border-neutral-800 shadow-[0_2px_8px_rgba(0,0,0,0.03)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.2)] hover:border-amber-500/40 dark:hover:border-amber-500/50 transition-all flex items-center space-x-3 sm:space-x-4 min-w-0"
         >
-          <div className="w-8 h-8 xs:w-10 xs:h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-amber-500/10 dark:bg-amber-500/20 text-amber-500 flex items-center justify-center shrink-0">
-            <TrendingUp className="w-4 h-4 xs:w-5 xs:h-5 sm:w-6 sm:h-6" />
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-amber-500/15 to-amber-500/5 dark:from-amber-500/25 dark:to-amber-500/10 text-amber-500 flex items-center justify-center shrink-0 border border-amber-500/20">
+            <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div className="min-w-0">
-            <span className="text-[10px] xs:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
+            <span className="text-[10px] sm:text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block truncate">
               Taxa de Sucesso
             </span>
-            <span className="text-lg xs:text-xl sm:text-2xl lg:text-3xl font-black text-[#00843D] dark:text-green-400 truncate block">
+            <span className="text-xl sm:text-2xl lg:text-3xl font-black text-[#00843D] dark:text-green-400 truncate block tracking-tight">
               {successRate}%
             </span>
           </div>
@@ -333,13 +336,13 @@ export const HomeView: React.FC = () => {
 
       {/* QUICK SEARCH & GEMINI SEMANTIC SEARCH BAR */}
       <section id="home-semantic-search-section" className="space-y-4">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 sm:gap-4">
           <div className="relative flex-1">
             <div className="absolute left-4 top-3.5 flex items-center space-x-1 text-neutral-400">
               {isSearchingSemantic ? (
                 <Loader2 className="w-5 h-5 text-[#00843D] animate-spin" />
               ) : semanticMode ? (
-                <Sparkles className="w-5 h-5 text-amber-500" />
+                <Sparkles className="w-5 h-5 text-amber-500 fill-amber-500" />
               ) : (
                 <Search className="w-5 h-5" />
               )}
@@ -351,13 +354,13 @@ export const HomeView: React.FC = () => {
               onChange={(e) => setHomeSearch(e?.target?.value ?? "")}
               placeholder={
                 language === "pt"
-                  ? "Busca Semântica com IA Gemini: digite ex: 'chave azul esquecida perto da biblioteca' ou 'garrafa térmica'..."
-                  : "Gemini AI Semantic Search: e.g. 'blue key lost near the library' or 'black water bottle'..."
+                  ? "Busca Semântica IA: ex: 'chave azul perto da biblioteca' ou 'garrafa térmica preta'..."
+                  : "Gemini AI Semantic Search: e.g. 'blue key near library' or 'black bottle'..."
               }
-              className={`w-full pl-12 pr-32 py-3.5 rounded-2xl bg-white dark:bg-[#1E1E1E] border text-neutral-900 dark:text-white text-sm shadow-xs outline-none transition-all ${
+              className={`w-full pl-12 pr-32 py-3.5 rounded-2xl bg-white dark:bg-[#181818] border text-neutral-900 dark:text-white text-sm shadow-[0_2px_8px_rgba(0,0,0,0.03)] outline-none transition-all ${
                 isSearchingSemantic
                   ? "border-[#00843D] ring-2 ring-[#00843D]/20"
-                  : "border-neutral-200 dark:border-neutral-800 focus:ring-2 focus:ring-[#00843D]"
+                  : "border-neutral-200/90 dark:border-neutral-800 focus:ring-2 focus:ring-[#00843D] focus:border-[#00843D]"
               }`}
             />
             {/* Semantic Mode & Status Badge inside input */}
@@ -374,9 +377,9 @@ export const HomeView: React.FC = () => {
                   vibrateClick();
                   setSemanticMode(!semanticMode);
                 }}
-                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center space-x-1.5 transition-all border ${
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center space-x-1.5 transition-all border cursor-pointer ${
                   semanticMode
-                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
+                    ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 shadow-2xs"
                     : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500 border-neutral-200 dark:border-neutral-700"
                 }`}
                 title="Alternar Busca Semântica por IA"
@@ -387,15 +390,15 @@ export const HomeView: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 shrink-0">
             <button
               onClick={() => {
                 vibrateClick();
                 setQrScannerOpen(true);
               }}
-              className="px-4 py-3.5 rounded-2xl bg-neutral-900 text-white dark:bg-neutral-800 hover:bg-neutral-800 font-bold text-xs flex items-center space-x-2 shrink-0 shadow-xs"
+              className="w-full md:w-auto px-5 py-3.5 rounded-2xl bg-neutral-900 text-white dark:bg-neutral-800 hover:bg-[#00843D] dark:hover:bg-[#00843D] font-extrabold text-xs flex items-center justify-center space-x-2 shrink-0 shadow-xs transition-all cursor-pointer group"
             >
-              <QrCode className="w-4 h-4 text-green-400" />
+              <QrCode className="w-4 h-4 text-emerald-400 group-hover:text-white transition-colors" />
               <span>{language === "pt" ? "Escanear Etiqueta QR" : "Scan QR Label"}</span>
             </button>
           </div>
@@ -436,7 +439,7 @@ export const HomeView: React.FC = () => {
                     vibrateClick();
                     setRetryCount((c) => c + 1);
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold flex items-center space-x-1.5 transition-all shadow-xs text-xs"
+                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold flex items-center space-x-1.5 transition-all shadow-xs text-xs cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>{language === "pt" ? "Tentar Novamente" : "Retry"}</span>
@@ -447,7 +450,7 @@ export const HomeView: React.FC = () => {
                     vibrateClick();
                     setSemanticError(null);
                   }}
-                  className="p-1.5 rounded-lg hover:bg-amber-500/20 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-white transition-all"
+                  className="p-1.5 rounded-lg hover:bg-amber-500/20 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-white transition-all cursor-pointer"
                   title="Fechar aviso"
                 >
                   <X className="w-4 h-4" />
@@ -458,15 +461,15 @@ export const HomeView: React.FC = () => {
         </AnimatePresence>
 
         {/* Quick Semantic Examples Suggestions */}
-        <div className="flex items-center space-x-2 overflow-x-auto pb-1 text-xs text-neutral-500">
-          <span className="font-semibold text-neutral-600 dark:text-neutral-400 whitespace-nowrap flex items-center gap-1">
-            <Bot className="w-3.5 h-3.5 text-[#00843D]" /> {t("semanticSearchPrompt", "Exemplos de busca semântica:")}
+        <div className="flex items-center space-x-2 overflow-x-auto pb-1 text-xs text-neutral-500 scrollbar-none">
+          <span className="font-bold text-neutral-600 dark:text-neutral-400 whitespace-nowrap flex items-center gap-1.5">
+            <Bot className="w-3.5 h-3.5 text-[#00843D]" /> {t("semanticSearchPrompt", "Busca rápida:")}
           </span>
           {semanticExampleQueries.map((exQuery) => (
             <button
               key={exQuery}
               onClick={() => handleSelectExampleQuery(exQuery)}
-              className="px-3 py-1 rounded-lg bg-[#00843D]/5 dark:bg-[#00843D]/10 hover:bg-[#00843D]/15 text-[#00843D] dark:text-green-400 border border-[#00843D]/20 font-medium whitespace-nowrap transition-all flex items-center space-x-1"
+              className="px-3 py-1 rounded-xl bg-[#00843D]/5 dark:bg-[#00843D]/10 hover:bg-[#00843D]/15 text-[#00843D] dark:text-green-400 border border-[#00843D]/20 font-semibold whitespace-nowrap transition-all flex items-center space-x-1 cursor-pointer active:scale-95"
             >
               <span>{exQuery}</span>
             </button>
@@ -482,10 +485,10 @@ export const HomeView: React.FC = () => {
                 vibrateClick();
                 setSelectedCategory(cat);
               }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer active:scale-95 ${
                 selectedCategory === cat
                   ? "bg-[#00843D] text-white shadow-xs"
-                  : "bg-white dark:bg-[#1E1E1E] text-neutral-600 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  : "bg-white dark:bg-[#181818] text-neutral-600 dark:text-neutral-300 border border-neutral-200/90 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:border-[#00843D]/30"
               }`}
             >
               {cat}
@@ -622,49 +625,52 @@ export const HomeView: React.FC = () => {
       </section>
 
       {/* HOW IT WORKS / AI BENEFIT SECTION */}
-      <section className="p-8 sm:p-10 rounded-3xl bg-neutral-900 text-white space-y-6">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border-b border-neutral-800 pb-6">
+      <section className="relative overflow-hidden p-6 sm:p-10 rounded-3xl bg-neutral-900 text-white space-y-6 border border-neutral-800 shadow-[0_12px_36px_rgba(0,0,0,0.3)]">
+        <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 border-b border-neutral-800/80 pb-6">
           <div className="space-y-2">
-            <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-bold border border-emerald-500/30">
-              Diferencial Inteligente
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-bold border border-emerald-500/30">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Diferencial Inteligente</span>
             </span>
-            <h3 className="text-2xl font-bold">Tecnologia com IA para Cruzamento Automático</h3>
+            <h3 className="text-xl sm:text-2xl font-black tracking-tight">Tecnologia com IA para Cruzamento Automático</h3>
           </div>
           <button
             onClick={() => handleRegister("PERDIDO")}
-            className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-emerald-600 text-white font-bold text-xs"
+            className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-emerald-600 text-white font-bold text-xs transition-all shadow-xs cursor-pointer active:scale-95"
           >
             Experimentar Cadastro IA
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs leading-relaxed text-neutral-300">
-          <div className="p-4 rounded-2xl bg-neutral-800/60 border border-neutral-700/60 space-y-2">
-            <div className="w-8 h-8 rounded-lg bg-[#00843D]/20 text-emerald-400 flex items-center justify-center font-bold">
+        <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 text-xs leading-relaxed text-neutral-300">
+          <div className="p-5 rounded-2xl bg-neutral-800/50 hover:bg-neutral-800/80 border border-neutral-700/60 transition-all space-y-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#00843D]/30 to-[#00843D]/10 text-emerald-400 border border-[#00843D]/30 flex items-center justify-center font-black text-sm">
               1
             </div>
-            <h4 className="font-bold text-sm text-white">Extrator Inteligente</h4>
-            <p>
+            <h4 className="font-extrabold text-sm text-white">Extrator Inteligente</h4>
+            <p className="text-neutral-400 leading-relaxed">
               Ao descrever o objeto em texto livre, o modelo Gemini extrai automaticamente a categoria, cor, marca e local citado no campus.
             </p>
           </div>
 
-          <div className="p-4 rounded-2xl bg-neutral-800/60 border border-neutral-700/60 space-y-2">
-            <div className="w-8 h-8 rounded-lg bg-[#00843D]/20 text-emerald-400 flex items-center justify-center font-bold">
+          <div className="p-5 rounded-2xl bg-neutral-800/50 hover:bg-neutral-800/80 border border-neutral-700/60 transition-all space-y-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#00843D]/30 to-[#00843D]/10 text-emerald-400 border border-[#00843D]/30 flex items-center justify-center font-black text-sm">
               2
             </div>
-            <h4 className="font-bold text-sm text-white">Similaridade Textual</h4>
-            <p>
+            <h4 className="font-extrabold text-sm text-white">Similaridade Textual</h4>
+            <p className="text-neutral-400 leading-relaxed">
               O sistema compara instantaneamente a descrição com os objetos cadastrados no banco de dados e notifica caso haja correspondência.
             </p>
           </div>
 
-          <div className="p-4 rounded-2xl bg-neutral-800/60 border border-neutral-700/60 space-y-2">
-            <div className="w-8 h-8 rounded-lg bg-[#00843D]/20 text-emerald-400 flex items-center justify-center font-bold">
+          <div className="p-5 rounded-2xl bg-neutral-800/50 hover:bg-neutral-800/80 border border-neutral-700/60 transition-all space-y-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#00843D]/30 to-[#00843D]/10 text-emerald-400 border border-[#00843D]/30 flex items-center justify-center font-black text-sm">
               3
             </div>
-            <h4 className="font-bold text-sm text-white">Devolução por QR Code</h4>
-            <p>
+            <h4 className="font-extrabold text-sm text-white">Devolução por QR Code</h4>
+            <p className="text-neutral-400 leading-relaxed">
               Cada item recebe uma etiqueta digital com QR Code para retirada ágil e segura no setor de Achados & Perdidos do IFPR.
             </p>
           </div>

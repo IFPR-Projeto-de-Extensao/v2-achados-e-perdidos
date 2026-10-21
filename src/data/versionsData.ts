@@ -24,12 +24,60 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.46",
+    codename: "Reconstrução Visual Completa do Produto e Identidade Institucional Contemporânea",
+    releaseDate: "20/10/2026",
+    releaseDateTime: "20 de Outubro de 2026 • 22:45 BRT",
+    type: "MINOR",
+    isCurrent: true,
+    summary: "Reconstrução visual ampla e perceptível de toda a aplicação Localiza+, estabelecendo uma identidade digital contemporânea, elegante e institucional com base no verde oficial do IFPR: 1) Redesenho arquitetural do Hero da tela inicial (HomeView) com profundidade, microinterações, hierarquia nítida de ações e integração com busca e IA; 2) Modernização dos cartões de itens (ItemCard) com proporção 16:10 de imagem, badges flutuantes em vidro fosco, metadados desencaixotados e microinterações de hover elevadas; 3) Reestruturação do painel de busca e filtros rápidos (HomeView e ObjectsView) com visual limpo e moderno; 4) Refinamento da barra de navegação (Navbar e MobileBottomNav) com estética institucional limpa e contraste refinado; 5) Preservação integral de todas as rotas, regras de Firestore, integrações de IA, RBAC, formulário de cadastro de objetos e dados reais.",
+    additions: [
+      {
+        id: "v1946-add-1",
+        title: "Reconstrução do Hero e Identidade da Tela Inicial",
+        description: "Nova composição do Hero banner com gradiente profundo em verde IFPR, iluminação radial contemporânea, crachá institucional oficial e botões de ação com tipografia e espaçamentos profissionais.",
+        module: "GERAL",
+        tag: "Design & UX",
+      },
+      {
+        id: "v1946-add-2",
+        title: "Novo Design dos Cartões de Ocorrência (ItemCard)",
+        description: "Contêiner de fotos em proporção 16:10 com zoom suave ao passar o cursor, badges de status em vidro fosco, ícone estilizado de ausência de foto e ações primárias otimizadas.",
+        module: "GERAL",
+        tag: "Frontend Design",
+      },
+      {
+        id: "v1946-add-3",
+        title: "Painel de Métricas e Indicadores Institucionais",
+        description: "Cartões de estatísticas com ícones em gradiente, contadores de alto contraste e microinterações táteis de elevação.",
+        module: "GERAL",
+        tag: "Dashboard & Métricas",
+      },
+      {
+        id: "v1946-add-4",
+        title: "Barra de Busca e Filtros Rápidos com IA",
+        description: "Novo contêiner de pesquisa com foco inteligente, alternância fluida do modo IA Gemini e atalho direto para scanner de QR Code.",
+        module: "IA_GEMINI",
+        tag: "Busca Inteligente",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1946-fix-1",
+        title: "Correção de Profundidade e Homogeneidade Visual",
+        description: "Ajuste na consistência de superfícies claras e escuras (dark mode) em toda a aplicação, eliminando descontinuidades de contraste e bordas inconsistentes.",
+        module: "GERAL",
+        tag: "Dark Mode & Contraste",
+      },
+    ],
+  },
+  {
     version: "v1.9.45",
     codename: "Harmonização e Reformulação Visual do Sistema com Design Limpo e Responsivo",
     releaseDate: "20/10/2026",
     releaseDateTime: "20 de Outubro de 2026 • 21:30 BRT",
     type: "MINOR",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Reformulação visual ampla e modernização da interface do Localiza+ tomando como referência arquitetural e estética a clareza do formulário de cadastro de objetos: 1) Despoluição do Hero da tela inicial (HomeView) com hierarquia objetiva de botões de ação e acesso rápido a funcionalidades secundárias; 2) Modernização dos cartões de itens (ItemCard) com metadados desencaixotados e separadores tipográficos limpos, eliminando excesso de pílulas visuais sobrepostas; 3) Reestruturação responsiva dos botões de ação e exportação no modal de detalhes do objeto (ItemDetailModal); 4) Otimização de espaçamentos e consistência visual institucional IFPR em todas as telas em conformidade com o Frontend Design Constitution; 5) Preservação integral de todas as integrações, rotas, regras de segurança do Firestore e fluxos funcionais.",
     additions: [
       {

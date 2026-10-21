@@ -154,17 +154,17 @@ export const ItemCard: React.FC<ItemCardProps> = ({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.96, y: -8 }}
-      whileHover={{ y: -3, transition: { duration: 0.2 } }}
+      whileHover={{ y: -4, transition: { duration: 0.2 } }}
       transition={{
         duration: 0.28,
         ease: [0.16, 1, 0.3, 1],
         delay: index !== undefined ? Math.min(index * 0.03, 0.2) : 0,
       }}
-      className="group bg-white dark:bg-[#1E1E1E] rounded-2xl border border-neutral-200/90 dark:border-neutral-800/90 overflow-hidden shadow-xs hover:shadow-lg hover:border-[#00843D]/40 dark:hover:border-[#00843D]/50 transition-all flex flex-col justify-between"
+      className="group relative bg-white dark:bg-[#181818] rounded-2xl border border-neutral-200/80 dark:border-neutral-800 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.25)] hover:shadow-[0_12px_28px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_12px_28px_rgba(0,0,0,0.5)] hover:border-[#00843D]/50 dark:hover:border-[#00843D]/60 transition-all duration-300 flex flex-col justify-between overflow-hidden"
     >
       <div>
-        {/* Image Container with Top Badges */}
-        <div className="relative h-48 w-full bg-neutral-100 dark:bg-neutral-850 overflow-hidden">
+        {/* Top Image Container with Badges */}
+        <div className="relative aspect-[16/10] w-full bg-neutral-100 dark:bg-neutral-900 overflow-hidden">
           {item.imageUrl &&
           item.imageUrl.trim() !== "" &&
           !item.imageUrl.includes("photo-1584438784894-089d6a62b8fa") &&
@@ -173,19 +173,19 @@ export const ItemCard: React.FC<ItemCardProps> = ({
               src={item.imageUrl}
               alt={item.title}
               onError={() => setImgFailed(true)}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+              className="w-full h-full object-cover group-hover:scale-106 transition-transform duration-500 ease-out"
               loading="lazy"
               decoding="async"
             />
           ) : (
             <div
-              className="w-full h-full flex flex-col items-center justify-center bg-neutral-50 dark:bg-neutral-900/60 text-neutral-400 dark:text-neutral-500 p-4 text-center"
+              className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-950 text-neutral-400 dark:text-neutral-500 p-4 text-center"
               aria-label="Sem foto anexada"
             >
-              <div className="w-10 h-10 rounded-xl bg-neutral-200/70 dark:bg-neutral-800/80 flex items-center justify-center text-neutral-400 dark:text-neutral-500 mb-2">
-                <CameraOff className="w-5 h-5" />
+              <div className="w-12 h-12 rounded-2xl bg-white dark:bg-neutral-800 shadow-xs border border-neutral-200/60 dark:border-neutral-700/60 flex items-center justify-center text-neutral-400 dark:text-neutral-400 mb-2 group-hover:scale-110 transition-transform duration-300">
+                <CameraOff className="w-5 h-5 text-neutral-500 dark:text-neutral-400" />
               </div>
-              <span className="text-xs font-semibold text-neutral-600 dark:text-neutral-300">
+              <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                 Sem foto anexada
               </span>
               <span className="text-[10px] text-neutral-400 dark:text-neutral-500 mt-0.5">
@@ -194,58 +194,45 @@ export const ItemCard: React.FC<ItemCardProps> = ({
             </div>
           )}
 
-          {/* Select Checkbox for Bulk Ops */}
-          {selectable && (
-            <div className="absolute top-3 left-3 z-10 flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleSelect?.(item.id, !isSelected);
-                }}
-                className={`p-1.5 rounded-lg backdrop-blur-md border shadow-sm transition-all flex items-center justify-center ${
-                  isSelected
-                    ? "bg-[#00843D] text-white border-[#00843D]"
-                    : "bg-black/60 text-white border-white/30 hover:bg-black/80"
-                }`}
-                aria-label={`Selecionar objeto ${item.title}`}
-              >
-                {isSelected ? (
-                  <CheckSquare className="w-4 h-4 text-white fill-white" />
-                ) : (
-                  <Square className="w-4 h-4 text-white" />
-                )}
-              </button>
-              <span
-                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wide border backdrop-blur-md ${badge.bgColor} ${badge.textColor} ${badge.borderColor}`}
-              >
-                {badge.label}
-              </span>
-              {isNew && (
-                <span
-                  id={`item-card-new-badge-${item.id}`}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-emerald-600/95 text-white border border-emerald-400/60 shadow-xs backdrop-blur-md"
-                  title="Item registrado no campus nas últimas 24 horas"
-                >
-                  <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
-                  <span>Novo • 24h</span>
-                </span>
-              )}
-            </div>
-          )}
+          {/* Subtle gradient vignette at bottom of image for contrast */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20 pointer-events-none" />
 
-          {/* Type/Status Badge & New Item Badge (when not selectable) */}
-          {!selectable && (
-            <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5 z-10 max-w-[75%]">
+          {/* Top Badges Container */}
+          <div className="absolute top-2.5 left-2.5 right-2.5 z-10 flex items-center justify-between gap-1.5 pointer-events-none">
+            {/* Left Status & Flags */}
+            <div className="flex items-center gap-1.5 pointer-events-auto">
+              {selectable && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleSelect?.(item.id, !isSelected);
+                  }}
+                  className={`p-1.5 rounded-lg backdrop-blur-md border shadow-sm transition-all flex items-center justify-center ${
+                    isSelected
+                      ? "bg-[#00843D] text-white border-[#00843D]"
+                      : "bg-black/60 text-white border-white/30 hover:bg-black/80"
+                  }`}
+                  aria-label={`Selecionar objeto ${item.title}`}
+                >
+                  {isSelected ? (
+                    <CheckSquare className="w-4 h-4 text-white fill-white" />
+                  ) : (
+                    <Square className="w-4 h-4 text-white" />
+                  )}
+                </button>
+              )}
+
               <span
-                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold tracking-wide uppercase border backdrop-blur-md ${badge.bgColor} ${badge.textColor} ${badge.borderColor}`}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border backdrop-blur-md shadow-xs ${badge.bgColor} ${badge.textColor} ${badge.borderColor}`}
               >
                 {badge.label}
               </span>
+
               {isNew && (
                 <span
                   id={`item-card-new-badge-${item.id}`}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-xl text-[10px] font-bold uppercase tracking-wider bg-emerald-600 text-white border border-emerald-400/60 shadow-xs backdrop-blur-md"
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-emerald-600/90 text-white border border-emerald-400/50 shadow-xs backdrop-blur-md"
                   title="Item registrado no campus nas últimas 24 horas"
                 >
                   <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
@@ -253,20 +240,20 @@ export const ItemCard: React.FC<ItemCardProps> = ({
                 </span>
               )}
             </div>
-          )}
 
-          {/* QR Code Tag Badge */}
-          <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-md text-white px-2 py-1 rounded-lg text-[10px] font-mono flex items-center space-x-1 border border-white/20">
-            <QrCode className="w-3 h-3 text-green-400" />
-            <span>{String(item.id ?? "").toUpperCase()}</span>
+            {/* Right QR Tag Identifier */}
+            <div className="bg-black/70 backdrop-blur-md text-white/95 px-2 py-1 rounded-lg text-[10px] font-mono font-bold flex items-center space-x-1 border border-white/20 shadow-xs pointer-events-auto">
+              <QrCode className="w-3 h-3 text-emerald-400" />
+              <span>{String(item.id ?? "").toUpperCase()}</span>
+            </div>
           </div>
         </div>
 
-        {/* Content Body */}
-        <div className="p-4 space-y-2.5">
-          {/* Unboxed Metadata with Typographic Separator */}
+        {/* Card Body */}
+        <div className="p-4 sm:p-5 space-y-2.5">
+          {/* Metadata Row: Category • Date • Color */}
           <div className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400 truncate">
-            <span className="font-semibold text-[#00843D] dark:text-green-400">
+            <span className="font-bold text-[#00843D] dark:text-green-400">
               {item.category}
             </span>
             <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
@@ -279,36 +266,39 @@ export const ItemCard: React.FC<ItemCardProps> = ({
             )}
           </div>
 
-          <h3 className="font-bold text-sm sm:text-base text-neutral-900 dark:text-white line-clamp-1 group-hover:text-[#00843D] dark:group-hover:text-green-400 transition-colors">
+          {/* Title */}
+          <h3 className="font-extrabold text-sm sm:text-base text-neutral-900 dark:text-white line-clamp-1 group-hover:text-[#00843D] dark:group-hover:text-green-400 transition-colors">
             {item.title}
           </h3>
 
-          <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2 leading-relaxed">
+          {/* Description */}
+          <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2 leading-relaxed min-h-[2rem]">
             {item.description}
           </p>
 
-          <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800 flex items-center text-xs text-neutral-500 dark:text-neutral-400">
+          {/* Location Bar */}
+          <div className="pt-2.5 border-t border-neutral-100 dark:border-neutral-800/80 flex items-center text-xs text-neutral-500 dark:text-neutral-400">
             <MapPin className="w-3.5 h-3.5 text-[#00843D] dark:text-green-400 shrink-0 mr-1.5" />
-            <span className="truncate">{item.location}</span>
+            <span className="truncate font-medium">{item.location}</span>
           </div>
         </div>
       </div>
 
-      {/* Footer Action */}
-      <div className="px-4 pb-4 pt-1 flex items-center gap-2">
+      {/* Card Footer Actions */}
+      <div className="px-4 pb-4 sm:px-5 sm:pb-5 pt-1 flex items-center gap-2">
         <button
           type="button"
           onClick={() => onSelect(item)}
-          className="flex-1 flex items-center justify-center space-x-1.5 py-2 px-3 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white dark:hover:bg-[#00843D] dark:hover:text-white text-neutral-800 dark:text-neutral-200 font-bold text-xs transition-all cursor-pointer group-hover:bg-[#00843D] group-hover:text-white"
+          className="flex-1 flex items-center justify-center space-x-1.5 py-2.5 px-3 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white dark:hover:bg-[#00843D] dark:hover:text-white text-neutral-800 dark:text-neutral-200 font-bold text-xs transition-all duration-200 cursor-pointer group-hover:bg-[#00843D] group-hover:text-white shadow-2xs"
         >
           <span>Ver Detalhes</span>
-          <ArrowRight className="w-3.5 h-3.5" />
+          <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
         </button>
 
         <button
           type="button"
           onClick={handleQuickPrintTag}
-          className="p-2 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:text-[#00843D] hover:border-[#00843D]/50 dark:hover:text-green-400 font-bold text-xs transition-all cursor-pointer"
+          className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:text-[#00843D] hover:border-[#00843D]/50 dark:hover:text-green-400 font-bold text-xs transition-all cursor-pointer shadow-2xs"
           title="Imprimir Etiqueta Física QR"
           aria-label="Imprimir Etiqueta Física QR"
         >
