@@ -24,6 +24,51 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.9.47",
+    codename: "Reconstrução Completa da Experiência de Catálogo e Busca de Objetos (/buscar)",
+    releaseDate: "20/10/2026",
+    releaseDateTime: "20 de Outubro de 2026 • 23:30 BRT",
+    type: "MINOR",
+    isCurrent: true,
+    summary: "Reconstrução visual e estrutural profunda da tela de catálogo e busca de objetos (/buscar): 1) Correção definitiva do espaçamento superior (pt) e posicionamento do cabeçalho institucional fixo para evitar sobreposição de títulos e breadcrumbs; 2) Redesenho completo da área de pesquisa e filtros avançados, priorizando a descoberta dos itens com painéis recolhíveis, categorias compactas com contagens reais e indicadores de filtros ativos; 3) Protagonismo absoluto para os objetos do acervo com cards aprimorados e listagens responsivas otimizadas para mobile, tablets e desktops; 4) Preservação integral de todas as consultas Firestore, pesquisa por voz, histórico de busca, relatórios PDF e exportações.",
+    additions: [
+      {
+        id: "v1947-add-1",
+        title: "Correção de Posicionamento e Espaçamento do Topo",
+        description: "Ajuste estrutural no padding superior da página de catálogo (/buscar) para garantir que títulos, breadcrumbs e identificadores institucionais fiquem perfeitamente visíveis abaixo da navegação fixa.",
+        module: "GERAL",
+        tag: "Layout & Responsividade",
+      },
+      {
+        id: "v1947-add-2",
+        title: "Redesenho da Área de Busca e Filtros Recolhíveis",
+        description: "Nova composição para o painel de pesquisa e filtros avançados com categorias compactas, contagens em tempo real, chips de buscas recentes e indicação clara de filtros ativos com remoção rápida.",
+        module: "GERAL",
+        tag: "Catálogo & Filtros",
+      },
+      {
+        id: "v1947-add-3",
+        title: "Protagonismo Visual dos Resultados e Cards",
+        description: "Reestruturação da grade de resultados do catálogo para destacar as fotografias reais dos objetos, hierarquia tipográfica refinada e distinção clara entre status (perdido, encontrado, em análise, devolvido).",
+        module: "GERAL",
+        tag: "Frontend Design",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1947-fix-1",
+        title: "Correção de Sobreposição do Cabeçalho em Telas Móveis",
+        description: "Eliminado o problema onde o título do catálogo ficava parcialmente oculto sob o menu superior fixo em dispositivos móveis.",
+        module: "GERAL",
+        tag: "Correção de UI",
+      },
+    ],
+    stats: {
+      additionsCount: 3,
+      fixesCount: 1,
+    },
+  },
+  {
     version: "v1.9.46",
     codename: "Reconstrução Visual Completa do Produto e Identidade Institucional Contemporânea",
     releaseDate: "20/10/2026",

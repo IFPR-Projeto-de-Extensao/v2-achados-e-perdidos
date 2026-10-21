@@ -410,7 +410,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
   };
 
   return (
-    <div className="space-y-8 pb-16">
+    <div className="space-y-8 pb-16 pt-4 sm:pt-6">
       {/* Title Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-5">
         <div className="space-y-1">
