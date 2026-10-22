@@ -12,7 +12,6 @@ import { ProjectConfigView } from "./documents/ProjectConfigView";
 import { VersionHistoryView } from "./VersionHistoryView";
 import { TestBatteryManagerView } from "./TestBatteryManagerView";
 import { AuditTrailManagerView } from "./AuditTrailManagerView";
-import { AIEfficiencyReportView } from "./AIEfficiencyReportView";
 import { CustodyRemindersView } from "./CustodyRemindersView";
 import { DigitalReturnsD3Chart } from "./DigitalReturnsD3Chart";
 import { ExportFoundItemsReportModal } from "./ExportFoundItemsReportModal";
@@ -182,7 +181,7 @@ export const DashboardView: React.FC = () => {
 
   // Admin Sub-Tab State
   const [adminSubTab, setAdminSubTab] = useState<
-    "users" | "accounts" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "test_batteries" | "test_distribution" | "ai_efficiency" | "custody_reminders" | "digital_returns"
+    "users" | "accounts" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "test_batteries" | "test_distribution" | "custody_reminders" | "digital_returns"
   >("users");
 
   // Items returned with digital signature count
@@ -1689,7 +1688,7 @@ export const DashboardView: React.FC = () => {
                         id: "system_docs",
                         label: "Sistema & Relatórios",
                         icon: Settings,
-                        tabs: ["documents", "project_settings", "ai_efficiency", "versions"],
+                        tabs: ["documents", "project_settings", "versions"],
                       },
                     ].map((cat) => {
                       const Icon = cat.icon;
@@ -1923,17 +1922,6 @@ export const DashboardView: React.FC = () => {
                           <span>Dados do Projeto</span>
                         </button>
 
-                        <button
-                          onClick={() => setAdminSubTab("ai_efficiency")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "ai_efficiency"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>Eficiência da IA</span>
-                        </button>
 
                         <button
                           onClick={() => setAdminSubTab("versions")}
@@ -3174,12 +3162,6 @@ export const DashboardView: React.FC = () => {
             </div>
           )}
 
-          {/* TAB 8: RELATÓRIO DE EFICIÊNCIA DA IA */}
-          {adminSubTab === "ai_efficiency" && (
-            <div className="space-y-6">
-              <AIEfficiencyReportView />
-            </div>
-          )}
 
           {/* TAB 9: LEMBRETES DE CUSTÓDIA >90 DIAS */}
           {adminSubTab === "custody_reminders" && (

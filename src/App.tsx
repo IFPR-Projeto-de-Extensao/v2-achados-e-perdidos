@@ -13,14 +13,12 @@ import { MyItemsView } from "./components/MyItemsView";
 import { NotificationsView } from "./components/NotificationsView";
 import { SettingsView } from "./components/SettingsView";
 import { SupportView } from "./components/SupportView";
-import { ImageAnalyzerView } from "./components/ImageAnalyzerView";
 import { PrivacyPolicyView } from "./components/PrivacyPolicyView";
 import { TermsOfUseView } from "./components/TermsOfUseView";
 import { EmailVerificationView } from "./components/EmailVerificationView";
 import { NotFoundView } from "./components/NotFoundView";
 import { ItemDetailModal } from "./components/ItemDetailModal";
 import { QRCodeScannerModal } from "./components/QRCodeScannerModal";
-import { AIMatchModal } from "./components/AIMatchModal";
 import { AuthModal } from "./components/AuthModal";
 import { KeyboardShortcutsModal } from "./components/KeyboardShortcutsModal";
 import { TourGuide } from "./components/TourGuide";
@@ -52,7 +50,6 @@ const MainContent: React.FC = () => {
     setQrScannerOpen,
     selectedItemForDetail,
     setSelectedItemForDetail,
-    aiMatchAlert,
     authModalOpen,
     setAuthModalOpen,
     maintenanceMode,
@@ -155,10 +152,6 @@ const MainContent: React.FC = () => {
         case "P":
           e.preventDefault();
           navigate("/perfil");
-          break;
-        case "A":
-          e.preventDefault();
-          navigate("/analisador-ia");
           break;
         case "Q":
           e.preventDefault();
@@ -294,7 +287,7 @@ const MainContent: React.FC = () => {
       case "support_bug":
         return <SupportView />;
       case "image_analyzer":
-        return <ImageAnalyzerView />;
+        return <ObjectsView initialFilterType="TODOS" />;
       case "privacy_policy":
         return <PrivacyPolicyView />;
       case "terms_of_use":
@@ -404,9 +397,6 @@ const MainContent: React.FC = () => {
 
       {/* QR Code Scanner Modal */}
       {qrScannerOpen && <QRCodeScannerModal />}
-
-      {/* AI Match Alert Modal */}
-      {aiMatchAlert && <AIMatchModal />}
 
       {/* Auth Modal */}
       {authModalOpen && <AuthModal isOpen={authModalOpen} onClose={() => setAuthModalOpen(false)} />}

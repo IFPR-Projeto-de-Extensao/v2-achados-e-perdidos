@@ -24,12 +24,57 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.0.0",
+    codename: "Edição Oficial de Apresentação Acadêmica — Estabilidade & Recursos Essenciais (Sem IA)",
+    releaseDate: "21/10/2026",
+    releaseDateTime: "21 de Outubro de 2026 • 21:30 BRT",
+    type: "MAJOR",
+    isCurrent: true,
+    summary: "Adequação do Localiza+ para a primeira apresentação acadêmica oficial como projeto de extensão do curso de Sistemas de Informação do IFPR Campus Ivaiporã: 1) Desativação de todas as funcionalidades experimentais de Inteligência Artificial (análise multimodal de imagens, correspondência automática com IA e busca semântica) para priorizar a estabilidade, facilidade de uso e previsibilidade das operações; 2) Preservação e consolidação das funcionalidades essenciais: autenticação de usuários, perfis e papéis (Aluno, Servidor, Admin), cadastro completo de achados e perdidos com upload opcional de fotos, consulta ao catálogo e busca textual determinística, etiquetas físicas com QR Code, termos oficiais de devolução com assinatura digital e sincronização segura com o Firebase Firestore; 3) Remoção de links e atalhos órfãos na navegação, mantendo uma experiência limpa e coerente para a banca e comunidade acadêmica.",
+    additions: [
+      {
+        id: "v100-add-1",
+        title: "Consolidação dos Módulos Essenciais para Apresentação",
+        description: "Foco integral nas rotas operacionais de Achados, Perdidos, Catálogo Geral, Cadastro com fotos e Termos de Restituição com assinatura digital.",
+        module: "GERAL",
+        tag: "Apresentação Acadêmica",
+      },
+      {
+        id: "v100-add-2",
+        title: "Busca Convencional Determinística e Alta Performance",
+        description: "Busca textual direta por título, localização, cor, marca, ID e categoria, sem dependência de APIs externas de modelos generativos.",
+        module: "GERAL",
+        tag: "Busca & Catálogo",
+      },
+      {
+        id: "v100-add-3",
+        title: "Preservação das Regras de Segurança e Firestore",
+        description: "Garantia de integridade do controle de acesso (RBAC), histórico de auditoria e persistência confiável no Cloud Firestore.",
+        module: "FIRESTORE",
+        tag: "Segurança & Banco",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v100-fix-1",
+        title: "Desativação de Chamadas Externas à IA",
+        description: "Remoção de rotas, modais e botões exclusivos de IA, eliminando riscos de indisponibilidade de cota, lentidão ou erros em rede durante a apresentação.",
+        module: "GERAL",
+        tag: "Estabilidade",
+      },
+    ],
+    stats: {
+      additionsCount: 3,
+      fixesCount: 1,
+    },
+  },
+  {
     version: "v1.9.47",
     codename: "Reconstrução Completa da Experiência de Catálogo e Busca de Objetos (/buscar)",
     releaseDate: "20/10/2026",
     releaseDateTime: "20 de Outubro de 2026 • 23:30 BRT",
     type: "MINOR",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Reconstrução visual e estrutural profunda da tela de catálogo e busca de objetos (/buscar): 1) Correção definitiva do espaçamento superior (pt) e posicionamento do cabeçalho institucional fixo para evitar sobreposição de títulos e breadcrumbs; 2) Redesenho completo da área de pesquisa e filtros avançados, priorizando a descoberta dos itens com painéis recolhíveis, categorias compactas com contagens reais e indicadores de filtros ativos; 3) Protagonismo absoluto para os objetos do acervo com cards aprimorados e listagens responsivas otimizadas para mobile, tablets e desktops; 4) Preservação integral de todas as consultas Firestore, pesquisa por voz, histórico de busca, relatórios PDF e exportações.",
     additions: [
       {

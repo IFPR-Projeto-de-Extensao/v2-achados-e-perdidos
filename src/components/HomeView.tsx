@@ -4,7 +4,6 @@ import { useRouter } from "../context/RouterContext";
 import { ItemCard } from "./ItemCard";
 import { RecentActivityWidget } from "./RecentActivityWidget";
 import { LostFoundItem } from "../types";
-import { clientSemanticSearch, SemanticSearchResult } from "../lib/apiHelper";
 import { vibrateClick, vibrateWarning, sanitizeQuery } from "../lib/utils";
 import { filterHomeItems } from "../lib/searchUtils";
 import {
@@ -50,23 +49,6 @@ export const HomeView: React.FC = () => {
 
   const [homeSearch, setHomeSearch] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("TODAS");
-  const [semanticMode, setSemanticMode] = useState<boolean>(true);
-  const [isSearchingSemantic, setIsSearchingSemantic] = useState<boolean>(false);
-  const [semanticResults, setSemanticResults] = useState<SemanticSearchResult[] | null>(null);
-  const [semanticModelUsed, setSemanticModelUsed] = useState<string | null>(null);
-  const [semanticError, setSemanticError] = useState<{
-    hasError: boolean;
-    message: string;
-  } | null>(null);
-  const [retryCount, setRetryCount] = useState<number>(0);
-
-  // Quick Semantic Search Prompts for discovery
-  const semanticExampleQueries = [
-    "chave azul esquecida perto da biblioteca",
-    "garrafa térmica preta deixada na quadra",
-    "calculadora científica no laboratório",
-    "crachá e carteira no bloco administrativo",
-  ];
 
   // Calculate statistics
   const totalRegistered = items.length;
@@ -74,75 +56,13 @@ export const HomeView: React.FC = () => {
   const totalReturned = items.filter((i) => i.status === "DEVOLVIDO").length;
   const successRate = totalRegistered > 0 ? Math.round((totalReturned / totalRegistered) * 100) : 0;
 
-  // Semantic Search Effect with Debounce
-  useEffect(() => {
-    // Sanitize search query input safely against null/undefined
-    const sanitizedQuery = sanitizeQuery(homeSearch);
-
-    if (!sanitizedQuery || sanitizedQuery.length < 3 || !semanticMode) {
-      setSemanticResults(null);
-      setIsSearchingSemantic(false);
-      setSemanticError(null);
-      return;
-    }
-
-    let isMounted = true;
-    setIsSearchingSemantic(true);
-    setSemanticError(null);
-
-    const timer = setTimeout(async () => {
-      try {
-        const response = await clientSemanticSearch(sanitizedQuery, items || []);
-
-        if (isMounted) {
-          if (response?.success) {
-            setSemanticResults(Array.isArray(response.results) ? response.results : []);
-            setSemanticModelUsed(response.modelUsed || "gemini-3.7-flash");
-            setSemanticError(null);
-          } else {
-            setSemanticResults(null);
-            setSemanticError({
-              hasError: true,
-              message:
-                response?.message ||
-                (language === "pt"
-                  ? "Não foi possível conectar ao assistente Gemini no momento. Exibindo correspondências diretas por texto."
-                  : "Could not connect to Gemini AI assistant. Displaying standard text matches."),
-            });
-          }
-          setIsSearchingSemantic(false);
-        }
-      } catch (err: any) {
-        console.error("[HomeView Search Debug] Erro de rede/execução na busca semântica:", err);
-        if (isMounted) {
-          setSemanticResults(null);
-          setSemanticError({
-            hasError: true,
-            message:
-              err?.message ||
-              (language === "pt"
-                ? "Falha de conexão com a API do Gemini. Usando busca local de segurança."
-                : "Connection failure with Gemini API. Switched to safe local search."),
-          });
-          setIsSearchingSemantic(false);
-        }
-      }
-    }, 380);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(timer);
-    };
-  }, [homeSearch, semanticMode, items, retryCount, language]);
-
-  // Combine semantic relevance with category filter using unit-tested filterHomeItems logic
+  // Filter items using standard deterministic keyword search
   const displayedItems = filterHomeItems({
     items,
     searchTerm: homeSearch,
     selectedCategory,
-    semanticMode,
-    semanticResults,
-    limit: semanticMode && semanticResults && semanticResults.length > 0 ? undefined : 6,
+    semanticMode: false,
+    limit: 6,
   });
 
   const categoriesList = [
@@ -202,7 +122,7 @@ export const HomeView: React.FC = () => {
                 Central Institucional de Achados &amp; Pertences
               </h1>
               <p className="text-xs sm:text-sm text-emerald-50/90 font-medium leading-relaxed max-w-xl">
-                Sistema oficial para registro, controle de custódia na Guarita/SEBAC, cruzamento automatizado com inteligência artificial e devolução formal aos proprietários.
+                Sistema oficial para registro, controle de custódia na Guarita/SEBAC, catalogação institucional de pertences e devolução formal aos proprietários.
               </p>
             </div>
           </div>
@@ -368,45 +288,26 @@ export const HomeView: React.FC = () => {
           {/* Main Search Input */}
           <div className="relative flex-1">
             <div className="absolute left-4 top-3.5 flex items-center space-x-1 text-slate-400">
-              {isSearchingSemantic ? (
-                <Loader2 className="w-5 h-5 text-[#00843D] animate-spin" />
-              ) : semanticMode ? (
-                <Sparkles className="w-5 h-5 text-amber-500 fill-amber-500" />
-              ) : (
-                <Search className="w-5 h-5" />
-              )}
+              <Search className="w-5 h-5" />
             </div>
             <input
-              id="home-semantic-search-input"
+              id="home-search-input"
               type="text"
               value={homeSearch}
               onChange={(e) => setHomeSearch(e?.target?.value ?? "")}
-              placeholder="Pesquisar por título, marca, cor, local no campus ou use IA Gemini..."
-              className={`w-full pl-12 pr-32 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border text-slate-900 dark:text-white text-sm outline-none transition-all ${
-                isSearchingSemantic
-                  ? "border-[#00843D] ring-2 ring-[#00843D]/20"
-                  : "border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-[#00843D] focus:border-[#00843D]"
-              }`}
+              placeholder="Pesquisar por título, marca, cor, local no campus..."
+              className="w-full pl-12 pr-10 py-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-[#00843D] focus:border-[#00843D] transition-all"
             />
-            {/* Semantic Mode Toggle Chip inside input */}
-            <div className="absolute right-3 top-2.5 flex items-center space-x-1.5">
+            {homeSearch && (
               <button
                 type="button"
-                onClick={() => {
-                  vibrateClick();
-                  setSemanticMode(!semanticMode);
-                }}
-                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center space-x-1.5 transition-all border cursor-pointer ${
-                  semanticMode
-                    ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 shadow-2xs"
-                    : "bg-slate-200 dark:bg-slate-800 text-slate-500 border-slate-300 dark:border-slate-700"
-                }`}
-                title="Alternar Busca Semântica por IA"
+                onClick={() => setHomeSearch("")}
+                className="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded-lg cursor-pointer transition-colors"
+                title="Limpar busca"
               >
-                <Sparkles className={`w-3.5 h-3.5 ${semanticMode ? "text-amber-500 fill-amber-500" : "text-slate-400"}`} />
-                <span className="hidden sm:inline">IA Gemini</span>
+                <X className="w-4 h-4" />
               </button>
-            </div>
+            )}
           </div>
 
           {/* Quick Status Filter Tabs */}
@@ -657,9 +558,9 @@ export const HomeView: React.FC = () => {
             <span className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 font-black flex items-center justify-center text-xs">
               03
             </span>
-            <h4 className="font-extrabold text-sm text-white">Cruzamento por IA</h4>
+            <h4 className="font-extrabold text-sm text-white">Triagem e Localização</h4>
             <p className="text-slate-400 leading-relaxed text-[11px]">
-              O Gemini analisa relatos de perda e correlaciona automaticamente novos achados com seus possíveis donos.
+              A equipe de atendimento e os proprietários localizam pertences pelo catálogo e pontos de guarda oficiais.
             </p>
           </div>
 

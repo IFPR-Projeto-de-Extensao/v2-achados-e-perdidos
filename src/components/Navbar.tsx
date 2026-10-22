@@ -224,18 +224,6 @@ export const Navbar: React.FC = () => {
               <span>Achados</span>
             </Link>
 
-            <Link
-              to="/analisador-ia"
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                routeKey === "image_analyzer"
-                  ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 shadow-xs"
-                  : "text-slate-600 dark:text-slate-300 hover:text-amber-600"
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-              <span>Analisador IA</span>
-            </Link>
-
             {currentUser.role === "ADMIN" && (
               <Link
                 to="/admin"
@@ -597,18 +585,6 @@ export const Navbar: React.FC = () => {
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2.5 pb-1">
                 Ferramentas do Campus
               </span>
-
-              <button
-                onClick={() => handleNavClick("/analisador-ia")}
-                className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                  routeKey === "image_analyzer"
-                    ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
-                }`}
-              >
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                <span>Identificador com IA Gemini</span>
-              </button>
 
               <button
                 onClick={() => {

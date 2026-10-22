@@ -13,7 +13,6 @@ const SHORTCUTS = [
   { key: "R", description: "Cadastrar Novo Objeto Perdido / Achado" },
   { key: "D", description: "Acessar Painel / Dashboard" },
   { key: "P", description: "Ver Perfil do Usuário" },
-  { key: "A", description: "Analisador Visual de Fotos com IA (Gemini)" },
   { key: "Q", description: "Abrir Scanner de QR Code do Campus" },
   { key: "?", description: "Exibir este Guia de Atalhos de Teclado" },
   { key: "Esc", description: "Fechar Modais e Janelas Abertas" },

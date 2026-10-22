@@ -92,8 +92,8 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
       a: "O Localiza+ é voltado prioritariamente para itens perdidos e encontrados nas dependências do IFPR Campus Ivaiporã, ônibus universitários conveniados e eventos acadêmicos institucionais.",
     },
     {
-      q: "Como funciona a Inteligência Artificial Gemini de correspondência?",
-      a: "Quando você cadastra ou fotografa um item, o modelo Gemini 2.5 Flash analisa título, cor, marca, categoria e localização para encontrar automaticamente objetos semelhantes cadastrados por outros estudantes ou servidores.",
+      q: "Como encontrar um objeto perdido no campus?",
+      a: "Você pode pesquisar no catálogo geral por título, categoria, cor, data aproximada e bloco do campus onde o objeto foi visto pela última vez, ou consultar a equipe na Guarita Principal e SEBAC.",
     },
   ];
 
@@ -437,7 +437,6 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
                 >
                   <option value="USABILIDADE">Facilidade de Uso / Interface</option>
                   <option value="NOVA_FUNCIONALIDADE">Sugestão de Nova Funcionalidade</option>
-                  <option value="IA_RECONHECIMENTO">Analisador de Fotos com IA</option>
                   <option value="NOTIFICACOES">Notificações e Alertas</option>
                   <option value="OUTRO">Outro Assunto</option>
                 </select>
