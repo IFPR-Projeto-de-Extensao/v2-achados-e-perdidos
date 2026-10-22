@@ -1896,7 +1896,7 @@ export const DashboardView: React.FC = () => {
                     )}
 
                     {/* Category: System & Reports */}
-                    {(adminSubTab === "documents" || adminSubTab === "project_settings" || adminSubTab === "ai_efficiency" || adminSubTab === "versions") && (
+                    {(adminSubTab === "documents" || adminSubTab === "project_settings" || adminSubTab === "versions") && (
                       <>
                         <button
                           onClick={() => setAdminSubTab("documents")}

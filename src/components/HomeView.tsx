@@ -81,13 +81,6 @@ export const HomeView: React.FC = () => {
     navigate(`/cadastrar?tipo=${type.toLowerCase()}`);
   };
 
-  const handleSelectExampleQuery = (queryText: string) => {
-    vibrateClick();
-    const safeQ = sanitizeQuery(queryText);
-    setHomeSearch(safeQ);
-    setSemanticMode(true);
-  };
-
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [statusFilter, setStatusFilter] = useState<"TODOS" | "PERDIDO" | "ENCONTRADO" | "DEVOLVIDO">("TODOS");
 

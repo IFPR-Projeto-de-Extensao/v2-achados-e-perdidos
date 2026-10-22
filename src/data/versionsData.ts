@@ -24,30 +24,30 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
-    version: "v1.0.0",
+    version: "v1.10.0",
     codename: "Edição Oficial de Apresentação Acadêmica — Estabilidade & Recursos Essenciais (Sem IA)",
     releaseDate: "21/10/2026",
     releaseDateTime: "21 de Outubro de 2026 • 21:30 BRT",
-    type: "MAJOR",
+    type: "MINOR",
     isCurrent: true,
     summary: "Adequação do Localiza+ para a primeira apresentação acadêmica oficial como projeto de extensão do curso de Sistemas de Informação do IFPR Campus Ivaiporã: 1) Desativação de todas as funcionalidades experimentais de Inteligência Artificial (análise multimodal de imagens, correspondência automática com IA e busca semântica) para priorizar a estabilidade, facilidade de uso e previsibilidade das operações; 2) Preservação e consolidação das funcionalidades essenciais: autenticação de usuários, perfis e papéis (Aluno, Servidor, Admin), cadastro completo de achados e perdidos com upload opcional de fotos, consulta ao catálogo e busca textual determinística, etiquetas físicas com QR Code, termos oficiais de devolução com assinatura digital e sincronização segura com o Firebase Firestore; 3) Remoção de links e atalhos órfãos na navegação, mantendo uma experiência limpa e coerente para a banca e comunidade acadêmica.",
     additions: [
       {
-        id: "v100-add-1",
+        id: "v1100-add-1",
         title: "Consolidação dos Módulos Essenciais para Apresentação",
         description: "Foco integral nas rotas operacionais de Achados, Perdidos, Catálogo Geral, Cadastro com fotos e Termos de Restituição com assinatura digital.",
         module: "GERAL",
         tag: "Apresentação Acadêmica",
       },
       {
-        id: "v100-add-2",
+        id: "v1100-add-2",
         title: "Busca Convencional Determinística e Alta Performance",
         description: "Busca textual direta por título, localização, cor, marca, ID e categoria, sem dependência de APIs externas de modelos generativos.",
         module: "GERAL",
         tag: "Busca & Catálogo",
       },
       {
-        id: "v100-add-3",
+        id: "v1100-add-3",
         title: "Preservação das Regras de Segurança e Firestore",
         description: "Garantia de integridade do controle de acesso (RBAC), histórico de auditoria e persistência confiável no Cloud Firestore.",
         module: "FIRESTORE",
@@ -56,7 +56,7 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
     ],
     bugFixes: [
       {
-        id: "v100-fix-1",
+        id: "v1100-fix-1",
         title: "Desativação de Chamadas Externas à IA",
         description: "Remoção de rotas, modais e botões exclusivos de IA, eliminando riscos de indisponibilidade de cota, lentidão ou erros em rede durante a apresentação.",
         module: "GERAL",
