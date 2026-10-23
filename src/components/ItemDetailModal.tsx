@@ -601,17 +601,78 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   };
 
   // Generate and Print PDF Receipt
-  const handlePrintReceiptPDF = () => {
+  const handlePrintReceiptPDF = (overrideRecipientOrEvent?: {
+    name?: string;
+    email?: string;
+    bond?: string;
+    doc?: string;
+    signatureDataUrl?: string;
+  } | React.MouseEvent<HTMLElement>) => {
+    const isEvent = Boolean(overrideRecipientOrEvent && ("nativeEvent" in overrideRecipientOrEvent || "preventDefault" in overrideRecipientOrEvent));
+    const overrideRecipient = isEvent ? undefined : (overrideRecipientOrEvent as {
+      name?: string;
+      email?: string;
+      bond?: string;
+      doc?: string;
+      signatureDataUrl?: string;
+    } | undefined);
+
     const printWindow = window.open("", "_blank", "width=750,height=900");
     if (!printWindow) {
       addToast("Permita pop-ups no seu navegador para gerar o recibo PDF em tela cheia.", "error");
       return;
     }
 
-    const claimerName = approvedClaim ? approvedClaim.claimerName : (item.registeredByName || currentUser.name);
-    const claimerEmail = approvedClaim ? approvedClaim.claimerEmail : (currentUser.email);
+    const recipientName =
+      overrideRecipient?.name ||
+      returnRecipientName.trim() ||
+      item.recipientName ||
+      item.recipientSignatureName ||
+      (approvedClaim ? approvedClaim.claimerName : "") ||
+      "Proprietário / Receptor";
+
+    const recipientEmail =
+      overrideRecipient?.email ||
+      returnRecipientEmail.trim() ||
+      item.recipientEmail ||
+      item.recipientSignatureEmail ||
+      (approvedClaim ? approvedClaim.claimerEmail : "") ||
+      "Não informado";
+
+    const recipientBond =
+      overrideRecipient?.bond ||
+      returnRecipientBond ||
+      item.recipientBond ||
+      item.recipientSignatureBond ||
+      "Aluno(a)";
+
+    const recipientDoc =
+      overrideRecipient?.doc ||
+      returnRecipientDocument.trim() ||
+      item.recipientDocument ||
+      "Documento oficial com foto conferido no balcão";
+
+    const attendantName =
+      item.returnedByName ||
+      currentUser?.name ||
+      "Servidor Responsável SEBAC / Portaria";
+
+    const attendantRole =
+      item.returnedByRole ||
+      currentUser?.role ||
+      "Servidor";
+
+    const signatureDataUrl =
+      overrideRecipient?.signatureDataUrl ||
+      returnSignatureDataUrl ||
+      item.recipientSignatureUrl ||
+      "";
+
+    const isPendingRemote =
+      item.recipientSignatureStatus === "PENDING_REMOTE" && !signatureDataUrl;
+
     const safeId = String(item?.id ?? "ITEM").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-    const receiptCode = `REC-IFPR-${safeId}-${Date.now().toString().slice(-4)}`;
+    const receiptCode = item.receiptValidationCode || `REC-IFPR-${safeId}-${Date.now().toString().slice(-4)}`;
 
     const htmlContent = `
       <!DOCTYPE html>
@@ -638,7 +699,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             .data-grid td { padding: 8px 6px; border-bottom: 1px solid #f1f5f9; }
             .data-grid td.label { font-weight: bold; color: #475569; width: 35%; }
             .data-grid td.value { color: #0f172a; font-weight: 600; }
-            .signatures { margin-top: 48px; display: flex; justify-content: space-between; gap: 32px; }
+            .signatures { margin-top: 36px; display: flex; justify-content: space-between; gap: 32px; }
             .sig-line { flex: 1; text-align: center; border-top: 1px solid #0f172a; padding-top: 8px; font-size: 11px; font-weight: bold; color: #334155; }
             .footer { text-align: center; font-size: 10px; color: #94a3b8; margin-top: 32px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
             .btn-print { display: block; width: 100%; max-width: 650px; margin: 20px auto 0 auto; padding: 14px; background: #00843D; color: white; border: none; border-radius: 12px; font-weight: bold; font-size: 14px; cursor: pointer; text-align: center; }
@@ -660,35 +721,45 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
             <div class="section-title">1. Dados do Objeto Entregue</div>
             <table class="data-grid">
-              <tr><td class="label">ID da Ocorrência:</td><td class="value">${item.id}</td></tr>
+              <tr><td class="label">ID da Ocorrência:</td><td class="value">#${item.id}</td></tr>
               <tr><td class="label">Título / Descrição:</td><td class="value">${item.title}</td></tr>
               <tr><td class="label">Categoria / Tipo:</td><td class="value">${item.category} (${item.type})</td></tr>
               <tr><td class="label">Local onde foi Encontrado:</td><td class="value">${item.location}</td></tr>
               <tr><td class="label">Cor / Marca:</td><td class="value">${item.color || 'N/I'} • ${item.brand || 'N/I'}</td></tr>
-              <tr><td class="label">Código de Rastreamento QR:</td><td class="value" style="font-family: monospace; color: #00843D;">${item.qrCodeId}</td></tr>
+              <tr><td class="label">Código de Rastreamento QR:</td><td class="value" style="font-family: monospace; color: #00843D;">${item.qrCodeId || item.id}</td></tr>
             </table>
 
             <div class="section-title">2. Dados do Proprietário / Recebedor</div>
             <table class="data-grid">
-              <tr><td class="label">Nome Completo:</td><td class="value">${claimerName}</td></tr>
-              <tr><td class="label">E-mail Institucional:</td><td class="value">${claimerEmail}</td></tr>
-              <tr><td class="label">Vínculo com o IFPR:</td><td class="value">${currentUser.role} - Campus Ivaiporã</td></tr>
-              <tr><td class="label">Comprovação Apresentada:</td><td class="value">${approvedClaim?.verificationAnswer || 'Conferência presencial efetuada na guarita do campus com documento.'}</td></tr>
+              <tr><td class="label">Nome Completo:</td><td class="value"><strong>${recipientName}</strong></td></tr>
+              <tr><td class="label">E-mail do Receptor:</td><td class="value">${recipientEmail}</td></tr>
+              <tr><td class="label">Vínculo com o Campus:</td><td class="value">${recipientBond} • IFPR Ivaiporã</td></tr>
+              <tr><td class="label">Documento / Matrícula:</td><td class="value">${recipientDoc}</td></tr>
+              <tr><td class="label">Atendente Responsável:</td><td class="value">${attendantName} (${attendantRole})</td></tr>
             </table>
 
             <div class="signatures">
               <div class="sig-line">
-                ${claimerName}<br/>
-                <span style="font-weight: normal; font-size: 10px; color: #64748b;">Assinatura do Recebedor</span>
+                ${
+                  signatureDataUrl
+                    ? `<img src="${signatureDataUrl}" style="max-height: 52px; max-width: 220px; margin: 0 auto 6px auto; display: block;" alt="Assinatura Digital" />`
+                    : isPendingRemote
+                    ? `<div style="height: 40px; display: flex; align-items: center; justify-content: center; color: #d97706; font-size: 11px; font-weight: bold; font-style: italic;">[Assinatura Remota Pendente - Link Enviado]</div>`
+                    : `<div style="height: 52px;"></div>`
+                }
+                <strong>${recipientName}</strong><br/>
+                <span style="font-weight: normal; font-size: 10px; color: #64748b;">Assinatura do Recebedor (${recipientBond})</span>
               </div>
               <div class="sig-line">
-                Servidor Responsável SEBAC / Portaria<br/>
-                <span style="font-weight: normal; font-size: 10px; color: #64748b;">IFPR Campus Ivaiporã</span>
+                <div style="height: 52px;"></div>
+                <strong>${attendantName}</strong><br/>
+                <span style="font-weight: normal; font-size: 10px; color: #64748b;">${attendantRole} • SEBAC / Portaria IFPR</span>
               </div>
             </div>
 
             <div class="footer">
-              Este recibo comprova a restituição legal do pertence registrado no Sistema de Achados & Perdidos do IFPR Campus Ivaiporã.
+              Este recibo comprova a restituição legal do pertence registrado no Sistema de Achados & Perdidos do IFPR Campus Ivaiporã.<br/>
+              Em conformidade com a Lei Federal nº 14.063/2020 (Art. 5º, I - Assinatura Eletrônica Simples).
             </div>
           </div>
 
@@ -958,7 +1029,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
         "success"
       );
       setReturnModalOpen(false);
-      handlePrintReceiptPDF();
+      handlePrintReceiptPDF({
+        name: returnRecipientName.trim(),
+        email: returnRecipientEmail.trim(),
+        bond: returnRecipientBond,
+        doc: returnRecipientDocument.trim(),
+        signatureDataUrl: returnSignatureMode === "IN_PERSON_DEVICE" ? returnSignatureDataUrl : undefined,
+      });
       onClose();
     } catch (err) {
       console.error(err);

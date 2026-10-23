@@ -3793,6 +3793,7 @@ app.post(["/api/signature/verify-token", "/signature/verify-token"], generalRate
         isAlreadySigned: true,
         signedAt: itemData.signedAt,
         receiptValidationCode: itemData.receiptValidationCode,
+        recipientSignatureUrl: itemData.recipientSignatureUrl || "",
         item: {
           id: itemData.id || itemId,
           title: itemData.title,
@@ -3807,6 +3808,7 @@ app.post(["/api/signature/verify-token", "/signature/verify-token"], generalRate
           returnDate: itemData.returnDate,
           status: itemData.status,
           recipientSignatureStatus: itemData.recipientSignatureStatus,
+          recipientSignatureUrl: itemData.recipientSignatureUrl || "",
           receiptValidationCode: itemData.receiptValidationCode,
           signedAt: itemData.signedAt,
         },
@@ -3914,6 +3916,7 @@ app.post(["/api/signature/verify-token", "/signature/verify-token"], generalRate
       success: true,
       valid: true,
       isAlreadySigned: false,
+      recipientSignatureUrl: itemData.recipientSignatureUrl || "",
       item: {
         id: itemData.id || itemId,
         title: itemData.title,
@@ -3928,6 +3931,7 @@ app.post(["/api/signature/verify-token", "/signature/verify-token"], generalRate
         returnDate: itemData.returnDate,
         status: itemData.status,
         recipientSignatureStatus: itemData.recipientSignatureStatus,
+        recipientSignatureUrl: itemData.recipientSignatureUrl || "",
         receiptValidationCode: itemData.receiptValidationCode,
       },
     });
@@ -3944,7 +3948,7 @@ app.post(["/api/signature/verify-token", "/signature/verify-token"], generalRate
 // API Endpoint: Confirm and Finalize Remote Digital Signature with Token Verification & Atomic Concurrency Guard
 app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], generalRateLimiter, async (req, res) => {
   try {
-    const { itemId, token, signatureDataUrl, documentNumber, signerName, signerEmail, signerBond } = req.body || {};
+    const { itemId, token, signatureDataUrl, signatureMethod, documentNumber, signerName, signerEmail, signerBond } = req.body || {};
 
     if (!itemId || !token || !signatureDataUrl || typeof itemId !== "string" || typeof token !== "string") {
       return res.status(400).json({
@@ -4095,9 +4099,12 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
         status: "DEVOLVIDO",
         recipientSignatureUrl: signatureDataUrl,
         recipientSignatureType: "REMOTE_EMAIL",
+        recipientSignatureMethod: signatureMethod || (signatureDataUrl.includes("type") ? "TYPED_NAME" : "DRAWN"),
         recipientSignatureStatus: "SIGNED",
         recipientDocument: documentNumber || itemData.recipientDocument || "",
         recipientName: effectiveSignerName,
+        recipientBond: effectiveSignerBond,
+        recipientEmail: signerEmail || itemData.recipientEmail || "",
         signedAt: nowIso,
         resolutionDate: itemData.resolutionDate || nowIso,
         receiptValidationCode: finalValidationCode,
@@ -4116,6 +4123,7 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
           usedAt: nowIso,
           validationCode: finalValidationCode,
           signedBy: effectiveSignerName,
+          signatureMethod: signatureMethod || "DRAWN",
         },
         { merge: true }
       );
@@ -4129,6 +4137,7 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
         alreadyCompleted: true,
         message: "Assinatura digital já confirmada anteriormente.",
         validationCode: finalValidationCode,
+        recipientSignatureUrl: signatureDataUrl,
         signedAt: nowIso,
       });
     }
@@ -4172,6 +4181,7 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
       success: true,
       message: "Assinatura digital autenticada e baixa de devolução concluída com sucesso no banco de dados.",
       validationCode: finalValidationCode,
+      recipientSignatureUrl: signatureDataUrl,
       signedAt: nowIso,
     });
   } catch (error: any) {
@@ -4215,7 +4225,7 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
       });
     }
 
-    const { itemId, itemTitle, recipientEmail, recipientName, signatureLink, signatureToken, returnedByName } = req.body || {};
+    const { itemId, itemTitle, recipientEmail, recipientName, recipientBond, recipientDocument, signatureLink, signatureToken, returnedByName } = req.body || {};
 
     if (!itemId || !recipientEmail || typeof itemId !== "string" || typeof recipientEmail !== "string") {
       return res.status(400).json({
@@ -4237,12 +4247,14 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
       return res.status(404).json({ success: false, error: `Item #${itemId} não encontrado no banco de dados.` });
     }
 
-    const targetEmail = recipientEmail || "localizamais0@gmail.com";
-    const targetName = recipientName || "Aluno / Servidor IFPR";
+    const targetEmail = recipientEmail.trim();
+    const targetName = (recipientName || "Aluno / Servidor IFPR").trim();
+    const targetBond = (recipientBond || "Aluno(a)").trim();
+    const targetDocument = (recipientDocument || "").trim();
     const timestamp = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    // Phase 3: Store token hash in private collection 'signature_requests' (Isolated from public catalogue)
+    // Store token hash and recipient metadata in private collection 'signature_requests' (Isolated from public catalogue)
     if (signatureToken && typeof signatureToken === "string") {
       const cleanToken = signatureToken.trim();
       const tokenHash = crypto.createHash("sha256").update(cleanToken).digest("hex");
@@ -4252,18 +4264,24 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
           tokenHash,
           recipientEmail: targetEmail,
           recipientName: targetName,
+          recipientBond: targetBond,
+          recipientDocument: targetDocument,
           createdAt: timestamp,
           expiresAt,
           used: false,
           dispatchedByUserId: req.authUser?.uid,
         });
 
-        // Ensure token is purged from public document
+        // Ensure token is purged from public document and status reflects remote wait
         await adminDb.collection("items").doc(itemId).update({
           signatureToken: null,
           signatureTokenExpiresAt: expiresAt,
           signatureTokenUsed: false,
           recipientSignatureStatus: "PENDING_REMOTE",
+          recipientName: targetName,
+          recipientEmail: targetEmail,
+          recipientBond: targetBond,
+          recipientDocument: targetDocument,
         });
       } catch (tokenSaveErr) {
         console.warn("[Signature Warning] Falha ao persistir token em signature_requests:", tokenSaveErr);
@@ -4282,7 +4300,78 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
       `Seção de Apoio ao Estudante (SEBAC) & Portaria\n` +
       `Instituto Federal do Paraná - Campus Ivaiporã`;
 
-    console.info(`[Signature Email Request] Link de assinatura digital despachado para ${targetEmail} referente ao item #${itemId}.`);
+    const emailHtml = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #0f172a; margin: 0; padding: 20px; }
+    .box { max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    .header { background: #00843D; color: #ffffff; padding: 24px; text-align: center; }
+    .header h2 { margin: 0; font-size: 20px; font-weight: 800; }
+    .header p { margin: 4px 0 0 0; font-size: 12px; opacity: 0.9; }
+    .content { padding: 24px; font-size: 13px; line-height: 1.6; color: #334155; }
+    .cta-btn { display: block; width: fit-content; margin: 24px auto; background: #00843D; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 12px; font-weight: bold; font-size: 14px; text-align: center; }
+    .info-card { background: #f1f5f9; border-radius: 12px; padding: 14px; margin: 16px 0; font-size: 12px; }
+    .footer { padding: 16px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="header">
+      <h2>Instituto Federal do Paraná • Campus Ivaiporã</h2>
+      <p>Sistema Localiza+ • Termo Oficial de Devolução de Pertence</p>
+    </div>
+    <div class="content">
+      <p>Olá, <strong>${targetName}</strong>!</p>
+      <p>Seu pertence <strong>"${itemTitle || "Objeto"}"</strong> foi entregue pela equipe de atendimento do IFPR Campus Ivaiporã (atendente: ${returnedByName || req.authUser?.email || "SEBAC / Portaria"}).</p>
+      <div class="info-card">
+        <strong>Identificador da Ocorrência:</strong> #${itemId}<br/>
+        <strong>Data de Liberação:</strong> ${new Date().toLocaleDateString("pt-BR")}<br/>
+        <strong>Validade do Link:</strong> 7 dias corridos
+      </div>
+      <p>Para concluir a baixa oficial no acervo institucional, realize sua assinatura digital através do botão seguro abaixo:</p>
+      <a href="${signatureLink}" class="cta-btn">✍️ Assinar Termo de Recebimento</a>
+      <p style="font-size: 11px; color: #64748b; word-break: break-all;">Ou copie e cole no seu navegador:<br/>${signatureLink}</p>
+    </div>
+    <div class="footer">
+      Seção de Apoio ao Estudante (SEBAC) & Portaria • IFPR Campus Ivaiporã
+    </div>
+  </div>
+</body>
+</html>
+    `;
+
+    // Attempt real email dispatch via configured SMTP transporter
+    const transporter = getEmailTransporter();
+    let emailDispatched = false;
+    let emailStatus: "SENT" | "PENDING_SMTP_CONFIG" | "ERROR" = "PENDING_SMTP_CONFIG";
+    let emailError: string | null = null;
+    let messageId: string | null = null;
+
+    if (transporter) {
+      try {
+        const fromAddress = process.env.SMTP_FROM || `"IFPR Achados & Perdidos" <${process.env.SMTP_USER || "campus.ivaipora@ifpr.edu.br"}>`;
+        const info = await transporter.sendMail({
+          from: fromAddress,
+          to: targetEmail,
+          subject: emailSubject,
+          text: emailBody,
+          html: emailHtml,
+        });
+        emailDispatched = true;
+        emailStatus = "SENT";
+        messageId = info.messageId;
+        console.info(`[Signature Email Success] Link de assinatura despachado via SMTP para ${targetEmail}. MessageId: ${info.messageId}`);
+      } catch (mailErr: any) {
+        emailStatus = "ERROR";
+        emailError = mailErr?.message || String(mailErr);
+        console.error(`[Signature Email Error] Falha ao despachar e-mail via SMTP para ${targetEmail}:`, mailErr);
+      }
+    } else {
+      console.info(`[Signature Email Notice] Provedor SMTP não configurado no ambiente. Registro efetuado no Firestore.`);
+    }
 
     try {
       const notifDocId = `sig_req_${itemId}_${Date.now()}`;
@@ -4296,7 +4385,9 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
         subject: emailSubject,
         body: emailBody,
         type: "REMOTE_SIGNATURE_REQUEST",
-        status: "SENT",
+        status: emailStatus,
+        messageId: messageId || null,
+        error: emailError || null,
         sentAt: timestamp,
         createdAt: timestamp,
         dispatchedByUserId: req.authUser?.uid,
@@ -4307,7 +4398,12 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
 
     return res.json({
       success: true,
-      message: `Link de assinatura digital enviado com sucesso para ${targetEmail}.`,
+      emailDispatched,
+      emailStatus,
+      emailError,
+      message: emailDispatched
+        ? `Link de assinatura digital despachado com sucesso para ${targetEmail}.`
+        : `Solicitação de assinatura registrada. Provedor SMTP não configurado no ambiente. Link seguro gerado: ${signatureLink}`,
       signatureLink,
       recipientEmail: targetEmail,
       timestamp,

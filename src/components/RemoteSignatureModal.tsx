@@ -59,6 +59,7 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
   const [activeItem, setActiveItem] = useState<LostFoundItem | null>(null);
 
   const [signatureDataUrl, setSignatureDataUrl] = useState<string>("");
+  const [signatureMethod, setSignatureMethod] = useState<"DRAWN" | "TYPED_NAME">("DRAWN");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionStep, setSubmissionStep] = useState<string>("");
   const [isCompleted, setIsCompleted] = useState(false);
@@ -144,10 +145,15 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
       if (alreadySigned) {
         setVerificationStatus("ALREADY_SIGNED");
         setIsCompleted(true);
-        setSignatureDataUrl(foundItem.recipientSignatureUrl || apiVerificationResult?.recipientSignatureUrl || "");
+        const recoveredSigUrl =
+          foundItem.recipientSignatureUrl ||
+          apiVerificationResult?.recipientSignatureUrl ||
+          apiVerificationResult?.item?.recipientSignatureUrl ||
+          "";
+        setSignatureDataUrl(recoveredSigUrl);
         setSignedTimestamp(foundItem.signedAt || apiVerificationResult?.signedAt || new Date().toISOString());
-        if (apiVerificationResult?.receiptValidationCode) {
-          setValidationCode(apiVerificationResult.receiptValidationCode);
+        if (apiVerificationResult?.receiptValidationCode || foundItem.receiptValidationCode) {
+          setValidationCode(apiVerificationResult?.receiptValidationCode || foundItem.receiptValidationCode || "");
         }
         return;
       }
@@ -235,6 +241,7 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
           itemId: item.id,
           token,
           signatureDataUrl,
+          signatureMethod,
           documentNumber: documentNumber || item.recipientDocument || "",
           signerName,
           signerEmail,
@@ -254,6 +261,8 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
 
       const confirmedValCode = confirmResult.validationCode || `REC-IFPR-${item.id.toUpperCase().slice(0, 6)}`;
       const confirmedSignedAt = confirmResult.signedAt || new Date().toISOString();
+      const confirmedSigUrl = confirmResult.recipientSignatureUrl || signatureDataUrl;
+      setSignatureDataUrl(confirmedSigUrl);
 
       // Local Context Synchronous Update with Server-Confirmed Data
       try {
@@ -774,7 +783,10 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
               signerName={signerName}
               signerBond={signerBond}
               signerEmail={signerEmail}
-              onSignatureCapture={(dataUrl) => setSignatureDataUrl(dataUrl)}
+              onSignatureCapture={(dataUrl, method) => {
+                setSignatureDataUrl(dataUrl);
+                if (method) setSignatureMethod(method);
+              }}
               onClear={() => setSignatureDataUrl("")}
             />
 

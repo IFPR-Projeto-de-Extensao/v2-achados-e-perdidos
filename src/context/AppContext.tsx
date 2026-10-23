@@ -4355,16 +4355,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (isRemoteEmail) {
         // Send email with remote signature request
+        let idToken = "";
+        if (auth.currentUser) {
+          try {
+            idToken = await auth.currentUser.getIdToken();
+          } catch (_) {}
+        }
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (idToken) {
+          headers["Authorization"] = `Bearer ${idToken}`;
+        }
+
         safeFetchJson(
           "/api/signature/send-request",
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers,
             body: JSON.stringify({
               itemId,
               itemTitle: existing?.title || "Pertence",
               recipientEmail: targetEmail,
               recipientName: returnData.recipientName,
+              recipientBond: returnData.recipientBond || "Aluno(a)",
+              recipientDocument: returnData.recipientDocument || "",
               signatureLink,
               signatureToken,
               returnedByName: effectiveUserName,

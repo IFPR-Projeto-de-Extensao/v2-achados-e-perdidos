@@ -1,11 +1,11 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { PenTool, RotateCcw, Check, AlertCircle, Sparkles, FileText, Eraser } from "lucide-react";
+import { PenTool, RotateCcw, Check, AlertCircle, FileText, Eraser, Type } from "lucide-react";
 
 interface DigitalSignaturePadProps {
   signerName: string;
   signerBond?: string;
   signerEmail?: string;
-  onSignatureCapture: (dataUrl: string) => void;
+  onSignatureCapture: (dataUrl: string, method?: "DRAWN" | "TYPED_NAME") => void;
   onClear?: () => void;
   initialSignature?: string;
   disabled?: boolean;
@@ -21,14 +21,24 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
   disabled = false,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const isDrawingRef = useRef(false);
+  const pointsInStrokeRef = useRef(0);
+  const totalStrokesRef = useRef(0);
+
   const [hasSignature, setHasSignature] = useState(false);
   const [strokeHistory, setStrokeHistory] = useState<ImageData[]>([]);
   const [penColor, setPenColor] = useState<string>("#0f172a"); // Default Navy/Black
-  const [penWidth, setPenWidth] = useState<number>(2.5);
+  const [penWidth] = useState<number>(2.5);
   const [signatureMode, setSignatureMode] = useState<"draw" | "type">("draw");
-  const [typedName, setTypedName] = useState(signerName || "");
+  const [typedName, setTypedName] = useState(signerName && signerName !== "Proprietário / Receptor" ? signerName : "");
   const [typedFont, setTypedFont] = useState<"cursive" | "serif" | "sans">("cursive");
+
+  // Synchronize typedName whenever signerName is populated or updated by parent
+  useEffect(() => {
+    if (signerName && signerName !== "Proprietário / Receptor" && signerName !== "Aluno / Servidor") {
+      setTypedName((prev) => (prev ? prev : signerName));
+    }
+  }, [signerName]);
 
   // Setup Canvas DPI and drawing context
   const initCanvas = useCallback(() => {
@@ -39,10 +49,10 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
     if (!ctx) return;
 
     const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = Math.max(window.devicePixelRatio || 1, 2);
 
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
+    canvas.width = Math.floor(rect.width * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
 
     ctx.scale(dpr, dpr);
     ctx.lineCap = "round";
@@ -50,7 +60,7 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
     ctx.strokeStyle = penColor;
     ctx.lineWidth = penWidth;
 
-    // Draw background
+    // Draw clean solid background
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, rect.width, rect.height);
 
@@ -67,106 +77,240 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
     // Text hint
     ctx.font = "10px sans-serif";
     ctx.fillStyle = "#94a3b8";
-    ctx.fillText("Assine sobre a linha pontilhada", 24, rect.height - 20);
+    ctx.fillText("Assine sobre a linha pontilhada (Toque ou Mouse)", 24, rect.height - 20);
 
     // Save blank state
     const blankData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     setStrokeHistory([blankData]);
     setHasSignature(false);
+    totalStrokesRef.current = 0;
   }, [penColor, penWidth]);
 
-  useEffect(() => {
-    initCanvas();
-    const handleResize = () => {
-      if (!hasSignature) {
-        initCanvas();
-      }
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [initCanvas, hasSignature]);
-
-  // Handle coordinates calculation for touch & mouse
-  const getCoordinates = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+  // Render typed signature onto canvas
+  const renderTypedSignature = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
     const rect = canvas.getBoundingClientRect();
+    const dpr = Math.max(window.devicePixelRatio || 1, 2);
 
-    let clientX = 0;
-    let clientY = 0;
+    canvas.width = Math.floor(rect.width * dpr);
+    canvas.height = Math.floor(rect.height * dpr);
+    ctx.scale(dpr, dpr);
 
-    if ("touches" in e) {
-      if (e.touches.length > 0) {
-        clientX = e.touches[0].clientX;
-        clientY = e.touches[0].clientY;
-      } else if (e.changedTouches.length > 0) {
-        clientX = e.changedTouches[0].clientX;
-        clientY = e.changedTouches[0].clientY;
+    // Clear background
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, rect.width, rect.height);
+
+    // Draw baseline
+    ctx.beginPath();
+    ctx.strokeStyle = "#e2e8f0";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.moveTo(20, rect.height - 36);
+    ctx.lineTo(rect.width - 20, rect.height - 36);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const cleanText = typedName.trim();
+    if (cleanText.length >= 2) {
+      ctx.fillStyle = penColor;
+      if (typedFont === "cursive") {
+        ctx.font = "italic 36px 'Caveat', 'Great Vibes', 'Brush Script MT', cursive, sans-serif";
+      } else if (typedFont === "serif") {
+        ctx.font = "italic 26px Georgia, 'Times New Roman', serif";
+      } else {
+        ctx.font = "600 22px 'Poppins', system-ui, -apple-system, sans-serif";
       }
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(cleanText, rect.width / 2, rect.height / 2 - 6);
+
+      ctx.font = "9px monospace";
+      ctx.fillStyle = "#94a3b8";
+      ctx.fillText(`Assinado digitalmente por ${cleanText}`, rect.width / 2, rect.height - 18);
+
+      setHasSignature(true);
+      const dataUrl = canvas.toDataURL("image/png");
+      onSignatureCapture(dataUrl, "TYPED_NAME");
     } else {
-      clientX = e.clientX;
-      clientY = e.clientY;
+      setHasSignature(false);
+      if (onClear) onClear();
     }
+  }, [typedName, typedFont, penColor, onSignatureCapture, onClear]);
 
-    return {
-      x: clientX - rect.left,
-      y: clientY - rect.top,
+  // Initialize canvas on mount and mode changes
+  useEffect(() => {
+    if (signatureMode === "draw") {
+      initCanvas();
+    } else {
+      renderTypedSignature();
+    }
+  }, [signatureMode, initCanvas, renderTypedSignature]);
+
+  // Native non-passive touch listeners for 100% reliable Android / Mobile drawing without scroll interference
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || signatureMode !== "draw") return;
+
+    const getTouchCoords = (touch: Touch) => {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top,
+      };
     };
-  };
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const handleTouchStart = (e: TouchEvent) => {
+      if (disabled) return;
+      if (e.touches.length > 0) {
+        e.preventDefault(); // Stop Android scroll / pull-to-refresh
+        e.stopPropagation();
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        const { x, y } = getTouchCoords(e.touches[0]);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.strokeStyle = penColor;
+        ctx.lineWidth = penWidth;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        isDrawingRef.current = true;
+        pointsInStrokeRef.current = 1;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDrawingRef.current || disabled) return;
+      if (e.touches.length > 0) {
+        e.preventDefault(); // Inhibit page panning while drawing
+        e.stopPropagation();
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+
+        const { x, y } = getTouchCoords(e.touches[0]);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+
+        pointsInStrokeRef.current += 1;
+        if (pointsInStrokeRef.current > 3 && !hasSignature) {
+          setHasSignature(true);
+        }
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (!isDrawingRef.current) return;
+      e.preventDefault();
+      isDrawingRef.current = false;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.closePath();
+
+      if (pointsInStrokeRef.current > 2) {
+        totalStrokesRef.current += 1;
+        setHasSignature(true);
+
+        const state = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        setStrokeHistory((prev) => [...prev, state]);
+
+        const dataUrl = canvas.toDataURL("image/png");
+        onSignatureCapture(dataUrl, "DRAWN");
+      }
+      pointsInStrokeRef.current = 0;
+    };
+
+    const handleTouchCancel = (e: TouchEvent) => {
+      if (!isDrawingRef.current) return;
+      isDrawingRef.current = false;
+      const ctx = canvas.getContext("2d");
+      if (ctx) ctx.closePath();
+      pointsInStrokeRef.current = 0;
+    };
+
+    // Attach with passive: false to allow preventDefault() on Android
+    canvas.addEventListener("touchstart", handleTouchStart, { passive: false });
+    canvas.addEventListener("touchmove", handleTouchMove, { passive: false });
+    canvas.addEventListener("touchend", handleTouchEnd, { passive: false });
+    canvas.addEventListener("touchcancel", handleTouchCancel, { passive: false });
+
+    return () => {
+      canvas.removeEventListener("touchstart", handleTouchStart);
+      canvas.removeEventListener("touchmove", handleTouchMove);
+      canvas.removeEventListener("touchend", handleTouchEnd);
+      canvas.removeEventListener("touchcancel", handleTouchCancel);
+    };
+  }, [signatureMode, disabled, penColor, penWidth, hasSignature, onSignatureCapture]);
+
+  // Mouse event handlers for desktop
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (disabled || signatureMode !== "draw") return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
 
-    // Prevent scrolling on touch devices while drawing
-    if ("touches" in e) {
-      e.stopPropagation();
-    }
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
-    const { x, y } = getCoordinates(e);
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.strokeStyle = penColor;
     ctx.lineWidth = penWidth;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    setIsDrawing(true);
+
+    isDrawingRef.current = true;
+    pointsInStrokeRef.current = 1;
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || disabled || signatureMode !== "draw") return;
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawingRef.current || disabled || signatureMode !== "draw") return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
 
-    if ("touches" in e) {
-      e.stopPropagation();
-    }
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
-    const { x, y } = getCoordinates(e);
     ctx.lineTo(x, y);
     ctx.stroke();
-    setHasSignature(true);
+
+    pointsInStrokeRef.current += 1;
+    if (pointsInStrokeRef.current > 3 && !hasSignature) {
+      setHasSignature(true);
+    }
   };
 
-  const stopDrawing = () => {
-    if (!isDrawing) return;
-    setIsDrawing(false);
+  const handleMouseUp = () => {
+    if (!isDrawingRef.current) return;
+    isDrawingRef.current = false;
+
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
 
     ctx.closePath();
 
-    // Save snapshot in history
-    const state = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    setStrokeHistory((prev) => [...prev, state]);
+    if (pointsInStrokeRef.current > 2) {
+      totalStrokesRef.current += 1;
+      setHasSignature(true);
 
-    // Export PNG
-    const dataUrl = canvas.toDataURL("image/png");
-    onSignatureCapture(dataUrl);
+      const state = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      setStrokeHistory((prev) => [...prev, state]);
+
+      const dataUrl = canvas.toDataURL("image/png");
+      onSignatureCapture(dataUrl, "DRAWN");
+    }
+    pointsInStrokeRef.current = 0;
   };
 
   const handleClear = () => {
@@ -188,72 +332,13 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
 
     if (newHistory.length <= 1) {
       setHasSignature(false);
+      totalStrokesRef.current = 0;
       if (onClear) onClear();
     } else {
       const dataUrl = canvas.toDataURL("image/png");
-      onSignatureCapture(dataUrl);
+      onSignatureCapture(dataUrl, "DRAWN");
     }
   };
-
-  // Generate typed signature onto canvas
-  const renderTypedSignature = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
-
-    // Clear background
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, rect.width, rect.height);
-
-    // Draw baseline
-    ctx.beginPath();
-    ctx.strokeStyle = "#e2e8f0";
-    ctx.lineWidth = 1;
-    ctx.setLineDash([4, 4]);
-    ctx.moveTo(20, rect.height - 36);
-    ctx.lineTo(rect.width - 20, rect.height - 36);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    if (typedName.trim()) {
-      ctx.fillStyle = penColor;
-      if (typedFont === "cursive") {
-        ctx.font = "italic 32px 'Brush Script MT', 'Great Vibes', 'Caveat', cursive";
-      } else if (typedFont === "serif") {
-        ctx.font = "italic 26px Georgia, serif";
-      } else {
-        ctx.font = "bold 24px system-ui, sans-serif";
-      }
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(typedName.trim(), rect.width / 2, rect.height / 2 - 6);
-
-      ctx.font = "9px monospace";
-      ctx.fillStyle = "#94a3b8";
-      ctx.fillText(`Assinado digitalmente por ${typedName.trim()}`, rect.width / 2, rect.height - 18);
-
-      setHasSignature(true);
-      const dataUrl = canvas.toDataURL("image/png");
-      onSignatureCapture(dataUrl);
-    } else {
-      setHasSignature(false);
-      if (onClear) onClear();
-    }
-  };
-
-  useEffect(() => {
-    if (signatureMode === "type") {
-      renderTypedSignature();
-    }
-  }, [signatureMode, typedName, typedFont, penColor]);
 
   return (
     <div className="space-y-3">
@@ -273,18 +358,18 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
               setSignatureMode("draw");
               setTimeout(initCanvas, 50);
             }}
-            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${
+            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
               signatureMode === "draw"
                 ? "bg-white dark:bg-neutral-700 text-[#00843D] shadow-xs"
                 : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
             }`}
           >
-            ✍️ Desenhar
+            ✍️ Desenhar Traço
           </button>
           <button
             type="button"
             onClick={() => setSignatureMode("type")}
-            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${
+            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
               signatureMode === "type"
                 ? "bg-white dark:bg-neutral-700 text-[#00843D] shadow-xs"
                 : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
@@ -298,35 +383,34 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
       {/* Drawing / Typing Canvas Container */}
       <div className="relative border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-[#00843D] dark:hover:border-[#00843D] rounded-2xl overflow-hidden bg-white shadow-inner transition-colors">
         {signatureMode === "type" && (
-          <div className="p-3 bg-neutral-50 border-b border-neutral-200 flex flex-wrap items-center gap-2">
-            <input
-              type="text"
-              value={typedName}
-              onChange={(e) => setTypedName(e.target.value)}
-              placeholder="Digite o nome completo para assinar..."
-              className="flex-1 min-w-[180px] p-2 text-xs font-semibold bg-white border border-neutral-300 rounded-xl outline-none focus:ring-2 focus:ring-[#00843D] text-neutral-900"
-            />
+          <div className="p-3 bg-neutral-50 dark:bg-neutral-850 border-b border-neutral-200 dark:border-neutral-750 flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[200px]">
+              <input
+                type="text"
+                value={typedName}
+                onChange={(e) => setTypedName(e.target.value)}
+                placeholder="Digite o nome completo do receptor..."
+                className="w-full p-2 text-xs font-semibold bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-[#00843D] text-neutral-900 dark:text-white"
+              />
+            </div>
             <select
               value={typedFont}
               onChange={(e) => setTypedFont(e.target.value as any)}
-              className="p-2 text-xs font-bold bg-white border border-neutral-300 rounded-xl outline-none text-neutral-800"
+              className="p-2 text-xs font-bold bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-xl outline-none text-neutral-800 dark:text-neutral-200 cursor-pointer"
             >
-              <option value="cursive">Estilo Manuscrito</option>
-              <option value="serif">Estilo Clássico</option>
-              <option value="sans">Estilo Moderno</option>
+              <option value="cursive">Estilo Manuscrito (Caveat)</option>
+              <option value="serif">Estilo Clássico (Serif)</option>
+              <option value="sans">Estilo Moderno (Sans)</option>
             </select>
           </div>
         )}
 
         <canvas
           ref={canvasRef}
-          onMouseDown={startDrawing}
-          onMouseMove={draw}
-          onMouseUp={stopDrawing}
-          onMouseLeave={stopDrawing}
-          onTouchStart={startDrawing}
-          onTouchMove={draw}
-          onTouchEnd={stopDrawing}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
           className={`w-full h-44 cursor-crosshair touch-none select-none block bg-white ${
             disabled ? "opacity-60 cursor-not-allowed" : ""
           }`}
@@ -334,13 +418,13 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
         />
 
         {/* Floating Controls Bar */}
-        <div className="absolute top-2 right-2 flex items-center space-x-1.5 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xs p-1 rounded-xl shadow-md border border-neutral-200 dark:border-neutral-700">
+        <div className="absolute top-2 right-2 flex items-center space-x-1.5 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xs p-1 rounded-xl shadow-md border border-neutral-200 dark:border-neutral-700 z-10">
           {/* Color pickers */}
           <button
             type="button"
             title="Caneta Preta"
             onClick={() => setPenColor("#0f172a")}
-            className={`w-5 h-5 rounded-full bg-slate-900 border-2 transition-transform ${
+            className={`w-5 h-5 rounded-full bg-slate-900 border-2 transition-transform cursor-pointer ${
               penColor === "#0f172a" ? "scale-110 border-[#00843D]" : "border-white"
             }`}
           />
@@ -348,7 +432,7 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
             type="button"
             title="Caneta Azul Institucional"
             onClick={() => setPenColor("#0047AB")}
-            className={`w-5 h-5 rounded-full bg-blue-700 border-2 transition-transform ${
+            className={`w-5 h-5 rounded-full bg-blue-700 border-2 transition-transform cursor-pointer ${
               penColor === "#0047AB" ? "scale-110 border-[#00843D]" : "border-white"
             }`}
           />
@@ -356,7 +440,7 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
             type="button"
             title="Caneta Verde IFPR"
             onClick={() => setPenColor("#00843D")}
-            className={`w-5 h-5 rounded-full bg-[#00843D] border-2 transition-transform ${
+            className={`w-5 h-5 rounded-full bg-[#00843D] border-2 transition-transform cursor-pointer ${
               penColor === "#00843D" ? "scale-110 border-white" : "border-white"
             }`}
           />
@@ -370,7 +454,7 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
                 onClick={handleUndo}
                 disabled={strokeHistory.length <= 1}
                 title="Desfazer último traço"
-                className="p-1 rounded-lg text-neutral-600 hover:bg-neutral-100 disabled:opacity-30"
+                className="p-1 rounded-lg text-neutral-600 hover:bg-neutral-100 disabled:opacity-30 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
@@ -379,7 +463,7 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
                 type="button"
                 onClick={handleClear}
                 title="Limpar assinatura"
-                className="p-1 rounded-lg text-red-600 hover:bg-red-50"
+                className="p-1 rounded-lg text-red-600 hover:bg-red-50 cursor-pointer"
               >
                 <Eraser className="w-3.5 h-3.5" />
               </button>
@@ -391,7 +475,7 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
         <div className="p-2 bg-neutral-50/90 dark:bg-neutral-900/90 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between text-[10px] text-neutral-600 dark:text-neutral-400">
           <div className="flex items-center space-x-1.5">
             <span className="font-bold text-neutral-900 dark:text-white">
-              {signerName || "Proprietário / Receptor"}
+              {typedName || signerName || "Proprietário / Receptor"}
             </span>
             <span>•</span>
             <span>{signerBond}</span>
@@ -410,7 +494,8 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
               </span>
             ) : (
               <span className="text-amber-700 dark:text-amber-400 flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5" /> Aguardando traço
+                <AlertCircle className="w-3.5 h-3.5" />
+                {signatureMode === "draw" ? "Aguardando desenho" : "Digite o nome"}
               </span>
             )}
           </div>
