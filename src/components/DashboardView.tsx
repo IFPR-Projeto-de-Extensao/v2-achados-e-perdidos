@@ -87,6 +87,8 @@ import {
   Ban,
   UserMinus,
   Loader2,
+  FileSignature,
+  PenTool,
 } from "lucide-react";
 
 export const DashboardView: React.FC = () => {
@@ -181,8 +183,18 @@ export const DashboardView: React.FC = () => {
 
   // Admin Sub-Tab State
   const [adminSubTab, setAdminSubTab] = useState<
-    "users" | "accounts" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "test_batteries" | "test_distribution" | "custody_reminders" | "digital_returns"
+    "users" | "accounts" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "test_batteries" | "test_distribution" | "custody_reminders" | "digital_returns" | "pending_signatures"
   >("users");
+
+  // Items with pending institutional staff signature
+  const pendingSignaturesItems = items.filter(
+    (it) =>
+      it &&
+      it.status === "DEVOLVIDO" &&
+      it.recipientSignatureStatus === "SIGNED" &&
+      it.staffSignatureStatus !== "SIGNED"
+  );
+  const pendingSignaturesCount = pendingSignaturesItems.length;
 
   // Items returned with digital signature count
   const digitalReturnedItemsCount = items.filter(
@@ -1675,8 +1687,8 @@ export const DashboardView: React.FC = () => {
                         id: "custody_returns",
                         label: "Custódia & Devoluções",
                         icon: PackageCheck,
-                        tabs: ["custody_reminders", "digital_returns"],
-                        badge: itemsOver90DaysCount,
+                        tabs: ["pending_signatures", "custody_reminders", "digital_returns"],
+                        badge: pendingSignaturesCount > 0 ? pendingSignaturesCount : itemsOver90DaysCount,
                       },
                       {
                         id: "quality_tests",
@@ -1827,8 +1839,25 @@ export const DashboardView: React.FC = () => {
                     )}
 
                     {/* Category: Custody & Returns */}
-                    {(adminSubTab === "custody_reminders" || adminSubTab === "digital_returns") && (
+                    {(adminSubTab === "pending_signatures" || adminSubTab === "custody_reminders" || adminSubTab === "digital_returns") && (
                       <>
+                        <button
+                          onClick={() => setAdminSubTab("pending_signatures")}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "pending_signatures"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                          }`}
+                        >
+                          <FileSignature className="w-3.5 h-3.5" />
+                          <span>Assinaturas Pendentes</span>
+                          {pendingSignaturesCount > 0 && (
+                            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-bold">
+                              {pendingSignaturesCount}
+                            </span>
+                          )}
+                        </button>
+
                         <button
                           onClick={() => setAdminSubTab("custody_reminders")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
@@ -3162,6 +3191,101 @@ export const DashboardView: React.FC = () => {
             </div>
           )}
 
+
+          {/* TAB: FILA DE ASSINATURAS INSTITUCIONAIS PENDENTES (ATENDENTE / SERVIDOR) */}
+          {adminSubTab === "pending_signatures" && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-100 dark:border-neutral-800 pb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2.5 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                      <FileSignature className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-black text-neutral-900 dark:text-white flex items-center space-x-2">
+                        <span>Fila de Assinaturas Institucionais Pendentes</span>
+                        {pendingSignaturesCount > 0 && (
+                          <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase">
+                            {pendingSignaturesCount} Pendentes
+                          </span>
+                        )}
+                      </h2>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                        Devoluções com termo assinado pelo receptor que aguardam atestação e assinatura institucional do servidor atendente
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {pendingSignaturesItems.length === 0 ? (
+                  <div className="bg-neutral-50 dark:bg-neutral-900/50 rounded-2xl p-8 text-center space-y-2 border border-dashed border-neutral-200 dark:border-neutral-800">
+                    <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
+                    <p className="text-sm font-bold text-neutral-800 dark:text-neutral-200">
+                      Nenhuma assinatura institucional pendente no momento!
+                    </p>
+                    <p className="text-xs text-neutral-500 max-w-md mx-auto">
+                      Todas as devoluções de pertences registradas possuem a assinatura dupla concluída (Receptor + Servidor Atendente).
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-2xl border border-neutral-200 dark:border-neutral-800">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-neutral-50 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-300 uppercase font-extrabold text-[10px]">
+                        <tr>
+                          <th className="p-3.5">Objeto / Identificador</th>
+                          <th className="p-3.5">Receptor / Proprietário</th>
+                          <th className="p-3.5">Assinatura do Receptor</th>
+                          <th className="p-3.5">Data / Código Recibo</th>
+                          <th className="p-3.5 text-right">Ação</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                        {pendingSignaturesItems.map((item) => (
+                          <tr key={item.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
+                            <td className="p-3.5 font-bold text-neutral-900 dark:text-white">
+                              <div>{item.title}</div>
+                              <div className="text-[10px] font-mono text-neutral-400">#{item.id} • {item.category}</div>
+                            </td>
+                            <td className="p-3.5">
+                              <div className="font-bold text-neutral-800 dark:text-neutral-200">
+                                {item.recipientName || item.recipientSignatureName || "Receptor"}
+                              </div>
+                              <div className="text-[10px] text-neutral-500">
+                                {item.recipientBond || "Aluno(a)"} • {item.recipientEmail || "Sem e-mail"}
+                              </div>
+                            </td>
+                            <td className="p-3.5">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Receptor Assinou</span>
+                              </span>
+                            </td>
+                            <td className="p-3.5 font-mono text-neutral-600 dark:text-neutral-400">
+                              <div>{formatDate(item.signedAt || item.resolutionDate || item.date)}</div>
+                              <div className="text-[10px] text-neutral-400">{item.receiptValidationCode || "CÓDIGO PENDENTE"}</div>
+                            </td>
+                            <td className="p-3.5 text-right whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  vibrateClick();
+                                  setSelectedItemForDetail(item);
+                                }}
+                                className="px-3.5 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs transition-all shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <PenTool className="w-3.5 h-3.5" />
+                                <span>Atestar e Assinar</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* TAB 9: LEMBRETES DE CUSTÓDIA >90 DIAS */}
           {adminSubTab === "custody_reminders" && (

@@ -4101,6 +4101,7 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
         recipientSignatureType: "REMOTE_EMAIL",
         recipientSignatureMethod: signatureMethod || (signatureDataUrl.includes("type") ? "TYPED_NAME" : "DRAWN"),
         recipientSignatureStatus: "SIGNED",
+        staffSignatureStatus: itemData.staffSignatureStatus === "SIGNED" ? "SIGNED" : "PENDING_STAFF",
         recipientDocument: documentNumber || itemData.recipientDocument || "",
         recipientName: effectiveSignerName,
         recipientBond: effectiveSignerBond,
@@ -4140,6 +4141,100 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
         recipientSignatureUrl: signatureDataUrl,
         signedAt: nowIso,
       });
+    }
+
+    // Phase 2: Dispatch institutional notification email to staff/attendant requesting attestation signature
+    try {
+      const staffTargetEmail = process.env.STAFF_NOTIFICATION_EMAIL || process.env.INSTITUTIONAL_NOTIFICATION_EMAIL || "campus.ivaipora@ifpr.edu.br";
+      const transporter = getEmailTransporter();
+      const staffSubject = `📌 Assinatura Institucional Pendente: Devolução de "${itemTitle || itemId}" (#${itemId}) - IFPR`;
+      const staffBody = `Atenção Equipe de Atendimento (SEBAC / Portaria IFPR):\n\n` +
+        `O receptor ${effectiveSignerName} (${effectiveSignerBond}) assinou digitalmente a devolução do pertence "${itemTitle}" (#${itemId}).\n\n` +
+        `O item encontra-se aguardando atestação e assinatura institucional do atendente no painel do Localiza+ (Aba: Assinaturas Pendentes).\n\n` +
+        `Código de Validação do Recibo: ${finalValidationCode}\n\n` +
+        `Acesse o sistema Localiza+ para atestar e assinar o recibo de devolução.`;
+
+      const staffHtml = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #0f172a; margin: 0; padding: 20px; }
+    .box { max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    .header { background: #00843D; color: #ffffff; padding: 20px; text-align: center; }
+    .header h2 { margin: 0; font-size: 18px; font-weight: 800; }
+    .header p { margin: 4px 0 0 0; font-size: 12px; opacity: 0.9; }
+    .content { padding: 24px; font-size: 13px; line-height: 1.6; color: #334155; }
+    .info-card { background: #f1f5f9; border-radius: 12px; padding: 14px; margin: 16px 0; font-size: 12px; border-left: 4px solid #00843D; }
+    .footer { padding: 16px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="header">
+      <h2>Instituto Federal do Paraná • Campus Ivaiporã</h2>
+      <p>Sistema Localiza+ • Notificação de Devolução Assinada pelo Receptor</p>
+    </div>
+    <div class="content">
+      <p>Prezada equipe de atendimento,</p>
+      <p>O receptor <strong>${effectiveSignerName}</strong> (${effectiveSignerBond}) concluiu a assinatura digital de recebimento do objeto <strong>"${itemTitle || itemId}"</strong> (#${itemId}).</p>
+      <div class="info-card">
+        <strong>Item:</strong> #${itemId} - ${itemTitle}<br/>
+        <strong>Receptor:</strong> ${effectiveSignerName} (${effectiveSignerBond})<br/>
+        <strong>Código de Validação:</strong> ${finalValidationCode}<br/>
+        <strong>Status:</strong> AGUARDANDO ASSINATURA INSTITUCIONAL DO ATENDENTE
+      </div>
+      <p>Por favor, acesse o painel administrativo do <strong>Localiza+</strong> na aba <strong>Assinaturas Pendentes</strong> para conferir e registrar sua atestação de devolução.</p>
+    </div>
+    <div class="footer">
+      Seção de Apoio ao Estudante (SEBAC) & Portaria • IFPR Campus Ivaiporã
+    </div>
+  </div>
+</body>
+</html>
+      `;
+
+      let staffEmailSent = false;
+      let staffMsgId = null;
+      let staffEmailErr = null;
+
+      if (transporter) {
+        try {
+          const fromAddr = process.env.SMTP_FROM || `"IFPR Achados & Perdidos" <${process.env.SMTP_USER || "campus.ivaipora@ifpr.edu.br"}>`;
+          const info = await transporter.sendMail({
+            from: fromAddr,
+            to: staffTargetEmail,
+            subject: staffSubject,
+            text: staffBody,
+            html: staffHtml,
+          });
+          staffEmailSent = true;
+          staffMsgId = info.messageId;
+          console.info(`[Staff Notification Success] Notificação enviada para o e-mail do atendente (${staffTargetEmail}). MessageId: ${info.messageId}`);
+        } catch (mErr: any) {
+          staffEmailErr = mErr?.message || String(mErr);
+          console.error(`[Staff Notification Error] Falha ao enviar notificação por e-mail ao atendente:`, mErr);
+        }
+      }
+
+      const notifDocId = `staff_notif_${itemId}_${Date.now()}`;
+      await adminDb.collection("email_notifications").doc(notifDocId).set({
+        id: notifDocId,
+        itemId,
+        itemTitle: itemTitle || itemId,
+        recipientEmail: staffTargetEmail,
+        recipientName: "Atendente SEBAC / Portaria IFPR",
+        subject: staffSubject,
+        type: "STAFF_SIGNATURE_PENDING_NOTIFICATION",
+        status: staffEmailSent ? "SENT" : "PENDING_SMTP_CONFIG",
+        messageId: staffMsgId,
+        error: staffEmailErr,
+        sentAt: nowIso,
+        createdAt: nowIso,
+      });
+    } catch (staffNotifErr) {
+      console.warn("[Signature Warning] Erro no fluxo de notificação do atendente:", staffNotifErr);
     }
 
     // Persist institutional activity & audit log in Firestore

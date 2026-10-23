@@ -193,6 +193,74 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   // Reopen Return Flow State
   const [reopenModalOpen, setReopenModalOpen] = useState(false);
 
+  // Staff Attendant Signature Modal State (Dual Signature Attestation)
+  const [staffSignatureModalOpen, setStaffSignatureModalOpen] = useState(false);
+  const [staffSignatureDataUrl, setStaffSignatureDataUrl] = useState<string>("");
+  const [staffSignatureMethod, setStaffSignatureMethod] = useState<"DRAWN" | "TYPED_NAME">("DRAWN");
+  const [isSubmittingStaffSignature, setIsSubmittingStaffSignature] = useState(false);
+
+  const handleConfirmStaffSignatureSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!staffSignatureDataUrl) {
+      addToast("Por favor, forneça sua assinatura no campo indicado.", "error");
+      return;
+    }
+
+    try {
+      setIsSubmittingStaffSignature(true);
+      vibrateClick();
+
+      const userToken = await auth.currentUser?.getIdToken();
+      if (!userToken) {
+        addToast("Sessão expirada. Faça login novamente com sua conta institucional.", "error");
+        return;
+      }
+
+      const res = await fetch("/api/signature/confirm-staff-signature", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userToken}`,
+        },
+        body: JSON.stringify({
+          itemId: currentItem.id,
+          signatureDataUrl: staffSignatureDataUrl,
+          signatureMethod: staffSignatureMethod,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Falha ao registrar assinatura do atendente.");
+      }
+
+      vibrateSuccess();
+      addToast("Atestação e assinatura do atendente registradas com sucesso!", "success");
+
+      // Update local item state in context
+      if (updateItemData) {
+        await updateItemData(currentItem.id, {
+          staffSignatureStatus: "SIGNED",
+          staffSignatureUrl: staffSignatureDataUrl,
+          staffSignatureMethod: staffSignatureMethod,
+          staffSignedAt: data.staffSignedAt || new Date().toISOString(),
+          staffSignerUid: currentUser.id,
+          staffSignerName: currentUser.name,
+          staffSignerEmail: currentUser.email,
+        });
+      }
+
+      setStaffSignatureModalOpen(false);
+      setStaffSignatureDataUrl("");
+    } catch (err: any) {
+      console.error("Erro ao registrar assinatura do atendente:", err);
+      addToast(err?.message || "Erro ao registrar assinatura institucional.", "error");
+    } finally {
+      setIsSubmittingStaffSignature(false);
+    }
+  };
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -751,8 +819,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <span style="font-weight: normal; font-size: 10px; color: #64748b;">Assinatura do Recebedor (${recipientBond})</span>
               </div>
               <div class="sig-line">
-                <div style="height: 52px;"></div>
-                <strong>${attendantName}</strong><br/>
+                ${
+                  item.staffSignatureUrl
+                    ? `<img src="${item.staffSignatureUrl}" style="max-height: 52px; max-width: 220px; margin: 0 auto 6px auto; display: block;" alt="Assinatura do Atendente" />`
+                    : item.staffSignatureStatus === "PENDING_STAFF"
+                    ? `<div style="height: 40px; display: flex; align-items: center; justify-content: center; color: #d97706; font-size: 11px; font-weight: bold; font-style: italic;">[Atestação Institucional Pendente]</div>`
+                    : `<div style="height: 52px;"></div>`
+                }
+                <strong>${item.staffSignerName || attendantName}</strong><br/>
                 <span style="font-weight: normal; font-size: 10px; color: #64748b;">${attendantRole} • SEBAC / Portaria IFPR</span>
               </div>
             </div>
@@ -1781,6 +1855,34 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               </div>
             )}
 
+            {/* Staff Signature Attestation Button (When Recipient Signed and Staff Pending) */}
+            {currentItem.status === "DEVOLVIDO" &&
+              currentItem.recipientSignatureStatus === "SIGNED" &&
+              currentItem.staffSignatureStatus !== "SIGNED" &&
+              (currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-3">
+                  <div className="flex items-center space-x-2 text-amber-900 dark:text-amber-200">
+                    <FileSignature className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <div>
+                      <h4 className="font-extrabold text-xs uppercase tracking-wider">
+                        Atestação Institucional do Atendente Pendente
+                      </h4>
+                      <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                        O receptor ({currentItem.recipientName || currentItem.recipientSignatureName || "Aluno"}) assinou a devolução. Registre sua atestação e assinatura como servidor responsável.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStaffSignatureModalOpen(true)}
+                    className="w-full py-2.5 px-4 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                  >
+                    <PenTool className="w-4 h-4" />
+                    <span>✍️ Atestar e Assinar Devolução (Atendente)</span>
+                  </button>
+                </div>
+              )}
+
             {/* Action Area: Primary Action & Operational Controls */}
             <div className="pt-2 space-y-2.5 border-t border-neutral-200 dark:border-neutral-800">
               {/* Primary User Action: Claim Ownership */}
@@ -2733,6 +2835,79 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>{isSavingEdit ? "Salvando..." : "Salvar Alterações"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Staff Attendant Signature Modal */}
+      {staffSignatureModalOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 dark:bg-black/85 backdrop-blur-md transition-all duration-200">
+          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-lg w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 transition-colors">
+            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+              <div className="flex items-center gap-2">
+                <FileSignature className="w-5 h-5 text-[#00843D]" />
+                <div>
+                  <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                    Atestação Institucional do Atendente
+                  </h3>
+                  <p className="text-[10px] text-neutral-500 uppercase font-bold">
+                    IFPR Campus Ivaiporã • Servidor Responsável
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setStaffSignatureModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-xl text-xs space-y-1">
+              <p className="font-bold text-neutral-900 dark:text-white">Objeto: {currentItem.title} (#{currentItem.id})</p>
+              <p className="text-neutral-600 dark:text-neutral-300">
+                Receptor: <strong>{currentItem.recipientName || currentItem.recipientSignatureName || "Receptor"}</strong> ({currentItem.recipientBond || "Aluno(a)"})
+              </p>
+              <p className="text-neutral-500 text-[10px]">
+                Assinado pelo receptor em: {formatDateTime(currentItem.signedAt || currentItem.resolutionDate)}
+              </p>
+            </div>
+
+            <form onSubmit={handleConfirmStaffSignatureSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-2">
+                  Assinatura Digital do Servidor Atendente ({currentUser?.name || "Servidor IFPR"}) *
+                </label>
+                <DigitalSignaturePad
+                  signerName={currentUser?.name || "Servidor Atendente"}
+                  signerBond="Servidor"
+                  signerEmail={currentUser?.email}
+                  onSignatureCapture={(dataUrl, method) => {
+                    setStaffSignatureDataUrl(dataUrl);
+                    setStaffSignatureMethod(method === "TYPED_NAME" ? "TYPED_NAME" : "DRAWN");
+                  }}
+                  onClear={() => setStaffSignatureDataUrl("")}
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setStaffSignatureModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingStaffSignature || !staffSignatureDataUrl}
+                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <PenTool className="w-3.5 h-3.5" />
+                  <span>{isSubmittingStaffSignature ? "Registrando..." : "Confirmar Atestação e Assinatura"}</span>
                 </button>
               </div>
             </form>
