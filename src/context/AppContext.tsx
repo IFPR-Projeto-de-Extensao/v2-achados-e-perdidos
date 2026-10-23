@@ -108,6 +108,7 @@ import {
   playNotificationChime,
   setupFCMForegroundListener,
 } from "../lib/fcm";
+import { isGenericAvatar, getSafeAvatarUrl } from "../lib/avatarUtils";
 
 export interface InstitutionalRoleDetermination {
   role: UserRole;
@@ -2076,7 +2077,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : verifiedRoleDetermination.role;
 
         const resolvedName = pendingData?.name || existingData.name || fbUser.displayName || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
-        const resolvedAvatar = pendingData?.avatarUrl || existingData.avatarUrl || fbUser.photoURL || extraData?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedName)}`;
+
+        // Precedência segura de avatar:
+        // 1. pendingData explícito se não for genérico
+        // 2. Foto personalizada já salva (upload/data:image/custom) -> NUNCA substituir pela foto do Google
+        // 3. Foto válida do Firebase Auth (Google OAuth) quando não houver foto personalizada
+        // 4. extraData explícito
+        // 5. Avatar já gravado no Firestore
+        // 6. Fallback determinístico seguro
+        const hasCustomStoredAvatar = Boolean(existingData.avatarUrl && !isGenericAvatar(existingData.avatarUrl));
+        const hasPendingAvatar = Boolean(pendingData?.avatarUrl && !isGenericAvatar(pendingData.avatarUrl));
+        const hasExtraAvatar = Boolean(extraData?.avatarUrl && !isGenericAvatar(extraData.avatarUrl));
+        const hasProviderPhoto = Boolean(fbUser.photoURL && !isGenericAvatar(fbUser.photoURL));
+
+        const resolvedAvatar = hasPendingAvatar
+          ? pendingData!.avatarUrl!.trim()
+          : hasCustomStoredAvatar
+          ? existingData.avatarUrl.trim()
+          : hasProviderPhoto
+          ? fbUser.photoURL!.trim()
+          : hasExtraAvatar
+          ? extraData!.avatarUrl!.trim()
+          : (existingData.avatarUrl && existingData.avatarUrl.trim().length > 0 && existingData.avatarUrl.trim() !== "undefined" && existingData.avatarUrl.trim() !== "null")
+          ? existingData.avatarUrl.trim()
+          : getSafeAvatarUrl(undefined, resolvedName);
+
         const resolvedPhone = pendingData?.phone ?? existingData.phone ?? extraData?.phone ?? "";
         const resolvedCourse = pendingData?.courseOrDept || existingData.courseOrDept || extraData?.courseOrDept || (previewDetermination.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
         const resolvedRegistration = pendingData?.registrationNumber || existingData.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
@@ -2103,7 +2128,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           emailVerified: isVerified,
         }) as User;
 
-        // Persist if role changed (e.g. upgraded from INTRUSO to ALUNO/SERVIDOR upon email verification), or missing critical fields
+        const avatarNeedsSync = Boolean(
+          resolvedAvatar &&
+          resolvedAvatar.trim() !== (existingData.avatarUrl || "").trim()
+        );
+
+        // Persist if role changed (e.g. upgraded from INTRUSO to ALUNO/SERVIDOR upon email verification), missing critical fields, or avatar sync
         if (
           !existingData.id ||
           existingData.id !== fbUser.uid ||
@@ -2112,7 +2142,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           existingData.emailVerified !== isVerified ||
           (isVerified && existingData.approvalStatus !== "APROVADO") ||
           !existingData.createdAt ||
-          (pendingData && pendingData.name !== existingData.name)
+          (pendingData && pendingData.name !== existingData.name) ||
+          avatarNeedsSync
         ) {
           try {
             await setDoc(uidRef, updatedUser, { merge: true });
@@ -2146,7 +2177,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : verifiedRoleDetermination.role;
 
           const resolvedName = pendingData?.name || legacyData.name || fbUser.displayName || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
-          const resolvedAvatar = pendingData?.avatarUrl || legacyData.avatarUrl || fbUser.photoURL || extraData?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedName)}`;
+
+          const hasCustomStoredAvatar = Boolean(legacyData.avatarUrl && !isGenericAvatar(legacyData.avatarUrl));
+          const hasPendingAvatar = Boolean(pendingData?.avatarUrl && !isGenericAvatar(pendingData.avatarUrl));
+          const hasExtraAvatar = Boolean(extraData?.avatarUrl && !isGenericAvatar(extraData.avatarUrl));
+          const hasProviderPhoto = Boolean(fbUser.photoURL && !isGenericAvatar(fbUser.photoURL));
+
+          const resolvedAvatar = hasPendingAvatar
+            ? pendingData!.avatarUrl!.trim()
+            : hasCustomStoredAvatar
+            ? legacyData.avatarUrl.trim()
+            : hasProviderPhoto
+            ? fbUser.photoURL!.trim()
+            : hasExtraAvatar
+            ? extraData!.avatarUrl!.trim()
+            : (legacyData.avatarUrl && legacyData.avatarUrl.trim().length > 0 && legacyData.avatarUrl.trim() !== "undefined" && legacyData.avatarUrl.trim() !== "null")
+            ? legacyData.avatarUrl.trim()
+            : getSafeAvatarUrl(undefined, resolvedName);
+
           const resolvedPhone = pendingData?.phone ?? legacyData.phone ?? extraData?.phone ?? "";
           const resolvedCourse = pendingData?.courseOrDept || legacyData.courseOrDept || extraData?.courseOrDept || (previewDetermination.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
           const resolvedRegistration = pendingData?.registrationNumber || legacyData.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
@@ -2203,7 +2251,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     const resolvedRegistration = pendingData?.registrationNumber || extraData?.registrationNumber || `EXT${fbUser.uid.substring(0, 6)}`;
     const resolvedPhone = pendingData?.phone ?? extraData?.phone ?? "";
-    const resolvedAvatar = fbUser.photoURL || pendingData?.avatarUrl || extraData?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(resolvedName)}`;
+
+    const hasPendingAvatar = Boolean(pendingData?.avatarUrl && !isGenericAvatar(pendingData.avatarUrl));
+    const hasProviderPhoto = Boolean(fbUser.photoURL && !isGenericAvatar(fbUser.photoURL));
+    const hasExtraAvatar = Boolean(extraData?.avatarUrl && !isGenericAvatar(extraData.avatarUrl));
+
+    const resolvedAvatar = hasPendingAvatar
+      ? pendingData!.avatarUrl!.trim()
+      : hasProviderPhoto
+      ? fbUser.photoURL!.trim()
+      : hasExtraAvatar
+      ? extraData!.avatarUrl!.trim()
+      : (pendingData?.avatarUrl?.trim() || extraData?.avatarUrl?.trim() || getSafeAvatarUrl(undefined, resolvedName));
 
     const newUser: User = sanitizeFirestoreData({
       id: fbUser.uid,
@@ -2284,7 +2343,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           userRef,
           (userSnap) => {
             if (userSnap.exists()) {
-              const userData = { id: userSnap.id, ...(userSnap.data() as User) };
+              const rawData = userSnap.data() as User;
+              // Preserva avatar válido, priorizando fotos reais (custom/Google) mesmo se snapshot vier temporariamente vazio
+              const safeAvatar = !isGenericAvatar(rawData.avatarUrl)
+                ? rawData.avatarUrl.trim()
+                : (fbUser.photoURL && !isGenericAvatar(fbUser.photoURL))
+                ? fbUser.photoURL.trim()
+                : (rawData.avatarUrl && rawData.avatarUrl.trim().length > 0)
+                ? rawData.avatarUrl.trim()
+                : getSafeAvatarUrl(undefined, rawData.name);
+
+              const userData: User = {
+                id: userSnap.id,
+                ...rawData,
+                avatarUrl: safeAvatar,
+              };
               setCurrentUser(userData);
             }
           },

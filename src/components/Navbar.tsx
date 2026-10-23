@@ -483,6 +483,7 @@ export const Navbar: React.FC = () => {
                 <img
                   src={getSafeAvatarUrl(currentUser.avatarUrl, currentUser.name)}
                   alt={currentUser.name}
+                  referrerPolicy="no-referrer"
                   onError={(e) => handleAvatarError(e, currentUser.name)}
                   className="w-9 h-9 rounded-full object-cover border border-[#00843D]/50 shrink-0"
                 />

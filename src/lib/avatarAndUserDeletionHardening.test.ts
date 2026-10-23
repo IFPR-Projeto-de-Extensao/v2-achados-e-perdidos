@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   getSafeAvatarUrl,
+  isGenericAvatar,
   handleAvatarError,
   LOCAL_AVATAR_FALLBACK,
   INLINE_AVATAR_SVG_DATA_URI,
@@ -28,10 +29,40 @@ describe("Hardening do Sistema de Avatares e Prevenção de Loops de Erro", () =
       expect(getSafeAvatarUrl("   ", "User")).toContain("api.dicebear.com");
     });
 
+    it("deve tratar strings literais 'undefined' e 'null' aplicando fallback determinístico do DiceBear", () => {
+      expect(getSafeAvatarUrl("undefined", "Paulo")).toContain("api.dicebear.com");
+      expect(getSafeAvatarUrl("null", "Paulo")).toContain("api.dicebear.com");
+      expect(getSafeAvatarUrl("  null  ", "Paulo")).toContain("api.dicebear.com");
+    });
+
     it("deve usar 'User' como fallback de nome quando nome for nulo, indefinido ou vazio", () => {
       expect(getSafeAvatarUrl(null, null)).toContain("seed=User");
       expect(getSafeAvatarUrl(null, "")).toContain("seed=User");
       expect(getSafeAvatarUrl(null, undefined)).toContain("seed=User");
+    });
+  });
+
+  describe("1.1 isGenericAvatar", () => {
+    it("deve identificar como genérico valores nulos, vazios ou strings inválidas", () => {
+      expect(isGenericAvatar(null)).toBe(true);
+      expect(isGenericAvatar(undefined)).toBe(true);
+      expect(isGenericAvatar("")).toBe(true);
+      expect(isGenericAvatar("   ")).toBe(true);
+      expect(isGenericAvatar("undefined")).toBe(true);
+      expect(isGenericAvatar("null")).toBe(true);
+    });
+
+    it("deve identificar URLs do DiceBear, asset local e SVG inline como genéricos", () => {
+      expect(isGenericAvatar("https://api.dicebear.com/7.x/avataaars/svg?seed=Teste")).toBe(true);
+      expect(isGenericAvatar("/avatar-placeholder.svg")).toBe(true);
+      expect(isGenericAvatar(INLINE_AVATAR_SVG_DATA_URI)).toBe(true);
+    });
+
+    it("deve identificar fotos reais (Google OAuth, Base64 WebP ou fotos customizadas) como NÃO genéricas", () => {
+      expect(isGenericAvatar("https://lh3.googleusercontent.com/a/ACg8ocL123=s96-c")).toBe(false);
+      expect(isGenericAvatar("data:image/webp;base64,UklGRmQAAABXRUJQVlA4WAoAAAAQAAAA")).toBe(false);
+      expect(isGenericAvatar("https://storage.googleapis.com/meu-bucket/perfil.jpg")).toBe(false);
+      expect(isGenericAvatar("https://images.unsplash.com/photo-1535713875002-d1d0cf377fde")).toBe(false);
     });
   });
 

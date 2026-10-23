@@ -6,11 +6,32 @@ export const INLINE_AVATAR_SVG_DATA_URI =
   "data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 128 128'%3E%3Crect width='128' height='128' rx='24' fill='%2300843D' fill-opacity='0.12'/%3E%3Ccircle cx='64' cy='48' r='22' fill='%2300843D' fill-opacity='0.75'/%3E%3Cpath d='M26 106c0-21 17-38 38-38s38 17 38 38z' fill='%2300843D' fill-opacity='0.75'/%3E%3C/svg%3E";
 
 /**
+ * Verifica se uma URL de avatar é considerada genérica, inexistente ou fallback automático.
+ * Retorna true se a URL for nula, vazia, indefinida, DiceBear, SVG data-uri placeholder ou asset local.
+ * Retorna false se for uma foto real (ex: Google OAuth, Cloud Storage, Base64 WebP ou URL customizada).
+ */
+export function isGenericAvatar(url?: string | null): boolean {
+  if (!url || typeof url !== "string" || url.trim().length === 0) return true;
+  const trimmed = url.trim().toLowerCase();
+  if (trimmed === "undefined" || trimmed === "null") return true;
+  if (trimmed.includes("dicebear.com")) return true;
+  if (trimmed.includes("avatar-placeholder.svg")) return true;
+  if (trimmed.startsWith("data:image/svg+xml")) return true;
+  return false;
+}
+
+/**
  * Retorna a URL segura de avatar com fallback determinístico.
  * Lida de forma resiliente com valores nulos, vazios, indefinidos ou URLs inválidas.
  */
 export function getSafeAvatarUrl(avatarUrl?: string | null, name?: string | null): string {
-  if (avatarUrl && typeof avatarUrl === "string" && avatarUrl.trim().length > 0) {
+  if (
+    avatarUrl &&
+    typeof avatarUrl === "string" &&
+    avatarUrl.trim().length > 0 &&
+    avatarUrl.trim() !== "undefined" &&
+    avatarUrl.trim() !== "null"
+  ) {
     return avatarUrl.trim();
   }
   const cleanName = (name && typeof name === "string" && name.trim().length > 0) ? name.trim() : "User";
