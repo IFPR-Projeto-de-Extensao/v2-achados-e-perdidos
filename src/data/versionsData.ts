@@ -98,6 +98,13 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
     ],
     bugFixes: [
       {
+        id: "v1102-fix-phase4c-issuer-attestation",
+        title: "Atribuição Direta da Segunda Assinatura ao Emissor Responsável",
+        description: "Ajuste na notificação e no controle de acesso de /api/signature/confirm-staff-signature para direcionar os e-mails de atestação estritamente ao usuário emissor da devolução (returnedByUserId / dispatchedByUserId) e restringir a atestação no frontend/backend exclusivamente ao servidor responsável, sem fallbacks para e-mails genéricos do campus.",
+        module: "ADMIN",
+        tag: "Correção de Regra de Negócio & RBAC",
+      },
+      {
         id: "v1102-fix-1",
         title: "Eliminação do ERR_REQUIRE_ESM em Funções Serverless",
         description: "Resolução do crash que impedia o Firebase Admin Auth de verificar tokens JWT de administradores em /api/admin/delete-user e demais rotas autenticadas sob a Vercel.",

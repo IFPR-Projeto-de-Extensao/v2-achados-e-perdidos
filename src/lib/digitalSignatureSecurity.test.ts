@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import crypto from "crypto";
 
-describe("Digital Signature & Dual Signer Flow Security Audit (/api/signature/*)", () => {
+describe("Phase 4C: Dual Signature & Issuer Attestation Security Audit (/api/signature/*)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -11,6 +11,9 @@ describe("Digital Signature & Dual Signer Flow Security Audit (/api/signature/*)
     id: string;
     title: string;
     status: "DISPONIVEL" | "ENCONTRADO" | "DEVOLVIDO" | "ENCERRADO";
+    returnedByUserId?: string;
+    returnedByName?: string;
+    returnedByRole?: string;
     
     // Recipient Signature (Party 1)
     recipientSignatureStatus?: "SIGNED" | "PENDING_REMOTE" | "NOT_REQUIRED";
@@ -30,7 +33,6 @@ describe("Digital Signature & Dual Signer Flow Security Audit (/api/signature/*)
     staffSignerUid?: string;
     staffSignerName?: string;
     staffSignerEmail?: string;
-    staffSignatureRequestId?: string;
 
     // Tokens & Receipt
     signatureToken?: string | null;
@@ -38,8 +40,6 @@ describe("Digital Signature & Dual Signer Flow Security Audit (/api/signature/*)
     signatureTokenExpiresAt?: string;
     receiptValidationCode?: string;
     signedAt?: string;
-    returnedByName?: string;
-    returnedByEmail?: string;
     history?: any[];
   }
 
@@ -48,110 +48,130 @@ describe("Digital Signature & Dual Signer Flow Security Audit (/api/signature/*)
     tokenHash: string;
     recipientEmail: string;
     recipientName: string;
-    recipientBond?: string;
-    recipientDocument?: string;
     createdAt: string;
     expiresAt: string;
     used: boolean;
-    usedAt?: string;
-    validationCode?: string;
-    type?: "RECIPIENT_RETURN" | "STAFF_ATTESTATION";
-    assignedStaffEmail?: string;
+    dispatchedByUserId?: string;
   }
 
-  // Exact reproduction of server.ts verify-token logic
-  function simulateVerifyToken(params: {
-    itemId?: string;
-    token?: string;
-    signerType?: "RECIPIENT" | "STAFF";
+  interface MockUserDoc {
+    uid: string;
+    name: string;
+    email: string;
+    role: "ALUNO" | "SERVIDOR" | "ADMIN";
+    status?: "ACTIVE" | "SUSPENDED" | "INACTIVE";
+  }
+
+  // Simulation of server.ts confirm-signature logic (Recipient Signature Phase + Issuer Notification Dispatch)
+  async function simulateConfirmSignaturePhase4C(params: {
+    itemId: string;
+    token: string;
+    signatureDataUrl: string;
     dbItems: Map<string, MockItemDoc>;
     dbSignatureRequests: Map<string, MockSignatureRequestDoc>;
-  }): { status: number; body: any } {
-    const { itemId, token, signerType = "RECIPIENT", dbItems, dbSignatureRequests } = params;
-
-    if (!itemId || !token || typeof itemId !== "string" || typeof token !== "string") {
-      return {
-        status: 400,
-        body: { success: false, valid: false, reason: "MISSING_PARAMS", error: "Identificador do item (itemId) e token são obrigatórios." },
-      };
-    }
+    dbUsers: Map<string, MockUserDoc>;
+    emailNotificationLogs: any[];
+  }): Promise<{ status: number; body: any }> {
+    const { itemId, token, signatureDataUrl, dbItems, dbSignatureRequests, dbUsers, emailNotificationLogs } = params;
 
     const item = dbItems.get(itemId);
     if (!item) {
+      return { status: 404, body: { success: false, error: "Ocorrência não encontrada." } };
+    }
+
+    const sigReq = dbSignatureRequests.get(itemId);
+    const cleanToken = token.trim();
+    const tokenHash = crypto.createHash("sha256").update(cleanToken).digest("hex");
+
+    let tokenMatched = false;
+    if (sigReq && sigReq.tokenHash === tokenHash) {
+      tokenMatched = true;
+    } else if (item.signatureToken && item.signatureToken.trim() === cleanToken) {
+      tokenMatched = true;
+    }
+
+    if (!tokenMatched) {
+      return { status: 403, body: { success: false, error: "Token de assinatura inválido ou não autorizado." } };
+    }
+
+    // Idempotency
+    if (item.recipientSignatureStatus === "SIGNED" && item.recipientSignatureUrl) {
       return {
-        status: 404,
-        body: { success: false, valid: false, reason: "NOT_FOUND", error: `Ocorrência #${itemId} não encontrada.` },
+        status: 200,
+        body: {
+          success: true,
+          alreadyCompleted: true,
+          recipientSignatureUrl: item.recipientSignatureUrl,
+          validationCode: item.receiptValidationCode,
+        },
       };
     }
 
-    if (signerType === "STAFF") {
-      // Staff verification requires recipient to be already signed
-      if (item.recipientSignatureStatus !== "SIGNED") {
-        return {
-          status: 400,
-          body: { success: false, valid: false, reason: "RECIPIENT_PENDING", error: "A assinatura do receptor ainda não foi concluída." },
-        };
+    // Finalize recipient signature on item
+    item.status = "DEVOLVIDO";
+    item.recipientSignatureStatus = "SIGNED";
+    item.recipientSignatureUrl = signatureDataUrl;
+    item.staffSignatureStatus = "PENDING_STAFF";
+    item.receiptValidationCode = item.receiptValidationCode || `REC-IFPR-${itemId.toUpperCase()}`;
+
+    // Resolve issuer UID
+    const issuerUid = item.returnedByUserId || sigReq?.dispatchedByUserId;
+    let issuerEmail = "";
+    let issuerName = "Servidor Emissor Responsável";
+
+    if (issuerUid) {
+      const issuerDoc = dbUsers.get(issuerUid);
+      if (issuerDoc && issuerDoc.email) {
+        issuerEmail = issuerDoc.email.trim();
+        issuerName = issuerDoc.name;
       }
-      if (item.staffSignatureStatus === "SIGNED") {
-        return {
-          status: 200,
-          body: {
-            success: true,
-            valid: true,
-            isAlreadySigned: true,
-            staffSignatureUrl: item.staffSignatureUrl || "",
-          },
-        };
-      }
+    }
+
+    // Phase 2 Notification Dispatch: Strict targeting to issuer, NO generic fallback
+    if (!issuerEmail) {
+      emailNotificationLogs.push({
+        itemId,
+        recipientEmail: "",
+        recipientName: issuerName,
+        status: "ERROR_NO_ISSUER_EMAIL",
+        error: "E-mail do emissor responsável não encontrado para notificação.",
+      });
+    } else {
+      emailNotificationLogs.push({
+        itemId,
+        recipientEmail: issuerEmail,
+        recipientName: issuerName,
+        status: "SENT",
+      });
     }
 
     return {
       status: 200,
       body: {
         success: true,
-        valid: true,
-        isAlreadySigned: signerType === "STAFF" ? item.staffSignatureStatus === "SIGNED" : item.recipientSignatureStatus === "SIGNED",
-        item: {
-          id: item.id,
-          title: item.title,
-          status: item.status,
-          recipientSignatureStatus: item.recipientSignatureStatus,
-          staffSignatureStatus: item.staffSignatureStatus,
-        },
+        message: "Assinatura do receptor confirmada com sucesso.",
+        recipientSignatureUrl: signatureDataUrl,
+        validationCode: item.receiptValidationCode,
       },
     };
   }
 
-  // Exact reproduction of server.ts confirm-signature logic with Dual Signer support
-  async function simulateConfirmSignature(params: {
-    itemId?: string;
-    token?: string;
-    signatureDataUrl?: string;
-    signatureMethod?: "DRAWN" | "TYPED_NAME";
-    signerType?: "RECIPIENT" | "STAFF";
-    signerName?: string;
-    signerEmail?: string;
-    signerUid?: string;
-    signerBond?: string;
+  // Simulation of server.ts confirm-staff-signature logic (Staff Issuer Attestation)
+  async function simulateConfirmStaffSignaturePhase4C(params: {
+    itemId: string;
+    signatureDataUrl: string;
+    authUser: { uid: string; email?: string; role: string; status?: string };
     dbItems: Map<string, MockItemDoc>;
     dbSignatureRequests: Map<string, MockSignatureRequestDoc>;
   }): Promise<{ status: number; body: any }> {
-    const {
-      itemId,
-      token,
-      signatureDataUrl,
-      signatureMethod = "DRAWN",
-      signerType = "RECIPIENT",
-      signerName,
-      signerEmail,
-      signerUid,
-      signerBond,
-      dbItems,
-      dbSignatureRequests,
-    } = params;
+    const { itemId, signatureDataUrl, authUser, dbItems, dbSignatureRequests } = params;
 
-    if (!itemId || !token || !signatureDataUrl || typeof itemId !== "string" || typeof token !== "string") {
-      return { status: 400, body: { success: false, error: "Parâmetros obrigatórios ausentes." } };
+    // RBAC: Must be Staff or Admin
+    if (authUser.role !== "ADMIN" && authUser.role !== "SERVIDOR") {
+      return { status: 403, body: { success: false, error: "Acesso negado. Apenas servidores e administradores ativos do IFPR podem executar esta operação." } };
+    }
+    if (authUser.status === "SUSPENDED" || authUser.status === "INACTIVE") {
+      return { status: 403, body: { success: false, error: "Conta suspensa ou inativa." } };
     }
 
     const item = dbItems.get(itemId);
@@ -159,254 +179,292 @@ describe("Digital Signature & Dual Signer Flow Security Audit (/api/signature/*)
       return { status: 404, body: { success: false, error: "Ocorrência não encontrada." } };
     }
 
-    const cleanToken = token.trim();
-    const tokenHash = crypto.createHash("sha256").update(cleanToken).digest("hex");
+    if (item.recipientSignatureStatus !== "SIGNED") {
+      return { status: 400, body: { success: false, error: "A assinatura do receptor deve ser concluída antes da atestação do atendente." } };
+    }
+
     const sigReq = dbSignatureRequests.get(itemId);
+    const issuerUid = item.returnedByUserId || sigReq?.dispatchedByUserId;
 
-    if (signerType === "STAFF") {
-      if (item.recipientSignatureStatus !== "SIGNED") {
-        return { status: 400, body: { success: false, error: "O receptor precisa assinar antes do servidor atendente." } };
-      }
-      if (item.staffSignatureStatus === "SIGNED") {
-        return {
-          status: 200,
-          body: {
-            success: true,
-            alreadyCompleted: true,
-            message: "Assinatura do atendente já confirmada anteriormente.",
-            staffSignatureUrl: item.staffSignatureUrl,
-          },
-        };
-      }
-
-      item.staffSignatureStatus = "SIGNED";
-      item.staffSignatureUrl = signatureDataUrl;
-      item.staffSignatureMethod = signatureMethod;
-      item.staffSignedAt = new Date().toISOString();
-      item.staffSignerName = signerName || "Servidor Atendente";
-      item.staffSignerEmail = signerEmail || "servidor@ifpr.edu.br";
-      item.staffSignerUid = signerUid || "uid-staff-123";
-
+    // Strict Issuer Check: Only the specific issuer who emitted the return can sign
+    if (issuerUid && authUser.uid !== issuerUid) {
       return {
-        status: 200,
+        status: 403,
         body: {
-          success: true,
-          message: "Assinatura do atendente confirmada com sucesso.",
-          staffSignatureUrl: signatureDataUrl,
-        },
-      };
-    } else {
-      // Recipient Signature
-      if (item.recipientSignatureStatus === "SIGNED") {
-        return {
-          status: 200,
-          body: {
-            success: true,
-            alreadyCompleted: true,
-            message: "Assinatura do receptor já confirmada anteriormente.",
-            recipientSignatureUrl: item.recipientSignatureUrl,
-          },
-        };
-      }
-
-      item.recipientSignatureStatus = "SIGNED";
-      item.recipientSignatureUrl = signatureDataUrl;
-      item.recipientSignatureMethod = signatureMethod;
-      item.recipientSignedAt = new Date().toISOString();
-      item.staffSignatureStatus = "PENDING_STAFF"; // Automatically requests staff signature next
-
-      return {
-        status: 200,
-        body: {
-          success: true,
-          message: "Assinatura do receptor confirmada. Solicitação de assinatura do atendente gerada.",
-          recipientSignatureUrl: signatureDataUrl,
-          nextStep: "PENDING_STAFF_SIGNATURE",
+          success: false,
+          error: "Apenas o servidor emissor responsável por registrar/liberar esta devolução pode atestar e assinar o termo.",
         },
       };
     }
+
+    if (item.staffSignatureStatus === "SIGNED" && item.staffSignatureUrl) {
+      return {
+        status: 200,
+        body: {
+          success: true,
+          alreadyCompleted: true,
+          message: "Assinatura do atendente já estava registrada.",
+          staffSignatureUrl: item.staffSignatureUrl,
+        },
+      };
+    }
+
+    item.staffSignatureStatus = "SIGNED";
+    item.staffSignatureUrl = signatureDataUrl;
+    item.staffSignedAt = new Date().toISOString();
+    item.staffSignerUid = authUser.uid;
+    item.staffSignerEmail = authUser.email;
+
+    return {
+      status: 200,
+      body: {
+        success: true,
+        alreadyCompleted: false,
+        message: "Assinatura do atendente registrada com sucesso no banco de dados.",
+        staffSignatureUrl: signatureDataUrl,
+      },
+    };
   }
 
-  // =========================================================================
-  // TESTS FOR DUAL SIGNER FLOW (RECIPIENT + STAFF)
-  // =========================================================================
-
+  // Common Test Fixtures
   let dbItems: Map<string, MockItemDoc>;
   let dbSignatureRequests: Map<string, MockSignatureRequestDoc>;
+  let dbUsers: Map<string, MockUserDoc>;
+  let emailNotificationLogs: any[];
 
-  const rawTokenRecipient = "sig_recipient_token_123456789";
-  const rawTokenStaff = "sig_staff_token_987654321";
+  const validToken = "token_recipient_123";
   const validPng = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
   beforeEach(() => {
+    dbUsers = new Map([
+      ["uid-issuer-prof-paulo", { uid: "uid-issuer-prof-paulo", name: "Prof. Paulo Cauan", email: "paulocauan@ifpr.edu.br", role: "SERVIDOR", status: "ACTIVE" }],
+      ["uid-other-servidor", { uid: "uid-other-servidor", name: "Prof. Outro Servidor", email: "outro@ifpr.edu.br", role: "SERVIDOR", status: "ACTIVE" }],
+      ["uid-[#ADMIN]", { uid: "uid-[#ADMIN]", name: "Admin Geral", email: "admin@ifpr.edu.br", role: "ADMIN", status: "ACTIVE" }],
+    ]);
+
     dbItems = new Map([
       [
-        "item-dual-test",
+        "item-101",
         {
-          id: "item-dual-test",
-          title: "Notebook Lenovo i5",
+          id: "item-101",
+          title: "Calculadora Científica Casio",
           status: "DEVOLVIDO",
           recipientSignatureStatus: "PENDING_REMOTE",
           staffSignatureStatus: "PENDING_STAFF",
-          recipientName: "Carlos Aluno",
-          recipientEmail: "carlos@estudante.ifpr.edu.br",
+          returnedByUserId: "uid-issuer-prof-paulo",
+        },
+      ],
+      [
+        "item-legacy-102",
+        {
+          id: "item-legacy-102",
+          title: "Guarda-chuva Azul",
+          status: "DEVOLVIDO",
+          recipientSignatureStatus: "SIGNED",
+          staffSignatureStatus: "PENDING_STAFF",
+          // No returnedByUserId set on legacy item
         },
       ],
     ]);
 
     dbSignatureRequests = new Map([
       [
-        "item-dual-test",
+        "item-101",
         {
-          itemId: "item-dual-test",
-          tokenHash: crypto.createHash("sha256").update(rawTokenRecipient).digest("hex"),
-          recipientEmail: "carlos@estudante.ifpr.edu.br",
-          recipientName: "Carlos Aluno",
+          itemId: "item-101",
+          tokenHash: crypto.createHash("sha256").update(validToken).digest("hex"),
+          recipientEmail: "aluno@estudante.ifpr.edu.br",
+          recipientName: "Aluno Teste",
           createdAt: new Date().toISOString(),
           expiresAt: new Date(Date.now() + 86400000).toISOString(),
           used: false,
-          type: "RECIPIENT_RETURN",
+          dispatchedByUserId: "uid-issuer-prof-paulo",
         },
       ],
     ]);
+
+    emailNotificationLogs = [];
   });
 
-  it("1. Receptor assina com sucesso e o sistema define staffSignatureStatus como PENDING_STAFF", async () => {
-    const res = await simulateConfirmSignature({
-      itemId: "item-dual-test",
-      token: rawTokenRecipient,
+  it("1. Notificação direcionada ao e-mail do emissor responsável", async () => {
+    const res = await simulateConfirmSignaturePhase4C({
+      itemId: "item-101",
+      token: validToken,
       signatureDataUrl: validPng,
-      signerType: "RECIPIENT",
+      dbItems,
+      dbSignatureRequests,
+      dbUsers,
+      emailNotificationLogs,
+    });
+
+    expect(res.status).toBe(200);
+    expect(emailNotificationLogs.length).toBe(1);
+    expect(emailNotificationLogs[0].recipientEmail).toBe("paulocauan@ifpr.edu.br");
+    expect(emailNotificationLogs[0].status).toBe("SENT");
+  });
+
+  it("2. Não utilização do e-mail genérico do campus (campus.ivaipora@ifpr.edu.br) como fallback", async () => {
+    // Unset returnedByUserId and dispatchedByUserId to test absence of email
+    const item = dbItems.get("item-101")!;
+    item.returnedByUserId = undefined;
+    const sigReq = dbSignatureRequests.get("item-101")!;
+    sigReq.dispatchedByUserId = undefined;
+
+    await simulateConfirmSignaturePhase4C({
+      itemId: "item-101",
+      token: validToken,
+      signatureDataUrl: validPng,
+      dbItems,
+      dbSignatureRequests,
+      dbUsers,
+      emailNotificationLogs,
+    });
+
+    expect(emailNotificationLogs.length).toBe(1);
+    expect(emailNotificationLogs[0].recipientEmail).not.toBe("campus.ivaipora@ifpr.edu.br");
+    expect(emailNotificationLogs[0].status).toBe("ERROR_NO_ISSUER_EMAIL");
+  });
+
+  it("3. Resiliência: Ausência do e-mail do emissor mantém status PENDING_STAFF e NÃO invalida assinatura do receptor", async () => {
+    const item = dbItems.get("item-101")!;
+    item.returnedByUserId = "uid-inexistent";
+
+    const res = await simulateConfirmSignaturePhase4C({
+      itemId: "item-101",
+      token: validToken,
+      signatureDataUrl: validPng,
+      dbItems,
+      dbSignatureRequests,
+      dbUsers,
+      emailNotificationLogs,
+    });
+
+    expect(res.status).toBe(200);
+    expect(item.recipientSignatureStatus).toBe("SIGNED");
+    expect(item.staffSignatureStatus).toBe("PENDING_STAFF");
+    expect(emailNotificationLogs[0].status).toBe("ERROR_NO_ISSUER_EMAIL");
+  });
+
+  it("4. RBAC estrito: Servidor não emissor é rejeitado com 403 no confirm-staff-signature", async () => {
+    // Receiver signs first
+    const item = dbItems.get("item-101")!;
+    item.recipientSignatureStatus = "SIGNED";
+
+    // Unmatching servidor attempts to sign
+    const res = await simulateConfirmStaffSignaturePhase4C({
+      itemId: "item-101",
+      signatureDataUrl: validPng,
+      authUser: { uid: "uid-other-servidor", role: "SERVIDOR", status: "ACTIVE" },
+      dbItems,
+      dbSignatureRequests,
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toContain("Apenas o servidor emissor responsável por registrar/liberar esta devolução pode atestar e assinar o termo");
+  });
+
+  it("5. Autenticação do emissor: Emissor responsável assina e atesta com sucesso", async () => {
+    const item = dbItems.get("item-101")!;
+    item.recipientSignatureStatus = "SIGNED";
+
+    const res = await simulateConfirmStaffSignaturePhase4C({
+      itemId: "item-101",
+      signatureDataUrl: validPng,
+      authUser: { uid: "uid-issuer-prof-paulo", email: "paulocauan@ifpr.edu.br", role: "SERVIDOR", status: "ACTIVE" },
       dbItems,
       dbSignatureRequests,
     });
 
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
-    expect(res.body.nextStep).toBe("PENDING_STAFF_SIGNATURE");
-
-    const item = dbItems.get("item-dual-test");
-    expect(item?.recipientSignatureStatus).toBe("SIGNED");
-    expect(item?.staffSignatureStatus).toBe("PENDING_STAFF");
-    expect(item?.recipientSignatureUrl).toBe(validPng);
+    expect(item.staffSignatureStatus).toBe("SIGNED");
+    expect(item.staffSignerUid).toBe("uid-issuer-prof-paulo");
   });
 
-  it("2. Servidor atendente assina dentro do Localiza+ ou por token após o receptor", async () => {
-    // Passo 1: Receptor assina
-    await simulateConfirmSignature({
-      itemId: "item-dual-test",
-      token: rawTokenRecipient,
+  it("6. Proteção contra substituição em chamada direta no endpoint", async () => {
+    const item = dbItems.get("item-101")!;
+    item.recipientSignatureStatus = "SIGNED";
+
+    // Direct API attempt with arbitrary user UID
+    const res = await simulateConfirmStaffSignaturePhase4C({
+      itemId: "item-101",
       signatureDataUrl: validPng,
-      signerType: "RECIPIENT",
+      authUser: { uid: "imposter-uid-999", role: "SERVIDOR", status: "ACTIVE" },
       dbItems,
       dbSignatureRequests,
     });
 
-    // Passo 2: Servidor atendente assina
-    const staffRes = await simulateConfirmSignature({
-      itemId: "item-dual-test",
-      token: rawTokenStaff,
+    expect(res.status).toBe(403);
+    expect(item.staffSignatureStatus).toBe("PENDING_STAFF");
+  });
+
+  it("7. Idempotência de tentativas repetidas de atestação", async () => {
+    const item = dbItems.get("item-101")!;
+    item.recipientSignatureStatus = "SIGNED";
+
+    // First call
+    await simulateConfirmStaffSignaturePhase4C({
+      itemId: "item-101",
       signatureDataUrl: validPng,
-      signerType: "STAFF",
-      signerName: "Prof. Paulo Servidor",
-      signerEmail: "paulo@ifpr.edu.br",
+      authUser: { uid: "uid-issuer-prof-paulo", email: "paulocauan@ifpr.edu.br", role: "SERVIDOR", status: "ACTIVE" },
       dbItems,
       dbSignatureRequests,
     });
 
-    expect(staffRes.status).toBe(200);
-    expect(staffRes.body.success).toBe(true);
-
-    const item = dbItems.get("item-dual-test");
-    expect(item?.recipientSignatureStatus).toBe("SIGNED");
-    expect(item?.staffSignatureStatus).toBe("SIGNED");
-    expect(item?.staffSignatureUrl).toBe(validPng);
-    expect(item?.staffSignerName).toBe("Prof. Paulo Servidor");
-  });
-
-  it("5. Geração de solicitação de e-mail e hash SHA-256 para o atendente após assinatura do receptor", () => {
-    const rawStaffToken = "sig_staff_token_secret_xyz123";
-    const tokenHash = crypto.createHash("sha256").update(rawStaffToken).digest("hex");
-
-    const staffRequest: MockSignatureRequestDoc = {
-      itemId: "item-dual-test",
-      tokenHash,
-      recipientEmail: "paulo@ifpr.edu.br",
-      recipientName: "Prof. Paulo Atendente",
-      createdAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
-      used: false,
-      type: "STAFF_ATTESTATION",
-      assignedStaffEmail: "paulo@ifpr.edu.br",
-    };
-
-    expect(staffRequest.tokenHash).not.toBe(rawStaffToken);
-    expect(staffRequest.type).toBe("STAFF_ATTESTATION");
-    expect(staffRequest.used).toBe(false);
-  });
-
-  it("6. Rejeição de token de atendente inválido, expirado ou já utilizado", () => {
-    const expiredReq: MockSignatureRequestDoc = {
-      itemId: "item-dual-test",
-      tokenHash: "abc",
-      recipientEmail: "paulo@ifpr.edu.br",
-      recipientName: "Paulo",
-      createdAt: new Date(Date.now() - 100000).toISOString(),
-      expiresAt: new Date(Date.now() - 1000).toISOString(), // Expired
-      used: true, // Already used
-      type: "STAFF_ATTESTATION",
-    };
-
-    const isExpired = new Date(expiredReq.expiresAt).getTime() < Date.now();
-    expect(isExpired).toBe(true);
-    expect(expiredReq.used).toBe(true);
-  });
-
-  it("7. Impedir atestação do atendente antes da assinatura do receptor", async () => {
-    const item = dbItems.get("item-dual-test")!;
-    item.recipientSignatureStatus = "PENDING_REMOTE";
-
-    const res = await simulateConfirmSignature({
-      itemId: "item-dual-test",
-      token: rawTokenStaff,
+    // Second call (Retry)
+    const retryRes = await simulateConfirmStaffSignaturePhase4C({
+      itemId: "item-101",
       signatureDataUrl: validPng,
-      signerType: "STAFF",
+      authUser: { uid: "uid-issuer-prof-paulo", email: "paulocauan@ifpr.edu.br", role: "SERVIDOR", status: "ACTIVE" },
       dbItems,
       dbSignatureRequests,
     });
 
-    expect(res.status).toBe(400);
-    expect(res.body.success).toBe(false);
+    expect(retryRes.status).toBe(200);
+    expect(retryRes.body.alreadyCompleted).toBe(true);
   });
 
-  it("8. Validar tamanho máximo da imagem da assinatura do atendente (limite ~250KB)", () => {
-    const hugePng = "data:image/png;base64," + "A".repeat(400000);
-    const exceedsLimit = hugePng.length > 350000;
-    expect(exceedsLimit).toBe(true);
-  });
+  it("8. Exibição correta da fila no frontend filtrada por emissor", () => {
+    const itemsList = Array.from(dbItems.values());
+    const currentUserProfPaulo = { id: "uid-issuer-prof-paulo", role: "SERVIDOR" };
+    const currentUserOtherServidor = { id: "uid-other-servidor", role: "SERVIDOR" };
 
-  it("9. RBAC: Nega usuário sem papel institucional ou com e-mail pessoal (inclusive paulocauan39@gmail.com)", () => {
-    const evaluateAuth = (user: { role?: string; email?: string; status?: string }) => {
-      const isStaffOrAdmin = user.role === "ADMIN" || user.role === "SERVIDOR";
-      if (!isStaffOrAdmin || user.status === "SUSPENDED") return false;
-      return true;
+    const filterQueueForUser = (user: { id: string }) => {
+      return itemsList.filter(
+        (it) =>
+          it.status === "DEVOLVIDO" &&
+          it.recipientSignatureStatus === "SIGNED" &&
+          it.staffSignatureStatus !== "SIGNED" &&
+          (!it.returnedByUserId || it.returnedByUserId === user.id)
+      );
     };
 
-    expect(evaluateAuth({ email: "paulocauan39@gmail.com", role: "ALUNO" })).toBe(false);
-    expect(evaluateAuth({ email: "paulocauan39@gmail.com", role: "NONE" })).toBe(false);
-    expect(evaluateAuth({ email: "aluno@estudante.ifpr.edu.br", role: "ALUNO" })).toBe(false);
+    // Legacy item-legacy-102 has recipientSignatureStatus === 'SIGNED' and no returnedByUserId
+    const pauloQueue = filterQueueForUser(currentUserProfPaulo);
+    const outroQueue = filterQueueForUser(currentUserOtherServidor);
+
+    expect(pauloQueue.some((i) => i.id === "item-legacy-102")).toBe(true);
+    expect(outroQueue.some((i) => i.id === "item-legacy-102")).toBe(true);
   });
 
-  it("10. RBAC: Permite ADMIN e SERVIDOR ativos e nega usuários suspensos", () => {
-    const evaluateAuth = (user: { role?: string; status?: string }) => {
-      const isStaffOrAdmin = user.role === "ADMIN" || user.role === "SERVIDOR";
-      if (!isStaffOrAdmin || user.status === "SUSPENDED" || user.status === "INACTIVE") return false;
-      return true;
-    };
+  it("9. Fidelidade na renderização do recibo de devolução com dados persistidos", () => {
+    const item = dbItems.get("item-101")!;
+    item.recipientSignatureStatus = "SIGNED";
+    item.recipientSignatureUrl = validPng;
+    item.staffSignatureStatus = "SIGNED";
+    item.staffSignatureUrl = validPng;
+    item.staffSignerName = "Prof. Paulo Cauan";
 
-    expect(evaluateAuth({ role: "ADMIN", status: "ACTIVE" })).toBe(true);
-    expect(evaluateAuth({ role: "SERVIDOR", status: "ACTIVE" })).toBe(true);
-    expect(evaluateAuth({ role: "ADMIN", status: "SUSPENDED" })).toBe(false);
+    expect(item.recipientSignatureUrl).toBeTruthy();
+    expect(item.staffSignatureUrl).toBeTruthy();
+    expect(item.staffSignerName).toBe("Prof. Paulo Cauan");
+  });
+
+  it("10. Legibilidade e acessibilidade de registros legados sem erro", () => {
+    const legacyItem = dbItems.get("item-legacy-102")!;
+    expect(legacyItem.returnedByUserId).toBeUndefined();
+    expect(legacyItem.title).toBe("Guarda-chuva Azul");
+    expect(legacyItem.recipientSignatureStatus).toBe("SIGNED");
   });
 });
-

@@ -4143,18 +4143,59 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
       });
     }
 
-    // Phase 2: Dispatch institutional notification email to staff/attendant requesting attestation signature
+      // Phase 2: Dispatch institutional notification email to the specific issuer (emissor) requesting attestation signature
     try {
-      const staffTargetEmail = process.env.STAFF_NOTIFICATION_EMAIL || process.env.INSTITUTIONAL_NOTIFICATION_EMAIL || "campus.ivaipora@ifpr.edu.br";
-      const transporter = getEmailTransporter();
-      const staffSubject = `📌 Assinatura Institucional Pendente: Devolução de "${itemTitle || itemId}" (#${itemId}) - IFPR`;
-      const staffBody = `Atenção Equipe de Atendimento (SEBAC / Portaria IFPR):\n\n` +
-        `O receptor ${effectiveSignerName} (${effectiveSignerBond}) assinou digitalmente a devolução do pertence "${itemTitle}" (#${itemId}).\n\n` +
-        `O item encontra-se aguardando atestação e assinatura institucional do atendente no painel do Localiza+ (Aba: Assinaturas Pendentes).\n\n` +
-        `Código de Validação do Recibo: ${finalValidationCode}\n\n` +
-        `Acesse o sistema Localiza+ para atestar e assinar o recibo de devolução.`;
+      const sigReqSnap = await adminDb.collection("signature_requests").doc(itemId).get();
+      const sigReqData = sigReqSnap.exists ? sigReqSnap.data() : {};
+      const issuerUid = itemData.returnedByUserId || sigReqData?.dispatchedByUserId;
 
-      const staffHtml = `
+      let staffTargetEmail = "";
+      let issuerName = "Servidor Emissor Responsável";
+
+      if (issuerUid) {
+        try {
+          const issuerDoc = await adminDb.collection("users").doc(issuerUid).get();
+          if (issuerDoc.exists) {
+            const uData = issuerDoc.data() || {};
+            if (uData.email) {
+              staffTargetEmail = uData.email.trim();
+              if (uData.name) {
+                issuerName = uData.name.trim();
+              }
+            }
+          }
+        } catch (lookupErr) {
+          console.warn(`[Signature Warning] Falha ao buscar e-mail do emissor (${issuerUid}):`, lookupErr);
+        }
+      }
+
+      if (!staffTargetEmail) {
+        console.warn(`[Signature Notice] E-mail do emissor responsável não encontrado para a devolução do item #${itemId}. Notificação SMTP omitida (não é feito fallback para e-mail genérico).`);
+        const notifDocId = `staff_notif_${itemId}_${Date.now()}`;
+        await adminDb.collection("email_notifications").doc(notifDocId).set({
+          id: notifDocId,
+          itemId,
+          itemTitle: itemTitle || itemId,
+          recipientEmail: "",
+          recipientName: issuerName,
+          subject: `📌 Assinatura Institucional Pendente: Devolução de "${itemTitle || itemId}" (#${itemId}) - IFPR`,
+          type: "STAFF_SIGNATURE_PENDING_NOTIFICATION",
+          status: "ERROR_NO_ISSUER_EMAIL",
+          messageId: null,
+          error: "E-mail do emissor responsável não encontrado para notificação.",
+          sentAt: nowIso,
+          createdAt: nowIso,
+        });
+      } else {
+        const transporter = getEmailTransporter();
+        const staffSubject = `📌 Assinatura Institucional Pendente: Devolução de "${itemTitle || itemId}" (#${itemId}) - IFPR`;
+        const staffBody = `Atenção ${issuerName}:\n\n` +
+          `O receptor ${effectiveSignerName} (${effectiveSignerBond}) assinou digitalmente a devolução do pertence "${itemTitle}" (#${itemId}).\n\n` +
+          `O item encontra-se aguardando sua atestação e assinatura institucional no painel do Localiza+ (Aba: Assinaturas Pendentes).\n\n` +
+          `Código de Validação do Recibo: ${finalValidationCode}\n\n` +
+          `Acesse o sistema Localiza+ para atestar e assinar o recibo de devolução.`;
+
+        const staffHtml = `
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -4177,13 +4218,13 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
       <p>Sistema Localiza+ • Notificação de Devolução Assinada pelo Receptor</p>
     </div>
     <div class="content">
-      <p>Prezada equipe de atendimento,</p>
+      <p>Prezado(a) <strong>${issuerName}</strong>,</p>
       <p>O receptor <strong>${effectiveSignerName}</strong> (${effectiveSignerBond}) concluiu a assinatura digital de recebimento do objeto <strong>"${itemTitle || itemId}"</strong> (#${itemId}).</p>
       <div class="info-card">
         <strong>Item:</strong> #${itemId} - ${itemTitle}<br/>
         <strong>Receptor:</strong> ${effectiveSignerName} (${effectiveSignerBond})<br/>
         <strong>Código de Validação:</strong> ${finalValidationCode}<br/>
-        <strong>Status:</strong> AGUARDANDO ASSINATURA INSTITUCIONAL DO ATENDENTE
+        <strong>Status:</strong> AGUARDANDO SUA ASSINATURA INSTITUCIONAL COMO EMISSOR
       </div>
       <p>Por favor, acesse o painel administrativo do <strong>Localiza+</strong> na aba <strong>Assinaturas Pendentes</strong> para conferir e registrar sua atestação de devolução.</p>
     </div>
@@ -4193,46 +4234,47 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
   </div>
 </body>
 </html>
-      `;
+        `;
 
-      let staffEmailSent = false;
-      let staffMsgId = null;
-      let staffEmailErr = null;
+        let staffEmailSent = false;
+        let staffMsgId = null;
+        let staffEmailErr = null;
 
-      if (transporter) {
-        try {
-          const fromAddr = process.env.SMTP_FROM || `"IFPR Achados & Perdidos" <${process.env.SMTP_USER || "campus.ivaipora@ifpr.edu.br"}>`;
-          const info = await transporter.sendMail({
-            from: fromAddr,
-            to: staffTargetEmail,
-            subject: staffSubject,
-            text: staffBody,
-            html: staffHtml,
-          });
-          staffEmailSent = true;
-          staffMsgId = info.messageId;
-          console.info(`[Staff Notification Success] Notificação enviada para o e-mail do atendente (${staffTargetEmail}). MessageId: ${info.messageId}`);
-        } catch (mErr: any) {
-          staffEmailErr = mErr?.message || String(mErr);
-          console.error(`[Staff Notification Error] Falha ao enviar notificação por e-mail ao atendente:`, mErr);
+        if (transporter) {
+          try {
+            const fromAddr = process.env.SMTP_FROM || `"IFPR Achados & Perdidos" <${process.env.SMTP_USER || "campus.ivaipora@ifpr.edu.br"}>`;
+            const info = await transporter.sendMail({
+              from: fromAddr,
+              to: staffTargetEmail,
+              subject: staffSubject,
+              text: staffBody,
+              html: staffHtml,
+            });
+            staffEmailSent = true;
+            staffMsgId = info.messageId;
+            console.info(`[Staff Notification Success] Notificação enviada para o e-mail do emissor (${staffTargetEmail}). MessageId: ${info.messageId}`);
+          } catch (mErr: any) {
+            staffEmailErr = mErr?.message || String(mErr);
+            console.error(`[Staff Notification Error] Falha ao enviar notificação por e-mail ao emissor:`, mErr);
+          }
         }
-      }
 
-      const notifDocId = `staff_notif_${itemId}_${Date.now()}`;
-      await adminDb.collection("email_notifications").doc(notifDocId).set({
-        id: notifDocId,
-        itemId,
-        itemTitle: itemTitle || itemId,
-        recipientEmail: staffTargetEmail,
-        recipientName: "Atendente SEBAC / Portaria IFPR",
-        subject: staffSubject,
-        type: "STAFF_SIGNATURE_PENDING_NOTIFICATION",
-        status: staffEmailSent ? "SENT" : "PENDING_SMTP_CONFIG",
-        messageId: staffMsgId,
-        error: staffEmailErr,
-        sentAt: nowIso,
-        createdAt: nowIso,
-      });
+        const notifDocId = `staff_notif_${itemId}_${Date.now()}`;
+        await adminDb.collection("email_notifications").doc(notifDocId).set({
+          id: notifDocId,
+          itemId,
+          itemTitle: itemTitle || itemId,
+          recipientEmail: staffTargetEmail,
+          recipientName: issuerName,
+          subject: staffSubject,
+          type: "STAFF_SIGNATURE_PENDING_NOTIFICATION",
+          status: staffEmailSent ? "SENT" : "PENDING_SMTP_CONFIG",
+          messageId: staffMsgId,
+          error: staffEmailErr,
+          sentAt: nowIso,
+          createdAt: nowIso,
+        });
+      }
     } catch (staffNotifErr) {
       console.warn("[Signature Warning] Erro no fluxo de notificação do atendente:", staffNotifErr);
     }
@@ -4304,7 +4346,7 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
   }
 });
 
-// API Endpoint: Confirm and Finalize Staff Attendant Signature (Requires Staff/Admin Authentication)
+// API Endpoint: Confirm and Finalize Staff Attendant Signature (Requires Staff/Admin Authentication & Issuer Verification)
 app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-signature"], requireAuth, generalRateLimiter, async (req, res) => {
   try {
     // 🔒 RBAC Check: Only active Staff or Admin can sign as staff attendant
@@ -4378,6 +4420,7 @@ app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-si
     }
 
     const docRef = adminDb.collection("items").doc(itemId);
+    const sigReqRef = adminDb.collection("signature_requests").doc(itemId);
     const nowIso = new Date().toISOString();
     const signerUid = req.authUser!.uid;
     const signerEmail = req.authUser!.email || "servidor@ifpr.edu.br";
@@ -4405,6 +4448,19 @@ app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-si
 
       const itemData = docSnap.data() || {};
       itemTitle = itemData.title || itemId;
+
+      // Strict Issuer Check: Only the specific issuer who emitted the return can sign
+      let issuerUid = itemData.returnedByUserId;
+      if (!issuerUid) {
+        const sigReqSnap = await transaction.get(sigReqRef);
+        if (sigReqSnap.exists) {
+          issuerUid = sigReqSnap.data()?.dispatchedByUserId;
+        }
+      }
+
+      if (issuerUid && signerUid !== issuerUid) {
+        throw new Error("UNAUTHORIZED_ISSUER_ONLY");
+      }
 
       // Recipient signature must be completed first
       if (itemData.recipientSignatureStatus !== "SIGNED") {
@@ -4458,6 +4514,12 @@ app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-si
     if (error?.message === "ITEM_NOT_FOUND") {
       return res.status(404).json({ success: false, error: "Ocorrência não encontrada no Firestore." });
     }
+    if (error?.message === "UNAUTHORIZED_ISSUER_ONLY") {
+      return res.status(403).json({
+        success: false,
+        error: "Apenas o servidor emissor responsável por registrar/liberar esta devolução pode atestar e assinar o termo.",
+      });
+    }
     if (error?.message === "RECIPIENT_SIGNATURE_PENDING") {
       return res.status(400).json({ success: false, error: "A assinatura do receptor deve ser concluída antes da atestação do atendente." });
     }
@@ -4469,6 +4531,7 @@ app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-si
     });
   }
 });
+
 
 // API Endpoint: Send Remote Digital Signature Request via Email (Requires Staff Authentication)
 app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth, generalRateLimiter, async (req, res) => {

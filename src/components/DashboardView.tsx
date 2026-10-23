@@ -186,13 +186,14 @@ export const DashboardView: React.FC = () => {
     "users" | "accounts" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "test_batteries" | "test_distribution" | "custody_reminders" | "digital_returns" | "pending_signatures"
   >("users");
 
-  // Items with pending institutional staff signature
+  // Items with pending institutional staff signature (filtered strictly per issuer)
   const pendingSignaturesItems = items.filter(
     (it) =>
       it &&
       it.status === "DEVOLVIDO" &&
       it.recipientSignatureStatus === "SIGNED" &&
-      it.staffSignatureStatus !== "SIGNED"
+      it.staffSignatureStatus !== "SIGNED" &&
+      (!it.returnedByUserId || it.returnedByUserId === currentUser.id)
   );
   const pendingSignaturesCount = pendingSignaturesItems.length;
 
@@ -3221,10 +3222,10 @@ export const DashboardView: React.FC = () => {
                   <div className="bg-neutral-50 dark:bg-neutral-900/50 rounded-2xl p-8 text-center space-y-2 border border-dashed border-neutral-200 dark:border-neutral-800">
                     <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
                     <p className="text-sm font-bold text-neutral-800 dark:text-neutral-200">
-                      Nenhuma assinatura institucional pendente no momento!
+                      Nenhuma assinatura institucional pendente para suas devoluções!
                     </p>
                     <p className="text-xs text-neutral-500 max-w-md mx-auto">
-                      Todas as devoluções de pertences registradas possuem a assinatura dupla concluída (Receptor + Servidor Atendente).
+                      Todas as devoluções emitidas por você que necessitam de atestação possuem a assinatura dupla concluída ou nenhuma pendência foi registrada para seu usuário.
                     </p>
                   </div>
                 ) : (

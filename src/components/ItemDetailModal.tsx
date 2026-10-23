@@ -1859,7 +1859,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             {currentItem.status === "DEVOLVIDO" &&
               currentItem.recipientSignatureStatus === "SIGNED" &&
               currentItem.staffSignatureStatus !== "SIGNED" &&
-              (currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && (
+              (currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") &&
+              (!currentItem.returnedByUserId || currentItem.returnedByUserId === currentUser.id) && (
                 <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-3">
                   <div className="flex items-center space-x-2 text-amber-900 dark:text-amber-200">
                     <FileSignature className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
@@ -1868,7 +1869,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                         Atestação Institucional do Atendente Pendente
                       </h4>
                       <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
-                        O receptor ({currentItem.recipientName || currentItem.recipientSignatureName || "Aluno"}) assinou a devolução. Registre sua atestação e assinatura como servidor responsável.
+                        O receptor ({currentItem.recipientName || currentItem.recipientSignatureName || "Aluno"}) assinou a devolução. Registre sua atestação e assinatura como servidor emissor responsável.
                       </p>
                     </div>
                   </div>
