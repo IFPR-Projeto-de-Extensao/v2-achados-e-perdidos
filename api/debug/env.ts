@@ -1,4 +1,4 @@
-import { getAdminAuth, getAdminFirestore } from "../_lib/firebaseAdmin";
+import { getAdminAuth, getAdminFirestore } from "../_lib/firebaseAdmin.js";
 
 const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
 

@@ -87,7 +87,7 @@ describe("SEC-07: Permissions-Policy Least Privilege & Security Header Audit", (
       const apiIndexPath = path.join(process.cwd(), "api/index.ts");
       const apiIndexCode = fs.readFileSync(apiIndexPath, "utf-8");
 
-      expect(apiIndexCode).toContain('import { applySecurityHeaders } from "./_lib/securityHeaders";');
+      expect(apiIndexCode).toMatch(/import \{ applySecurityHeaders \} from "\.\/_lib\/securityHeaders(\.js)?";/);
       expect(apiIndexCode).toContain("applySecurityHeaders(res);");
     });
   });

@@ -1,4 +1,4 @@
-import { getAdminAuth, getAdminFirestore } from "../_lib/firebaseAdmin";
+import { getAdminAuth, getAdminFirestore } from "../_lib/firebaseAdmin.js";
 
 function getDiscordNovasPerdasWebhookUrl(): string {
   return (

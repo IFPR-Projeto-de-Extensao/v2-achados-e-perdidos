@@ -1,5 +1,5 @@
-import app from "../server";
-import { applySecurityHeaders } from "./_lib/securityHeaders";
+import app from "../server.js";
+import { applySecurityHeaders } from "./_lib/securityHeaders.js";
 
 function sanitizeLogDetail(value: any): any {
   if (!value) return value;

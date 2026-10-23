@@ -24,12 +24,57 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.10.1",
+    codename: "Resolução de Módulos ESM em Funções Serverless Vercel (ERR_MODULE_NOT_FOUND)",
+    releaseDate: "23/10/2026",
+    releaseDateTime: "23 de Outubro de 2026 • 10:30 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Correção definitiva da falha de resolução de módulos ECMAScript (ERR_MODULE_NOT_FOUND) no endpoint de exclusão administrativa de usuários (POST /api/admin/delete-user) e nas demais rotas serverless da Vercel. Sob o runtime Node.js 22 com 'type: module', o import relativo de módulos locais requer extensão de arquivo explícita (.js). Todos os imports relativos sob /api foram saneados para usar a extensão .js, eliminando o HTTP 500 no carregamento do Firebase Admin SDK e garantindo total integridade na gestão de usuários sem alterar regras de segurança ou credenciais.",
+    additions: [
+      {
+        id: "v1101-add-1",
+        title: "Padronização de Resolução ESM nos Endpoints Serverless",
+        description: "Adequação de todos os especificadores de importação relativa em /api (admin, auth, system, items, debug e analytics) com extensão '.js', em total conformidade com a especificação ECMAScript do Node.js 22 na Vercel.",
+        module: "VERCEL",
+        tag: "Serverless & Runtime",
+      },
+      {
+        id: "v1101-add-2",
+        title: "Smoke Tests e Validação de Inicialização Serverless",
+        description: "Execução de testes de importação e ciclo de requisição sem mock em ambiente de execução de funções serverless, comprovando rejeição adequada para requisições GET (405) e POST não autorizadas (401).",
+        module: "ADMIN",
+        tag: "Testes & Diagnóstico",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1101-fix-1",
+        title: "Eliminação do HTTP 500 ERR_MODULE_NOT_FOUND em /api/admin/delete-user",
+        description: "Correção do import do helper firebaseAdmin.js, restabelecendo a execução do endpoint de exclusão administrativa de usuários com validação estrita de token Bearer e credenciais de administrador.",
+        module: "ADMIN",
+        tag: "Correção Crítica",
+      },
+      {
+        id: "v1101-fix-2",
+        title: "Saneamento Preventivo em Rotas de Notificação e Telemetria",
+        description: "Padronização preventiva das extensões de importação em rotas como notify-novos-achados, notify-novas-perdas, analytics e compensate-failed-registration.",
+        module: "VERCEL",
+        tag: "Confiabilidade",
+      },
+    ],
+    stats: {
+      additionsCount: 2,
+      fixesCount: 2,
+    },
+  },
+  {
     version: "v1.10.0",
     codename: "Edição Oficial de Apresentação Acadêmica — Estabilidade & Recursos Essenciais (Sem IA)",
     releaseDate: "21/10/2026",
     releaseDateTime: "21 de Outubro de 2026 • 21:30 BRT",
     type: "MINOR",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Adequação do Localiza+ para a primeira apresentação acadêmica oficial como projeto de extensão do curso de Sistemas de Informação do IFPR Campus Ivaiporã: 1) Desativação de todas as funcionalidades experimentais de Inteligência Artificial (análise multimodal de imagens, correspondência automática com IA e busca semântica) para priorizar a estabilidade, facilidade de uso e previsibilidade das operações; 2) Preservação e consolidação das funcionalidades essenciais: autenticação de usuários, perfis e papéis (Aluno, Servidor, Admin), cadastro completo de achados e perdidos com upload opcional de fotos, consulta ao catálogo e busca textual determinística, etiquetas físicas com QR Code, termos oficiais de devolução com assinatura digital e sincronização segura com o Firebase Firestore; 3) Remoção de links e atalhos órfãos na navegação, mantendo uma experiência limpa e coerente para a banca e comunidade acadêmica.",
     additions: [
       {

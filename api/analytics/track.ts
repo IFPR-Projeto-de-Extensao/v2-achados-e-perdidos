@@ -1,4 +1,4 @@
-import { getAdminFirestore } from "../_lib/firebaseAdmin";
+import { getAdminFirestore } from "../_lib/firebaseAdmin.js";
 
 // In-memory telemetry buffer for warm container invocations
 const serverlessAnalyticsEvents: Array<{
