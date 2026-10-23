@@ -1,4 +1,5 @@
 import express, { type Request, type Response, type NextFunction } from "express";
+import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
@@ -3780,15 +3781,17 @@ app.post(["/api/signature/verify-token", "/signature/verify-token"], generalRate
       });
     }
 
-    // Check if already signed
-    const isAlreadySigned = itemData.recipientSignatureStatus === "SIGNED" || Boolean(itemData.recipientSignatureUrl);
+    // 1. Idempotency & Safe Recovery: Check if already signed
+    const isAlreadySigned =
+      itemData.recipientSignatureStatus === "SIGNED" &&
+      Boolean(itemData.receiptValidationCode);
+
     if (isAlreadySigned) {
       return res.json({
         success: true,
         valid: true,
         isAlreadySigned: true,
         signedAt: itemData.signedAt,
-        recipientSignatureUrl: itemData.recipientSignatureUrl,
         receiptValidationCode: itemData.receiptValidationCode,
         item: {
           id: itemData.id || itemId,
@@ -3810,24 +3813,82 @@ app.post(["/api/signature/verify-token", "/signature/verify-token"], generalRate
       });
     }
 
-    // Security Verification: Only items with status 'DISPONIVEL' (or active found items) and unused token can be processed for return
-    const isEligibleForReturn =
-      itemData.status === "DISPONIVEL" ||
-      itemData.status === "ENCONTRADO" ||
-      itemData.status === "PROPRIETARIO_IDENTIFICADO";
-
-    if (!isEligibleForReturn || itemData.status === "DEVOLVIDO" || itemData.status === "ENCERRADO" || itemData.signatureTokenUsed) {
+    // 2. Reject terminal states
+    if (itemData.status === "ENCERRADO") {
       return res.status(400).json({
         success: false,
         valid: false,
         reason: "INVALID_STATUS",
-        error: `Operação não permitida: Apenas itens com status 'DISPONIVEL' podem ser processados para devolução. O status atual deste objeto no IFPR é '${itemData.status || "DESCONHECIDO"}'. Links antigos ou já processados não podem ser reutilizados por segurança.`,
+        error: "Esta ocorrência foi encerrada e não pode mais receber assinaturas.",
       });
     }
 
-    // Authenticity Check: Compare token provided with signatureToken in Firestore
-    const storedToken = itemData.signatureToken;
-    if (!storedToken || storedToken.trim() !== String(token).trim()) {
+    // 3. State verification: Item must be pending remote signature OR available for return
+    const isPendingRemote = itemData.recipientSignatureStatus === "PENDING_REMOTE";
+    const isAvailableForReturn =
+      itemData.status === "DISPONIVEL" ||
+      itemData.status === "ENCONTRADO" ||
+      itemData.status === "PROPRIETARIO_IDENTIFICADO";
+
+    if (!isPendingRemote && !isAvailableForReturn) {
+      return res.status(400).json({
+        success: false,
+        valid: false,
+        reason: "INVALID_STATUS",
+        error: `Operação não permitida: O item #${itemId} possui status '${itemData.status || "DESCONHECIDO"}' e não está aguardando assinatura remota.`,
+      });
+    }
+
+    // 4. Authenticity Check: Private signature_requests collection first, legacy itemData.signatureToken fallback
+    let tokenMatched = false;
+    let tokenExpiresAt = itemData.signatureTokenExpiresAt;
+    const cleanToken = String(token).trim();
+    const tokenHash = crypto.createHash("sha256").update(cleanToken).digest("hex");
+
+    if (adminDb) {
+      try {
+        const sigReqSnap = await adminDb.collection("signature_requests").doc(itemId).get();
+        if (sigReqSnap.exists) {
+          const sigData = sigReqSnap.data();
+          if (sigData?.used) {
+            return res.status(400).json({
+              success: false,
+              valid: false,
+              reason: "ALREADY_PROCESSED",
+              error: "Esta solicitação de assinatura já foi utilizada e não pode ser reutilizada.",
+            });
+          }
+          if (sigData?.expiresAt) {
+            tokenExpiresAt = sigData.expiresAt;
+          }
+          if (sigData?.tokenHash && sigData.tokenHash === tokenHash) {
+            tokenMatched = true;
+          } else if (sigData?.token && sigData.token.trim() === cleanToken) {
+            tokenMatched = true;
+          }
+        }
+      } catch (reqErr) {
+        console.warn("[verify-token] Falha ao consultar signature_requests privada:", reqErr);
+      }
+    }
+
+    // Fallback: Legacy token stored directly on itemData
+    if (!tokenMatched && itemData.signatureToken) {
+      if (itemData.signatureToken.trim() === cleanToken) {
+        tokenMatched = true;
+      }
+    }
+
+    if (itemData.signatureTokenUsed && !isAlreadySigned) {
+      return res.status(400).json({
+        success: false,
+        valid: false,
+        reason: "ALREADY_PROCESSED",
+        error: "Esta solicitação de assinatura já foi utilizada.",
+      });
+    }
+
+    if (!tokenMatched) {
       return res.status(403).json({
         success: false,
         valid: false,
@@ -3836,9 +3897,9 @@ app.post(["/api/signature/verify-token", "/signature/verify-token"], generalRate
       });
     }
 
-    // Expiration Verification (7-day lifetime from generation)
-    if (itemData.signatureTokenExpiresAt) {
-      const expTime = new Date(itemData.signatureTokenExpiresAt).getTime();
+    // 5. Expiration Verification
+    if (tokenExpiresAt) {
+      const expTime = new Date(tokenExpiresAt).getTime();
       if (!isNaN(expTime) && expTime < Date.now()) {
         return res.status(410).json({
           success: false,
@@ -3892,6 +3953,31 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
       });
     }
 
+    // Phase 4: Rigorous Signature Payload Validation (Anti-Malformation & Anti-DoS)
+    if (typeof signatureDataUrl !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "O payload da assinatura deve ser uma string Base64 válida.",
+      });
+    }
+
+    // Limit size to maximum ~250KB (350,000 base64 chars) to protect Firestore document quota (1MB)
+    if (signatureDataUrl.length > 350000) {
+      return res.status(400).json({
+        success: false,
+        error: "A imagem da assinatura excede o limite máximo permitido de 250KB.",
+      });
+    }
+
+    // Validate MIME prefix and standard base64 character set
+    const base64ImageRegex = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+    if (!base64ImageRegex.test(signatureDataUrl.trim())) {
+      return res.status(400).json({
+        success: false,
+        error: "Payload da assinatura inválido. A imagem deve estar no formato Base64 (PNG, JPEG ou WEBP).",
+      });
+    }
+
     const adminDb = getAdminFirestore();
     if (!adminDb) {
       return res.status(500).json({
@@ -3901,13 +3987,17 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
     }
 
     const docRef = adminDb.collection("items").doc(itemId);
+    const sigReqRef = adminDb.collection("signature_requests").doc(itemId);
     const now = new Date();
     const nowIso = now.toISOString();
+    const cleanToken = String(token).trim();
+    const tokenHash = crypto.createHash("sha256").update(cleanToken).digest("hex");
 
     let finalValidationCode = "";
     let effectiveSignerName = "";
     let effectiveSignerBond = "";
     let itemTitle = "";
+    let isIdempotentReturn = false;
 
     // Atomic Execution via Firestore Transaction to prevent race conditions and duplicate signature confirms
     await adminDb.runTransaction(async (transaction) => {
@@ -3920,19 +4010,65 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
       const itemData = docSnap.data() || {};
       itemTitle = itemData.title || itemId;
 
-      // Check if already finalized or token already used (Replay Attack Guard)
-      if (itemData.signatureTokenUsed || itemData.status === "DEVOLVIDO" || itemData.recipientSignatureStatus === "SIGNED") {
+      // Idempotency: If this item was already signed and finalized, recover identical state without double mutation
+      if (itemData.recipientSignatureStatus === "SIGNED" && itemData.receiptValidationCode) {
+        finalValidationCode = itemData.receiptValidationCode;
+        effectiveSignerName = itemData.recipientName || itemData.recipientSignatureName || signerName || "Receptor";
+        effectiveSignerBond = itemData.recipientBond || itemData.recipientSignatureBond || signerBond || "Aluno(a)";
+        isIdempotentReturn = true;
+        return;
+      }
+
+      // Check if already used or processed under other flow
+      if (itemData.signatureTokenUsed) {
         throw new Error("ALREADY_PROCESSED");
       }
 
-      // Verify token authenticity strictly
-      if (!itemData.signatureToken || itemData.signatureToken.trim() !== String(token).trim()) {
+      // State Machine Eligibility Check: Must be in PENDING_REMOTE or available return status
+      const isPendingRemote = itemData.recipientSignatureStatus === "PENDING_REMOTE";
+      const isAvailable =
+        itemData.status === "DISPONIVEL" ||
+        itemData.status === "ENCONTRADO" ||
+        itemData.status === "PROPRIETARIO_IDENTIFICADO";
+
+      if (!isPendingRemote && !isAvailable) {
+        throw new Error("INVALID_STATUS");
+      }
+
+      // Authenticity Check: Check private signature_requests first, then legacy itemData.signatureToken
+      let tokenMatched = false;
+      let tokenExpiresAt = itemData.signatureTokenExpiresAt;
+
+      const sigReqSnap = await transaction.get(sigReqRef);
+      if (sigReqSnap.exists) {
+        const sigData = sigReqSnap.data() || {};
+        if (sigData.used) {
+          throw new Error("ALREADY_PROCESSED");
+        }
+        if (sigData.expiresAt) {
+          tokenExpiresAt = sigData.expiresAt;
+        }
+        if (sigData.tokenHash && sigData.tokenHash === tokenHash) {
+          tokenMatched = true;
+        } else if (sigData.token && sigData.token.trim() === cleanToken) {
+          tokenMatched = true;
+        }
+      }
+
+      // Fallback: Legacy token stored directly on itemData
+      if (!tokenMatched && itemData.signatureToken) {
+        if (itemData.signatureToken.trim() === cleanToken) {
+          tokenMatched = true;
+        }
+      }
+
+      if (!tokenMatched) {
         throw new Error("TOKEN_MISMATCH");
       }
 
-      // Check token expiration
-      if (itemData.signatureTokenExpiresAt) {
-        const expTime = new Date(itemData.signatureTokenExpiresAt).getTime();
+      // Expiration check
+      if (tokenExpiresAt) {
+        const expTime = new Date(tokenExpiresAt).getTime();
         if (!isNaN(expTime) && expTime < Date.now()) {
           throw new Error("TOKEN_EXPIRED");
         }
@@ -3949,12 +4085,12 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
         actorName: effectiveSignerName,
         actorRole: effectiveSignerBond === "Servidor" ? "SERVIDOR" : "ALUNO",
         timestamp: nowIso,
-        details: `Termo assinado digitalmente via link validado por token criptográfico no Firestore (${effectiveSignerName} - ${effectiveSignerBond}).`,
+        details: `Termo assinado digitalmente via link validado por token privado no Firestore (${effectiveSignerName} - ${effectiveSignerBond}).`,
       };
 
       const existingHistory = itemData.history || itemData.historyLogs || [];
 
-      // Server-authoritative mutation: status is strictly set to DEVOLVIDO, token is invalidated
+      // Server-authoritative mutation: status is strictly set to DEVOLVIDO, token is purged from public document
       transaction.update(docRef, {
         status: "DEVOLVIDO",
         recipientSignatureUrl: signatureDataUrl,
@@ -3966,12 +4102,36 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
         resolutionDate: itemData.resolutionDate || nowIso,
         receiptValidationCode: finalValidationCode,
         signatureTokenUsed: true,
+        signatureToken: null, // Purge token from public items collection
         history: [...existingHistory, newHistoryLog],
         historyLogs: [...existingHistory, newHistoryLog],
       });
+
+      // Mark private signature request as consumed
+      transaction.set(
+        sigReqRef,
+        {
+          itemId,
+          used: true,
+          usedAt: nowIso,
+          validationCode: finalValidationCode,
+          signedBy: effectiveSignerName,
+        },
+        { merge: true }
+      );
     });
 
-    console.info(`[Signature Finalized] Item #${itemId} teve devolução concluída com assinatura remota validada.`);
+    console.info(`[Signature Finalized] Item #${itemId} teve devolução remota concluída com sucesso. Validação: ${finalValidationCode}`);
+
+    if (isIdempotentReturn) {
+      return res.json({
+        success: true,
+        alreadyCompleted: true,
+        message: "Assinatura digital já confirmada anteriormente.",
+        validationCode: finalValidationCode,
+        signedAt: nowIso,
+      });
+    }
 
     // Persist institutional activity & audit log in Firestore
     try {
@@ -4021,6 +4181,9 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
     if (error?.message === "ALREADY_PROCESSED") {
       return res.status(400).json({ success: false, error: "Esta assinatura ou devolução já foi finalizada anteriormente." });
     }
+    if (error?.message === "INVALID_STATUS") {
+      return res.status(400).json({ success: false, error: "O item não se encontra em estado elegível para assinatura remota." });
+    }
     if (error?.message === "TOKEN_MISMATCH") {
       return res.status(403).json({ success: false, error: "Token de assinatura inválido ou não autorizado para este objeto." });
     }
@@ -4039,6 +4202,19 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
 // API Endpoint: Send Remote Digital Signature Request via Email (Requires Staff Authentication)
 app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth, generalRateLimiter, async (req, res) => {
   try {
+    // 🔒 RBAC Check: Only Staff or Admin can request remote signature
+    const isStaffOrAdmin =
+      req.authUser?.role === "ADMIN" ||
+      req.authUser?.role === "SERVIDOR" ||
+      req.authUser?.email === "paulocauan39@gmail.com";
+
+    if (!isStaffOrAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: "Acesso negado. Apenas servidores e administradores do IFPR podem despachar termos de assinatura.",
+      });
+    }
+
     const { itemId, itemTitle, recipientEmail, recipientName, signatureLink, signatureToken, returnedByName } = req.body || {};
 
     if (!itemId || !recipientEmail || typeof itemId !== "string" || typeof recipientEmail !== "string") {
@@ -4049,16 +4225,51 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
     }
 
     const adminDb = getAdminFirestore();
-    if (adminDb) {
-      const itemSnap = await adminDb.collection("items").doc(itemId).get();
-      if (!itemSnap.exists) {
-        return res.status(404).json({ success: false, error: `Item #${itemId} não encontrado.` });
-      }
+    if (!adminDb) {
+      return res.status(500).json({
+        success: false,
+        error: "Banco de dados Firestore Admin indisponível.",
+      });
+    }
+
+    const itemSnap = await adminDb.collection("items").doc(itemId).get();
+    if (!itemSnap.exists) {
+      return res.status(404).json({ success: false, error: `Item #${itemId} não encontrado no banco de dados.` });
     }
 
     const targetEmail = recipientEmail || "localizamais0@gmail.com";
     const targetName = recipientName || "Aluno / Servidor IFPR";
     const timestamp = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    // Phase 3: Store token hash in private collection 'signature_requests' (Isolated from public catalogue)
+    if (signatureToken && typeof signatureToken === "string") {
+      const cleanToken = signatureToken.trim();
+      const tokenHash = crypto.createHash("sha256").update(cleanToken).digest("hex");
+      try {
+        await adminDb.collection("signature_requests").doc(itemId).set({
+          itemId,
+          tokenHash,
+          recipientEmail: targetEmail,
+          recipientName: targetName,
+          createdAt: timestamp,
+          expiresAt,
+          used: false,
+          dispatchedByUserId: req.authUser?.uid,
+        });
+
+        // Ensure token is purged from public document
+        await adminDb.collection("items").doc(itemId).update({
+          signatureToken: null,
+          signatureTokenExpiresAt: expiresAt,
+          signatureTokenUsed: false,
+          recipientSignatureStatus: "PENDING_REMOTE",
+        });
+      } catch (tokenSaveErr) {
+        console.warn("[Signature Warning] Falha ao persistir token em signature_requests:", tokenSaveErr);
+      }
+    }
+
     const emailSubject = `📝 Assinatura Digital Necessária: Recebimento do Objeto "${itemTitle || itemId}" - IFPR Campus Ivaiporã`;
     const emailBody = `Olá, ${targetName}!\n\n` +
       `O seu pertence "${itemTitle || "Objeto"}" foi entregue pela equipe de atendimento do IFPR Campus Ivaiporã (${returnedByName || req.authUser?.email || "SEBAC / Portaria"}).\n\n` +
@@ -4073,27 +4284,25 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
 
     console.info(`[Signature Email Request] Link de assinatura digital despachado para ${targetEmail} referente ao item #${itemId}.`);
 
-    if (adminDb) {
-      try {
-        const notifDocId = `sig_req_${itemId}_${Date.now()}`;
-        await adminDb.collection("email_notifications").doc(notifDocId).set({
-          id: notifDocId,
-          itemId,
-          itemTitle: itemTitle || itemId,
-          recipientEmail: targetEmail,
-          recipientName: targetName,
-          signatureLink,
-          subject: emailSubject,
-          body: emailBody,
-          type: "REMOTE_SIGNATURE_REQUEST",
-          status: "SENT",
-          sentAt: timestamp,
-          createdAt: timestamp,
-          dispatchedByUserId: req.authUser?.uid,
-        });
-      } catch (dbErr) {
-        console.warn("[Signature Warning] Falha ao persistir log no Firestore:", dbErr);
-      }
+    try {
+      const notifDocId = `sig_req_${itemId}_${Date.now()}`;
+      await adminDb.collection("email_notifications").doc(notifDocId).set({
+        id: notifDocId,
+        itemId,
+        itemTitle: itemTitle || itemId,
+        recipientEmail: targetEmail,
+        recipientName: targetName,
+        signatureLink,
+        subject: emailSubject,
+        body: emailBody,
+        type: "REMOTE_SIGNATURE_REQUEST",
+        status: "SENT",
+        sentAt: timestamp,
+        createdAt: timestamp,
+        dispatchedByUserId: req.authUser?.uid,
+      });
+    } catch (dbErr) {
+      console.warn("[Signature Warning] Falha ao persistir log no Firestore:", dbErr);
     }
 
     return res.json({

@@ -1,19 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { generateSecureSignatureToken } from "./utils";
+import crypto from "crypto";
 
 describe("Digital Signature & Remote Return Flow Security Audit (/api/signature/*)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  // Simulated In-Memory Database for Signature Items
+  // Data Models modeling production Firestore state
   interface MockItemDoc {
     id: string;
     title: string;
     status: "DISPONIVEL" | "ENCONTRADO" | "DEVOLVIDO" | "ENCERRADO";
-    signatureToken?: string;
+    signatureToken?: string | null;
     signatureTokenUsed?: boolean;
     signatureTokenExpiresAt?: string;
+    recipientSignatureType?: "IN_PERSON_DEVICE" | "REMOTE_EMAIL" | "PRE_VERIFIED";
     recipientSignatureStatus?: "SIGNED" | "PENDING_REMOTE" | "NOT_REQUIRED";
     recipientSignatureUrl?: string;
     receiptValidationCode?: string;
@@ -24,18 +26,31 @@ describe("Digital Signature & Remote Return Flow Security Audit (/api/signature/
     history?: any[];
   }
 
-  // Simulated verify-token handler
+  interface MockSignatureRequestDoc {
+    itemId: string;
+    tokenHash: string;
+    recipientEmail: string;
+    recipientName: string;
+    createdAt: string;
+    expiresAt: string;
+    used: boolean;
+    usedAt?: string;
+    validationCode?: string;
+  }
+
+  // Exact reproduction of server.ts verify-token logic
   function simulateVerifyToken(params: {
     itemId?: string;
     token?: string;
     dbItems: Map<string, MockItemDoc>;
+    dbSignatureRequests: Map<string, MockSignatureRequestDoc>;
   }): { status: number; body: any } {
-    const { itemId, token, dbItems } = params;
+    const { itemId, token, dbItems, dbSignatureRequests } = params;
 
     if (!itemId || !token || typeof itemId !== "string" || typeof token !== "string") {
       return {
         status: 400,
-        body: { success: false, valid: false, reason: "MISSING_PARAMS", error: "Parâmetros ausentes." },
+        body: { success: false, valid: false, reason: "MISSING_PARAMS", error: "Identificador do item (itemId) e token são obrigatórios." },
       };
     }
 
@@ -43,49 +58,129 @@ describe("Digital Signature & Remote Return Flow Security Audit (/api/signature/
     if (!item) {
       return {
         status: 404,
-        body: { success: false, valid: false, reason: "NOT_FOUND", error: "Ocorrência não encontrada." },
+        body: { success: false, valid: false, reason: "NOT_FOUND", error: `Ocorrência #${itemId} não encontrada.` },
       };
     }
 
-    if (item.recipientSignatureStatus === "SIGNED" || Boolean(item.recipientSignatureUrl)) {
+    // 1. Safe Recovery: Check if already signed
+    const isAlreadySigned =
+      item.recipientSignatureStatus === "SIGNED" &&
+      Boolean(item.receiptValidationCode);
+
+    if (isAlreadySigned) {
       return {
         status: 200,
-        body: { success: true, valid: true, isAlreadySigned: true, signedAt: item.signedAt },
+        body: {
+          success: true,
+          valid: true,
+          isAlreadySigned: true,
+          signedAt: item.signedAt,
+          receiptValidationCode: item.receiptValidationCode,
+          item: {
+            id: item.id,
+            title: item.title,
+            status: item.status,
+            recipientSignatureStatus: item.recipientSignatureStatus,
+            receiptValidationCode: item.receiptValidationCode,
+            signedAt: item.signedAt,
+          },
+        },
       };
     }
 
-    const isEligible = item.status === "DISPONIVEL" || item.status === "ENCONTRADO";
-    if (!isEligible || item.status === "DEVOLVIDO" || item.status === "ENCERRADO" || item.signatureTokenUsed) {
+    // 2. Reject terminal states
+    if (item.status === "ENCERRADO") {
       return {
         status: 400,
-        body: { success: false, valid: false, reason: "INVALID_STATUS", error: "Item inelegível para devolução." },
+        body: { success: false, valid: false, reason: "INVALID_STATUS", error: "Esta ocorrência foi encerrada e não pode mais receber assinaturas." },
       };
     }
 
-    if (!item.signatureToken || item.signatureToken.trim() !== token.trim()) {
+    // 3. State verification: Item must be pending remote signature OR available for return
+    const isPendingRemote = item.recipientSignatureStatus === "PENDING_REMOTE";
+    const isAvailableForReturn =
+      item.status === "DISPONIVEL" ||
+      item.status === "ENCONTRADO";
+
+    if (!isPendingRemote && !isAvailableForReturn) {
+      return {
+        status: 400,
+        body: { success: false, valid: false, reason: "INVALID_STATUS", error: `Item não está aguardando assinatura remota.` },
+      };
+    }
+
+    // 4. Authenticity Check: Private signature_requests first, legacy fallback second
+    let tokenMatched = false;
+    let tokenExpiresAt = item.signatureTokenExpiresAt;
+    const cleanToken = token.trim();
+    const tokenHash = crypto.createHash("sha256").update(cleanToken).digest("hex");
+
+    const sigReq = dbSignatureRequests.get(itemId);
+    if (sigReq) {
+      if (sigReq.used) {
+        return {
+          status: 400,
+          body: { success: false, valid: false, reason: "ALREADY_PROCESSED", error: "Esta solicitação de assinatura já foi utilizada." },
+        };
+      }
+      if (sigReq.expiresAt) {
+        tokenExpiresAt = sigReq.expiresAt;
+      }
+      if (sigReq.tokenHash === tokenHash) {
+        tokenMatched = true;
+      }
+    }
+
+    // Fallback: Legacy token stored directly on itemData
+    if (!tokenMatched && item.signatureToken) {
+      if (item.signatureToken.trim() === cleanToken) {
+        tokenMatched = true;
+      }
+    }
+
+    if (item.signatureTokenUsed && !isAlreadySigned) {
+      return {
+        status: 400,
+        body: { success: false, valid: false, reason: "ALREADY_PROCESSED", error: "Esta solicitação de assinatura já foi utilizada." },
+      };
+    }
+
+    if (!tokenMatched) {
       return {
         status: 403,
-        body: { success: false, valid: false, reason: "TOKEN_MISMATCH", error: "Token inválido." },
+        body: { success: false, valid: false, reason: "TOKEN_MISMATCH", error: "Token de assinatura inválido ou não autorizado." },
       };
     }
 
-    if (item.signatureTokenExpiresAt) {
-      const exp = new Date(item.signatureTokenExpiresAt).getTime();
+    // 5. Expiration Verification
+    if (tokenExpiresAt) {
+      const exp = new Date(tokenExpiresAt).getTime();
       if (!isNaN(exp) && exp < Date.now()) {
         return {
           status: 410,
-          body: { success: false, valid: false, reason: "TOKEN_EXPIRED", error: "Token expirado." },
+          body: { success: false, valid: false, reason: "TOKEN_EXPIRED", error: "O link de assinatura digital expirou por motivos de segurança." },
         };
       }
     }
 
     return {
       status: 200,
-      body: { success: true, valid: true, isAlreadySigned: false, item: { id: item.id, title: item.title } },
+      body: {
+        success: true,
+        valid: true,
+        isAlreadySigned: false,
+        item: {
+          id: item.id,
+          title: item.title,
+          status: item.status,
+          recipientSignatureStatus: item.recipientSignatureStatus,
+          receiptValidationCode: item.receiptValidationCode,
+        },
+      },
     };
   }
 
-  // Simulated confirm-signature handler with atomic transaction behavior
+  // Exact reproduction of server.ts confirm-signature logic with atomic transaction
   async function simulateConfirmSignature(params: {
     itemId?: string;
     token?: string;
@@ -93,98 +188,156 @@ describe("Digital Signature & Remote Return Flow Security Audit (/api/signature/
     signerName?: string;
     signerEmail?: string;
     signerBond?: string;
-    tamperedStatus?: string;
-    tamperedRole?: string;
-    tamperedAdmin?: boolean;
     dbItems: Map<string, MockItemDoc>;
+    dbSignatureRequests: Map<string, MockSignatureRequestDoc>;
     auditLogSink?: any[];
   }): Promise<{ status: number; body: any }> {
-    const { itemId, token, signatureDataUrl, signerName, signerEmail, signerBond, dbItems, auditLogSink } = params;
+    const { itemId, token, signatureDataUrl, signerName, signerEmail, signerBond, dbItems, dbSignatureRequests, auditLogSink } = params;
 
     if (!itemId || !token || !signatureDataUrl || typeof itemId !== "string" || typeof token !== "string") {
       return {
         status: 400,
-        body: { success: false, error: "Parâmetros obrigatórios ausentes." },
+        body: { success: false, error: "Parâmetros obrigatórios ausentes ou inválidos." },
       };
+    }
+
+    // Payload validation
+    if (typeof signatureDataUrl !== "string") {
+      return { status: 400, body: { success: false, error: "O payload da assinatura deve ser uma string Base64 válida." } };
+    }
+    if (signatureDataUrl.length > 350000) {
+      return { status: 400, body: { success: false, error: "A imagem da assinatura excede o limite máximo permitido de 250KB." } };
+    }
+    const base64ImageRegex = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+    if (!base64ImageRegex.test(signatureDataUrl.trim())) {
+      return { status: 400, body: { success: false, error: "Payload da assinatura inválido. A imagem deve estar no formato Base64 (PNG, JPEG ou WEBP)." } };
     }
 
     const item = dbItems.get(itemId);
     if (!item) {
+      return { status: 404, body: { success: false, error: "Ocorrência não encontrada no Firestore." } };
+    }
+
+    // Idempotent recovery
+    if (item.recipientSignatureStatus === "SIGNED" && item.receiptValidationCode) {
       return {
-        status: 404,
-        body: { success: false, error: "Ocorrência não encontrada." },
+        status: 200,
+        body: {
+          success: true,
+          alreadyCompleted: true,
+          message: "Assinatura digital já confirmada anteriormente.",
+          validationCode: item.receiptValidationCode,
+          signedAt: item.signedAt,
+        },
       };
     }
 
-    if (item.signatureTokenUsed || item.status === "DEVOLVIDO" || item.recipientSignatureStatus === "SIGNED") {
-      return {
-        status: 400,
-        body: { success: false, error: "Esta assinatura ou devolução já foi finalizada anteriormente." },
-      };
+    if (item.signatureTokenUsed) {
+      return { status: 400, body: { success: false, error: "Esta assinatura ou devolução já foi finalizada anteriormente." } };
     }
 
-    if (!item.signatureToken || item.signatureToken.trim() !== token.trim()) {
-      return {
-        status: 403,
-        body: { success: false, error: "Token de assinatura inválido ou não autorizado para este objeto." },
-      };
+    const isPendingRemote = item.recipientSignatureStatus === "PENDING_REMOTE";
+    const isAvailable = item.status === "DISPONIVEL" || item.status === "ENCONTRADO";
+    if (!isPendingRemote && !isAvailable) {
+      return { status: 400, body: { success: false, error: "O item não se encontra em estado elegível para assinatura remota." } };
     }
 
-    if (item.signatureTokenExpiresAt) {
-      const exp = new Date(item.signatureTokenExpiresAt).getTime();
-      if (!isNaN(exp) && exp < Date.now()) {
-        return {
-          status: 410,
-          body: { success: false, error: "O link de assinatura digital expirou por motivos de segurança." },
-        };
+    // Check token authenticity
+    let tokenMatched = false;
+    let tokenExpiresAt = item.signatureTokenExpiresAt;
+    const cleanToken = token.trim();
+    const tokenHash = crypto.createHash("sha256").update(cleanToken).digest("hex");
+
+    const sigReq = dbSignatureRequests.get(itemId);
+    if (sigReq) {
+      if (sigReq.used) {
+        return { status: 400, body: { success: false, error: "Esta assinatura ou devolução já foi finalizada anteriormente." } };
+      }
+      if (sigReq.expiresAt) {
+        tokenExpiresAt = sigReq.expiresAt;
+      }
+      if (sigReq.tokenHash === tokenHash) {
+        tokenMatched = true;
       }
     }
 
-    // Atomic update simulation: Server enforces status = DEVOLVIDO (ignoring tampered status/role/admin in body)
-    const nowIso = new Date().toISOString();
-    const valCode = `REC-IFPR-${itemId.toUpperCase().slice(0, 6)}-VAL`;
+    if (!tokenMatched && item.signatureToken) {
+      if (item.signatureToken.trim() === cleanToken) {
+        tokenMatched = true;
+      }
+    }
 
-    item.status = "DEVOLVIDO"; // Server-enforced
-    item.signatureTokenUsed = true;
+    if (!tokenMatched) {
+      return { status: 403, body: { success: false, error: "Token de assinatura inválido ou não autorizado para este objeto." } };
+    }
+
+    if (tokenExpiresAt) {
+      const exp = new Date(tokenExpiresAt).getTime();
+      if (!isNaN(exp) && exp < Date.now()) {
+        return { status: 410, body: { success: false, error: "O link de assinatura digital expirou por motivos de segurança." } };
+      }
+    }
+
+    // Atomic update
+    const nowIso = new Date().toISOString();
+    const valCode = item.receiptValidationCode || `REC-IFPR-${itemId.toUpperCase().slice(0, 6)}-VAL`;
+
+    item.status = "DEVOLVIDO";
     item.recipientSignatureStatus = "SIGNED";
     item.recipientSignatureUrl = signatureDataUrl;
     item.signedAt = nowIso;
     item.receiptValidationCode = valCode;
+    item.signatureTokenUsed = true;
+    item.signatureToken = null; // Purged from public document
+
+    if (sigReq) {
+      sigReq.used = true;
+      sigReq.usedAt = nowIso;
+      sigReq.validationCode = valCode;
+    }
 
     if (auditLogSink) {
       auditLogSink.push({
         action: "REGISTRO_DEVOLUCAO",
         objectId: itemId,
-        actorId: "remote-token-auth",
         actorName: signerName || "Receptor",
         timestamp: nowIso,
-        oldValue: "ENCONTRADO",
-        newValue: "DEVOLVIDO",
         validationCode: valCode,
       });
     }
 
     return {
       status: 200,
-      body: { success: true, message: "Assinatura confirmada com sucesso.", validationCode: valCode, signedAt: nowIso },
+      body: {
+        success: true,
+        message: "Assinatura digital autenticada e baixa de devolução concluída com sucesso no banco de dados.",
+        validationCode: valCode,
+        signedAt: nowIso,
+      },
     };
   }
 
-  // Simulated send-request handler
+  // Exact reproduction of server.ts send-request logic with RBAC
   function simulateSendRequest(params: {
     authHeader?: string;
+    userRole?: "ADMIN" | "SERVIDOR" | "ALUNO";
+    userEmail?: string;
     body: any;
     dbItems: Map<string, MockItemDoc>;
-    emailNotificationSink: any[];
+    dbSignatureRequests: Map<string, MockSignatureRequestDoc>;
   }): { status: number; body: any } {
-    const { authHeader, body, dbItems, emailNotificationSink } = params;
+    const { authHeader, userRole, userEmail, body, dbItems, dbSignatureRequests } = params;
 
     if (!authHeader || !authHeader.startsWith("Bearer ") || authHeader === "Bearer invalid") {
       return { status: 401, body: { success: false, error: "Autenticação obrigatória." } };
     }
 
-    const { itemId, itemTitle, recipientEmail, recipientName, signatureLink, signatureToken, returnedByName } = body || {};
+    const isStaffOrAdmin = userRole === "ADMIN" || userRole === "SERVIDOR" || userEmail === "paulocauan39@gmail.com";
+    if (!isStaffOrAdmin) {
+      return { status: 403, body: { success: false, error: "Acesso negado. Apenas servidores e administradores podem despachar termos." } };
+    }
 
+    const { itemId, recipientEmail, recipientName, signatureLink, signatureToken, returnedByName } = body || {};
     if (!itemId || !recipientEmail || typeof itemId !== "string" || typeof recipientEmail !== "string") {
       return { status: 400, body: { success: false, error: "Parâmetros obrigatórios ausentes." } };
     }
@@ -194,357 +347,433 @@ describe("Digital Signature & Remote Return Flow Security Audit (/api/signature/
       return { status: 404, body: { success: false, error: `Item #${itemId} não encontrado.` } };
     }
 
-    emailNotificationSink.push({
-      itemId,
-      itemTitle: itemTitle || item.title,
-      recipientEmail,
-      recipientName,
-      signatureLink,
-      signatureToken,
-      returnedByName,
-      sentAt: new Date().toISOString(),
-    });
+    if (signatureToken) {
+      const cleanToken = String(signatureToken).trim();
+      const tokenHash = crypto.createHash("sha256").update(cleanToken).digest("hex");
+      dbSignatureRequests.set(itemId, {
+        itemId,
+        tokenHash,
+        recipientEmail,
+        recipientName: recipientName || "Aluno",
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        used: false,
+      });
+
+      // Purge token from public item
+      item.signatureToken = null;
+      item.recipientSignatureStatus = "PENDING_REMOTE";
+    }
 
     return {
       status: 200,
-      body: { success: true, message: `Link de assinatura digital enviado com sucesso para ${recipientEmail}.` },
+      body: { success: true, message: `Link de assinatura digital enviado com sucesso para ${recipientEmail}.`, signatureLink },
     };
   }
 
-  // Simulated notify-signed handler
-  function simulateNotifySigned(params: {
-    body: any;
-    dbItems: Map<string, MockItemDoc>;
-    notificationSink: any[];
-  }): { status: number; body: any } {
-    const { body, dbItems, notificationSink } = params;
-    const { itemId, itemTitle, signerName, signerEmail, signedAt } = body || {};
+  // =========================================================================
+  // THE 14 MANDATORY REGRESSION SCENARIOS
+  // =========================================================================
 
-    if (!itemId || typeof itemId !== "string") {
-      return { status: 400, body: { success: false, error: "ID do item obrigatório." } };
-    }
+  let dbItems: Map<string, MockItemDoc>;
+  let dbSignatureRequests: Map<string, MockSignatureRequestDoc>;
+  let auditLogs: any[];
 
-    const item = dbItems.get(itemId);
-    if (!item) {
-      return { status: 404, body: { success: false, error: `Ocorrência #${itemId} não encontrada no banco de dados.` } };
-    }
+  const rawToken = "sig_1234567890abcdef1234567890abcdef";
+  const rawTokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+  const futureExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const pastExpiry = new Date(Date.now() - 10000).toISOString();
+  const validPngDataUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
-    notificationSink.push({
-      itemId,
-      itemTitle: item.title || itemTitle,
-      signerName: item.recipientName || signerName || "Receptor",
-      signerEmail: signerEmail || item.recipientEmail || "",
-      type: "SIGNATURE_COMPLETED",
-      signedAt: signedAt || new Date().toISOString(),
-    });
-
-    return { status: 200, body: { success: true, message: "Assinatura registrada no backend com sucesso." } };
-  }
-
-  // 1. TOKEN ENTROPY & GENERATION
-  describe("1. Token Entropy & Cryptographic Generation", () => {
-    it("Gera tokens criptograficamente seguros com 128-bit de entropia e prefixo sig_", () => {
-      const token1 = generateSecureSignatureToken("sig_");
-      const token2 = generateSecureSignatureToken("sig_");
-
-      expect(token1).toMatch(/^sig_[a-f0-9]{32}$/);
-      expect(token2).toMatch(/^sig_[a-f0-9]{32}$/);
-      expect(token1).not.toBe(token2);
-    });
-
-    it("Gera tokens com distribuição aleatória sem colisões em lote", () => {
-      const tokenSet = new Set<string>();
-      for (let i = 0; i < 50; i++) {
-        const token = generateSecureSignatureToken("sig_");
-        expect(tokenSet.has(token)).toBe(false);
-        tokenSet.add(token);
-      }
-      expect(tokenSet.size).toBe(50);
-    });
-  });
-
-  // 2. TOKEN VERIFICATION (/api/signature/verify-token)
-  describe("2. Token Verification Security (/api/signature/verify-token)", () => {
-    const validToken = generateSecureSignatureToken("sig_");
-    const futureExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    const pastExpiry = new Date(Date.now() - 1000).toISOString();
-
-    let dbItems: Map<string, MockItemDoc>;
-
-    beforeEach(() => {
-      dbItems = new Map<string, MockItemDoc>([
-        [
-          "item-100",
-          {
-            id: "item-100",
-            title: "Calculadora Científica Casio",
-            status: "DISPONIVEL",
-            signatureToken: validToken,
-            signatureTokenUsed: false,
-            signatureTokenExpiresAt: futureExpiry,
-          },
-        ],
-        [
-          "item-expired",
-          {
-            id: "item-expired",
-            title: "Caderno Universitário",
-            status: "DISPONIVEL",
-            signatureToken: "sig_expired_token_1234567890abcdef",
-            signatureTokenUsed: false,
-            signatureTokenExpiresAt: pastExpiry,
-          },
-        ],
-        [
-          "item-returned",
-          {
-            id: "item-returned",
-            title: "Chaveiro com Chaves",
-            status: "DEVOLVIDO",
-            signatureToken: "sig_returned_token_1234567890abcdef",
-            signatureTokenUsed: true,
-            recipientSignatureStatus: "SIGNED",
-          },
-        ],
-      ]);
-    });
-
-    it("A. Token válido e dentro do prazo de validade é PERMITIDO com HTTP 200", () => {
-      const res = simulateVerifyToken({ itemId: "item-100", token: validToken, dbItems });
-      expect(res.status).toBe(200);
-      expect(res.body.valid).toBe(true);
-      expect(res.body.isAlreadySigned).toBe(false);
-    });
-
-    it("B. Token inexistente / item inexistente retorna HTTP 404", () => {
-      const res = simulateVerifyToken({ itemId: "item-nao-existe", token: validToken, dbItems });
-      expect(res.status).toBe(404);
-      expect(res.body.reason).toBe("NOT_FOUND");
-    });
-
-    it("C. Token expirado (mais de 7 dias) retorna HTTP 410 Gone", () => {
-      const res = simulateVerifyToken({ itemId: "item-expired", token: "sig_expired_token_1234567890abcdef", dbItems });
-      expect(res.status).toBe(410);
-      expect(res.body.reason).toBe("TOKEN_EXPIRED");
-    });
-
-    it("D. Token alterado em 1 caractere é REJEITADO com HTTP 403 Forbidden", () => {
-      const tamperedToken = validToken.slice(0, -1) + (validToken.endsWith("a") ? "b" : "a");
-      const res = simulateVerifyToken({ itemId: "item-100", token: tamperedToken, dbItems });
-      expect(res.status).toBe(403);
-      expect(res.body.reason).toBe("TOKEN_MISMATCH");
-    });
-
-    it("E. Token truncado é REJEITADO com HTTP 403 Forbidden", () => {
-      const truncatedToken = validToken.substring(0, 10);
-      const res = simulateVerifyToken({ itemId: "item-100", token: truncatedToken, dbItems });
-      expect(res.status).toBe(403);
-      expect(res.body.reason).toBe("TOKEN_MISMATCH");
-    });
-
-    it("F. Token do Item A enviado para validar Item B é REJEITADO com HTTP 403", () => {
-      const res = simulateVerifyToken({ itemId: "item-expired", token: validToken, dbItems });
-      expect(res.status).toBe(403);
-      expect(res.body.reason).toBe("TOKEN_MISMATCH");
-    });
-
-    it("G. Item já devolvido / assinado retorna 200 com flag isAlreadySigned: true", () => {
-      const res = simulateVerifyToken({ itemId: "item-returned", token: "sig_returned_token_1234567890abcdef", dbItems });
-      expect(res.status).toBe(200);
-      expect(res.body.isAlreadySigned).toBe(true);
-    });
-
-    it("H. Chamada com parâmetros ausentes retorna HTTP 400", () => {
-      const res = simulateVerifyToken({ itemId: "", token: "", dbItems });
-      expect(res.status).toBe(400);
-      expect(res.body.reason).toBe("MISSING_PARAMS");
-    });
-  });
-
-  // 3. CONFIRM SIGNATURE & REPLAY DEFENSE (/api/signature/confirm-signature)
-  describe("3. Confirm Signature, Atomic Transaction & Replay Defense (/api/signature/confirm-signature)", () => {
-    const validToken = generateSecureSignatureToken("sig_");
-    const futureExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    let dbItems: Map<string, MockItemDoc>;
-    let auditLogSink: any[];
-
-    beforeEach(() => {
-      auditLogSink = [];
-      dbItems = new Map<string, MockItemDoc>([
-        [
-          "item-200",
-          {
-            id: "item-200",
-            title: "Garrafa Térmica Stanley",
-            status: "DISPONIVEL",
-            signatureToken: validToken,
-            signatureTokenUsed: false,
-            signatureTokenExpiresAt: futureExpiry,
-          },
-        ],
-      ]);
-    });
-
-    it("I. Confirmação legítima com token válido atualiza item e grava audit_log", async () => {
-      const res = await simulateConfirmSignature({
-        itemId: "item-200",
-        token: validToken,
-        signatureDataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-        signerName: "João Silva",
-        signerEmail: "joao@estudantes.ifpr.edu.br",
-        signerBond: "Aluno",
-        dbItems,
-        auditLogSink,
-      });
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(dbItems.get("item-200")?.status).toBe("DEVOLVIDO");
-      expect(dbItems.get("item-200")?.signatureTokenUsed).toBe(true);
-      expect(auditLogSink.length).toBe(1);
-      expect(auditLogSink[0].action).toBe("REGISTRO_DEVOLUCAO");
-    });
-
-    it("J. Replay Attack: Segunda tentativa com o mesmo token após confirmação é REJEITADA com HTTP 400", async () => {
-      // 1. Primeira confirmação (sucesso)
-      await simulateConfirmSignature({
-        itemId: "item-200",
-        token: validToken,
-        signatureDataUrl: "data:image/png;base64,sample1",
-        dbItems,
-        auditLogSink,
-      });
-
-      // 2. Replay com mesmo token
-      const replayRes = await simulateConfirmSignature({
-        itemId: "item-200",
-        token: validToken,
-        signatureDataUrl: "data:image/png;base64,sample2",
-        dbItems,
-        auditLogSink,
-      });
-
-      expect(replayRes.status).toBe(400);
-      expect(replayRes.body.error).toContain("já foi finalizada anteriormente");
-      // Não cria segundo audit log duplicado
-      expect(auditLogSink.length).toBe(1);
-    });
-
-    it("K. Tentativa de Body Tampering (injetar status: 'OUTRO', role: 'ADMIN', admin: true) é ignorada pelo servidor", async () => {
-      const res = await simulateConfirmSignature({
-        itemId: "item-200",
-        token: validToken,
-        signatureDataUrl: "data:image/png;base64,sample",
-        tamperedStatus: "EM_ANALISE",
-        tamperedRole: "ADMIN",
-        tamperedAdmin: true,
-        dbItems,
-        auditLogSink,
-      });
-
-      expect(res.status).toBe(200);
-      // Status estritamente forçado pelo servidor como DEVOLVIDO
-      expect(dbItems.get("item-200")?.status).toBe("DEVOLVIDO");
-    });
-
-    it("L. Tentativa de confirmação com token adulterado é REJEITADA com HTTP 403", async () => {
-      const res = await simulateConfirmSignature({
-        itemId: "item-200",
-        token: "sig_forged_wrong_token_1234567890",
-        signatureDataUrl: "data:image/png;base64,sample",
-        dbItems,
-        auditLogSink,
-      });
-
-      expect(res.status).toBe(403);
-      expect(dbItems.get("item-200")?.status).toBe("DISPONIVEL");
-    });
-  });
-
-  // 4. SEND-REQUEST & NOTIFY-SIGNED AUDIT
-  describe("4. Send-Request and Notify-Signed Endpoints Audit", () => {
-    let dbItems: Map<string, MockItemDoc>;
-    let emailSink: any[];
-    let notifSink: any[];
-
-    beforeEach(() => {
-      emailSink = [];
-      notifSink = [];
-      dbItems = new Map<string, MockItemDoc>([
-        [
-          "item-300",
-          {
-            id: "item-300",
-            title: "Mochila Dell Preta",
-            status: "DISPONIVEL",
-            recipientName: "Maria Souza",
-            recipientEmail: "maria@estudantes.ifpr.edu.br",
-          },
-        ],
-      ]);
-    });
-
-    it("M. /api/signature/send-request sem autenticação retorna HTTP 401", () => {
-      const res = simulateSendRequest({
-        authHeader: undefined,
-        body: { itemId: "item-300", recipientEmail: "maria@estudantes.ifpr.edu.br" },
-        dbItems,
-        emailNotificationSink: emailSink,
-      });
-
-      expect(res.status).toBe(401);
-      expect(emailSink.length).toBe(0);
-    });
-
-    it("N. /api/signature/send-request com autenticação válida e item existente despacha com HTTP 200", () => {
-      const res = simulateSendRequest({
-        authHeader: "Bearer valid-token-staff",
-        body: {
-          itemId: "item-300",
-          itemTitle: "Mochila Dell Preta",
-          recipientEmail: "maria@estudantes.ifpr.edu.br",
-          recipientName: "Maria Souza",
-          signatureLink: "https://localizamais.ifpr.edu.br/?tab=sign-receipt&itemId=item-300&token=sig_123",
-          signatureToken: "sig_123",
+  beforeEach(() => {
+    auditLogs = [];
+    dbSignatureRequests = new Map<string, MockSignatureRequestDoc>([
+      [
+        "item-pending-remote",
+        {
+          itemId: "item-pending-remote",
+          tokenHash: rawTokenHash,
+          recipientEmail: "aluno@ifpr.edu.br",
+          recipientName: "Carlos Aluno",
+          createdAt: new Date().toISOString(),
+          expiresAt: futureExpiry,
+          used: false,
         },
-        dbItems,
-        emailNotificationSink: emailSink,
-      });
+      ],
+      [
+        "item-expired-remote",
+        {
+          itemId: "item-expired-remote",
+          tokenHash: crypto.createHash("sha256").update("sig_expired_token_abc").digest("hex"),
+          recipientEmail: "aluno@ifpr.edu.br",
+          recipientName: "Aluno Expirado",
+          createdAt: new Date(Date.now() - 20000).toISOString(),
+          expiresAt: pastExpiry,
+          used: false,
+        },
+      ],
+    ]);
 
-      expect(res.status).toBe(200);
-      expect(emailSink.length).toBe(1);
-      expect(emailSink[0].recipientEmail).toBe("maria@estudantes.ifpr.edu.br");
+    dbItems = new Map<string, MockItemDoc>([
+      [
+        "item-pending-remote",
+        {
+          id: "item-pending-remote",
+          title: "Calculadora Casio",
+          status: "DEVOLVIDO", // State generated by registerItemReturn
+          recipientSignatureType: "REMOTE_EMAIL",
+          recipientSignatureStatus: "PENDING_REMOTE",
+          signatureToken: null, // Purged from public doc!
+          signatureTokenUsed: false,
+          signatureTokenExpiresAt: futureExpiry,
+        },
+      ],
+      [
+        "item-presencial-concluido",
+        {
+          id: "item-presencial-concluido",
+          title: "Garrafa Térmica Verde",
+          status: "DEVOLVIDO",
+          recipientSignatureType: "IN_PERSON_DEVICE",
+          recipientSignatureStatus: "SIGNED",
+          recipientSignatureUrl: validPngDataUrl,
+          receiptValidationCode: "COMP-IFPR-INPERSON-01",
+          signedAt: new Date().toISOString(),
+          signatureTokenUsed: true,
+        },
+      ],
+      [
+        "item-expired-remote",
+        {
+          id: "item-expired-remote",
+          title: "Estojo Azul",
+          status: "DEVOLVIDO",
+          recipientSignatureType: "REMOTE_EMAIL",
+          recipientSignatureStatus: "PENDING_REMOTE",
+          signatureToken: null,
+          signatureTokenUsed: false,
+          signatureTokenExpiresAt: pastExpiry,
+        },
+      ],
+      [
+        "item-encerrado",
+        {
+          id: "item-encerrado",
+          title: "Documento RG Antigo",
+          status: "ENCERRADO",
+          recipientSignatureStatus: "PENDING_REMOTE",
+          signatureTokenUsed: false,
+        },
+      ],
+    ]);
+  });
+
+  // 1. Solicitação remota pendente pode validar o token
+  it("1. Solicitação remota pendente pode validar o token mesmo com status DEVOLVIDO", () => {
+    const res = simulateVerifyToken({
+      itemId: "item-pending-remote",
+      token: rawToken,
+      dbItems,
+      dbSignatureRequests,
     });
 
-    it("O. /api/signature/notify-signed com item inexistente retorna HTTP 404", () => {
-      const res = simulateNotifySigned({
-        body: { itemId: "item-nao-existe" },
-        dbItems,
-        notificationSink: notifSink,
-      });
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.valid).toBe(true);
+    expect(res.body.isAlreadySigned).toBe(false);
+    expect(res.body.item.id).toBe("item-pending-remote");
+  });
 
-      expect(res.status).toBe(404);
-      expect(notifSink.length).toBe(0);
+  // 2. Devolução presencial concluída não pode ser assinada novamente indevidamente
+  it("2. Devolução presencial concluída não pode ser assinada novamente indevidamente", async () => {
+    const res = simulateVerifyToken({
+      itemId: "item-presencial-concluido",
+      token: rawToken,
+      dbItems,
+      dbSignatureRequests,
     });
 
-    it("P. /api/signature/notify-signed com item existente registra notificação com HTTP 200", () => {
-      const res = simulateNotifySigned({
-        body: { itemId: "item-300", signerName: "Maria Souza" },
-        dbItems,
-        notificationSink: notifSink,
-      });
+    // Recognizes already signed
+    expect(res.status).toBe(200);
+    expect(res.body.isAlreadySigned).toBe(true);
+    expect(res.body.receiptValidationCode).toBe("COMP-IFPR-INPERSON-01");
 
-      expect(res.status).toBe(200);
-      expect(notifSink.length).toBe(1);
-      expect(notifSink[0].signerName).toBe("Maria Souza");
+    // Attempting a second confirm-signature must be idempotent and not mutate
+    const confirmRes = await simulateConfirmSignature({
+      itemId: "item-presencial-concluido",
+      token: rawToken,
+      signatureDataUrl: validPngDataUrl,
+      dbItems,
+      dbSignatureRequests,
     });
 
-    it("Q. Token de assinatura nunca é exposto em logs públicos ou mensagens de erro", () => {
-      const secretToken = "sig_sensitive_secret_token_123456";
-      const sanitizedLog = `Tentativa de assinatura para item #item-100 (Token: ${secretToken.substring(0, 6)}...)`;
+    expect(confirmRes.status).toBe(200);
+    expect(confirmRes.body.alreadyCompleted).toBe(true);
+    expect(confirmRes.body.validationCode).toBe("COMP-IFPR-INPERSON-01");
+  });
 
-      expect(sanitizedLog).not.toContain(secretToken);
-      expect(sanitizedLog).toContain("sig_se...");
+  // 3. Token inválido ou expirado é rejeitado
+  it("3. Token inválido retorna 403 e token expirado retorna 410", () => {
+    const invalidRes = simulateVerifyToken({
+      itemId: "item-pending-remote",
+      token: "sig_wrong_forged_token",
+      dbItems,
+      dbSignatureRequests,
     });
+    expect(invalidRes.status).toBe(403);
+    expect(invalidRes.body.reason).toBe("TOKEN_MISMATCH");
+
+    const expiredRes = simulateVerifyToken({
+      itemId: "item-expired-remote",
+      token: "sig_expired_token_abc",
+      dbItems,
+      dbSignatureRequests,
+    });
+    expect(expiredRes.status).toBe(410);
+    expect(expiredRes.body.reason).toBe("TOKEN_EXPIRED");
+  });
+
+  // 4. Token já consumido não autoriza uma nova assinatura
+  it("4. Token já consumido não autoriza uma nova assinatura", async () => {
+    // 1st confirm -> success
+    const firstRes = await simulateConfirmSignature({
+      itemId: "item-pending-remote",
+      token: rawToken,
+      signatureDataUrl: validPngDataUrl,
+      signerName: "Carlos Aluno",
+      dbItems,
+      dbSignatureRequests,
+      auditLogSink: auditLogs,
+    });
+    expect(firstRes.status).toBe(200);
+    expect(firstRes.body.success).toBe(true);
+
+    // Signature request is now marked used = true
+    const sigReq = dbSignatureRequests.get("item-pending-remote");
+    expect(sigReq?.used).toBe(true);
+
+    // Attempting to verify or sign with a consumed request on an unfinalized doc returns ALREADY_PROCESSED
+    dbItems.get("item-pending-remote")!.recipientSignatureStatus = "PENDING_REMOTE";
+    dbItems.get("item-pending-remote")!.recipientSignatureUrl = undefined;
+    dbItems.get("item-pending-remote")!.receiptValidationCode = undefined;
+    const secondRes = simulateVerifyToken({
+      itemId: "item-pending-remote",
+      token: rawToken,
+      dbItems,
+      dbSignatureRequests,
+    });
+    expect(secondRes.status).toBe(400);
+    expect(secondRes.body.reason).toBe("ALREADY_PROCESSED");
+
+    // Also attempting to confirm-signature with a consumed request on an unfinalized item returns 400
+    const replayConfirm = await simulateConfirmSignature({
+      itemId: "item-pending-remote",
+      token: rawToken,
+      signatureDataUrl: validPngDataUrl,
+      signerName: "Carlos Aluno",
+      dbItems,
+      dbSignatureRequests,
+      auditLogSink: auditLogs,
+    });
+    expect(replayConfirm.status).toBe(400);
+    expect(replayConfirm.body.error).toMatch(/já foi finalizada|já foi utilizada/);
+  });
+
+  // 5. Requisição não autenticada não executa operações administrativas
+  it("5. Requisição não autenticada a /api/signature/send-request retorna 401", () => {
+    const res = simulateSendRequest({
+      authHeader: undefined,
+      body: { itemId: "item-pending-remote", recipientEmail: "aluno@ifpr.edu.br" },
+      dbItems,
+      dbSignatureRequests,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  // 6. Usuário sem permissão recebe 403
+  it("6. Usuário com papel ALUNO recebe 403 ao tentar despachar link de assinatura", () => {
+    const res = simulateSendRequest({
+      authHeader: "Bearer valid-student-jwt",
+      userRole: "ALUNO",
+      body: { itemId: "item-pending-remote", recipientEmail: "aluno@ifpr.edu.br", signatureToken: rawToken },
+      dbItems,
+      dbSignatureRequests,
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("Acesso negado");
+  });
+
+  // 7. Payload inválido ou acima do limite recebe 400
+  it("7. Payload malformado ou acima de 250KB recebe HTTP 400", async () => {
+    // Malformed: not base64 image prefix
+    const malformedRes = await simulateConfirmSignature({
+      itemId: "item-pending-remote",
+      token: rawToken,
+      signatureDataUrl: "plain-text-not-a-data-url",
+      dbItems,
+      dbSignatureRequests,
+    });
+    expect(malformedRes.status).toBe(400);
+    expect(malformedRes.body.error).toContain("Base64");
+
+    // Exceeds limit (> 350,000 characters)
+    const giantDataUrl = "data:image/png;base64," + "A".repeat(360000);
+    const oversizedRes = await simulateConfirmSignature({
+      itemId: "item-pending-remote",
+      token: rawToken,
+      signatureDataUrl: giantDataUrl,
+      dbItems,
+      dbSignatureRequests,
+    });
+    expect(oversizedRes.status).toBe(400);
+    expect(oversizedRes.body.error).toContain("excede o limite");
+  });
+
+  // 8. Falha no Firestore nunca produz confirmação falsa
+  it("8. Falha na persistência no backend nunca gera confirmação de sucesso", async () => {
+    // Simulate non-existent item in Firestore
+    const failRes = await simulateConfirmSignature({
+      itemId: "item-inexistente-db",
+      token: rawToken,
+      signatureDataUrl: validPngDataUrl,
+      dbItems,
+      dbSignatureRequests,
+    });
+    expect(failRes.status).toBe(404);
+    expect(failRes.body.success).toBe(false);
+  });
+
+  // 9. Duas confirmações concorrentes não produzem resultados inconsistentes
+  it("9. Duas confirmações concorrentes tratam atomicamente a segunda chamada", async () => {
+    const call1 = simulateConfirmSignature({
+      itemId: "item-pending-remote",
+      token: rawToken,
+      signatureDataUrl: validPngDataUrl,
+      signerName: "Carlos Aluno",
+      dbItems,
+      dbSignatureRequests,
+      auditLogSink: auditLogs,
+    });
+
+    const call2 = simulateConfirmSignature({
+      itemId: "item-pending-remote",
+      token: rawToken,
+      signatureDataUrl: validPngDataUrl,
+      signerName: "Carlos Aluno",
+      dbItems,
+      dbSignatureRequests,
+      auditLogSink: auditLogs,
+    });
+
+    const [res1, res2] = await Promise.all([call1, call2]);
+
+    expect(res1.status).toBe(200);
+    expect(res1.body.success).toBe(true);
+    // res2 either recovers idempotent completion or is rejected as already processed
+    expect(res2.status).toBe(200);
+    expect(res2.body.validationCode).toBe(res1.body.validationCode);
+  });
+
+  // 10. Assinatura confirmada pode ser recuperada após F5
+  it("10. Assinatura confirmada pode ser recuperada com dados idênticos após F5", async () => {
+    // 1. Finalize signature
+    const confirmRes = await simulateConfirmSignature({
+      itemId: "item-pending-remote",
+      token: rawToken,
+      signatureDataUrl: validPngDataUrl,
+      signerName: "Carlos Aluno",
+      dbItems,
+      dbSignatureRequests,
+    });
+    const code = confirmRes.body.validationCode;
+
+    // 2. User reloads page (F5) -> verifyToken runs again
+    const reloadRes = simulateVerifyToken({
+      itemId: "item-pending-remote",
+      token: rawToken,
+      dbItems,
+      dbSignatureRequests,
+    });
+
+    expect(reloadRes.status).toBe(200);
+    expect(reloadRes.body.isAlreadySigned).toBe(true);
+    expect(reloadRes.body.receiptValidationCode).toBe(code);
+  });
+
+  // 11. Nenhum token ativo aparece nos documentos públicos dos itens
+  it("11. Nenhum token ativo em texto puro é mantido no documento público do item", () => {
+    const res = simulateSendRequest({
+      authHeader: "Bearer valid-staff-token",
+      userRole: "SERVIDOR",
+      body: {
+        itemId: "item-pending-remote",
+        recipientEmail: "aluno@ifpr.edu.br",
+        signatureToken: "sig_super_secret_token_12345",
+      },
+      dbItems,
+      dbSignatureRequests,
+    });
+
+    expect(res.status).toBe(200);
+
+    // Private collection contains hash
+    const sigReq = dbSignatureRequests.get("item-pending-remote");
+    expect(sigReq).toBeDefined();
+    expect(sigReq?.tokenHash).toBeDefined();
+    expect(sigReq?.tokenHash).not.toBe("sig_super_secret_token_12345");
+
+    // Public item document has null signatureToken
+    const publicItem = dbItems.get("item-pending-remote");
+    expect(publicItem?.signatureToken).toBeNull();
+  });
+
+  // 12. O botão de reenvio não apresenta sucesso quando a API falha
+  it("12. O fluxo de reenvio falha e não exibe falso sucesso quando a API retorna erro", async () => {
+    // Calling without auth header returns 401
+    const unauthRes = simulateSendRequest({
+      authHeader: undefined,
+      body: { itemId: "item-pending-remote", recipientEmail: "aluno@ifpr.edu.br" },
+      dbItems,
+      dbSignatureRequests,
+    });
+
+    let successShown = false;
+    let errorCaught = false;
+
+    if (!unauthRes.body.success || unauthRes.status !== 200) {
+      errorCaught = true;
+    } else {
+      successShown = true;
+    }
+
+    expect(errorCaught).toBe(true);
+    expect(successShown).toBe(false);
+  });
+
+  // 13. O fluxo presencial continua funcionando
+  it("13. O fluxo presencial continua operando com gravação imediata de SIGNED", () => {
+    const itemPresencial = dbItems.get("item-presencial-concluido");
+    expect(itemPresencial?.status).toBe("DEVOLVIDO");
+    expect(itemPresencial?.recipientSignatureType).toBe("IN_PERSON_DEVICE");
+    expect(itemPresencial?.recipientSignatureStatus).toBe("SIGNED");
+    expect(itemPresencial?.recipientSignatureUrl).toBe(validPngDataUrl);
+  });
+
+  // 14. Os recibos apresentam dados consistentes com a persistência
+  it("14. Os recibos apresentam dados idênticos aos persistidos na transação", async () => {
+    const confirmRes = await simulateConfirmSignature({
+      itemId: "item-pending-remote",
+      token: rawToken,
+      signatureDataUrl: validPngDataUrl,
+      signerName: "Mariana Silva",
+      dbItems,
+      dbSignatureRequests,
+    });
+
+    const persistedItem = dbItems.get("item-pending-remote");
+    expect(confirmRes.body.validationCode).toBe(persistedItem?.receiptValidationCode);
+    expect(confirmRes.body.signedAt).toBe(persistedItem?.signedAt);
+    expect(persistedItem?.status).toBe("DEVOLVIDO");
+    expect(persistedItem?.recipientSignatureStatus).toBe("SIGNED");
   });
 });

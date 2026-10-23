@@ -4309,8 +4309,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       recipientSignatureUrl: returnData.signatureDataUrl || "",
       recipientSignatureType: returnData.signatureType || (isDirectlySigned ? "IN_PERSON_DEVICE" : isRemoteEmail ? "REMOTE_EMAIL" : "PRE_VERIFIED"),
       recipientSignatureStatus: isDirectlySigned ? "SIGNED" : isRemoteEmail ? "PENDING_REMOTE" : "NOT_REQUIRED",
-      signatureToken: isRemoteEmail ? signatureToken : undefined,
+      signatureToken: undefined, // Isolated: Stored exclusively via private signature_requests collection on backend
       signatureTokenExpiresAt: isRemoteEmail ? expiresAt : undefined,
+      signatureTokenUsed: isRemoteEmail ? false : undefined,
       signedAt: isDirectlySigned ? now.toISOString() : undefined,
       history: [...existingHistory, newHistLog],
       historyLogs: [...existingHistory, newHistLog],

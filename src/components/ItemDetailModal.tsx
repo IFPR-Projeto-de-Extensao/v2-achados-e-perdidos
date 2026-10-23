@@ -4,7 +4,8 @@ import autoTable from "jspdf-autotable";
 import { LostFoundItem } from "../types";
 import { useApp } from "../context/AppContext";
 import { usePossessionVerification } from "../hooks/usePossessionVerification";
-import { formatDateTime, formatSafeDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, isItemNew, getItemAgeText, getTodayDateString, isFutureDate, validateItemOccurrenceDate, validateItemTextFields, ITEM_FIELD_LIMITS } from "../lib/utils";
+import { formatDateTime, formatSafeDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, isItemNew, getItemAgeText, getTodayDateString, isFutureDate, validateItemOccurrenceDate, validateItemTextFields, ITEM_FIELD_LIMITS, generateSecureSignatureToken } from "../lib/utils";
+import { auth } from "../lib/firebase";
 import { getItemPublicUrl, getItemQrValue } from "../lib/qrCodeUtils";
 import { QRCodeSVG } from "qrcode.react";
 import { RestrictedQRViewModal } from "./RestrictedQRViewModal";
@@ -873,12 +874,24 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     setIsResendingSignatureEmail(true);
     try {
       const origin = window.location.origin;
-      const token = item.signatureToken || `sig_${item.id}_${Date.now()}`;
-      const signatureLink = `${origin}/?tab=sign-receipt&itemId=${item.id}&token=${token}`;
+      const token = item.signatureToken || generateSecureSignatureToken("sig_");
+      const signatureLink = `${origin}/?tab=sign-receipt&itemId=${encodeURIComponent(item.id)}&token=${encodeURIComponent(token)}`;
 
-      await fetch("/api/signature/send-request", {
+      let idToken = "";
+      if (auth.currentUser) {
+        try {
+          idToken = await auth.currentUser.getIdToken();
+        } catch (_) {}
+      }
+
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (idToken) {
+        headers["Authorization"] = `Bearer ${idToken}`;
+      }
+
+      const res = await fetch("/api/signature/send-request", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           itemId: item.id,
           itemTitle: item.title,
@@ -889,10 +902,22 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           returnedByName: currentUser.name,
         }),
       });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Erro HTTP ${res.status} ao reenviar termo de assinatura.`);
+      }
+
+      const resJson = await res.json().catch(() => ({}));
+      if (!resJson.success) {
+        throw new Error(resJson.error || "Servidor não confirmou o reenvio do termo.");
+      }
+
       vibrateSuccess();
-      addToast("Link de assinatura digital reenviado com sucesso por e-mail!", "success");
-    } catch (e) {
-      addToast("Erro ao reenviar e-mail de assinatura.", "error");
+      addToast(resJson.message || "Link de assinatura digital reenviado com sucesso por e-mail!", "success");
+    } catch (e: any) {
+      console.error("[handleResendSignatureEmail] Falha:", e?.message || e);
+      addToast(e?.message || "Erro ao reenviar e-mail de assinatura.", "error");
     } finally {
       setIsResendingSignatureEmail(false);
     }

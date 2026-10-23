@@ -135,7 +135,7 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
       setDocumentNumber(foundItem.recipientDocument || "");
       setValidationCode(foundItem.receiptValidationCode || `REC-IFPR-${foundItem.id.toUpperCase().slice(0, 6)}`);
 
-      // Check if already signed
+      // Check if already signed (Safe Recovery after F5)
       const alreadySigned =
         foundItem.recipientSignatureStatus === "SIGNED" ||
         Boolean(foundItem.recipientSignatureUrl) ||
@@ -146,34 +146,47 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
         setIsCompleted(true);
         setSignatureDataUrl(foundItem.recipientSignatureUrl || apiVerificationResult?.recipientSignatureUrl || "");
         setSignedTimestamp(foundItem.signedAt || apiVerificationResult?.signedAt || new Date().toISOString());
+        if (apiVerificationResult?.receiptValidationCode) {
+          setValidationCode(apiVerificationResult.receiptValidationCode);
+        }
         return;
       }
 
-      // Security check: Only items with status DISPONIVEL / ENCONTRADO and unused token can proceed to signature
+      // 1. Terminal State Check
+      if (foundItem.status === "ENCERRADO") {
+        setVerificationStatus("INVALID_TOKEN");
+        setVerificationError("Esta ocorrência foi encerrada e não pode mais receber assinaturas.");
+        return;
+      }
+
+      // 2. Token Used Check
+      if (foundItem.signatureTokenUsed && !alreadySigned) {
+        setVerificationStatus("INVALID_TOKEN");
+        setVerificationError("Este termo de assinatura digital já foi utilizado anteriormente.");
+        return;
+      }
+
+      // 3. State Machine Eligibility Check: Must be pending remote signature OR available for return
+      const isPendingRemote = foundItem.recipientSignatureStatus === "PENDING_REMOTE";
       const isAvailableForReturn =
         foundItem.status === "DISPONIVEL" ||
         foundItem.status === "ENCONTRADO" ||
         foundItem.status === "PROPRIETARIO_IDENTIFICADO";
 
-      if (!isAvailableForReturn || foundItem.status === "DEVOLVIDO" || foundItem.signatureTokenUsed) {
+      if (!isPendingRemote && !isAvailableForReturn) {
         setVerificationStatus("INVALID_TOKEN");
         setVerificationError(
-          `Operação não permitida: O item #${foundItem.id} possui o status '${foundItem.status || "INDISPONÍVEL"}'. Apenas itens com status 'DISPONIVEL' e com token ativo podem ser processados para devolução.`
+          `Operação não permitida: O item #${foundItem.id} possui o status '${foundItem.status || "INDISPONÍVEL"}' e não está aguardando assinatura remota.`
         );
         return;
       }
 
-      // Strict Token Match Check
-      const storedToken = foundItem.signatureToken;
-      const cleanInputToken = String(token).trim();
-      const isTokenValid =
-        (storedToken && storedToken.trim() === cleanInputToken) ||
-        (apiVerificationResult && apiVerificationResult.valid === true);
-
-      if (!isTokenValid) {
+      // 4. Server-Authoritative Token Validation
+      if (!apiVerificationResult || apiVerificationResult.valid !== true) {
         setVerificationStatus("INVALID_TOKEN");
         setVerificationError(
-          "O token fornecido na URL não corresponde à autorização de devolução registrada no Firestore para este objeto. O link pode estar corrompido, revogado ou expirado."
+          apiVerificationResult?.error ||
+          "O token fornecido na URL é inválido, expirou ou não corresponde à solicitação ativa deste objeto no IFPR."
         );
         return;
       }
@@ -184,7 +197,7 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
     } catch (err: any) {
       console.error("[RemoteSignature] Erro durante verificação de autenticidade:", err);
       setVerificationStatus("INVALID_TOKEN");
-      setVerificationError("Falha na comunicação de segurança ao autenticar token no Firestore.");
+      setVerificationError("Falha na comunicação de segurança ao autenticar token no servidor.");
     }
   }, [itemId, token, items]);
 
@@ -198,7 +211,7 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
   const signerEmail = item?.recipientEmail || currentUser?.email || "estudante@ifpr.edu.br";
   const signerBond = item?.recipientBond || currentUser?.role || "Aluno(a)";
 
-  // Handle Confirm and Finalize Signature
+  // Handle Confirm and Finalize Signature (Centralized Server-Authoritative Execution)
   const handleConfirmSignature = async () => {
     if (!item) return;
 
@@ -212,122 +225,65 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
     }
 
     setIsSubmitting(true);
+    setSubmissionStep("Homologando assinatura e persistindo baixa no servidor...");
     try {
-      const now = new Date().toISOString();
-      const effectiveValCode =
-        item.receiptValidationCode ||
-        `REC-IFPR-${item.id.toUpperCase().slice(0, 6)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-
-      const newHistoryLog = {
-        id: `hist-sign-${Date.now()}`,
-        action: "Assinatura Digital Confirmada via Token",
-        actorId: currentUser?.id || "remote-token-user",
-        actorName: signerName,
-        actorRole: (signerBond === "Servidor" ? "SERVIDOR" : "ALUNO") as any,
-        timestamp: now,
-        details: `Assinatura digital do termo de restituição autenticada e concluída via token criptográfico no Firestore (${signerName} • ${signerBond}).`,
-      };
-
-      const updatedHistory = [...(item.history || item.historyLogs || []), newHistoryLog];
-
-      // Step 1: Update Firestore item status to DEVOLVIDO
-      setSubmissionStep("1/3 Alterando status para 'DEVOLVIDO' no Firestore...");
-      try {
-        const itemDocRef = doc(db, "items", item.id);
-        await updateDoc(itemDocRef, {
-          status: "DEVOLVIDO",
-          recipientSignatureUrl: signatureDataUrl,
-          recipientSignatureType: "REMOTE_EMAIL",
-          recipientSignatureStatus: "SIGNED",
-          recipientDocument: documentNumber || item.recipientDocument || "",
-          signedAt: now,
-          resolutionDate: item.resolutionDate || now,
-          receiptValidationCode: effectiveValCode,
-          signatureTokenUsed: true,
-          history: updatedHistory,
-          historyLogs: updatedHistory,
-        });
-      } catch (firestoreErr) {
-        console.warn("[RemoteSignature] Fallback para rota server após aviso Firestore cliente:", firestoreErr);
-      }
-
-      // Step 2: Record Audit Log in Firestore collection 'activity_logs'
-      setSubmissionStep("2/3 Registrando log de auditoria institucional no Firestore...");
-      try {
-        await logItemReturnAudit({
+      // Server-Authoritative Confirmation Endpoint: Performs atomic transaction, token consumption, and audit logging
+      const res = await fetch("/api/signature/confirm-signature", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           itemId: item.id,
-          itemTitle: item.title,
+          token,
+          signatureDataUrl,
+          documentNumber: documentNumber || item.recipientDocument || "",
           signerName,
-          signerBond,
           signerEmail,
-          validationCode: effectiveValCode,
-          signatureType: "REMOTE_EMAIL",
-          operatorId: currentUser?.id || "token-auth-system",
-          operatorName: `${signerName} (${signerBond})`,
-        });
-      } catch (logErr) {
-        console.warn("[RemoteSignature] Gravação de audit log tratada:", logErr);
+          signerBond,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Erro HTTP ${res.status} ao homologar assinatura no servidor.`);
       }
 
-      // Step 3: Server-Authoritative Confirmation Endpoint
-      setSubmissionStep("3/3 Homologando protocolo no servidor...");
-      try {
-        await fetch("/api/signature/confirm-signature", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            itemId: item.id,
-            token,
-            signatureDataUrl,
-            documentNumber: documentNumber || item.recipientDocument || "",
-            signerName,
-            signerEmail,
-            signerBond,
-          }),
-        });
-      } catch (serverErr) {
-        console.warn("[RemoteSignature] Chamada de confirmação no servidor disparada:", serverErr);
+      const confirmResult = await res.json();
+      if (!confirmResult.success) {
+        throw new Error(confirmResult.error || "Servidor não confirmou o registro da assinatura.");
       }
 
-      // Local Context Direct Update
+      const confirmedValCode = confirmResult.validationCode || `REC-IFPR-${item.id.toUpperCase().slice(0, 6)}`;
+      const confirmedSignedAt = confirmResult.signedAt || new Date().toISOString();
+
+      // Local Context Synchronous Update with Server-Confirmed Data
       try {
         await updateDocDirectly("items", item.id, {
           recipientSignatureUrl: signatureDataUrl,
           recipientSignatureType: "REMOTE_EMAIL",
           recipientSignatureStatus: "SIGNED",
           recipientDocument: documentNumber || item.recipientDocument || "",
-          signedAt: now,
+          signedAt: confirmedSignedAt,
           status: "DEVOLVIDO",
-          receiptValidationCode: effectiveValCode,
-          history: updatedHistory,
-          historyLogs: updatedHistory,
+          receiptValidationCode: confirmedValCode,
+          signatureTokenUsed: true,
         });
       } catch (_) {}
 
-      try {
-        await logAdminAction(
-          "ASSINATURA_DIGITAL_RECEBIDA",
-          `Assinatura digital de devolução registrada com sucesso para o item #${item.id} por ${signerName} (${signerBond})`
-        );
-      } catch (_) {}
+      // Optional async notify endpoint (fire & forget)
+      fetch("/api/signature/notify-signed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemId: item.id,
+          itemTitle: item.title,
+          signerName,
+          signerEmail,
+          signedAt: confirmedSignedAt,
+        }),
+      }).catch(() => {});
 
-      // Notify automation endpoint
-      try {
-        await fetch("/api/signature/notify-signed", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            itemId: item.id,
-            itemTitle: item.title,
-            signerName,
-            signerEmail,
-            signedAt: now,
-          }),
-        });
-      } catch (_) {}
-
-      setValidationCode(effectiveValCode);
-      setSignedTimestamp(now);
+      setValidationCode(confirmedValCode);
+      setSignedTimestamp(confirmedSignedAt);
       setIsCompleted(true);
       setVerificationStatus("ALREADY_SIGNED");
       addToast("Assinatura digital autenticada e baixa de devolução concluída com sucesso no banco de dados!", "success");
@@ -337,7 +293,8 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
       }
     } catch (err: any) {
       console.error("Erro ao salvar assinatura digital:", err);
-      addToast("Erro ao gravar assinatura digital. Tente novamente.", "error");
+      setIsCompleted(false);
+      addToast(err?.message || "Erro ao gravar assinatura digital. Tente novamente.", "error");
     } finally {
       setIsSubmitting(false);
       setSubmissionStep("");
@@ -440,17 +397,19 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
 
       currentY = (doc as any).lastAutoTable.finalY + 5;
 
-      // Section 3: Metadados de Autenticação & Validação Criptográfica
+      // Section 3: Metadados de Autenticação e Registro Eletrônico
       autoTable(doc, {
         startY: currentY,
-        head: [["3. METADADOS DE AUTENTICAÇÃO E CONFORMIDADE CRIPTOGRÁFICA", ""]],
+        head: [["3. METADADOS DE AUTENTICAÇÃO E REGISTRO ELETRÔNICO", ""]],
         body: [
           ["Modalidade da Assinatura:", signatureMethodLabel],
-          ["Status da Validação:", "AUTENTICADA & SINCRONIZADA NO FIRESTORE (STATUS: DEVOLVIDO)"],
-          ["Token / Hash de Segurança:", authHash],
+          ["Classificação Legal:", "Assinatura Eletrônica Simples (Art. 5º, I, da Lei nº 14.063/2020)"],
+          ["Evidência de Autenticidade:", "Desenho manuscrito em tela + link de uso único associado ao item"],
+          ["Status do Registro:", "CONFIRMADO & PERSISTIDO NO FIRESTORE (STATUS: DEVOLVIDO)"],
+          ["Código Validador:", currentValidationCode],
           ["Carimbo de Tempo (ISO):", effectiveSignedTime],
-          ["Dispositivo / Origem:", (item as any).signatureIpOrDevice || "Navegador Web / Mobile Autenticado IFPR"],
-          ["Regulamentação:", "Portaria Interna IFPR • Lei Federal nº 14.063/2020 (Assinatura Eletrônica Avançada)"],
+          ["Origem da Operação:", (item as any).signatureIpOrDevice || "Navegador Web / Mobile Autenticado IFPR"],
+          ["Regulamentação:", "Portaria Interna IFPR • Lei Federal nº 14.063/2020 (Art. 5º, I)"],
         ],
         theme: "grid",
         headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },

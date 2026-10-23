@@ -30,7 +30,7 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
     releaseDateTime: "23 de Outubro de 2026 • 11:15 BRT",
     type: "PATCH",
     isCurrent: true,
-    summary: "Resolução definitiva do erro fatal ERR_REQUIRE_ESM ocorrido no ambiente de execução serverless da Vercel ao carregar o Firebase Admin SDK (POST /api/admin/delete-user). A dependência transitiva jwks-rsa@4.1.0 (utilizada pelo firebase-admin@14.2.0 para validação de chaves públicas e tokens JWT) utilizava require('jose'). Como a versão 6 do jose é um pacote puramente ESM sem ponto de entrada CommonJS, runtimes serverless que não habilitam require(esm) lançavam ERR_REQUIRE_ESM ao instanciar o Firebase Admin Auth. A correção implementou a fixação da versão estável e compatível jose@^5.9.6 através da propriedade 'overrides' do npm, garantindo suporte nativo a CommonJS ('require: ./dist/node/cjs/index.js') e ESM simultaneamente sem alterar regras de segurança, código do Firebase Admin ou credenciais.",
+    summary: "Resolução do erro de runtime ERR_REQUIRE_ESM na Vercel via override do pacote jose@^5.9.6 compatível com CJS/ESM, e reestruturação com endurecimento de segurança do fluxo de Assinatura Digital e Devolução Remota (/api/signature/*). A máquina de estados foi harmonizada para aceitar recipientSignatureStatus === 'PENDING_REMOTE' sem conflitar com devoluções presenciais; os tokens de assinatura pública foram removidos da coleção pública 'items' e migrados para a coleção privada 'signature_requests' com verificação de integridade via SHA-256 e transação atômica no Firestore; falsos positivos nos modais foram eliminados com validação rigorosa de respostas HTTP (401/403/400/500); a confirmação da devolução foi delegada exclusivamente ao Firebase Admin SDK evitando falhas de PERMISSION_DENIED; limites de payload (250KB) foram impostos contra DoS; e a recuperação segura pós-reload (F5) com código de validação foi assegurada.",
     additions: [
       {
         id: "v1102-add-1",
@@ -44,6 +44,20 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         title: "Bateria de Smoke Tests sob Modo Restrito sem require(esm)",
         description: "Execução de testes de inicialização do Firebase Admin SDK e verificação de assinatura com a flag --no-experimental-require-module do Node.js 22, validando respostas 405 (GET) e 401 (POST não autenticado/inválido) sem queda de processo.",
         module: "ADMIN",
+        tag: "Qualidade & Testes",
+      },
+      {
+        id: "v1102-add-3",
+        title: "Proteção Transacional e Coleção Segura de Assinaturas Remotas",
+        description: "Migração do armazenamento de tokens de assinatura da coleção pública 'items' para a subcoleção privada e isolada 'signature_requests' com hashes SHA-256 e transação atômica no Firestore.",
+        module: "FIRESTORE",
+        tag: "Segurança & Backend",
+      },
+      {
+        id: "v1102-add-4",
+        title: "Suíte de Regressão e Validação da Assinatura Digital (14 Cenários)",
+        description: "Implementação de suíte de testes de segurança cobrindo máquina de estados, idempotência em reload (F5), expiração (410), proteção anti-replay (400), payload Base64 (limite 250KB) e autorização RBAC.",
+        module: "DOCUMENTOS",
         tag: "Qualidade & Testes",
       },
     ],
@@ -62,10 +76,24 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "FIRESTORE",
         tag: "Segurança & SDK",
       },
+      {
+        id: "v1102-fix-3",
+        title: "Eliminação de Falsos Positivos nos Modais de Assinatura",
+        description: "Correção de toasts indevidos de sucesso ao reenviar link e na confirmação da assinatura, exigindo resposta HTTP 200 do servidor antes de atualizar estado em memória ou notificar o usuário.",
+        module: "DOCUMENTOS",
+        tag: "Correção Frontend",
+      },
+      {
+        id: "v1102-fix-4",
+        title: "Consistência da Máquina de Estados e Eliminação de PERMISSION_DENIED",
+        description: "Harmonização de verify-token e confirm-signature com o status PENDING_REMOTE, e remoção de escritas diretas do cliente em campos protegidos de devolução, delegando a persistência com integridade ao Firebase Admin SDK.",
+        module: "FIRESTORE",
+        tag: "Consistência & Auditoria",
+      },
     ],
     stats: {
-      additionsCount: 2,
-      fixesCount: 2,
+      additionsCount: 4,
+      fixesCount: 4,
     },
   },
   {
