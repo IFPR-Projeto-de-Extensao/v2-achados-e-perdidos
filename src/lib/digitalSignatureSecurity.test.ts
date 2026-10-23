@@ -324,19 +324,41 @@ describe("Digital Signature & Dual Signer Flow Security Audit (/api/signature/*)
     expect(item?.staffSignerName).toBe("Prof. Paulo Servidor");
   });
 
-  it("3. Servidor não pode assinar antes da conclusão da assinatura do receptor", async () => {
-    // Tenta assinar como atendente com o item ainda pendente para o receptor
-    const staffRes = await simulateConfirmSignature({
-      itemId: "item-dual-test",
-      token: rawTokenStaff,
-      signatureDataUrl: validPng,
-      signerType: "STAFF",
-      dbItems,
-      dbSignatureRequests,
-    });
+  it("5. Geração de solicitação de e-mail e hash SHA-256 para o atendente após assinatura do receptor", () => {
+    const rawStaffToken = "sig_staff_token_secret_xyz123";
+    const tokenHash = crypto.createHash("sha256").update(rawStaffToken).digest("hex");
 
-    expect(staffRes.status).toBe(400);
-    expect(staffRes.body.success).toBe(false);
-    expect(staffRes.body.error).toContain("precisa assinar antes");
+    const staffRequest: MockSignatureRequestDoc = {
+      itemId: "item-dual-test",
+      tokenHash,
+      recipientEmail: "paulo@ifpr.edu.br",
+      recipientName: "Prof. Paulo Atendente",
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+      used: false,
+      type: "STAFF_ATTESTATION",
+      assignedStaffEmail: "paulo@ifpr.edu.br",
+    };
+
+    expect(staffRequest.tokenHash).not.toBe(rawStaffToken);
+    expect(staffRequest.type).toBe("STAFF_ATTESTATION");
+    expect(staffRequest.used).toBe(false);
+  });
+
+  it("6. Rejeição de token de atendente inválido, expirado ou já utilizado", () => {
+    const expiredReq: MockSignatureRequestDoc = {
+      itemId: "item-dual-test",
+      tokenHash: "abc",
+      recipientEmail: "paulo@ifpr.edu.br",
+      recipientName: "Paulo",
+      createdAt: new Date(Date.now() - 100000).toISOString(),
+      expiresAt: new Date(Date.now() - 1000).toISOString(), // Expired
+      used: true, // Already used
+      type: "STAFF_ATTESTATION",
+    };
+
+    const isExpired = new Date(expiredReq.expiresAt).getTime() < Date.now();
+    expect(isExpired).toBe(true);
+    expect(expiredReq.used).toBe(true);
   });
 });

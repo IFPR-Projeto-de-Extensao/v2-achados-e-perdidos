@@ -114,6 +114,17 @@ export interface LostFoundItem {
   recipientSignatureEmail?: string;
   recipientSignatureBond?: string;
   recipientSignatureDate?: string;
+  
+  // Staff / Attendant Signature (Phase 1 Data Model Preparation)
+  staffSignatureStatus?: "SIGNED" | "PENDING_STAFF" | "NOT_REQUIRED";
+  staffSignatureMethod?: "DRAWN" | "TYPED_NAME";
+  staffSignatureUrl?: string;
+  staffSignedAt?: string;
+  staffSignerUid?: string;
+  staffSignerName?: string;
+  staffSignerEmail?: string;
+  staffSignatureRequestId?: string;
+
   signatureToken?: string;
   signatureTokenUsed?: boolean;
   signatureTokenExpiresAt?: string;
