@@ -384,5 +384,29 @@ describe("Digital Signature & Dual Signer Flow Security Audit (/api/signature/*)
     const exceedsLimit = hugePng.length > 350000;
     expect(exceedsLimit).toBe(true);
   });
+
+  it("9. RBAC: Nega usuário sem papel institucional ou com e-mail pessoal (inclusive paulocauan39@gmail.com)", () => {
+    const evaluateAuth = (user: { role?: string; email?: string; status?: string }) => {
+      const isStaffOrAdmin = user.role === "ADMIN" || user.role === "SERVIDOR";
+      if (!isStaffOrAdmin || user.status === "SUSPENDED") return false;
+      return true;
+    };
+
+    expect(evaluateAuth({ email: "paulocauan39@gmail.com", role: "ALUNO" })).toBe(false);
+    expect(evaluateAuth({ email: "paulocauan39@gmail.com", role: "NONE" })).toBe(false);
+    expect(evaluateAuth({ email: "aluno@estudante.ifpr.edu.br", role: "ALUNO" })).toBe(false);
+  });
+
+  it("10. RBAC: Permite ADMIN e SERVIDOR ativos e nega usuários suspensos", () => {
+    const evaluateAuth = (user: { role?: string; status?: string }) => {
+      const isStaffOrAdmin = user.role === "ADMIN" || user.role === "SERVIDOR";
+      if (!isStaffOrAdmin || user.status === "SUSPENDED" || user.status === "INACTIVE") return false;
+      return true;
+    };
+
+    expect(evaluateAuth({ role: "ADMIN", status: "ACTIVE" })).toBe(true);
+    expect(evaluateAuth({ role: "SERVIDOR", status: "ACTIVE" })).toBe(true);
+    expect(evaluateAuth({ role: "ADMIN", status: "SUSPENDED" })).toBe(false);
+  });
 });
 

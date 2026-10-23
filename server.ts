@@ -4212,16 +4212,41 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
 // API Endpoint: Confirm and Finalize Staff Attendant Signature (Requires Staff/Admin Authentication)
 app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-signature"], requireAuth, generalRateLimiter, async (req, res) => {
   try {
-    // 🔒 RBAC Check: Only Staff or Admin can sign as staff attendant
-    const isStaffOrAdmin =
-      req.authUser?.role === "ADMIN" ||
-      req.authUser?.role === "SERVIDOR" ||
-      req.authUser?.email === "paulocauan39@gmail.com";
+    // 🔒 RBAC Check: Only active Staff or Admin can sign as staff attendant
+    if (!req.authUser || !req.authUser.uid) {
+      return res.status(401).json({
+        success: false,
+        error: "Autenticação obrigatória. Faça login com sua conta institucional.",
+      });
+    }
+
+    const adminDb = getAdminFirestore();
+    let isStaffOrAdmin = req.authUser.isAdmin || req.authUser.role === "ADMIN" || req.authUser.role === "SERVIDOR";
+
+    if (adminDb) {
+      try {
+        const userDoc = await adminDb.collection("users").doc(req.authUser.uid).get();
+        if (userDoc.exists) {
+          const udata = userDoc.data() || {};
+          if (udata.status === "SUSPENDED" || udata.status === "INACTIVE" || udata.active === false) {
+            return res.status(403).json({
+              success: false,
+              error: "Conta suspensa ou inativa. Acesso negado aos recursos institucionais.",
+            });
+          }
+          if (udata.role === "ADMIN" || udata.role === "SERVIDOR" || udata.isAdmin === true) {
+            isStaffOrAdmin = true;
+          }
+        }
+      } catch (err) {
+        console.warn("[Auth RBAC Warning] Falha ao verificar perfil do usuário no Firestore:", err);
+      }
+    }
 
     if (!isStaffOrAdmin) {
       return res.status(403).json({
         success: false,
-        error: "Acesso negado. Apenas servidores e administradores do IFPR podem registrar a assinatura institucional do atendente.",
+        error: "Acesso negado. Apenas servidores e administradores do IFPR ativos podem executar esta operação.",
       });
     }
 
@@ -4250,7 +4275,6 @@ app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-si
       });
     }
 
-    const adminDb = getAdminFirestore();
     if (!adminDb) {
       return res.status(500).json({
         success: false,
@@ -4354,16 +4378,41 @@ app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-si
 // API Endpoint: Send Remote Digital Signature Request via Email (Requires Staff Authentication)
 app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth, generalRateLimiter, async (req, res) => {
   try {
-    // 🔒 RBAC Check: Only Staff or Admin can request remote signature
-    const isStaffOrAdmin =
-      req.authUser?.role === "ADMIN" ||
-      req.authUser?.role === "SERVIDOR" ||
-      req.authUser?.email === "paulocauan39@gmail.com";
+    // 🔒 RBAC Check: Only active Staff or Admin can request remote signature
+    if (!req.authUser || !req.authUser.uid) {
+      return res.status(401).json({
+        success: false,
+        error: "Autenticação obrigatória. Faça login com sua conta institucional.",
+      });
+    }
+
+    const adminDb = getAdminFirestore();
+    let isStaffOrAdmin = req.authUser.isAdmin || req.authUser.role === "ADMIN" || req.authUser.role === "SERVIDOR";
+
+    if (adminDb) {
+      try {
+        const userDoc = await adminDb.collection("users").doc(req.authUser.uid).get();
+        if (userDoc.exists) {
+          const udata = userDoc.data() || {};
+          if (udata.status === "SUSPENDED" || udata.status === "INACTIVE" || udata.active === false) {
+            return res.status(403).json({
+              success: false,
+              error: "Conta suspensa ou inativa. Acesso negado aos recursos institucionais.",
+            });
+          }
+          if (udata.role === "ADMIN" || udata.role === "SERVIDOR" || udata.isAdmin === true) {
+            isStaffOrAdmin = true;
+          }
+        }
+      } catch (err) {
+        console.warn("[Auth RBAC Warning] Falha ao verificar perfil do usuário no Firestore:", err);
+      }
+    }
 
     if (!isStaffOrAdmin) {
       return res.status(403).json({
         success: false,
-        error: "Acesso negado. Apenas servidores e administradores do IFPR podem despachar termos de assinatura.",
+        error: "Acesso negado. Apenas servidores e administradores do IFPR ativos podem despachar termos de assinatura.",
       });
     }
 
@@ -4376,7 +4425,6 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
       });
     }
 
-    const adminDb = getAdminFirestore();
     if (!adminDb) {
       return res.status(500).json({
         success: false,

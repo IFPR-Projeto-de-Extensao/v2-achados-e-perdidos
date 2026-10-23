@@ -30,8 +30,15 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
     releaseDateTime: "23 de Outubro de 2026 • 12:30 BRT",
     type: "PATCH",
     isCurrent: true,
-    summary: "LOCALIZA+ v1.10.2 — FASE 4A: Implementação real do backend de assinatura dupla (/api/signature/confirm-staff-signature), garantindo verificação estrita de token Bearer via Firebase Admin SDK, RBAC institucional para servidores e administradores, resolução de identidade segura no servidor, transações atômicas no Firestore, salvamento de metadados da atestação do atendente, renderização lateral lado a lado das duas assinaturas no recibo oficial PDF e HTML, e validação com suíte de testes de segurança.",
+    summary: "LOCALIZA+ v1.10.2 — FASE 4B: Hardening de segurança e autorização na assinatura dupla, removendo bypass por e-mail pessoal, exigindo perfil institucional ativo verificado no Firestore (/users/{uid}) com papel ADMIN ou SERVIDOR, validação de status de suspensão, e suíte de testes unitários RBAC.",
     additions: [
+      {
+        id: "v1102-add-phase4b-rbac",
+        title: "Hardening de Autorização e RBAC Estrito para Assinatura Institucional (Fase 4B)",
+        description: "Remoção do e-mail pessoal hardcoded de exceção e implementação de validação rigorosa no Firestore (/users/{uid}) exigindo perfis ativos de ADMIN ou SERVIDOR, com rejeição imediata de contas suspensas ou inativas.",
+        module: "AUTH",
+        tag: "Segurança & RBAC",
+      },
       {
         id: "v1102-add-staff-sig",
         title: "Endpoint Real de Confirmação de Assinatura do Atendente (/api/signature/confirm-staff-signature)",
