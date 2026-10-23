@@ -24,12 +24,57 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.10.2",
+    codename: "Compatibilidade CJS/ESM do Firebase Admin no Runtime Serverless Vercel (ERR_REQUIRE_ESM)",
+    releaseDate: "23/10/2026",
+    releaseDateTime: "23 de Outubro de 2026 • 11:15 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "Resolução definitiva do erro fatal ERR_REQUIRE_ESM ocorrido no ambiente de execução serverless da Vercel ao carregar o Firebase Admin SDK (POST /api/admin/delete-user). A dependência transitiva jwks-rsa@4.1.0 (utilizada pelo firebase-admin@14.2.0 para validação de chaves públicas e tokens JWT) utilizava require('jose'). Como a versão 6 do jose é um pacote puramente ESM sem ponto de entrada CommonJS, runtimes serverless que não habilitam require(esm) lançavam ERR_REQUIRE_ESM ao instanciar o Firebase Admin Auth. A correção implementou a fixação da versão estável e compatível jose@^5.9.6 através da propriedade 'overrides' do npm, garantindo suporte nativo a CommonJS ('require: ./dist/node/cjs/index.js') e ESM simultaneamente sem alterar regras de segurança, código do Firebase Admin ou credenciais.",
+    additions: [
+      {
+        id: "v1102-add-1",
+        title: "Compatibilidade Híbrida CJS/ESM para jose e jwks-rsa",
+        description: "Configuração do mecanismo de 'overrides' no package.json fixando 'jose': '^5.9.6', restabelecendo compatibilidade com require() no módulo jwks-rsa/src/utils.js utilizado pelo Firebase Admin SDK.",
+        module: "VERCEL",
+        tag: "Serverless & Dependências",
+      },
+      {
+        id: "v1102-add-2",
+        title: "Bateria de Smoke Tests sob Modo Restrito sem require(esm)",
+        description: "Execução de testes de inicialização do Firebase Admin SDK e verificação de assinatura com a flag --no-experimental-require-module do Node.js 22, validando respostas 405 (GET) e 401 (POST não autenticado/inválido) sem queda de processo.",
+        module: "ADMIN",
+        tag: "Qualidade & Testes",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1102-fix-1",
+        title: "Eliminação do ERR_REQUIRE_ESM em Funções Serverless",
+        description: "Resolução do crash que impedia o Firebase Admin Auth de verificar tokens JWT de administradores em /api/admin/delete-user e demais rotas autenticadas sob a Vercel.",
+        module: "ADMIN",
+        tag: "Correção Crítica",
+      },
+      {
+        id: "v1102-fix-2",
+        title: "Preservação da Integridade do Firebase Admin SDK v14",
+        description: "Manutenção do firebase-admin v14.2.0 e suas APIs nativas de autenticação (verifyIdToken, getUser, deleteUser) e Firestore sem downgrades destrutivos na aplicação.",
+        module: "FIRESTORE",
+        tag: "Segurança & SDK",
+      },
+    ],
+    stats: {
+      additionsCount: 2,
+      fixesCount: 2,
+    },
+  },
+  {
     version: "v1.10.1",
     codename: "Resolução de Módulos ESM em Funções Serverless Vercel (ERR_MODULE_NOT_FOUND)",
     releaseDate: "23/10/2026",
     releaseDateTime: "23 de Outubro de 2026 • 10:30 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Correção definitiva da falha de resolução de módulos ECMAScript (ERR_MODULE_NOT_FOUND) no endpoint de exclusão administrativa de usuários (POST /api/admin/delete-user) e nas demais rotas serverless da Vercel. Sob o runtime Node.js 22 com 'type: module', o import relativo de módulos locais requer extensão de arquivo explícita (.js). Todos os imports relativos sob /api foram saneados para usar a extensão .js, eliminando o HTTP 500 no carregamento do Firebase Admin SDK e garantindo total integridade na gestão de usuários sem alterar regras de segurança ou credenciais.",
     additions: [
       {
