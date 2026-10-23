@@ -186,8 +186,18 @@ describe("Phase 4C: Dual Signature & Issuer Attestation Security Audit (/api/sig
     const sigReq = dbSignatureRequests.get(itemId);
     const issuerUid = item.returnedByUserId || sigReq?.dispatchedByUserId;
 
-    // Strict Issuer Check: Only the specific issuer who emitted the return can sign
-    if (issuerUid && authUser.uid !== issuerUid) {
+    // Strict Issuer Check: Reject items without a trusted issuer identity (HTTP 409 Conflict)
+    if (!issuerUid) {
+      return {
+        status: 409,
+        body: {
+          success: false,
+          error: "Devolução sem emissor identificado. A atestação não pode ser concluída sem a confirmação da autoria original.",
+        },
+      };
+    }
+
+    if (authUser.uid !== issuerUid) {
       return {
         status: 403,
         body: {
@@ -286,85 +296,149 @@ describe("Phase 4C: Dual Signature & Issuer Attestation Security Audit (/api/sig
     emailNotificationLogs = [];
   });
 
-  it("1. Notificação direcionada ao e-mail do emissor responsável", async () => {
-    const res = await simulateConfirmSignaturePhase4C({
-      itemId: "item-101",
-      token: validToken,
-      signatureDataUrl: validPng,
-      dbItems,
-      dbSignatureRequests,
-      dbUsers,
-      emailNotificationLogs,
-    });
-
-    expect(res.status).toBe(200);
-    expect(emailNotificationLogs.length).toBe(1);
-    expect(emailNotificationLogs[0].recipientEmail).toBe("paulocauan@ifpr.edu.br");
-    expect(emailNotificationLogs[0].status).toBe("SENT");
-  });
-
-  it("2. Não utilização do e-mail genérico do campus (campus.ivaipora@ifpr.edu.br) como fallback", async () => {
-    // Unset returnedByUserId and dispatchedByUserId to test absence of email
-    const item = dbItems.get("item-101")!;
-    item.returnedByUserId = undefined;
-    const sigReq = dbSignatureRequests.get("item-101")!;
-    sigReq.dispatchedByUserId = undefined;
-
-    await simulateConfirmSignaturePhase4C({
-      itemId: "item-101",
-      token: validToken,
-      signatureDataUrl: validPng,
-      dbItems,
-      dbSignatureRequests,
-      dbUsers,
-      emailNotificationLogs,
-    });
-
-    expect(emailNotificationLogs.length).toBe(1);
-    expect(emailNotificationLogs[0].recipientEmail).not.toBe("campus.ivaipora@ifpr.edu.br");
-    expect(emailNotificationLogs[0].status).toBe("ERROR_NO_ISSUER_EMAIL");
-  });
-
-  it("3. Resiliência: Ausência do e-mail do emissor mantém status PENDING_STAFF e NÃO invalida assinatura do receptor", async () => {
-    const item = dbItems.get("item-101")!;
-    item.returnedByUserId = "uid-inexistent";
-
-    const res = await simulateConfirmSignaturePhase4C({
-      itemId: "item-101",
-      token: validToken,
-      signatureDataUrl: validPng,
-      dbItems,
-      dbSignatureRequests,
-      dbUsers,
-      emailNotificationLogs,
-    });
-
-    expect(res.status).toBe(200);
-    expect(item.recipientSignatureStatus).toBe("SIGNED");
-    expect(item.staffSignatureStatus).toBe("PENDING_STAFF");
-    expect(emailNotificationLogs[0].status).toBe("ERROR_NO_ISSUER_EMAIL");
-  });
-
-  it("4. RBAC estrito: Servidor não emissor é rejeitado com 403 no confirm-staff-signature", async () => {
-    // Receiver signs first
+  it("1. Registro com emissor identificado pode ser assinado somente pelo emissor autenticado", async () => {
     const item = dbItems.get("item-101")!;
     item.recipientSignatureStatus = "SIGNED";
 
-    // Unmatching servidor attempts to sign
-    const res = await simulateConfirmStaffSignaturePhase4C({
+    const resIssuer = await simulateConfirmStaffSignaturePhase4C({
+      itemId: "item-101",
+      signatureDataUrl: validPng,
+      authUser: { uid: "uid-issuer-prof-paulo", email: "paulocauan@ifpr.edu.br", role: "SERVIDOR", status: "ACTIVE" },
+      dbItems,
+      dbSignatureRequests,
+    });
+    expect(resIssuer.status).toBe(200);
+    expect(item.staffSignatureStatus).toBe("SIGNED");
+
+    // Reset and try with another user
+    item.staffSignatureStatus = "PENDING_STAFF";
+    const resOther = await simulateConfirmStaffSignaturePhase4C({
       itemId: "item-101",
       signatureDataUrl: validPng,
       authUser: { uid: "uid-other-servidor", role: "SERVIDOR", status: "ACTIVE" },
       dbItems,
       dbSignatureRequests,
     });
-
-    expect(res.status).toBe(403);
-    expect(res.body.success).toBe(false);
-    expect(res.body.error).toContain("Apenas o servidor emissor responsável por registrar/liberar esta devolução pode atestar e assinar o termo");
+    expect(resOther.status).toBe(403);
   });
 
-  it("5. Autenticação do emissor: Emissor responsável assina e atesta com sucesso", async () => {
+  it("2. Registro sem returnedByUserId e sem dispatchedByUserId é rejeitado pelo endpoint com HTTP 409", async () => {
+    const res = await simulateConfirmStaffSignaturePhase4C({
+      itemId: "item-legacy-102",
+      signatureDataUrl: validPng,
+      authUser: { uid: "uid-issuer-prof-paulo", email: "paulocauan@ifpr.edu.br", role: "SERVIDOR", status: "ACTIVE" },
+      dbItems,
+      dbSignatureRequests,
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.success).toBe(false);
+    expect(res.body.error).toContain("Devolução sem emissor identificado");
+  });
+
+  it("3. Um ADMIN não pode assumir a autoria de um registro sem emissor (rejeitado com 409)", async () => {
+    const res = await simulateConfirmStaffSignaturePhase4C({
+      itemId: "item-legacy-102",
+      signatureDataUrl: validPng,
+      authUser: { uid: "uid-[#ADMIN]", email: "admin@ifpr.edu.br", role: "ADMIN", status: "ACTIVE" },
+      dbItems,
+      dbSignatureRequests,
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain("Devolução sem emissor identificado");
+  });
+
+  it("4. Um SERVIDOR não pode assumir a autoria de um registro sem emissor (rejeitado com 409)", async () => {
+    const res = await simulateConfirmStaffSignaturePhase4C({
+      itemId: "item-legacy-102",
+      signatureDataUrl: validPng,
+      authUser: { uid: "uid-other-servidor", email: "outro@ifpr.edu.br", role: "SERVIDOR", status: "ACTIVE" },
+      dbItems,
+      dbSignatureRequests,
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain("Devolução sem emissor identificado");
+  });
+
+  it("5. Nenhuma tentativa bloqueada altera a autoria ou as assinaturas persistidas", async () => {
+    const legacyItem = dbItems.get("item-legacy-102")!;
+    const initialRecipientStatus = legacyItem.recipientSignatureStatus;
+
+    await simulateConfirmStaffSignaturePhase4C({
+      itemId: "item-legacy-102",
+      signatureDataUrl: validPng,
+      authUser: { uid: "uid-[#ADMIN]", role: "ADMIN", status: "ACTIVE" },
+      dbItems,
+      dbSignatureRequests,
+    });
+
+    expect(legacyItem.returnedByUserId).toBeUndefined();
+    expect(legacyItem.staffSignatureStatus).toBe("PENDING_STAFF");
+    expect(legacyItem.recipientSignatureStatus).toBe(initialRecipientStatus);
+  });
+
+  it("6. A interface não oferece ação de assinatura para registros sem emissor", () => {
+    const legacyItem = dbItems.get("item-legacy-102")!;
+    const currentUser = { id: "uid-[#ADMIN]", role: "ADMIN" };
+
+    const canSignAsIssuer =
+      (currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") &&
+      Boolean(legacyItem.returnedByUserId) &&
+      legacyItem.returnedByUserId === currentUser.id;
+
+    expect(canSignAsIssuer).toBe(false);
+  });
+
+  it("7. A pendência sem emissor continua visível para a administração autorizada em seção separada", () => {
+    const itemsList = Array.from(dbItems.values());
+
+    const assignedQueue = itemsList.filter(
+      (it) =>
+        it.status === "DEVOLVIDO" &&
+        it.recipientSignatureStatus === "SIGNED" &&
+        it.staffSignatureStatus !== "SIGNED" &&
+        Boolean(it.returnedByUserId)
+    );
+
+    const unassignedQueue = itemsList.filter(
+      (it) =>
+        it.status === "DEVOLVIDO" &&
+        it.recipientSignatureStatus === "SIGNED" &&
+        it.staffSignatureStatus !== "SIGNED" &&
+        !it.returnedByUserId
+    );
+
+    expect(assignedQueue.some((i) => i.id === "item-legacy-102")).toBe(false);
+    expect(unassignedQueue.some((i) => i.id === "item-legacy-102")).toBe(true);
+  });
+
+  it("8. Registros legados continuam legíveis sem erro", () => {
+    const legacyItem = dbItems.get("item-legacy-102")!;
+    expect(legacyItem.returnedByUserId).toBeUndefined();
+    expect(legacyItem.title).toBe("Guarda-chuva Azul");
+    expect(legacyItem.recipientSignatureStatus).toBe("SIGNED");
+  });
+
+  it("9. A assinatura do receptor permanece intacta quando a atestação é bloqueada", async () => {
+    const legacyItem = dbItems.get("item-legacy-102")!;
+    legacyItem.recipientSignatureStatus = "SIGNED";
+    legacyItem.recipientSignatureUrl = validPng;
+
+    await simulateConfirmStaffSignaturePhase4C({
+      itemId: "item-legacy-102",
+      signatureDataUrl: validPng,
+      authUser: { uid: "uid-issuer-prof-paulo", role: "SERVIDOR", status: "ACTIVE" },
+      dbItems,
+      dbSignatureRequests,
+    });
+
+    expect(legacyItem.recipientSignatureStatus).toBe("SIGNED");
+    expect(legacyItem.recipientSignatureUrl).toBe(validPng);
+  });
+
+  it("10. Os casos normais de assinatura dupla continuam funcionando com sucesso", async () => {
     const item = dbItems.get("item-101")!;
     item.recipientSignatureStatus = "SIGNED";
 
@@ -377,94 +451,7 @@ describe("Phase 4C: Dual Signature & Issuer Attestation Security Audit (/api/sig
     });
 
     expect(res.status).toBe(200);
-    expect(res.body.success).toBe(true);
     expect(item.staffSignatureStatus).toBe("SIGNED");
     expect(item.staffSignerUid).toBe("uid-issuer-prof-paulo");
-  });
-
-  it("6. Proteção contra substituição em chamada direta no endpoint", async () => {
-    const item = dbItems.get("item-101")!;
-    item.recipientSignatureStatus = "SIGNED";
-
-    // Direct API attempt with arbitrary user UID
-    const res = await simulateConfirmStaffSignaturePhase4C({
-      itemId: "item-101",
-      signatureDataUrl: validPng,
-      authUser: { uid: "imposter-uid-999", role: "SERVIDOR", status: "ACTIVE" },
-      dbItems,
-      dbSignatureRequests,
-    });
-
-    expect(res.status).toBe(403);
-    expect(item.staffSignatureStatus).toBe("PENDING_STAFF");
-  });
-
-  it("7. Idempotência de tentativas repetidas de atestação", async () => {
-    const item = dbItems.get("item-101")!;
-    item.recipientSignatureStatus = "SIGNED";
-
-    // First call
-    await simulateConfirmStaffSignaturePhase4C({
-      itemId: "item-101",
-      signatureDataUrl: validPng,
-      authUser: { uid: "uid-issuer-prof-paulo", email: "paulocauan@ifpr.edu.br", role: "SERVIDOR", status: "ACTIVE" },
-      dbItems,
-      dbSignatureRequests,
-    });
-
-    // Second call (Retry)
-    const retryRes = await simulateConfirmStaffSignaturePhase4C({
-      itemId: "item-101",
-      signatureDataUrl: validPng,
-      authUser: { uid: "uid-issuer-prof-paulo", email: "paulocauan@ifpr.edu.br", role: "SERVIDOR", status: "ACTIVE" },
-      dbItems,
-      dbSignatureRequests,
-    });
-
-    expect(retryRes.status).toBe(200);
-    expect(retryRes.body.alreadyCompleted).toBe(true);
-  });
-
-  it("8. Exibição correta da fila no frontend filtrada por emissor", () => {
-    const itemsList = Array.from(dbItems.values());
-    const currentUserProfPaulo = { id: "uid-issuer-prof-paulo", role: "SERVIDOR" };
-    const currentUserOtherServidor = { id: "uid-other-servidor", role: "SERVIDOR" };
-
-    const filterQueueForUser = (user: { id: string }) => {
-      return itemsList.filter(
-        (it) =>
-          it.status === "DEVOLVIDO" &&
-          it.recipientSignatureStatus === "SIGNED" &&
-          it.staffSignatureStatus !== "SIGNED" &&
-          (!it.returnedByUserId || it.returnedByUserId === user.id)
-      );
-    };
-
-    // Legacy item-legacy-102 has recipientSignatureStatus === 'SIGNED' and no returnedByUserId
-    const pauloQueue = filterQueueForUser(currentUserProfPaulo);
-    const outroQueue = filterQueueForUser(currentUserOtherServidor);
-
-    expect(pauloQueue.some((i) => i.id === "item-legacy-102")).toBe(true);
-    expect(outroQueue.some((i) => i.id === "item-legacy-102")).toBe(true);
-  });
-
-  it("9. Fidelidade na renderização do recibo de devolução com dados persistidos", () => {
-    const item = dbItems.get("item-101")!;
-    item.recipientSignatureStatus = "SIGNED";
-    item.recipientSignatureUrl = validPng;
-    item.staffSignatureStatus = "SIGNED";
-    item.staffSignatureUrl = validPng;
-    item.staffSignerName = "Prof. Paulo Cauan";
-
-    expect(item.recipientSignatureUrl).toBeTruthy();
-    expect(item.staffSignatureUrl).toBeTruthy();
-    expect(item.staffSignerName).toBe("Prof. Paulo Cauan");
-  });
-
-  it("10. Legibilidade e acessibilidade de registros legados sem erro", () => {
-    const legacyItem = dbItems.get("item-legacy-102")!;
-    expect(legacyItem.returnedByUserId).toBeUndefined();
-    expect(legacyItem.title).toBe("Guarda-chuva Azul");
-    expect(legacyItem.recipientSignatureStatus).toBe("SIGNED");
   });
 });

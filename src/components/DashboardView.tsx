@@ -186,16 +186,28 @@ export const DashboardView: React.FC = () => {
     "users" | "accounts" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "test_batteries" | "test_distribution" | "custody_reminders" | "digital_returns" | "pending_signatures"
   >("users");
 
-  // Items with pending institutional staff signature (filtered strictly per issuer)
+  // Items with pending institutional staff signature (filtered strictly per identified issuer)
   const pendingSignaturesItems = items.filter(
     (it) =>
       it &&
       it.status === "DEVOLVIDO" &&
       it.recipientSignatureStatus === "SIGNED" &&
       it.staffSignatureStatus !== "SIGNED" &&
-      (!it.returnedByUserId || it.returnedByUserId === currentUser.id)
+      Boolean(it.returnedByUserId) &&
+      it.returnedByUserId === currentUser.id
   );
   const pendingSignaturesCount = pendingSignaturesItems.length;
+
+  // Items with pending staff signature where issuer is NOT assigned/identified
+  const unassignedPendingSignaturesItems = items.filter(
+    (it) =>
+      it &&
+      it.status === "DEVOLVIDO" &&
+      it.recipientSignatureStatus === "SIGNED" &&
+      it.staffSignatureStatus !== "SIGNED" &&
+      !it.returnedByUserId
+  );
+  const unassignedPendingSignaturesCount = unassignedPendingSignaturesItems.length;
 
   // Items returned with digital signature count
   const digitalReturnedItemsCount = items.filter(
@@ -3282,6 +3294,76 @@ export const DashboardView: React.FC = () => {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+
+                {/* Section for Unassigned Pending Signatures (Missing Issuer) */}
+                {unassignedPendingSignaturesItems.length > 0 && (
+                  <div className="pt-6 border-t border-neutral-200 dark:border-neutral-800 space-y-4">
+                    <div className="flex items-center space-x-2 text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="w-5 h-5 shrink-0" />
+                      <div>
+                        <h3 className="text-sm font-extrabold uppercase tracking-wide">
+                          Devoluções Pendentes Sem Emissor Identificado ({unassignedPendingSignaturesCount})
+                        </h3>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                          Devoluções com assinatura do receptor que não possuem servidor emissor registrado. A atestação está bloqueada até a verificação da autoria original.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto rounded-2xl border border-amber-500/30 bg-amber-500/5 p-1">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-amber-500/10 text-amber-900 dark:text-amber-200 uppercase font-extrabold text-[10px]">
+                          <tr>
+                            <th className="p-3.5">Objeto / Identificador</th>
+                            <th className="p-3.5">Receptor</th>
+                            <th className="p-3.5">Status Autoria</th>
+                            <th className="p-3.5">Data Recibo</th>
+                            <th className="p-3.5 text-right">Ação</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-amber-500/10">
+                          {unassignedPendingSignaturesItems.map((item) => (
+                            <tr key={item.id} className="hover:bg-amber-500/10 transition-colors">
+                              <td className="p-3.5 font-bold text-neutral-900 dark:text-white">
+                                <div>{item.title}</div>
+                                <div className="text-[10px] font-mono text-neutral-400">#{item.id} • {item.category}</div>
+                              </td>
+                              <td className="p-3.5">
+                                <div className="font-bold text-neutral-800 dark:text-neutral-200">
+                                  {item.recipientName || item.recipientSignatureName || "Receptor"}
+                                </div>
+                                <div className="text-[10px] text-neutral-500">
+                                  {item.recipientBond || "Aluno(a)"}
+                                </div>
+                              </td>
+                              <td className="p-3.5">
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                                  <AlertTriangle className="w-3 h-3" />
+                                  <span>Emissor Não Identificado</span>
+                                </span>
+                              </td>
+                              <td className="p-3.5 font-mono text-neutral-600 dark:text-neutral-400">
+                                <div>{formatDate(item.signedAt || item.resolutionDate || item.date)}</div>
+                              </td>
+                              <td className="p-3.5 text-right whitespace-nowrap">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    vibrateClick();
+                                    setSelectedItemForDetail(item);
+                                  }}
+                                  className="px-3.5 py-1.5 rounded-xl bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-extrabold text-xs transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
+                                >
+                                  <span>Verificar Detalhes</span>
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </div>

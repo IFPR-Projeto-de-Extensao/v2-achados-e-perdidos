@@ -4458,7 +4458,12 @@ app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-si
         }
       }
 
-      if (issuerUid && signerUid !== issuerUid) {
+      // Devoluções sem emissor confiável não podem ser atestadas por terceiros
+      if (!issuerUid) {
+        throw new Error("MISSING_ISSUER_IDENTITY");
+      }
+
+      if (signerUid !== issuerUid) {
         throw new Error("UNAUTHORIZED_ISSUER_ONLY");
       }
 
@@ -4492,9 +4497,9 @@ app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-si
         staffSignerUid: signerUid,
         staffSignerName: signerName,
         staffSignerEmail: signerEmail,
-        returnedByUserId: signerUid,
-        returnedByName: signerName,
-        returnedByRole: "SERVIDOR",
+        returnedByUserId: issuerUid,
+        returnedByName: itemData.returnedByName || signerName,
+        returnedByRole: itemData.returnedByRole || "SERVIDOR",
         history: [...existingHistory, newHistoryLog],
         historyLogs: [...existingHistory, newHistoryLog],
       });
@@ -4513,6 +4518,12 @@ app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-si
   } catch (error: any) {
     if (error?.message === "ITEM_NOT_FOUND") {
       return res.status(404).json({ success: false, error: "Ocorrência não encontrada no Firestore." });
+    }
+    if (error?.message === "MISSING_ISSUER_IDENTITY") {
+      return res.status(409).json({
+        success: false,
+        error: "Devolução sem emissor identificado. A atestação não pode ser concluída sem a confirmação da autoria original.",
+      });
     }
     if (error?.message === "UNAUTHORIZED_ISSUER_ONLY") {
       return res.status(403).json({

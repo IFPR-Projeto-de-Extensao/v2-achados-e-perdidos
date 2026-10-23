@@ -1855,12 +1855,33 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               </div>
             )}
 
-            {/* Staff Signature Attestation Button (When Recipient Signed and Staff Pending) */}
+            {/* Staff Signature Attestation Banner — Blocked when Issuer Unidentified */}
+            {currentItem.status === "DEVOLVIDO" &&
+              currentItem.recipientSignatureStatus === "SIGNED" &&
+              currentItem.staffSignatureStatus !== "SIGNED" &&
+              !currentItem.returnedByUserId && (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+                  <div className="flex items-center space-x-2 text-amber-900 dark:text-amber-200">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <div>
+                      <h4 className="font-extrabold text-xs uppercase tracking-wider">
+                        Atestação Bloqueada — Emissor Não Identificado
+                      </h4>
+                      <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                        Esta devolução não possui o servidor emissor registrado no sistema. Por segurança e auditoria, a atestação está bloqueada para impedir a atribuição retroativa não comprovada.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            {/* Staff Signature Attestation Button (When Recipient Signed and Staff Pending & Issuer Matches) */}
             {currentItem.status === "DEVOLVIDO" &&
               currentItem.recipientSignatureStatus === "SIGNED" &&
               currentItem.staffSignatureStatus !== "SIGNED" &&
               (currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") &&
-              (!currentItem.returnedByUserId || currentItem.returnedByUserId === currentUser.id) && (
+              Boolean(currentItem.returnedByUserId) &&
+              currentItem.returnedByUserId === currentUser.id && (
                 <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-3">
                   <div className="flex items-center space-x-2 text-amber-900 dark:text-amber-200">
                     <FileSignature className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
