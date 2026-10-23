@@ -4209,6 +4209,148 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
   }
 });
 
+// API Endpoint: Confirm and Finalize Staff Attendant Signature (Requires Staff/Admin Authentication)
+app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-signature"], requireAuth, generalRateLimiter, async (req, res) => {
+  try {
+    // 🔒 RBAC Check: Only Staff or Admin can sign as staff attendant
+    const isStaffOrAdmin =
+      req.authUser?.role === "ADMIN" ||
+      req.authUser?.role === "SERVIDOR" ||
+      req.authUser?.email === "paulocauan39@gmail.com";
+
+    if (!isStaffOrAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: "Acesso negado. Apenas servidores e administradores do IFPR podem registrar a assinatura institucional do atendente.",
+      });
+    }
+
+    const { itemId, signatureDataUrl, signatureMethod } = req.body || {};
+
+    if (!itemId || !signatureDataUrl || typeof itemId !== "string" || typeof signatureDataUrl !== "string") {
+      return res.status(400).json({
+        success: false,
+        error: "Parâmetros obrigatórios ausentes ou inválidos (itemId, signatureDataUrl).",
+      });
+    }
+
+    // Payload size check (~250KB limit)
+    if (signatureDataUrl.length > 350000) {
+      return res.status(400).json({
+        success: false,
+        error: "A imagem da assinatura excede o limite máximo permitido de 250KB.",
+      });
+    }
+
+    const base64ImageRegex = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/;
+    if (!base64ImageRegex.test(signatureDataUrl.trim())) {
+      return res.status(400).json({
+        success: false,
+        error: "Payload da assinatura inválido. A imagem deve estar no formato Base64 (PNG, JPEG ou WEBP).",
+      });
+    }
+
+    const adminDb = getAdminFirestore();
+    if (!adminDb) {
+      return res.status(500).json({
+        success: false,
+        error: "Banco de dados Firestore Admin indisponível no momento.",
+      });
+    }
+
+    const docRef = adminDb.collection("items").doc(itemId);
+    const nowIso = new Date().toISOString();
+    const signerUid = req.authUser!.uid;
+    const signerEmail = req.authUser!.email || "servidor@ifpr.edu.br";
+    
+    // Server-trusted identity resolution from Firestore user profile if available, else auth token
+    let signerName = req.authUser!.email?.split("@")[0] || "Servidor IFPR";
+    try {
+      const userDoc = await adminDb.collection("users").doc(signerUid).get();
+      if (userDoc.exists) {
+        const udata = userDoc.data();
+        if (udata?.name) {
+          signerName = udata.name;
+        }
+      }
+    } catch {}
+
+    let isIdempotent = false;
+    let itemTitle = "";
+
+    await adminDb.runTransaction(async (transaction) => {
+      const docSnap = await transaction.get(docRef);
+      if (!docSnap.exists) {
+        throw new Error("ITEM_NOT_FOUND");
+      }
+
+      const itemData = docSnap.data() || {};
+      itemTitle = itemData.title || itemId;
+
+      // Recipient signature must be completed first
+      if (itemData.recipientSignatureStatus !== "SIGNED") {
+        throw new Error("RECIPIENT_SIGNATURE_PENDING");
+      }
+
+      // Check if staff signature is already completed
+      if (itemData.staffSignatureStatus === "SIGNED" && itemData.staffSignatureUrl) {
+        isIdempotent = true;
+        return;
+      }
+
+      const existingHistory = itemData.history || itemData.historyLogs || [];
+      const newHistoryLog = {
+        id: `hist-staff-sig-${Date.now()}`,
+        action: "Assinatura Institucional do Atendente Concluída",
+        actorId: signerUid,
+        actorName: signerName,
+        actorRole: "SERVIDOR",
+        timestamp: nowIso,
+        details: `Servidor ${signerName} (${signerEmail}) atestou e assinou digitalmente a devolução do item #${itemId}.`,
+      };
+
+      transaction.update(docRef, {
+        staffSignatureStatus: "SIGNED",
+        staffSignatureMethod: signatureMethod || (signatureDataUrl.includes("type") ? "TYPED_NAME" : "DRAWN"),
+        staffSignatureUrl: signatureDataUrl,
+        staffSignedAt: nowIso,
+        staffSignerUid: signerUid,
+        staffSignerName: signerName,
+        staffSignerEmail: signerEmail,
+        returnedByUserId: signerUid,
+        returnedByName: signerName,
+        returnedByRole: "SERVIDOR",
+        history: [...existingHistory, newHistoryLog],
+        historyLogs: [...existingHistory, newHistoryLog],
+      });
+    });
+
+    console.info(`[Staff Signature Success] Servidor ${signerName} assinou com sucesso a devolução do item #${itemId}.`);
+
+    return res.json({
+      success: true,
+      alreadyCompleted: isIdempotent,
+      message: isIdempotent ? "Assinatura do atendente já estava registrada." : "Assinatura do atendente registrada com sucesso no banco de dados.",
+      staffSignedAt: nowIso,
+      staffSignerName: signerName,
+      staffSignatureUrl: signatureDataUrl,
+    });
+  } catch (error: any) {
+    if (error?.message === "ITEM_NOT_FOUND") {
+      return res.status(404).json({ success: false, error: "Ocorrência não encontrada no Firestore." });
+    }
+    if (error?.message === "RECIPIENT_SIGNATURE_PENDING") {
+      return res.status(400).json({ success: false, error: "A assinatura do receptor deve ser concluída antes da atestação do atendente." });
+    }
+
+    console.error("Erro ao registrar assinatura do atendente:", error?.message || error);
+    return res.status(500).json({
+      success: false,
+      error: "Erro interno ao registrar assinatura do atendente no banco de dados.",
+    });
+  }
+});
+
 // API Endpoint: Send Remote Digital Signature Request via Email (Requires Staff Authentication)
 app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth, generalRateLimiter, async (req, res) => {
   try {

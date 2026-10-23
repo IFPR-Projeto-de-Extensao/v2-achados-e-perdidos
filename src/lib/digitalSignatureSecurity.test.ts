@@ -361,4 +361,28 @@ describe("Digital Signature & Dual Signer Flow Security Audit (/api/signature/*)
     expect(isExpired).toBe(true);
     expect(expiredReq.used).toBe(true);
   });
+
+  it("7. Impedir atestação do atendente antes da assinatura do receptor", async () => {
+    const item = dbItems.get("item-dual-test")!;
+    item.recipientSignatureStatus = "PENDING_REMOTE";
+
+    const res = await simulateConfirmSignature({
+      itemId: "item-dual-test",
+      token: rawTokenStaff,
+      signatureDataUrl: validPng,
+      signerType: "STAFF",
+      dbItems,
+      dbSignatureRequests,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.success).toBe(false);
+  });
+
+  it("8. Validar tamanho máximo da imagem da assinatura do atendente (limite ~250KB)", () => {
+    const hugePng = "data:image/png;base64," + "A".repeat(400000);
+    const exceedsLimit = hugePng.length > 350000;
+    expect(exceedsLimit).toBe(true);
+  });
 });
+

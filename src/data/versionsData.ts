@@ -25,19 +25,26 @@ export interface AppVersion {
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
     version: "v1.10.2",
-    codename: "Compatibilidade CJS/ESM do Firebase Admin no Runtime Serverless Vercel (ERR_REQUIRE_ESM)",
+    codename: "Implementação Real da Assinatura Dupla (Receptor + Servidor Atendente)",
     releaseDate: "23/10/2026",
-    releaseDateTime: "23 de Outubro de 2026 • 11:15 BRT",
+    releaseDateTime: "23 de Outubro de 2026 • 12:30 BRT",
     type: "PATCH",
     isCurrent: true,
-    summary: "Correção integrada da devolução e assinatura digital (v1.10.2). Implementação do despacho real de e-mail com Nodemailer e relatório transparente de status SMTP; correção do envio com token de autorização Bearer no AppContext; isolamento dos dados do receptor (nome, e-mail, vínculo institucional e documento) no comprovante de devolução, evitando substituição pelos dados do servidor atendente; suporte robusto a desenho touch em dispositivos móveis Android via listeners não-passivos e validação de densidade mínima de traços; suporte a assinaturas manuscritas e por nome digitado com acentuação em português (fonte Caveat); persistência e retorno de recipientSignatureUrl em /api/signature/verify-token e confirm-signature com integridade pós-reload (F5); e suíte completa de 16 cenários de teste de segurança e conformidade.",
+    summary: "LOCALIZA+ v1.10.2 — FASE 4A: Implementação real do backend de assinatura dupla (/api/signature/confirm-staff-signature), garantindo verificação estrita de token Bearer via Firebase Admin SDK, RBAC institucional para servidores e administradores, resolução de identidade segura no servidor, transações atômicas no Firestore, salvamento de metadados da atestação do atendente, renderização lateral lado a lado das duas assinaturas no recibo oficial PDF e HTML, e validação com suíte de testes de segurança.",
     additions: [
       {
-        id: "v1102-add-1",
-        title: "Compatibilidade Híbrida CJS/ESM para jose e jwks-rsa",
-        description: "Configuração do mecanismo de 'overrides' no package.json fixando 'jose': '^5.9.6', restabelecendo compatibilidade com require() no módulo jwks-rsa/src/utils.js utilizado pelo Firebase Admin SDK.",
-        module: "VERCEL",
-        tag: "Serverless & Dependências",
+        id: "v1102-add-staff-sig",
+        title: "Endpoint Real de Confirmação de Assinatura do Atendente (/api/signature/confirm-staff-signature)",
+        description: "Implementação da rota no servidor Express exigindo autenticação Firebase Admin, validação estrita de papel institucional (SERVIDOR ou ADMIN), verificação de que a assinatura do receptor já foi concluída, e gravação atômica via transação Firestore.",
+        module: "ADMIN",
+        tag: "Segurança & Backend",
+      },
+      {
+        id: "v1102-add-dual-receipt",
+        title: "Renderização Lado a Lado da Assinatura Dupla no Recibo",
+        description: "Atualização dos recibos em PDF e HTML para exibir simultaneamente a assinatura digital do receptor (comprovante de recebimento) e a assinatura institucional do atendente/servidor responsável (atestação).",
+        module: "DOCUMENTOS",
+        tag: "Recibos & PDF",
       },
       {
         id: "v1102-add-2",
