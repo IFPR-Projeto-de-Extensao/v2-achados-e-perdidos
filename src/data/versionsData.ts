@@ -24,14 +24,40 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.10.3",
+    codename: "Liberação do Módulo de Assinaturas e Custódia para Servidores",
+    releaseDate: "24/10/2026",
+    releaseDateTime: "24 de Outubro de 2026 • 09:00 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "LOCALIZA+ v1.10.3 — Ampliação cirúrgica da interface operacional em DashboardView para disponibilizar a categoria 'Custódia & Devoluções' e a sub-aba 'Assinaturas Pendentes' aos usuários com perfil SERVIDOR. Otimização do controle de abas e preservação estrita das restrições administrativas globais (usuários, auditoria, backups e configurações) exclusivas para Administradores TI.",
+    additions: [
+      {
+        id: "v1103-add-server-signature-access",
+        title: "Acesso Operacional a Custódia e Assinaturas Pendentes para Servidores",
+        description: "Habilitação do bloco de gestão de custódia e assinaturas na interface de servidores (TAE e Docentes), permitindo atestação institucional de devoluções sem necessidade de privilégios globais de ADMIN.",
+        module: "ADMIN",
+        tag: "RBAC & Interface",
+      },
+    ],
+    bugFixes: [],
+  },
+  {
     version: "v1.10.2",
     codename: "Implementação Real da Assinatura Dupla (Receptor + Servidor Atendente)",
     releaseDate: "23/10/2026",
     releaseDateTime: "23 de Outubro de 2026 • 12:30 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "LOCALIZA+ v1.10.2 — FASE 4C: Implementação e integração completa do fluxo operacional de assinatura dupla (Receptor + Servidor Atendente). Registro atômico de staffSignatureStatus: PENDING_STAFF na confirmação do receptor, envio resiliente de notificação por e-mail ao atendente, fila de Assinaturas Pendentes no painel administrativo, modal de atestação com captura de assinatura no frontend, renderização dupla nos recibos PDF/HTML e validação completa na bateria de testes.",
     additions: [
+      {
+        id: "v1102-add-server-signature-visibility",
+        title: "Liberação do Módulo de Custódia e Assinaturas Pendentes para Perfil SERVIDOR",
+        description: "Ampliação cirúrgica da interface em DashboardView para permitir que usuários com perfil SERVIDOR acessem a categoria 'Custódia & Devoluções' e a sub-aba 'Assinaturas Pendentes', preservando todas as restrições administrativas globais (usuários, auditoria, backups e configurações) exclusivas de ADMIN.",
+        module: "ADMIN",
+        tag: "RBAC & Interface",
+      },
       {
         id: "v1102-add-real-smtp-devolution",
         title: "Envio SMTP Real na Automação de Devolução (/api/automation/notify-item-returned)",

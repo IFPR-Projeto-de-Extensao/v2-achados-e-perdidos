@@ -186,6 +186,15 @@ export const DashboardView: React.FC = () => {
     "users" | "accounts" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "test_batteries" | "test_distribution" | "custody_reminders" | "digital_returns" | "pending_signatures"
   >("users");
 
+  useEffect(() => {
+    if (currentUser.role === "SERVIDOR") {
+      const allowedTabs = ["pending_signatures", "custody_reminders", "digital_returns"];
+      if (!allowedTabs.includes(adminSubTab)) {
+        setAdminSubTab("pending_signatures");
+      }
+    }
+  }, [currentUser.role, adminSubTab]);
+
   // Items with pending institutional staff signature (filtered strictly per identified issuer)
   const pendingSignaturesItems = items.filter(
     (it) =>
@@ -1665,21 +1674,21 @@ export const DashboardView: React.FC = () => {
       )}
 
       {/* ========================================================================= */}
-      {/* 3. MÓDULO ADMINISTRADOR (TI / Gestão Exclusiva) */}
+      {/* 3. MÓDULO ADMINISTRADOR & OPERACIONAL DE CUSTÓDIA */}
       {/* ========================================================================= */}
-      {activeDashboardRole === "ADMIN" && (
+      {(activeDashboardRole === "ADMIN" || currentUser.role === "SERVIDOR") && (
         <div className="space-y-8 animate-in fade-in duration-200">
-          {currentUser.role !== "ADMIN" ? (
+          {currentUser.role !== "ADMIN" && currentUser.role !== "SERVIDOR" ? (
             <div className="bg-red-500/10 border border-red-500/20 rounded-3xl p-8 text-center space-y-4">
               <div className="w-12 h-12 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center mx-auto">
                 <Lock className="w-6 h-6" />
               </div>
               <div className="space-y-1">
                 <h3 className="text-base font-black text-neutral-900 dark:text-white">
-                  Acesso Restrito a Administradores TI
+                  Acesso Restrito
                 </h3>
                 <p className="text-xs text-neutral-500 max-w-md mx-auto">
-                  Sua conta atual ({currentUser.email}) possui permissão de <strong>{currentUser.role}</strong>. Apenas usuários autenticados como ADMINISTRADOR podem executar ações de gerenciamento.
+                  Sua conta atual ({currentUser.email}) possui permissão de <strong>{currentUser.role}</strong>. Apenas servidores e administradores autenticados podem acessar o módulo de custódia e assinaturas.
                 </p>
               </div>
             </div>
@@ -1723,34 +1732,36 @@ export const DashboardView: React.FC = () => {
                         icon: Settings,
                         tabs: ["documents", "project_settings", "versions"],
                       },
-                    ].map((cat) => {
-                      const Icon = cat.icon;
-                      const isCatActive = cat.tabs.includes(adminSubTab);
-                      return (
-                        <button
-                          key={cat.id}
-                          onClick={() => {
-                            vibrateClick();
-                            if (!isCatActive) {
-                              setAdminSubTab(cat.tabs[0] as any);
-                            }
-                          }}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            isCatActive
-                              ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs font-bold"
-                              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60"
-                          }`}
-                        >
-                          <Icon className="w-3.5 h-3.5" />
-                          <span>{cat.label}</span>
-                          {cat.badge && cat.badge > 0 ? (
-                            <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
-                              {cat.badge}
-                            </span>
-                          ) : null}
-                        </button>
-                      );
-                    })}
+                    ]
+                      .filter((cat) => currentUser.role === "ADMIN" || cat.id === "custody_returns")
+                      .map((cat) => {
+                        const Icon = cat.icon;
+                        const isCatActive = cat.tabs.includes(adminSubTab);
+                        return (
+                          <button
+                            key={cat.id}
+                            onClick={() => {
+                              vibrateClick();
+                              if (!isCatActive) {
+                                setAdminSubTab(cat.tabs[0] as any);
+                              }
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                              isCatActive
+                                ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs font-bold"
+                                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                            }`}
+                          >
+                            <Icon className="w-3.5 h-3.5" />
+                            <span>{cat.label}</span>
+                            {cat.badge && cat.badge > 0 ? (
+                              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
+                                {cat.badge}
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })}
                   </div>
 
                   {/* System Maintenance Control */}
