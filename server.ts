@@ -4002,6 +4002,7 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
     let effectiveSignerBond = "";
     let itemTitle = "";
     let isIdempotentReturn = false;
+    let capturedItemData: any = null;
 
     // Atomic Execution via Firestore Transaction to prevent race conditions and duplicate signature confirms
     await adminDb.runTransaction(async (transaction) => {
@@ -4012,6 +4013,7 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
       }
 
       const itemData = docSnap.data() || {};
+      capturedItemData = itemData;
       itemTitle = itemData.title || itemId;
 
       // Idempotency: If this item was already signed and finalized, recover identical state without double mutation
@@ -4147,7 +4149,7 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
     try {
       const sigReqSnap = await adminDb.collection("signature_requests").doc(itemId).get();
       const sigReqData = sigReqSnap.exists ? sigReqSnap.data() : {};
-      const issuerUid = itemData.returnedByUserId || sigReqData?.dispatchedByUserId;
+      const issuerUid = capturedItemData?.returnedByUserId || sigReqData?.dispatchedByUserId;
 
       let staffTargetEmail = "";
       let issuerName = "Servidor Emissor Responsável";

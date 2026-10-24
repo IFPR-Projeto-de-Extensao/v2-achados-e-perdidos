@@ -10,6 +10,9 @@ export interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
 }
 
+// Module-level flag to track explicit user request for PWA update
+let userRequestedSwUpdate = false;
+
 export function usePWA() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstallable, setIsInstallable] = useState<boolean>(false);
@@ -135,12 +138,21 @@ export function usePWA() {
     handleServiceWorker();
 
     let refreshing = false;
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (!refreshing) {
+    const handleControllerChange = () => {
+      if (userRequestedSwUpdate && !refreshing) {
         refreshing = true;
+        console.log("[PWA] Controller do Service Worker alterado após solicitação do usuário. Recarregando a página...");
         window.location.reload();
+      } else {
+        console.log("[PWA] Controller do Service Worker alterado em segundo plano. Recarga automática evitada.");
       }
-    });
+    };
+
+    navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
+
+    return () => {
+      navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
+    };
   }, []);
 
   // Dedicated "Install to Homescreen" action specifically using the deferred beforeinstallprompt event
@@ -199,6 +211,7 @@ export function usePWA() {
   // Apply service worker update (skip waiting)
   const applyUpdate = useCallback(() => {
     vibrateSuccess();
+    userRequestedSwUpdate = true;
     if (swRegistration && swRegistration.waiting) {
       swRegistration.waiting.postMessage({ type: "SKIP_WAITING" });
     } else {
