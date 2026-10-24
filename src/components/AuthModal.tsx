@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from "react";
-import { X, Mail, Lock, User as UserIcon, Shield, ShieldCheck, GraduationCap, Building2, Phone, FileText, Sparkles, LogIn, UserPlus, LogOut, AlertTriangle, Check, Copy } from "lucide-react";
+import { 
+  X, Mail, Lock, User as UserIcon, Shield, ShieldCheck, 
+  GraduationCap, Phone, FileText, Sparkles, LogIn, UserPlus, 
+  LogOut, AlertTriangle, Check, Copy, Eye, EyeOff, KeyRound 
+} from "lucide-react";
 import { useApp, previewInstitutionalRole } from "../context/AppContext";
 import { useRouter } from "../context/RouterContext";
-import { UserRole } from "../types";
-import { triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, formatPhone, isValidPhone } from "../lib/utils";
+import { 
+  triggerVibration, vibrateClick, vibrateSuccess, 
+  vibrateWarning, formatPhone, isValidPhone 
+} from "../lib/utils";
 import { parseAuthError, handleAuthError } from "../lib/authErrorHandler";
 import { auth } from "../lib/firebase";
+import { sendPasswordResetEmail } from "firebase/auth";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -13,7 +20,6 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
-  // Top-level React Hooks (strictly unconditionally mounted at the root)
   const {
     loginWithGoogle,
     loginWithEmailPassword,
@@ -22,14 +28,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     currentUser,
     firebaseUser,
     addToast,
-    setActiveTab,
     pendingPostLoginAction,
   } = useApp();
   const { navigate } = useRouter();
+
   const [mode, setMode] = useState<"login" | "register">("login");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   const [copiedDomain, setCopiedDomain] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState("");
@@ -64,6 +74,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     e.preventDefault();
     vibrateClick();
     setErrorMsg("");
+    setSuccessMsg("");
     const cleanEmail = loginEmail.trim().toLowerCase();
     const cleanPass = loginPassword.trim();
     if (!cleanEmail || !cleanPass) {
@@ -90,15 +101,44 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
+  const handlePasswordReset = async () => {
+    vibrateClick();
+    setErrorMsg("");
+    setSuccessMsg("");
+    const cleanEmail = loginEmail.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      setErrorMsg("Informe seu e-mail institucional no campo de e-mail para recuperar a senha.");
+      addToast("Informe seu e-mail no campo de e-mail.", "warning");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+      vibrateSuccess();
+      setSuccessMsg(`E-mail de recuperação enviado para ${cleanEmail}. Verifique sua caixa de entrada e spam.`);
+      addToast("E-mail de recuperação enviado com sucesso!", "success");
+    } catch (err: any) {
+      console.error("[Password Reset Error]", err);
+      vibrateWarning();
+      const parsed = parseAuthError(err);
+      setErrorMsg(parsed.userMessage);
+      addToast(parsed.userMessage, "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     vibrateClick();
     setErrorMsg("");
+    setSuccessMsg("");
 
     const trimmedName = regName.trim();
     if (!trimmedName || trimmedName.length < 3) {
       setErrorMsg("Por favor, informe seu nome completo (mínimo de 3 caracteres).");
-      addToast("Por favor, informe seu nome completo (mínimo de 3 caracteres).", "warning");
+      addToast("Por favor, informe seu nome completo.", "warning");
       return;
     }
 
@@ -161,6 +201,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const handleGoogleClick = async () => {
     vibrateClick();
     setErrorMsg("");
+    setSuccessMsg("");
     setLoading(true);
     try {
       await loginWithGoogle();
@@ -202,19 +243,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           onClose();
         }
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-md transition-all duration-200 animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md transition-all duration-300 animate-fade-in"
     >
-      <div className="relative w-full max-w-lg bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden my-auto max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200 transition-colors">
-        {/* Top Header */}
-        <div className="p-6 bg-gradient-to-r from-[#00843D] to-[#006830] text-white flex items-center justify-between shrink-0">
-          <div>
-            <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full bg-white/20 backdrop-blur-md text-[11px] font-bold">
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              <span>Autenticação Unificada • IFPR Campus Ivaiporã</span>
+      <div className="relative w-full max-w-md bg-[#0D1B13] dark:bg-[#0D1B13] text-white rounded-3xl shadow-2xl border border-[#00843D]/40 overflow-hidden my-auto max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+        
+        {/* Top Header / Brand Badge */}
+        <div className="p-6 pb-4 bg-gradient-to-b from-[#00843D]/20 to-transparent flex items-start justify-between shrink-0 border-b border-[#00843D]/20">
+          <div className="space-y-1">
+            <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-[#00843D]/30 border border-[#00843D]/50 text-[11px] font-bold text-emerald-300">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <span>IFPR Campus Ivaiporã</span>
             </div>
-            <h2 id="auth-modal-title" className="text-xl font-black mt-1">
-              {mode === "login" ? "Acessar sua Conta" : "Cadastrar Novo Usuário"}
+            <h2 id="auth-modal-title" className="text-2xl font-extrabold tracking-tight text-white mt-2">
+              {mode === "login" ? "Bem-vindo de volta." : "Criar sua conta."}
             </h2>
+            <p className="text-xs text-neutral-300 font-medium">
+              {mode === "login" ? "Acesse sua conta para continuar no Localiza+." : "Cadastre-se com seu e-mail institucional."}
+            </p>
           </div>
           <button
             onClick={() => {
@@ -222,75 +267,78 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               onClose();
             }}
             type="button"
-            aria-label="Fechar janela de autenticação"
-            className="p-2 rounded-full hover:bg-white/20 transition-colors text-white/90 hover:text-white cursor-pointer"
+            aria-label="Fechar janela"
+            className="p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors text-white/80 hover:text-white cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50 p-1 shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              setMode("login");
-              setErrorMsg("");
-            }}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-2 cursor-pointer ${
-              mode === "login"
-                ? "bg-white dark:bg-[#1E1E1E] text-[#00843D] dark:text-green-400 shadow-xs"
-                : "text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
-            }`}
-          >
-            <LogIn className="w-4 h-4" />
-            <span>Entrar (Login)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMode("register");
-              setErrorMsg("");
-            }}
-            className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-2 cursor-pointer ${
-              mode === "register"
-                ? "bg-white dark:bg-[#1E1E1E] text-[#00843D] dark:text-green-400 shadow-xs"
-                : "text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
-            }`}
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Cadastrar-se</span>
-          </button>
+        <div className="px-6 pt-4 shrink-0">
+          <div className="flex bg-[#05110B] p-1 rounded-2xl border border-[#00843D]/30">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("login");
+                setErrorMsg("");
+                setSuccessMsg("");
+              }}
+              className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+                mode === "login"
+                  ? "bg-[#00843D] text-white shadow-md shadow-green-900/40"
+                  : "text-neutral-400 hover:text-white"
+              }`}
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Entrar</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("register");
+                setErrorMsg("");
+                setSuccessMsg("");
+              }}
+              className={`flex-1 py-2.5 text-xs font-bold rounded-xl transition-all flex items-center justify-center space-x-2 cursor-pointer ${
+                mode === "register"
+                  ? "bg-[#00843D] text-white shadow-md shadow-green-900/40"
+                  : "text-neutral-400 hover:text-white"
+              }`}
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Cadastrar-se</span>
+            </button>
+          </div>
         </div>
 
-        {/* Body Content */}
-        <div className="p-6 overflow-y-auto space-y-5">
+        {/* Scrollable Content Body */}
+        <div className="p-6 overflow-y-auto space-y-4">
+          
           {pendingPostLoginAction?.action === "REGISTER_ITEM" && (
-            <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/30 text-amber-800 dark:text-amber-200 text-xs flex items-start gap-3 shadow-xs">
-              <div className="p-2 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
-                <Shield className="w-5 h-5" />
-              </div>
+            <div className="p-3.5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs flex items-start gap-3">
+              <Shield className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <p className="font-extrabold text-xs text-amber-900 dark:text-amber-100">
-                  {pendingPostLoginAction.customMessage || "Autenticação Obrigatória para Cadastro"}
+                <p className="font-extrabold text-xs text-amber-100">
+                  {pendingPostLoginAction.customMessage || "Autenticação Obrigatória"}
                 </p>
-                <p className="text-[11px] leading-relaxed text-amber-800/90 dark:text-amber-300/90 font-medium">
-                  Para garantir a segurança e rastreabilidade dos pertences no Campus Ivaiporã, apenas usuários cadastrados (alunos, servidores ou admin) podem registrar itens perdidos ou achados. Entre ou crie sua conta e você será redirecionado automaticamente ao formulário!
+                <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                  Para registrar pertences com segurança no Campus Ivaiporã, entre ou crie sua conta institucional.
                 </p>
               </div>
             </div>
           )}
 
           {(currentUser.id !== "guest_visitor" || firebaseUser) && (
-            <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 flex items-center justify-between">
-              <div className="space-y-0.5">
-                <p className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
+            <div className="p-3.5 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-bold text-emerald-400">
                   Sessão Ativa ({currentUser.role})
                 </p>
-                <p className="text-xs font-bold text-neutral-900 dark:text-white">
+                <p className="text-xs font-bold text-white">
                   {currentUser.name}
                 </p>
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                <p className="text-[11px] text-neutral-300">
                   {currentUser.email}
                 </p>
               </div>
@@ -300,7 +348,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   await logout();
                   onClose();
                 }}
-                className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500 text-red-600 dark:text-red-400 hover:text-white text-xs font-bold transition-all border border-red-500/20 flex items-center gap-1 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500 text-red-300 hover:text-white text-xs font-bold transition-all border border-red-500/30 flex items-center gap-1 cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Sair</span>
@@ -309,109 +357,56 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           )}
 
           {errorMsg && (
-            <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 text-xs font-semibold space-y-2">
+            <div className="p-3.5 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-200 text-xs space-y-2">
               <div className="flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{errorMsg}</span>
+                <AlertTriangle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+                <span className="leading-relaxed">{errorMsg}</span>
               </div>
               {errorMsg.includes("não está autorizado") && (
-                <div className="p-3 bg-white dark:bg-neutral-800 rounded-xl border border-red-500/30 text-[11px] text-neutral-800 dark:text-neutral-200 space-y-1.5 font-normal">
-                  <div className="font-bold text-red-600 dark:text-red-400">Como autorizar este domínio no Firebase Console:</div>
-                  <ol className="list-decimal pl-4 space-y-1 text-neutral-600 dark:text-neutral-300">
-                    <li>Acesse o <strong>Firebase Console</strong> do seu projeto.</li>
-                    <li>Vá em <strong>Authentication</strong> &gt; aba <strong>Configurações (Settings)</strong> &gt; <strong>Domínios autorizados</strong>.</li>
-                    <li>Clique em <strong>Adicionar domínio</strong> e cole o domínio abaixo:</li>
-                  </ol>
+                <div className="p-2.5 bg-black/40 rounded-xl border border-red-500/30 text-[11px] text-neutral-200 space-y-1">
+                  <p className="font-bold text-red-300">Adicione este domínio no Firebase Console:</p>
                   <button
                     type="button"
                     onClick={handleCopyDomain}
-                    className="w-full py-2 px-3 rounded-lg bg-[#00843D] text-white text-[11px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#006e33] transition-colors mt-2 cursor-pointer"
+                    className="w-full py-1.5 px-3 rounded-lg bg-[#00843D] text-white text-[11px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#006e33] transition-colors cursor-pointer"
                   >
                     {copiedDomain ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>
-                      {copiedDomain ? "Copiado com Sucesso!" : `Copiar Domínio (${typeof window !== "undefined" && window.location.hostname ? window.location.hostname : "localizamais.vercel.app"})`}
-                    </span>
+                    <span>{copiedDomain ? "Copiado!" : "Copiar Domínio Atual"}</span>
                   </button>
                 </div>
               )}
             </div>
           )}
 
-          {/* Quick Google Sign In */}
+          {successMsg && (
+            <div className="p-3.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 text-xs flex items-start gap-2">
+              <Check className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+              <span className="leading-relaxed">{successMsg}</span>
+            </div>
+          )}
+
+          {/* Google Sign In */}
           <div className="space-y-2">
             <button
               type="button"
               onClick={handleGoogleClick}
               disabled={loading}
-              className="w-full py-3 px-4 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-100 text-xs font-bold hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors flex items-center justify-center space-x-3 shadow-xs cursor-pointer"
+              className="w-full py-3 px-4 rounded-2xl border border-[#00843D]/40 bg-[#05110B] hover:bg-[#0A2616] text-white text-xs font-bold transition-all flex items-center justify-center space-x-3 shadow-md cursor-pointer"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                />
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
               </svg>
               <span>Continuar com a Conta Google</span>
             </button>
-            <p className="text-[10px] text-center text-neutral-500 dark:text-neutral-400">
-              Autenticação rápida e segura com sua Conta Google.
-            </p>
           </div>
 
-          {/* Quick Demo Access Options */}
-          <div className="p-3 bg-neutral-100 dark:bg-neutral-800/80 rounded-2xl border border-neutral-200 dark:border-neutral-700/80 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-neutral-600 dark:text-neutral-300">
-                ⚡ Preenchimento Rápido para Testes
-              </span>
-              <span className="text-[10px] text-[#00843D] dark:text-green-400 font-semibold">
-                Credenciais Institucionais
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setLoginEmail("maria.oliveira@ifpr.edu.br");
-                  setLoginPassword("servidor123");
-                  setMode("login");
-                }}
-                className="p-2.5 rounded-xl bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 text-[11px] font-bold text-neutral-800 dark:text-neutral-100 hover:border-[#00843D] hover:text-[#00843D] transition-all text-left cursor-pointer"
-              >
-                <div className="text-xs truncate font-bold">Maria Oliveira</div>
-                <div className="text-[9px] text-neutral-500 dark:text-neutral-400 font-normal">Servidor SEBAC</div>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setLoginEmail("lucas.santos@estudante.ifpr.edu.br");
-                  setLoginPassword("aluno123");
-                  setMode("login");
-                }}
-                className="p-2.5 rounded-xl bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 text-[11px] font-bold text-neutral-800 dark:text-neutral-100 hover:border-[#00843D] hover:text-[#00843D] transition-all text-left cursor-pointer"
-              >
-                <div className="text-xs truncate font-bold">Lucas Santos</div>
-                <div className="text-[9px] text-neutral-500 dark:text-neutral-400 font-normal">Aluno IFPR</div>
-              </button>
-            </div>
-          </div>
-
-          <div className="relative flex items-center justify-center my-2">
-            <div className="border-t border-neutral-200 dark:border-neutral-800 w-full" />
-            <span className="bg-white dark:bg-[#1E1E1E] px-3 text-[11px] font-bold text-neutral-400 uppercase tracking-wider absolute">
-              ou login por e-mail e senha
+          <div className="relative flex items-center justify-center my-3">
+            <div className="border-t border-[#00843D]/30 w-full" />
+            <span className="bg-[#0D1B13] px-3 text-[10px] font-bold text-neutral-400 uppercase tracking-widest absolute">
+              ou com e-mail institucional
             </span>
           </div>
 
@@ -419,56 +414,73 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             /* LOGIN FORM */
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                  E-mail do IFPR / Estudante
+                <label className="block text-xs font-bold text-neutral-300 mb-1.5">
+                  E-mail institucional (@ifpr.edu.br ou @estudantes.ifpr.edu.br)
                 </label>
                 <div className="relative">
-                  <Mail className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />
+                  <Mail className="w-4 h-4 absolute left-3.5 top-3.5 text-neutral-400" />
                   <input
                     type="email"
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="exemplo@estudante.ifpr.edu.br"
+                    placeholder="seu.nome@ifpr.edu.br"
                     required
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                    className="w-full pl-10 pr-4 py-3 rounded-2xl border border-[#00843D]/30 bg-[#05110B] text-white text-xs outline-none focus:border-[#00843D] focus:ring-1 focus:ring-[#00843D] transition-all"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                  Senha
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-neutral-300">
+                    Senha
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handlePasswordReset}
+                    disabled={loading}
+                    className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold underline cursor-pointer"
+                  >
+                    Esqueci minha senha
+                  </button>
+                </div>
                 <div className="relative">
-                  <Lock className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />
+                  <Lock className="w-4 h-4 absolute left-3.5 top-3.5 text-neutral-400" />
                   <input
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="••••••••"
                     required
-                    className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                    className="w-full pl-10 pr-10 py-3 rounded-2xl border border-[#00843D]/30 bg-[#05110B] text-white text-xs outline-none focus:border-[#00843D] focus:ring-1 focus:ring-[#00843D] transition-all"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3.5 top-3.5 text-neutral-400 hover:text-white cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
+              <div className="pt-2 flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     vibrateClick();
                     onClose();
                   }}
-                  className="w-1/3 py-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs transition-all flex items-center justify-center cursor-pointer"
+                  className="w-1/3 py-3 rounded-2xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold text-xs transition-all cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-2/3 py-3 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                  className="w-2/3 py-3 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-xs shadow-lg shadow-green-900/40 transition-all flex items-center justify-center space-x-2 cursor-pointer"
                 >
-                  {loading ? "Entrando..." : "Entrar no Sistema"}
+                  {loading ? "Entrando..." : "Entrar no Localiza+"}
                 </button>
               </div>
             </form>
@@ -476,192 +488,129 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             /* REGISTER FORM */
             <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                <label className="block text-xs font-bold text-neutral-300 mb-1">
                   Nome Completo *
                 </label>
                 <div className="relative">
-                  <UserIcon className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />
+                  <UserIcon className="w-4 h-4 absolute left-3.5 top-3 text-neutral-400" />
                   <input
                     type="text"
                     value={regName}
                     onChange={(e) => setRegName(e.target.value)}
                     placeholder="Ex: Lucas Silva Santos"
                     required
-                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                    className="w-full pl-10 pr-3 py-2.5 rounded-2xl border border-[#00843D]/30 bg-[#05110B] text-white text-xs outline-none focus:border-[#00843D] transition-all"
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    E-mail *
-                  </label>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />
-                    <input
-                      type="email"
-                      value={regEmail}
-                      onChange={(e) => setRegEmail(e.target.value)}
-                      placeholder="seu.nome@ifpr.edu.br"
-                      required
-                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Senha (mínimo 6 caracteres) *
-                  </label>
-                  <div className="relative">
-                    <Lock className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />
-                    <input
-                      type="password"
-                      value={regPassword}
-                      onChange={(e) => setRegPassword(e.target.value)}
-                      placeholder="Mínimo 6 caracteres"
-                      required
-                      minLength={6}
-                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Vínculo Institucional Identificado Automaticamente */}
-              <div className="p-3 rounded-2xl border transition-all duration-200 bg-neutral-50 dark:bg-neutral-800/60 border-neutral-200 dark:border-neutral-700/60">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className={`w-4 h-4 ${regRoleDetermination.isInstitutional ? "text-[#00843D]" : "text-neutral-400"}`} />
-                    <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                      Vínculo Institucional
-                    </span>
-                  </div>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                    regRoleDetermination.isInstitutional
-                      ? "bg-[#00843D]/10 text-[#00843D] dark:bg-[#00843D]/20 dark:text-emerald-400 border border-[#00843D]/30"
-                      : regEmail.includes("@")
-                      ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30"
-                      : "bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400"
-                  }`}>
-                    {regRoleDetermination.isInstitutional
-                      ? regRoleDetermination.label
-                      : regEmail.includes("@")
-                      ? "Usuário Externo (INTRUSO)"
-                      : "Aguardando E-mail"}
-                  </span>
-                </div>
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1.5 leading-relaxed">
-                  O perfil é definido automaticamente pelo domínio: <span className="font-mono text-[10px] text-neutral-700 dark:text-neutral-300">@estudantes.ifpr.edu.br</span> (Aluno) ou <span className="font-mono text-[10px] text-neutral-700 dark:text-neutral-300">@ifpr.edu.br</span> (Servidor).
-                </p>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                  Curso / Departamento
+                <label className="block text-xs font-bold text-neutral-300 mb-1">
+                  E-mail Institucional *
                 </label>
                 <div className="relative">
-                  <GraduationCap className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />
+                  <Mail className="w-4 h-4 absolute left-3.5 top-3 text-neutral-400" />
                   <input
-                    type="text"
-                    value={regCourseOrDept}
-                    onChange={(e) => setRegCourseOrDept(e.target.value)}
-                    placeholder="Ex: Técnico em Informática (3º Ano)"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                    type="email"
+                    value={regEmail}
+                    onChange={(e) => setRegEmail(e.target.value)}
+                    placeholder="seu.nome@estudantes.ifpr.edu.br"
+                    required
+                    className="w-full pl-10 pr-3 py-2.5 rounded-2xl border border-[#00843D]/30 bg-[#05110B] text-white text-xs outline-none focus:border-[#00843D] transition-all"
                   />
                 </div>
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-neutral-300 mb-1">
+                  Senha (mínimo 6 caracteres) *
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 absolute left-3.5 top-3 text-neutral-400" />
+                  <input
+                    type={showRegPassword ? "text" : "password"}
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    required
+                    minLength={6}
+                    className="w-full pl-10 pr-10 py-2.5 rounded-2xl border border-[#00843D]/30 bg-[#05110B] text-white text-xs outline-none focus:border-[#00843D] transition-all"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowRegPassword(!showRegPassword)}
+                    className="absolute right-3.5 top-3 text-neutral-400 hover:text-white cursor-pointer"
+                  >
+                    {showRegPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Vínculo Institucional Identificado */}
+              <div className="p-3 rounded-2xl bg-[#05110B] border border-[#00843D]/30 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className={`w-4 h-4 ${regRoleDetermination.isInstitutional ? "text-emerald-400" : "text-neutral-400"}`} />
+                  <span className="text-xs font-bold text-neutral-300">Vínculo:</span>
+                </div>
+                <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                  regRoleDetermination.isInstitutional
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                    : "bg-neutral-800 text-neutral-400"
+                }`}>
+                  {regRoleDetermination.isInstitutional ? regRoleDetermination.label : "Aguardando E-mail"}
+                </span>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Matrícula / Registro
+                  <label className="block text-xs font-bold text-neutral-300 mb-1">
+                    Matrícula / SIAPE
                   </label>
-                  <div className="relative">
-                    <FileText className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />
-                    <input
-                      type="text"
-                      value={regMatricula}
-                      onChange={(e) => setRegMatricula(e.target.value)}
-                      placeholder="Ex: 2024109823"
-                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
-                    />
-                  </div>
+                  <input
+                    type="text"
+                    value={regMatricula}
+                    onChange={(e) => setRegMatricula(e.target.value)}
+                    placeholder="Ex: 2026109823"
+                    className="w-full px-3 py-2.5 rounded-2xl border border-[#00843D]/30 bg-[#05110B] text-white text-xs outline-none focus:border-[#00843D] transition-all"
+                  />
                 </div>
-
                 <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                  <label className="block text-xs font-bold text-neutral-300 mb-1">
                     Telefone / WhatsApp
                   </label>
-                  <div className="relative">
-                    <Phone className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />
-                    <input
-                      type="tel"
-                      value={regPhone}
-                      onChange={(e) => setRegPhone(formatPhone(e.target.value))}
-                      placeholder="(43) 99876-5432"
-                      maxLength={15}
-                      className="w-full pl-9 pr-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
-                    />
-                  </div>
+                  <input
+                    type="tel"
+                    value={regPhone}
+                    onChange={(e) => setRegPhone(formatPhone(e.target.value))}
+                    placeholder="(43) 99876-5432"
+                    maxLength={15}
+                    className="w-full px-3 py-2.5 rounded-2xl border border-[#00843D]/30 bg-[#05110B] text-white text-xs outline-none focus:border-[#00843D] transition-all"
+                  />
                 </div>
               </div>
 
-              {/* Terms of Use & Privacy Policy Disclaimer */}
-              <div className="p-3 rounded-xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700/80 text-[11px] text-neutral-600 dark:text-neutral-400 space-y-1">
-                <p>
-                  Ao cadastrar sua conta, você declara concordar com os{" "}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      vibrateClick();
-                      onClose();
-                      navigate("/termos-de-uso");
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    }}
-                    className="text-[#00843D] dark:text-green-400 font-bold underline hover:text-[#006830] inline cursor-pointer"
-                  >
-                    Termos de Uso
-                  </button>{" "}
-                  e estar ciente da{" "}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      vibrateClick();
-                      onClose();
-                      navigate("/politica-de-privacidade");
-                      window.scrollTo({ top: 0, behavior: "smooth" });
-                    }}
-                    className="text-[#00843D] dark:text-green-400 font-bold underline hover:text-[#006830] inline cursor-pointer"
-                  >
-                    Política de Privacidade
-                  </button>{" "}
-                  do Localiza+ (LGPD – Lei nº 13.709/2018).
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
+              <div className="pt-2 flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     vibrateClick();
                     onClose();
                   }}
-                  className="w-1/3 py-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs transition-all flex items-center justify-center cursor-pointer"
+                  className="w-1/3 py-3 rounded-2xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold text-xs transition-all cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-2/3 py-3 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                  className="w-2/3 py-3 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-xs shadow-lg shadow-green-900/40 transition-all flex items-center justify-center space-x-2 cursor-pointer"
                 >
                   {loading ? "Cadastrando..." : "Concluir Cadastro"}
                 </button>
               </div>
             </form>
           )}
+
         </div>
       </div>
     </div>

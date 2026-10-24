@@ -33,6 +33,13 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
     summary: "LOCALIZA+ v1.10.2 — FASE 4C: Implementação e integração completa do fluxo operacional de assinatura dupla (Receptor + Servidor Atendente). Registro atômico de staffSignatureStatus: PENDING_STAFF na confirmação do receptor, envio resiliente de notificação por e-mail ao atendente, fila de Assinaturas Pendentes no painel administrativo, modal de atestação com captura de assinatura no frontend, renderização dupla nos recibos PDF/HTML e validação completa na bateria de testes.",
     additions: [
       {
+        id: "v1102-add-real-smtp-devolution",
+        title: "Envio SMTP Real na Automação de Devolução (/api/automation/notify-item-returned)",
+        description: "Substituição do registro simulado por despacho SMTP real via transporter.sendMail(), com tratamento honesto de erros (HTTP 503 para SMTP não configurado, HTTP 502 para falhas de transporte), FAILED state persistence e proteção de concorrência por claimId.",
+        module: "DOCUMENTOS",
+        tag: "E-mail & Automação",
+      },
+      {
         id: "v1102-add-phase4c-flow",
         title: "Fluxo Operacional de Assinatura Dupla Integrado de Ponta a Ponta (Fase 4C)",
         description: "Integração entre a confirmação do receptor (/api/signature/confirm-signature), transação atômica definindo staffSignatureStatus como PENDING_STAFF, envio de e-mail de notificação ao atendente e disponibilização da fila na aba 'Assinaturas Pendentes' para atestação e assinatura do servidor no Localiza+.",

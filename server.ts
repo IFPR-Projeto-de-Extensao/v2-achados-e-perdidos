@@ -31,7 +31,9 @@ process.on("uncaughtException", (err) => {
 });
 
 const app = express();
-const PORT = 3000;
+const portArgIndex = process.argv.indexOf("--port");
+const cliPort = portArgIndex !== -1 && process.argv[portArgIndex + 1] ? Number(process.argv[portArgIndex + 1]) : NaN;
+const PORT = (!isNaN(cliPort) && cliPort > 0) ? cliPort : (Number(process.env.PORT) || 3000);
 const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
 
 // =================================================================
@@ -306,28 +308,35 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
       try {
         const decoded = await adminAuth.verifyIdToken(token);
         const isRoot = decoded.email === ROOT_ADMIN_EMAIL;
-        let isAdmin = isRoot || decoded.role === "ADMIN" || decoded.admin === true;
         let isEmailVerified = isRoot ? true : decoded.email_verified === true;
-
+        let isAdmin = isRoot;
         let dbRole: string | undefined = undefined;
+
         const adminFirestore = getAdminFirestore();
         if (adminFirestore) {
           try {
             const uDoc = await adminFirestore.collection("users").doc(decoded.uid).get();
             if (uDoc.exists) {
-              const uData = uDoc.data();
+              const uData: any = (typeof uDoc.data === "function" ? uDoc.data() : (uDoc as any).data) || {};
               dbRole = uData?.role;
-              if (uData?.role === "ADMIN") {
+              // Authoritative role from Firestore: only ADMIN role with approval grants admin
+              if (uData?.role === "ADMIN" && (isRoot || uData?.approvalStatus === "APROVADO")) {
                 isAdmin = true;
+              } else if (!isRoot) {
+                // If the user's role in Firestore is ALUNO, SERVIDOR, etc., reject stale admin claims
+                isAdmin = false;
               }
-              if (uData?.emailVerified === true) {
-                isEmailVerified = true;
-              }
+              // Email verification: strictly verified by cryptographic provider; mutable Firestore doc is NOT trusted as equivalent
+            } else if (!isRoot) {
+              isAdmin = false;
             }
           } catch (_) {}
+        } else if (!isRoot) {
+          isAdmin = false;
         }
 
-        if (isAdmin) {
+        // Email verification comes exclusively from Firebase Auth token (or trusted Root Admin constant)
+        if (isRoot) {
           isEmailVerified = true;
         }
 
@@ -335,7 +344,7 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
           uid: decoded.uid,
           email: decoded.email,
           email_verified: isEmailVerified,
-          role: isAdmin ? "ADMIN" : (dbRole || (decoded.role as string) || "ALUNO"),
+          role: isRoot ? "ADMIN" : (isAdmin ? "ADMIN" : (dbRole || "ALUNO")),
           isAdmin,
         };
         return next();
@@ -405,6 +414,254 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
     });
   }
   next();
+}
+
+// =================================================================
+// Institutional Staff & Devolution Authorization Validators
+// =================================================================
+
+export interface StaffOrAdminValidationResult {
+  authorized: boolean;
+  statusCode: number;
+  errorMessage?: string;
+  userData?: Record<string, any>;
+  signerName?: string;
+}
+
+export async function validateStaffOrAdminAccess(
+  adminDb: any,
+  authUser: { uid: string; email?: string; email_verified?: boolean; isAdmin?: boolean }
+): Promise<StaffOrAdminValidationResult> {
+  if (!authUser || !authUser.uid) {
+    return {
+      authorized: false,
+      statusCode: 401,
+      errorMessage: "Autenticação obrigatória. Faça login com sua conta institucional.",
+    };
+  }
+
+  if (!adminDb) {
+    return {
+      authorized: false,
+      statusCode: 503,
+      errorMessage: "Banco de dados Firestore Admin indisponível no servidor.",
+    };
+  }
+
+  try {
+    const userDoc = await adminDb.collection("users").doc(authUser.uid).get();
+    if (!userDoc || !userDoc.exists) {
+      console.warn(`[Auth RBAC Security] Documento de perfil /users/${authUser.uid} inexistente no Firestore. Operação negada.`);
+      return {
+        authorized: false,
+        statusCode: 403,
+        errorMessage: "Acesso negado: Perfil de usuário não encontrado no sistema institucional.",
+      };
+    }
+
+    const udata = (typeof userDoc.data === "function" ? userDoc.data() : userDoc.data) || {};
+    const normStatus = String(udata.status || "").trim().toLowerCase();
+
+    // 1. Strict status check: reject suspended, banned, inactive, or active === false
+    if (
+      normStatus === "suspended" ||
+      normStatus === "banned" ||
+      normStatus === "inactive" ||
+      udata.active === false
+    ) {
+      console.warn(`[Auth RBAC Security] Usuário ${authUser.uid} com status bloqueado ('${normStatus}', active=${udata.active}). Operação negada.`);
+      return {
+        authorized: false,
+        statusCode: 403,
+        errorMessage: "Conta suspensa ou inativa. Acesso negado aos recursos institucionais.",
+      };
+    }
+
+    const isRootAdmin = authUser.email === ROOT_ADMIN_EMAIL;
+
+    // 2. Cryptographic email verification check: only authUser.email_verified === true or trusted Root Admin
+    // Persistent Firestore udata.emailVerified is NOT accepted as a substitute for cryptographic token verification
+    const isEmailVerified = Boolean(
+      isRootAdmin ||
+      authUser.email_verified === true
+    );
+
+    if (!isEmailVerified) {
+      console.warn(`[Auth RBAC Security] Usuário ${authUser.uid} com e-mail institucional não verificado pelo provedor de identidade. Operação negada.`);
+      return {
+        authorized: false,
+        statusCode: 403,
+        errorMessage: "E-mail não verificado. Confirme seu e-mail institucional no provedor de identidade para executar esta operação.",
+      };
+    }
+
+    // 3. Strict Role & Approval check:
+    // ADMIN: strictly requires role === "ADMIN" and approvalStatus === "APROVADO" in Firestore (or approved Root Admin)
+    // Stale authUser.isAdmin claims or udata.isAdmin boolean without role "ADMIN" are eliminated.
+    const isDocAdmin = udata.role === "ADMIN" && udata.approvalStatus === "APROVADO";
+    const isAdminUser = isDocAdmin || (isRootAdmin && udata.approvalStatus === "APROVADO");
+
+    let isAuthorized = false;
+    if (isAdminUser) {
+      isAuthorized = true;
+    } else if (
+      udata.role === "SERVIDOR" &&
+      udata.approvalStatus === "APROVADO"
+    ) {
+      isAuthorized = true;
+    }
+
+    if (!isAuthorized) {
+      return {
+        authorized: false,
+        statusCode: 403,
+        errorMessage: "Acesso negado. Apenas servidores e administradores do IFPR ativos e aprovados podem executar esta operação.",
+      };
+    }
+
+    const signerName = udata.name || authUser.email?.split("@")[0] || "Servidor IFPR";
+
+    return {
+      authorized: true,
+      statusCode: 200,
+      userData: udata,
+      signerName,
+    };
+  } catch (err: any) {
+    console.error(`[Auth RBAC Error] Falha segura ao consultar perfil /users/${authUser.uid} no Firestore:`, {
+      message: err?.message || String(err),
+    });
+    return {
+      authorized: false,
+      statusCode: 500,
+      errorMessage: "Erro interno ao validar credenciais institucionais no banco de dados.",
+    };
+  }
+}
+
+export interface DevolutionNotificationValidationResult {
+  authorized: boolean;
+  statusCode: number;
+  errorMessage?: string;
+  itemData?: Record<string, any>;
+  alreadyNotified?: boolean;
+}
+
+export async function validateDevolutionNotificationAccess(
+  adminDb: any,
+  authUser: { uid: string; email?: string; email_verified?: boolean; isAdmin?: boolean },
+  itemId: string
+): Promise<DevolutionNotificationValidationResult> {
+  // 1. Validate caller identity and staff/admin standing
+  const staffValidation = await validateStaffOrAdminAccess(adminDb, authUser);
+  if (!staffValidation.authorized) {
+    return {
+      authorized: false,
+      statusCode: staffValidation.statusCode,
+      errorMessage: staffValidation.errorMessage || "Acesso negado: Apenas servidores e administradores autorizados do IFPR podem disparar notificações de devolução.",
+    };
+  }
+
+  // 2. Fetch Item from Firestore (Do NOT trust client-supplied data)
+  try {
+    const itemSnap = await adminDb.collection("items").doc(itemId).get();
+    if (!itemSnap || !itemSnap.exists) {
+      return {
+        authorized: false,
+        statusCode: 404,
+        errorMessage: `Ocorrência #${itemId} não encontrada no banco de dados.`,
+      };
+    }
+
+    const itemData = (typeof itemSnap.data === "function" ? itemSnap.data() : itemSnap.data) || {};
+
+    // 3. Status Verification: Must have been legally returned
+    if (itemData.status !== "DEVOLVIDO") {
+      return {
+        authorized: false,
+        statusCode: 400,
+        errorMessage: `Ocorrência #${itemId} possui status '${itemData.status || "INDEFINIDO"}' e não foi registrada como DEVOLVIDO.`,
+      };
+    }
+
+    // 4. Author / Attendant Relationship Check:
+    // Non-admins must be the attendant who registered the return
+    const isRootAdmin = authUser.email === ROOT_ADMIN_EMAIL;
+    const isUserAdmin = isRootAdmin || (staffValidation.userData?.role === "ADMIN" && staffValidation.userData?.approvalStatus === "APROVADO");
+    const callerUid = authUser.uid;
+
+    if (!isUserAdmin) {
+      const issuerUid = itemData.returnedByUserId;
+      if (issuerUid && issuerUid !== callerUid) {
+        console.warn(`[Devolution Notification Blocked] Servidor ${callerUid} tentou disparar notificação de devolução realizada por outro servidor (${issuerUid}).`);
+        return {
+          authorized: false,
+          statusCode: 403,
+          errorMessage: "Acesso negado: Apenas o atendente responsável por registrar a devolução deste objeto pode disparar a notificação institucional.",
+        };
+      }
+    }
+
+    // 5. Idempotency Check: Prevent duplicate email dispatches
+    if (
+      itemData.devolutionNotified === true ||
+      itemData.returnEmailNotified === true ||
+      itemData.devolutionNotificationStatus === "COMPLETED"
+    ) {
+      return {
+        authorized: true,
+        statusCode: 200,
+        alreadyNotified: true,
+        itemData,
+      };
+    }
+
+    return {
+      authorized: true,
+      statusCode: 200,
+      alreadyNotified: false,
+      itemData,
+    };
+  } catch (err: any) {
+    console.error(`[Devolution Auth Error] Falha ao consultar item #${itemId} no Firestore:`, {
+      message: err?.message || String(err),
+    });
+    return {
+      authorized: false,
+      statusCode: 500,
+      errorMessage: "Erro interno ao validar dados da ocorrência no banco de dados.",
+    };
+  }
+}
+
+/**
+ * Resolves the recipient email strictly and exclusively from trusted Firestore record.
+ * Client-supplied overrides (such as req.body.recipientEmail) are never accepted.
+ */
+export function extractTrustedRecipientEmail(itemData: Record<string, any> | null | undefined): string | null {
+  if (!itemData || typeof itemData !== "object") return null;
+
+  const primaryCandidates = [
+    itemData.recipientEmail,
+    itemData.recipientSignatureEmail,
+    itemData.contactEmail,
+  ];
+
+  for (const candidate of primaryCandidates) {
+    if (typeof candidate === "string" && candidate.trim().includes("@")) {
+      const match = candidate.trim().match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+      if (match) return match[0];
+    }
+  }
+
+  // registeredByUserEmail is ONLY valid if item type is PERDIDO (owner registered lost item).
+  // For ENCONTRADO items, registeredByUserEmail is the finder and must NOT be used as recipient.
+  if (itemData.type === "PERDIDO" && typeof itemData.registeredByUserEmail === "string" && itemData.registeredByUserEmail.trim().includes("@")) {
+    const match = itemData.registeredByUserEmail.trim().match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    if (match) return match[0];
+  }
+
+  return null;
 }
 
 // =================================================================
@@ -3674,68 +3931,309 @@ app.get(["/api/monitoring/export-logs", "/monitoring/export-logs"], requireAuth,
   }
 });
 
-// API Endpoint: Automated Email Notification on Item Return (Requires Authenticated Session)
+// API Endpoint: Automated Email Notification on Item Return (Requires Authorized Staff/Admin Session & Returned Item Verification)
 app.post(["/api/automation/notify-item-returned", "/automation/notify-item-returned"], requireAuth, generalRateLimiter, async (req, res) => {
+  let claimId = "";
   try {
-    const { itemId, itemTitle, recipientEmail, recipientName, resolutionNotes, qrCodeId, location, category } = req.body || {};
+    const { itemId, resolutionNotes } = req.body || {};
 
-    if (!itemId || !itemTitle) {
+    if (!itemId || typeof itemId !== "string") {
       return res.status(400).json({
         success: false,
-        error: "Parâmetros obrigatórios ausentes (itemId, itemTitle).",
+        error: "Identificador da ocorrência (itemId) é obrigatório.",
       });
     }
 
-    const targetEmail = recipientEmail || "localizamais0@gmail.com";
-    const targetName = recipientName || "Comunidade IFPR";
+    const adminDb = getAdminFirestore();
+    const devolutionAuth = await validateDevolutionNotificationAccess(adminDb, req.authUser!, itemId);
+    if (!devolutionAuth.authorized) {
+      return res.status(devolutionAuth.statusCode).json({
+        success: false,
+        error: devolutionAuth.errorMessage,
+      });
+    }
+
+    // Fast check: If already completed according to Firestore read, return 200
+    if (devolutionAuth.alreadyNotified) {
+      return res.json({
+        success: true,
+        alreadyNotified: true,
+        message: `A notificação de devolução referente ao item #${itemId} já foi despachada anteriormente.`,
+      });
+    }
+
+    // Atomic Concurrency Claim with verifiable claimId: Ensure only one in-flight request can proceed and prevent stale overwrites
+    claimId = `claim_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    let claimResult: { status: "CLAIMED" | "IN_PROGRESS" | "ALREADY_COMPLETED"; freshData: any } = {
+      status: "CLAIMED",
+      freshData: devolutionAuth.itemData || {},
+    };
+
+    if (adminDb && typeof adminDb.runTransaction === "function") {
+      claimResult = await adminDb.runTransaction(async (transaction: any) => {
+        const itemRef = adminDb.collection("items").doc(itemId);
+        const itemDoc = await transaction.get(itemRef);
+        if (!itemDoc || !itemDoc.exists) {
+          throw new Error("ITEM_NOT_FOUND");
+        }
+        const fresh = (typeof itemDoc.data === "function" ? itemDoc.data() : itemDoc.data) || {};
+
+        if (
+          fresh.devolutionNotified === true ||
+          fresh.returnEmailNotified === true ||
+          fresh.devolutionNotificationStatus === "COMPLETED"
+        ) {
+          return { status: "ALREADY_COMPLETED", freshData: fresh };
+        }
+
+        const now = Date.now();
+        const claimedAtMs = fresh.devolutionNotificationClaimedAtMs || 0;
+        const isStale = (now - claimedAtMs) > 60000; // 60-second recovery timeout
+
+        if (fresh.devolutionNotificationStatus === "PROCESSING" && !isStale) {
+          return { status: "IN_PROGRESS", freshData: fresh };
+        }
+
+        transaction.set(itemRef, {
+          devolutionNotificationStatus: "PROCESSING",
+          devolutionNotificationClaimId: claimId,
+          devolutionNotificationClaimedAt: new Date().toISOString(),
+          devolutionNotificationClaimedAtMs: now,
+          devolutionNotificationClaimedBy: req.authUser!.uid,
+        }, { merge: true });
+
+        return { status: "CLAIMED", freshData: fresh };
+      });
+    }
+
+    if (claimResult.status === "ALREADY_COMPLETED") {
+      return res.json({
+        success: true,
+        alreadyNotified: true,
+        message: `A notificação de devolução referente ao item #${itemId} já foi despachada anteriormente.`,
+      });
+    }
+
+    if (claimResult.status === "IN_PROGRESS") {
+      return res.status(409).json({
+        success: false,
+        inProgress: true,
+        error: "Uma notificação de devolução para este item já está em processamento concorrente.",
+        message: "O envio de notificação já foi iniciado por outra requisição. Aguarde a conclusão do processamento.",
+      });
+    }
+
+    // Now outside of transaction: Resolve recipient email exclusively from trusted Firestore record
+    const itemData = claimResult.freshData || devolutionAuth.itemData || {};
+    const targetEmail = extractTrustedRecipientEmail(itemData);
+
+    if (!targetEmail) {
+      console.warn(`[Automation Devolution] Item #${itemId} não possui e-mail confiável de destinatário. Envio cancelado.`);
+      if (adminDb) {
+        try {
+          await adminDb.runTransaction(async (transaction: any) => {
+            const itemRef = adminDb.collection("items").doc(itemId);
+            const itemDoc = await transaction.get(itemRef);
+            if (itemDoc.exists) {
+              const fresh = itemDoc.data() || {};
+              if (fresh.devolutionNotificationClaimId === claimId) {
+                transaction.set(itemRef, {
+                  devolutionNotificationStatus: "FAILED",
+                  devolutionNotificationLastError: "Nenhum e-mail de destinatário confiável registrado na ocorrência.",
+                  devolutionNotificationFailedAt: new Date().toISOString(),
+                }, { merge: true });
+              }
+            }
+          });
+        } catch (_) {}
+      }
+
+      return res.status(422).json({
+        success: false,
+        error: "Nenhum e-mail de destinatário confiável registrado na ocorrência. A notificação institucional foi cancelada para proteger a integridade dos dados e impedir envios arbitrários.",
+      });
+    }
+
+    const sanitizedTitle = itemData.title || "Objeto Localizado";
+    const targetName = itemData.recipientName || itemData.recipientSignatureName || itemData.registeredByName || "Comunidade IFPR";
+    const targetQrCode = itemData.qrCodeId || itemId;
+    const targetCategory = itemData.category || "Geral";
+    const targetLocation = itemData.location || "Campus Ivaiporã";
+    const targetResolutionNotes = resolutionNotes || itemData.resolutionNotes || "";
     const timestamp = new Date().toISOString();
-    const emailSubject = `🎉 Seu objeto "${itemTitle}" foi devolvido com sucesso! - IFPR Achados e Perdidos`;
+
+    const emailSubject = `🎉 Seu objeto "${sanitizedTitle}" foi devolvido com sucesso! - IFPR Achados e Perdidos`;
     const emailBody = `Olá, ${targetName}!\n\n` +
-      `Confirmamos que o seu objeto "${itemTitle}" (Código QR: ${qrCodeId || itemId}), registrado no sistema de Achados e Perdidos do IFPR Campus Ivaiporã, foi marcado como DEVOLVIDO.\n\n` +
+      `Confirmamos que o seu objeto "${sanitizedTitle}" (Código QR: ${targetQrCode}), registrado no sistema de Achados e Perdidos do IFPR Campus Ivaiporã, foi marcado como DEVOLVIDO.\n\n` +
       `Detalhes do Registro:\n` +
-      `- Objeto: ${itemTitle}\n` +
-      `- Categoria: ${category || "Geral"}\n` +
-      `- Local: ${location || "Campus Ivaiporã"}\n` +
+      `- Objeto: ${sanitizedTitle}\n` +
+      `- Categoria: ${targetCategory}\n` +
+      `- Local: ${targetLocation}\n` +
       `- Data e Hora da Baixa: ${new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}\n\n` +
-      (resolutionNotes ? `Notas de encerramento: ${resolutionNotes}\n\n` : "") +
+      (targetResolutionNotes ? `Notas de encerramento: ${targetResolutionNotes}\n\n` : "") +
       `Agradecemos pela colaboração com a comunidade acadêmica do Instituto Federal do Paraná!\n\n` +
       `Atenciosamente,\n` +
       `Equipe de Apoio ao Estudante (SEBAC) & Portaria\n` +
       `Instituto Federal do Paraná - Campus Ivaiporã`;
 
-    console.info(`[Automation Email] Notificação automática de devolução despachada para ${targetEmail} referente ao item #${itemId}.`);
+    console.info(`[Automation Email] Notificação automática de devolução despachada para ${targetEmail} referente ao item #${itemId} por usuário ${req.authUser?.uid}.`);
 
-    // In local or Cloud environment, persist to Firestore if admin client is available
-    const adminDb = getAdminFirestore();
+    const transporter = getEmailTransporter();
+    if (!transporter) {
+      console.warn(`[Automation Devolution] SMTP não configurado no servidor. Envio de e-mail para o item #${itemId} cancelado.`);
+      if (adminDb) {
+        try {
+          await adminDb.runTransaction(async (transaction: any) => {
+            const itemRef = adminDb.collection("items").doc(itemId);
+            const itemDoc = await transaction.get(itemRef);
+            if (itemDoc.exists) {
+              const fresh = itemDoc.data() || {};
+              if (fresh.devolutionNotificationClaimId === claimId) {
+                transaction.set(itemRef, {
+                  devolutionNotificationStatus: "FAILED",
+                  devolutionNotificationLastError: "Serviço SMTP não configurado no ambiente do servidor.",
+                  devolutionNotificationFailedAt: new Date().toISOString(),
+                }, { merge: true });
+              }
+            }
+          });
+        } catch (_) {}
+      }
+
+      return res.status(503).json({
+        success: false,
+        error: "O serviço de envio de e-mail (SMTP) não está configurado no servidor. A notificação de devolução não pôde ser despachada, mas o registro foi mantido em estado recuperável.",
+        code: "SMTP_NOT_CONFIGURED",
+      });
+    }
+
+    let mailInfo: any;
+    try {
+      const fromAddress = process.env.SMTP_FROM || `"IFPR Achados & Perdidos" <${process.env.SMTP_USER || "campus.ivaipora@ifpr.edu.br"}>`;
+      mailInfo = await transporter.sendMail({
+        from: fromAddress,
+        to: targetEmail,
+        subject: emailSubject,
+        text: emailBody,
+      });
+      console.info(`[Automation Email Success] E-mail real de devolução aceito pelo SMTP para ${targetEmail}. MessageId: ${mailInfo?.messageId}`);
+    } catch (smtpErr: any) {
+      console.error(`[Automation Email Error] Falha no transporte SMTP para ${targetEmail}:`, smtpErr);
+      if (adminDb) {
+        try {
+          await adminDb.runTransaction(async (transaction: any) => {
+            const itemRef = adminDb.collection("items").doc(itemId);
+            const itemDoc = await transaction.get(itemRef);
+            if (itemDoc.exists) {
+              const fresh = itemDoc.data() || {};
+              if (fresh.devolutionNotificationClaimId === claimId) {
+                transaction.set(itemRef, {
+                  devolutionNotificationStatus: "FAILED",
+                  devolutionNotificationLastError: smtpErr?.message || String(smtpErr),
+                  devolutionNotificationFailedAt: new Date().toISOString(),
+                }, { merge: true });
+              }
+            }
+          });
+        } catch (_) {}
+      }
+
+      return res.status(502).json({
+        success: false,
+        error: "Falha ao enviar e-mail via SMTP. O servidor de e-mail rejeitou ou não pôde entregar a mensagem.",
+        code: "SMTP_TRANSPORT_ERROR",
+        details: process.env.NODE_ENV !== "production" ? (smtpErr?.message || String(smtpErr)) : undefined,
+      });
+    }
+
     if (adminDb) {
       try {
-        const notifDocId = `email_auto_${itemId}_${Date.now()}`;
+        const notifDocId = `email_auto_${itemId}_ITEM_RETURNED`;
         await adminDb.collection("email_notifications").doc(notifDocId).set({
           id: notifDocId,
           itemId,
-          itemTitle,
+          itemTitle: sanitizedTitle,
           recipientEmail: targetEmail,
           recipientName: targetName,
           subject: emailSubject,
           body: emailBody,
           type: "ITEM_RETURNED_AUTOMATION",
           status: "SENT",
+          messageId: mailInfo?.messageId || null,
           sentAt: timestamp,
           createdAt: timestamp,
-        });
-      } catch (dbErr) {
-        console.warn("[Automation Warning] Falha ao persistir log de e-mail no Firestore:", dbErr);
+          triggeredByUserId: req.authUser!.uid,
+        }, { merge: true });
+
+        let completedSuccessfully = false;
+        if (typeof adminDb.runTransaction === "function") {
+          await adminDb.runTransaction(async (transaction: any) => {
+            const itemRef = adminDb.collection("items").doc(itemId);
+            const itemDoc = await transaction.get(itemRef);
+            if (itemDoc.exists) {
+              const fresh = itemDoc.data() || {};
+              if (fresh.devolutionNotificationClaimId === claimId) {
+                transaction.set(itemRef, {
+                  devolutionNotified: true,
+                  returnEmailNotified: true,
+                  devolutionNotificationStatus: "COMPLETED",
+                  devolutionNotifiedAt: timestamp,
+                  devolutionNotifiedBy: req.authUser!.uid,
+                }, { merge: true });
+                completedSuccessfully = true;
+              }
+            }
+          });
+        } else {
+          await adminDb.collection("items").doc(itemId).set({
+            devolutionNotified: true,
+            returnEmailNotified: true,
+            devolutionNotificationStatus: "COMPLETED",
+            devolutionNotifiedAt: timestamp,
+            devolutionNotifiedBy: req.authUser!.uid,
+          }, { merge: true });
+          completedSuccessfully = true;
+        }
+
+        if (!completedSuccessfully) {
+          console.warn(`[Automation Warning] Tentativa com claimId ${claimId} foi superada/expirada antes da persistência final. Registro de e-mail criado, mas status do item não foi sobrescrito.`);
+        }
+      } catch (dbErr: any) {
+        console.error("[Automation Error] Falha ao persistir conclusão de e-mail no Firestore:", dbErr);
+        try {
+          if (typeof adminDb.runTransaction === "function") {
+            await adminDb.runTransaction(async (transaction: any) => {
+              const itemRef = adminDb.collection("items").doc(itemId);
+              const itemDoc = await transaction.get(itemRef);
+              if (itemDoc.exists) {
+                const fresh = itemDoc.data() || {};
+                if (fresh.devolutionNotificationClaimId === claimId) {
+                  transaction.set(itemRef, {
+                    devolutionNotificationStatus: "FAILED",
+                    devolutionNotificationLastError: dbErr?.message || String(dbErr),
+                    devolutionNotificationFailedAt: new Date().toISOString(),
+                  }, { merge: true });
+                }
+              }
+            });
+          }
+        } catch (_) {}
+        throw dbErr;
       }
     }
 
     return res.json({
       success: true,
-      message: `E-mail de confirmação de devolução registrado e despachado para ${targetEmail}.`,
+      message: `E-mail de confirmação de devolução enviado via SMTP para ${targetEmail}.`,
       subject: emailSubject,
       recipientEmail: targetEmail,
+      messageId: mailInfo?.messageId || null,
       timestamp,
     });
   } catch (error: any) {
+    if (error?.message === "ITEM_NOT_FOUND") {
+      return res.status(404).json({ success: false, error: "Ocorrência não encontrada no Firestore." });
+    }
     console.error("Erro na rota /api/automation/notify-item-returned:", error);
     return res.status(500).json({
       success: false,
@@ -4353,41 +4851,12 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
 // API Endpoint: Confirm and Finalize Staff Attendant Signature (Requires Staff/Admin Authentication & Issuer Verification)
 app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-signature"], requireAuth, generalRateLimiter, async (req, res) => {
   try {
-    // 🔒 RBAC Check: Only active Staff or Admin can sign as staff attendant
-    if (!req.authUser || !req.authUser.uid) {
-      return res.status(401).json({
-        success: false,
-        error: "Autenticação obrigatória. Faça login com sua conta institucional.",
-      });
-    }
-
     const adminDb = getAdminFirestore();
-    let isStaffOrAdmin = req.authUser.isAdmin || req.authUser.role === "ADMIN" || req.authUser.role === "SERVIDOR";
-
-    if (adminDb) {
-      try {
-        const userDoc = await adminDb.collection("users").doc(req.authUser.uid).get();
-        if (userDoc.exists) {
-          const udata = userDoc.data() || {};
-          if (udata.status === "SUSPENDED" || udata.status === "INACTIVE" || udata.active === false) {
-            return res.status(403).json({
-              success: false,
-              error: "Conta suspensa ou inativa. Acesso negado aos recursos institucionais.",
-            });
-          }
-          if (udata.role === "ADMIN" || udata.role === "SERVIDOR" || udata.isAdmin === true) {
-            isStaffOrAdmin = true;
-          }
-        }
-      } catch (err) {
-        console.warn("[Auth RBAC Warning] Falha ao verificar perfil do usuário no Firestore:", err);
-      }
-    }
-
-    if (!isStaffOrAdmin) {
-      return res.status(403).json({
+    const staffCheck = await validateStaffOrAdminAccess(adminDb, req.authUser!);
+    if (!staffCheck.authorized) {
+      return res.status(staffCheck.statusCode).json({
         success: false,
-        error: "Acesso negado. Apenas servidores e administradores do IFPR ativos podem executar esta operação.",
+        error: staffCheck.errorMessage,
       });
     }
 
@@ -4429,17 +4898,8 @@ app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-si
     const signerUid = req.authUser!.uid;
     const signerEmail = req.authUser!.email || "servidor@ifpr.edu.br";
     
-    // Server-trusted identity resolution from Firestore user profile if available, else auth token
-    let signerName = req.authUser!.email?.split("@")[0] || "Servidor IFPR";
-    try {
-      const userDoc = await adminDb.collection("users").doc(signerUid).get();
-      if (userDoc.exists) {
-        const udata = userDoc.data();
-        if (udata?.name) {
-          signerName = udata.name;
-        }
-      }
-    } catch {}
+    // Server-trusted identity resolution from validated Firestore profile
+    const signerName = staffCheck.signerName || req.authUser!.email?.split("@")[0] || "Servidor IFPR";
 
     let isIdempotent = false;
     let itemTitle = "";
@@ -4551,41 +5011,12 @@ app.post(["/api/signature/confirm-staff-signature", "/signature/confirm-staff-si
 // API Endpoint: Send Remote Digital Signature Request via Email (Requires Staff Authentication)
 app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth, generalRateLimiter, async (req, res) => {
   try {
-    // 🔒 RBAC Check: Only active Staff or Admin can request remote signature
-    if (!req.authUser || !req.authUser.uid) {
-      return res.status(401).json({
-        success: false,
-        error: "Autenticação obrigatória. Faça login com sua conta institucional.",
-      });
-    }
-
     const adminDb = getAdminFirestore();
-    let isStaffOrAdmin = req.authUser.isAdmin || req.authUser.role === "ADMIN" || req.authUser.role === "SERVIDOR";
-
-    if (adminDb) {
-      try {
-        const userDoc = await adminDb.collection("users").doc(req.authUser.uid).get();
-        if (userDoc.exists) {
-          const udata = userDoc.data() || {};
-          if (udata.status === "SUSPENDED" || udata.status === "INACTIVE" || udata.active === false) {
-            return res.status(403).json({
-              success: false,
-              error: "Conta suspensa ou inativa. Acesso negado aos recursos institucionais.",
-            });
-          }
-          if (udata.role === "ADMIN" || udata.role === "SERVIDOR" || udata.isAdmin === true) {
-            isStaffOrAdmin = true;
-          }
-        }
-      } catch (err) {
-        console.warn("[Auth RBAC Warning] Falha ao verificar perfil do usuário no Firestore:", err);
-      }
-    }
-
-    if (!isStaffOrAdmin) {
-      return res.status(403).json({
+    const staffCheck = await validateStaffOrAdminAccess(adminDb, req.authUser!);
+    if (!staffCheck.authorized) {
+      return res.status(staffCheck.statusCode).json({
         success: false,
-        error: "Acesso negado. Apenas servidores e administradores do IFPR ativos podem despachar termos de assinatura.",
+        error: staffCheck.errorMessage,
       });
     }
 
@@ -4960,8 +5391,15 @@ async function startServer() {
   );
 
   if (!isServerlessEnv && process.env.NODE_ENV !== "test") {
-    app.listen(PORT, "0.0.0.0", () => {
+    const serverInstance = app.listen(PORT, "0.0.0.0", () => {
       console.log(`IFPR Achados & Perdidos backend rodando em http://localhost:${PORT}`);
+    });
+    serverInstance.on("error", (err: any) => {
+      if (err?.code === "EADDRINUSE") {
+        console.error(`[Server Port Conflict] A porta ${PORT} já está em uso:`, err.message);
+      } else {
+        console.error("[Server Listen Error]:", err);
+      }
     });
   }
 }
