@@ -108,7 +108,7 @@ import {
   playNotificationChime,
   setupFCMForegroundListener,
 } from "../lib/fcm";
-import { isGenericAvatar, getSafeAvatarUrl } from "../lib/avatarUtils";
+import { isGenericAvatar, getSafeAvatarUrl, isCustomUploadedAvatar, getGoogleProviderPhoto } from "../lib/avatarUtils";
 
 export interface InstitutionalRoleDetermination {
   role: UserRole;
@@ -2087,20 +2087,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // 4. extraData explícito
         // 5. Avatar já gravado no Firestore
         // 6. Fallback determinístico seguro
-        const hasCustomStoredAvatar = Boolean(existingData.avatarUrl && !isGenericAvatar(existingData.avatarUrl));
+        const googlePhoto = getGoogleProviderPhoto(fbUser);
+        const hasCustomStoredAvatar = Boolean(existingData.avatarUrl && isCustomUploadedAvatar(existingData.avatarUrl));
         const hasPendingAvatar = Boolean(pendingData?.avatarUrl && !isGenericAvatar(pendingData.avatarUrl));
         const hasExtraAvatar = Boolean(extraData?.avatarUrl && !isGenericAvatar(extraData.avatarUrl));
-        const hasProviderPhoto = Boolean(fbUser.photoURL && !isGenericAvatar(fbUser.photoURL));
+        const hasProviderPhoto = Boolean(googlePhoto);
 
         const resolvedAvatar = hasPendingAvatar
           ? pendingData!.avatarUrl!.trim()
           : hasCustomStoredAvatar
           ? existingData.avatarUrl.trim()
           : hasProviderPhoto
-          ? fbUser.photoURL!.trim()
+          ? googlePhoto!
           : hasExtraAvatar
           ? extraData!.avatarUrl!.trim()
-          : (existingData.avatarUrl && existingData.avatarUrl.trim().length > 0 && existingData.avatarUrl.trim() !== "undefined" && existingData.avatarUrl.trim() !== "null")
+          : (existingData.avatarUrl && !isGenericAvatar(existingData.avatarUrl))
           ? existingData.avatarUrl.trim()
           : getSafeAvatarUrl(undefined, resolvedName);
 
@@ -2182,20 +2183,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           const resolvedName = pendingData?.name || legacyData.name || fbUser.displayName || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
 
-          const hasCustomStoredAvatar = Boolean(legacyData.avatarUrl && !isGenericAvatar(legacyData.avatarUrl));
+          const googlePhoto = getGoogleProviderPhoto(fbUser);
+          const hasCustomStoredAvatar = Boolean(legacyData.avatarUrl && isCustomUploadedAvatar(legacyData.avatarUrl));
           const hasPendingAvatar = Boolean(pendingData?.avatarUrl && !isGenericAvatar(pendingData.avatarUrl));
           const hasExtraAvatar = Boolean(extraData?.avatarUrl && !isGenericAvatar(extraData.avatarUrl));
-          const hasProviderPhoto = Boolean(fbUser.photoURL && !isGenericAvatar(fbUser.photoURL));
+          const hasProviderPhoto = Boolean(googlePhoto);
 
           const resolvedAvatar = hasPendingAvatar
             ? pendingData!.avatarUrl!.trim()
             : hasCustomStoredAvatar
             ? legacyData.avatarUrl.trim()
             : hasProviderPhoto
-            ? fbUser.photoURL!.trim()
+            ? googlePhoto!
             : hasExtraAvatar
             ? extraData!.avatarUrl!.trim()
-            : (legacyData.avatarUrl && legacyData.avatarUrl.trim().length > 0 && legacyData.avatarUrl.trim() !== "undefined" && legacyData.avatarUrl.trim() !== "null")
+            : (legacyData.avatarUrl && !isGenericAvatar(legacyData.avatarUrl))
             ? legacyData.avatarUrl.trim()
             : getSafeAvatarUrl(undefined, resolvedName);
 
@@ -2256,14 +2258,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const resolvedRegistration = pendingData?.registrationNumber || extraData?.registrationNumber || `EXT${fbUser.uid.substring(0, 6)}`;
     const resolvedPhone = pendingData?.phone ?? extraData?.phone ?? "";
 
+    const googlePhoto = getGoogleProviderPhoto(fbUser);
     const hasPendingAvatar = Boolean(pendingData?.avatarUrl && !isGenericAvatar(pendingData.avatarUrl));
-    const hasProviderPhoto = Boolean(fbUser.photoURL && !isGenericAvatar(fbUser.photoURL));
+    const hasProviderPhoto = Boolean(googlePhoto);
     const hasExtraAvatar = Boolean(extraData?.avatarUrl && !isGenericAvatar(extraData.avatarUrl));
 
     const resolvedAvatar = hasPendingAvatar
       ? pendingData!.avatarUrl!.trim()
       : hasProviderPhoto
-      ? fbUser.photoURL!.trim()
+      ? googlePhoto!
       : hasExtraAvatar
       ? extraData!.avatarUrl!.trim()
       : (pendingData?.avatarUrl?.trim() || extraData?.avatarUrl?.trim() || getSafeAvatarUrl(undefined, resolvedName));
@@ -2348,12 +2351,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (userSnap) => {
             if (userSnap.exists()) {
               const rawData = userSnap.data() as User;
-              // Preserva avatar válido, priorizando fotos reais (custom/Google) mesmo se snapshot vier temporariamente vazio
-              const safeAvatar = !isGenericAvatar(rawData.avatarUrl)
+              const googlePhoto = getGoogleProviderPhoto(fbUser);
+              // Preserva avatar válido, priorizando foto customizada enviada pelo usuário, foto do Google OAuth, foto persistida no Firestore ou fallback
+              const safeAvatar = isCustomUploadedAvatar(rawData.avatarUrl)
                 ? rawData.avatarUrl.trim()
-                : (fbUser.photoURL && !isGenericAvatar(fbUser.photoURL))
-                ? fbUser.photoURL.trim()
-                : (rawData.avatarUrl && rawData.avatarUrl.trim().length > 0)
+                : googlePhoto
+                ? googlePhoto
+                : (!isGenericAvatar(rawData.avatarUrl) && rawData.avatarUrl.trim().length > 0)
                 ? rawData.avatarUrl.trim()
                 : getSafeAvatarUrl(undefined, rawData.name);
 

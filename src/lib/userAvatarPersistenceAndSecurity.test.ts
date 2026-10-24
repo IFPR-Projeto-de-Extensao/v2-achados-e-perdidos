@@ -2,13 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   getSafeAvatarUrl,
   isGenericAvatar,
+  isCustomUploadedAvatar,
+  getGoogleProviderPhoto,
   handleAvatarError,
   LOCAL_AVATAR_FALLBACK,
   INLINE_AVATAR_SVG_DATA_URI,
 } from "./avatarUtils";
 import { User, UserRole } from "../types";
 
-describe("LOCALIZA+ v1.9.x — Validação Obrigatória do Avatar do Usuário (Etapa 4)", () => {
+describe("LOCALIZA+ v1.10.4 — Validação Obrigatória do Avatar do Usuário (Foto do Google & Avatar Customizado)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -27,7 +29,7 @@ describe("LOCALIZA+ v1.9.x — Validação Obrigatória do Avatar do Usuário (E
     extraAvatar?: string | null;
     fallbackName?: string | null;
   }): string {
-    const hasCustomStoredAvatar = Boolean(storedAvatar && !isGenericAvatar(storedAvatar));
+    const hasCustomStoredAvatar = Boolean(storedAvatar && isCustomUploadedAvatar(storedAvatar));
     const hasPendingAvatar = Boolean(pendingAvatar && !isGenericAvatar(pendingAvatar));
     const hasExtraAvatar = Boolean(extraAvatar && !isGenericAvatar(extraAvatar));
     const hasProviderPhoto = Boolean(providerPhoto && !isGenericAvatar(providerPhoto));
@@ -40,7 +42,7 @@ describe("LOCALIZA+ v1.9.x — Validação Obrigatória do Avatar do Usuário (E
       ? providerPhoto!.trim()
       : hasExtraAvatar
       ? extraAvatar!.trim()
-      : (storedAvatar && storedAvatar.trim().length > 0 && storedAvatar.trim() !== "undefined" && storedAvatar.trim() !== "null")
+      : (storedAvatar && !isGenericAvatar(storedAvatar))
       ? storedAvatar.trim()
       : getSafeAvatarUrl(undefined, fallbackName);
   }
@@ -69,6 +71,44 @@ describe("LOCALIZA+ v1.9.x — Validação Obrigatória do Avatar do Usuário (E
 
     // Como o avatar armazenado era apenas um placeholder genérico, a foto real do Google prevalece
     expect(resolved).toBe(googlePhoto);
+  });
+
+  it("1.2 Primeiro login quando usuário já possuía imagem Unsplash de amostra: deve substituir por fbUser.photoURL", () => {
+    const googlePhoto = "https://lh3.googleusercontent.com/a/ACg8ocL_TESTE_GOOGLE=s96-c";
+    const unsplashAvatar = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150";
+
+    const resolved = resolveAvatarForUser({
+      storedAvatar: unsplashAvatar,
+      providerPhoto: googlePhoto,
+      fallbackName: "Paulo Cauan",
+    });
+
+    expect(resolved).toBe(googlePhoto);
+  });
+
+  it("1.3 Extração de foto Google via providerData quando photoURL não está no nível raiz", () => {
+    const googlePhoto = "https://lh3.googleusercontent.com/a/ACg8ocL_TESTE_GOOGLE=s96-c";
+    const mockFbUser = {
+      photoURL: null,
+      providerData: [
+        { providerId: "google.com", photoURL: googlePhoto },
+      ],
+    };
+
+    const extracted = getGoogleProviderPhoto(mockFbUser);
+    expect(extracted).toBe(googlePhoto);
+  });
+
+  it("1.4 Identificação precisa de avatar customizado enviado pelo usuário vs foto de provedor", () => {
+    const customBase64 = "data:image/webp;base64,UklGRmQAAABXRUJQVlA4WAoAAAAQAAAA320x320";
+    const storageUrl = "https://firebasestorage.googleapis.com/v0/b/app/o/avatars%2Fuser.png";
+    const googlePhoto = "https://lh3.googleusercontent.com/a/ACg8ocL";
+    const unsplashPhoto = "https://images.unsplash.com/photo-1535713875002";
+
+    expect(isCustomUploadedAvatar(customBase64)).toBe(true);
+    expect(isCustomUploadedAvatar(storageUrl)).toBe(true);
+    expect(isCustomUploadedAvatar(googlePhoto)).toBe(false);
+    expect(isCustomUploadedAvatar(unsplashPhoto)).toBe(false);
   });
 
   it("2. Login com avatar personalizado já persistido: NÃO deve sobrescrever por fbUser.photoURL", () => {

@@ -24,12 +24,46 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.10.4",
+    codename: "Resolução e Sincronização Automática da Foto de Perfil do Google OAuth",
+    releaseDate: "24/10/2026",
+    releaseDateTime: "24 de Outubro de 2026 • 16:00 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "LOCALIZA+ v1.10.4 — Resolução da regressão de exibição da foto de perfil para contas Google OAuth. Implementação dos auxiliares getGoogleProviderPhoto e isCustomUploadedAvatar para extração resiliente da foto via FirebaseUser (photoURL e providerData), garantindo que fotos do Google sejam vinculadas e exibidas automaticamente quando o usuário não possuir um avatar customizado, sem sobrescrever uploads manuais em Base64 ou Firebase Storage.",
+    additions: [
+      {
+        id: "v1104-add-google-provider-photo-extraction",
+        title: "Extração Resiliente da Foto de Perfil do Google OAuth",
+        description: "Implementação da função getGoogleProviderPhoto em avatarUtils.ts com suporte a extração a partir de fbUser.photoURL e fbUser.providerData ('google.com').",
+        module: "AUTH",
+        tag: "Google OAuth & Avatar",
+      },
+      {
+        id: "v1104-add-custom-uploaded-avatar-detection",
+        title: "Diferenciação Precisa de Avatar Customizado vs Provedor / Placeholder",
+        description: "Implementação de isCustomUploadedAvatar para identificar uploads manuais em Base64/Storage, garantindo a preservação intocável da foto enviada pelo usuário.",
+        module: "AUTH",
+        tag: "Perfil de Usuário",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1104-fix-google-photo-regression",
+        title: "Correção de Regressão na Foto do Google OAuth",
+        description: "Ajuste na regra de precedência de avatar em AppContext.tsx (verifyUserInFirestore e onSnapshot), substituindo placeholders genéricos e amostras Unsplash pela foto real do Google no momento do login.",
+        module: "AUTH",
+        tag: "Fix Regressão",
+      },
+    ],
+  },
+  {
     version: "v1.10.3",
     codename: "Liberação do Módulo de Assinaturas e Custódia para Servidores",
     releaseDate: "24/10/2026",
     releaseDateTime: "24 de Outubro de 2026 • 09:00 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "LOCALIZA+ v1.10.3 — Ampliação cirúrgica da interface operacional em DashboardView para disponibilizar a categoria 'Custódia & Devoluções' e a sub-aba 'Assinaturas Pendentes' aos usuários com perfil SERVIDOR. Otimização do controle de abas e preservação estrita das restrições administrativas globais (usuários, auditoria, backups e configurações) exclusivas para Administradores TI.",
     additions: [
       {
