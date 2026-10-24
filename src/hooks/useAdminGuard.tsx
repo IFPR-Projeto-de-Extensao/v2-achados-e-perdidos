@@ -2,6 +2,8 @@ import React, { useEffect, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { useRouter } from "../context/RouterContext";
 import { vibrateWarning } from "../lib/utils";
+import { isAccountBlocked } from "../lib/accountStatusUtils";
+import { DEFAULT_GUEST_USER } from "../lib/shared-constants";
 import { User } from "../types";
 
 export interface UseAdminGuardOptions {
@@ -25,6 +27,7 @@ export interface UseAdminGuardOptions {
 
 export interface AdminGuardState {
   isAdmin: boolean;
+  isStaff: boolean;
   isAuthLoading: boolean;
   authorized: boolean;
   currentUser: User;
@@ -54,8 +57,23 @@ export function useAdminGuard(options: UseAdminGuardOptions = {}): AdminGuardSta
   } = options;
 
   const effectiveLoading = isAuthLoading || authLoading;
-  const isAdmin = currentUser && currentUser.role === "ADMIN" && !isEmailVerificationRequired;
-  const authorized = !effectiveLoading && Boolean(isAdmin);
+  const isEmailValid = !isEmailVerificationRequired;
+  const isAdmin = Boolean(currentUser && currentUser.role === "ADMIN" && isEmailValid);
+  const isStaff = Boolean(currentUser && currentUser.role === "SERVIDOR" && isEmailValid);
+  const isBlocked = isAccountBlocked(currentUser);
+  const isApproved = currentUser?.approvalStatus === "APROVADO";
+
+  // Both ADMIN and SERVIDOR (Docente / TAE) have legitimate authorization to access the operational panel (/admin).
+  // ALUNO, guest, suspended, banned, unapproved and unverified accounts are strictly rejected.
+  const authorized =
+    !effectiveLoading &&
+    Boolean(
+      currentUser &&
+      currentUser.id !== DEFAULT_GUEST_USER.id &&
+      (isAdmin || isStaff) &&
+      isApproved &&
+      !isBlocked
+    );
 
   useEffect(() => {
     if (effectiveLoading) return;
@@ -63,12 +81,12 @@ export function useAdminGuard(options: UseAdminGuardOptions = {}): AdminGuardSta
     if (isEmailVerificationRequired && autoRedirect && !hasRedirectedRef.current) {
       hasRedirectedRef.current = true;
       vibrateWarning();
-      addToast("Seu e-mail precisa ser verificado antes de acessar o Painel Administrativo.", "warning");
+      addToast("Seu e-mail precisa ser verificado antes de acessar o Painel.", "warning");
       navigate("/verificar-email", { replace: true });
       return;
     }
 
-    if (!isAdmin && autoRedirect && !hasRedirectedRef.current) {
+    if (!authorized && autoRedirect && !hasRedirectedRef.current) {
       hasRedirectedRef.current = true;
       vibrateWarning();
 
@@ -78,10 +96,11 @@ export function useAdminGuard(options: UseAdminGuardOptions = {}): AdminGuardSta
 
       navigate(redirectTo, { replace: true });
     }
-  }, [effectiveLoading, isAdmin, isEmailVerificationRequired, autoRedirect, redirectTo, showToast, customToastMessage, addToast, navigate]);
+  }, [effectiveLoading, authorized, isEmailVerificationRequired, autoRedirect, redirectTo, showToast, customToastMessage, addToast, navigate]);
 
   return {
-    isAdmin: Boolean(isAdmin),
+    isAdmin,
+    isStaff,
     isAuthLoading: effectiveLoading,
     authorized,
     currentUser,

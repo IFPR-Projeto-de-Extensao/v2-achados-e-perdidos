@@ -874,16 +874,20 @@ export const DashboardView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white/90 dark:bg-[#0f1420]/90 backdrop-blur-md p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs">
         <div className="flex items-center space-x-3 min-w-0">
           <div className="w-8 h-8 rounded-lg bg-[#00843D]/10 text-[#00843D] dark:text-emerald-400 flex items-center justify-center shrink-0">
-            <ShieldCheck className="w-4.5 h-4.5" />
+            {currentUser.role === "SERVIDOR" ? (
+              <Building2 className="w-4.5 h-4.5" />
+            ) : (
+              <ShieldCheck className="w-4.5 h-4.5" />
+            )}
           </div>
           <div className="min-w-0">
             <div className="flex items-center space-x-1.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              <span>Gestão Institucional</span>
+              <span>{currentUser.role === "SERVIDOR" ? "Atendimento & Portaria" : "Gestão Institucional"}</span>
               <span>•</span>
               <span>IFPR Campus Ivaiporã</span>
             </div>
             <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight truncate">
-              Painel de Operações &amp; Gestão
+              {currentUser.role === "SERVIDOR" ? "Painel do Servidor & Gestão" : "Painel de Operações & Gestão"}
             </h1>
           </div>
         </div>
@@ -930,8 +934,12 @@ export const DashboardView: React.FC = () => {
             </div>
           ) : (
             <div className="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium flex items-center space-x-2 border border-slate-200 dark:border-slate-700">
-              <UserCheck className="w-3.5 h-3.5 text-[#00843D]" />
-              <span>Painel: {currentUser.role}</span>
+              {currentUser.role === "SERVIDOR" ? (
+                <Building2 className="w-3.5 h-3.5 text-[#00843D]" />
+              ) : (
+                <UserCheck className="w-3.5 h-3.5 text-[#00843D]" />
+              )}
+              <span>{currentUser.role === "SERVIDOR" ? "Painel: Servidor / Portaria" : `Painel: ${currentUser.role}`}</span>
             </div>
           )}
 

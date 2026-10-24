@@ -2074,6 +2074,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ? "ADMIN"
           : (existingData.role === "ADMIN" && existingData.approvalStatus === "APROVADO")
           ? "ADMIN"
+          : (existingData.role === "SERVIDOR" && existingData.approvalStatus === "APROVADO")
+          ? "SERVIDOR"
           : verifiedRoleDetermination.role;
 
         const resolvedName = pendingData?.name || existingData.name || fbUser.displayName || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
@@ -2174,6 +2176,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? "ADMIN"
             : (legacyData.role === "ADMIN" && legacyData.approvalStatus === "APROVADO")
             ? "ADMIN"
+            : (legacyData.role === "SERVIDOR" && legacyData.approvalStatus === "APROVADO")
+            ? "SERVIDOR"
             : verifiedRoleDetermination.role;
 
           const resolvedName = pendingData?.name || legacyData.name || fbUser.displayName || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");

@@ -10,6 +10,7 @@ import {
   Sparkles,
   UserCheck,
   LayoutDashboard,
+  Building2,
 } from "lucide-react";
 
 export const MobileBottomNav: React.FC = () => {
@@ -102,10 +103,22 @@ export const MobileBottomNav: React.FC = () => {
           <span className="text-[10px] font-semibold tracking-tight">Achados</span>
         </button>
 
-        {/* Perfil / Admin */}
+        {/* Perfil / Admin / Servidor */}
         <button
-          onClick={() => handleTab(currentUser.role === "ADMIN" ? "/admin" : "/perfil")}
-          aria-label={currentUser.role === "ADMIN" ? "Painel Admin" : "Meu Perfil"}
+          onClick={() =>
+            handleTab(
+              currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR"
+                ? "/admin"
+                : "/perfil"
+            )
+          }
+          aria-label={
+            currentUser.role === "ADMIN"
+              ? "Painel Admin"
+              : currentUser.role === "SERVIDOR"
+              ? "Painel do Servidor"
+              : "Meu Perfil"
+          }
           aria-current={routeKey === "profile" || routeKey === "admin" ? "page" : undefined}
           className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
             routeKey === "profile" || routeKey === "admin"
@@ -115,11 +128,17 @@ export const MobileBottomNav: React.FC = () => {
         >
           {currentUser.role === "ADMIN" ? (
             <LayoutDashboard className="w-4.5 h-4.5 mb-0.5 text-[#00843D] dark:text-emerald-400" />
+          ) : currentUser.role === "SERVIDOR" ? (
+            <Building2 className="w-4.5 h-4.5 mb-0.5 text-[#00843D] dark:text-emerald-400" />
           ) : (
             <UserCheck className="w-4.5 h-4.5 mb-0.5" />
           )}
           <span className="text-[10px] font-semibold tracking-tight">
-            {currentUser.role === "ADMIN" ? "Admin" : "Perfil"}
+            {currentUser.role === "ADMIN"
+              ? "Admin"
+              : currentUser.role === "SERVIDOR"
+              ? "Servidor"
+              : "Perfil"}
           </span>
         </button>
       </div>

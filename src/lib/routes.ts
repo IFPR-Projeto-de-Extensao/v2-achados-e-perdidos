@@ -30,6 +30,8 @@ export const ROUTES = {
   ADMIN_SETTINGS: "/admin/configuracoes",
   PRIVACY: "/politica-de-privacidade",
   TERMS: "/termos-de-uso",
+  VERSIONS: "/versoes",
+  SERVER: "/servidor",
 } as const;
 
 export type AppRouteKey =
@@ -48,6 +50,7 @@ export type AppRouteKey =
   | "admin"
   | "privacy_policy"
   | "terms_of_use"
+  | "versions"
   | "not_found";
 
 export type AdminSubTab =
@@ -189,8 +192,13 @@ export function parseCurrentRoute(pathname: string, search: string = ""): Parsed
     return { pathname: "/verificar-email", routeKey: "verify_email", searchParams: searchParamsObj, itemId, qrCodeId };
   }
 
-  // Admin routes & sub-routes
-  if (cleanPath.startsWith("/admin") || cleanPath.startsWith("/dashboard")) {
+  // Admin & Server routes & sub-routes
+  if (
+    cleanPath.startsWith("/admin") ||
+    cleanPath.startsWith("/dashboard") ||
+    cleanPath === "/servidor" ||
+    cleanPath === "/painel-servidor"
+  ) {
     let subTab: AdminSubTab = "dashboard";
     if (cleanPath.includes("/usuarios") || cleanPath.includes("/users")) {
       subTab = "users";
@@ -226,6 +234,14 @@ export function parseCurrentRoute(pathname: string, search: string = ""): Parsed
 
   if (cleanPath === "/termos-de-uso" || cleanPath === "/termos") {
     return { pathname: "/termos-de-uso", routeKey: "terms_of_use", searchParams: searchParamsObj, itemId, qrCodeId };
+  }
+
+  if (
+    cleanPath === "/versoes" ||
+    cleanPath === "/historico-de-versoes" ||
+    cleanPath === "/changelog"
+  ) {
+    return { pathname: "/versoes", routeKey: "versions", searchParams: searchParamsObj, itemId, qrCodeId };
   }
 
   // Direct item deep-link: /item/xyz or /objeto/xyz

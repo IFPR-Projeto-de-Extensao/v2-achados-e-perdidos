@@ -224,17 +224,30 @@ export const Navbar: React.FC = () => {
               <span>Achados</span>
             </Link>
 
-            {currentUser.role === "ADMIN" && (
+            {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && (
               <Link
                 to="/admin"
                 className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
                   routeKey === "admin"
-                    ? "bg-purple-600 text-white shadow-xs"
-                    : "text-purple-600 dark:text-purple-400 hover:bg-purple-500/10"
+                    ? currentUser.role === "ADMIN"
+                      ? "bg-purple-600 text-white shadow-xs"
+                      : "bg-[#00843D] text-white shadow-xs"
+                    : currentUser.role === "ADMIN"
+                    ? "text-purple-600 dark:text-purple-400 hover:bg-purple-500/10"
+                    : "text-[#00843D] dark:text-emerald-400 hover:bg-[#00843D]/10"
                 }`}
               >
-                <LayoutDashboard className="w-3.5 h-3.5" />
-                <span>Admin</span>
+                {currentUser.role === "ADMIN" ? (
+                  <>
+                    <LayoutDashboard className="w-3.5 h-3.5" />
+                    <span>Admin</span>
+                  </>
+                ) : (
+                  <>
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>Painel do Servidor</span>
+                  </>
+                )}
               </Link>
             )}
           </nav>
@@ -603,7 +616,7 @@ export const Navbar: React.FC = () => {
             {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && (
               <div className="space-y-0.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2.5 pb-1">
-                  Administração & Gestão
+                  {currentUser.role === "ADMIN" ? "Administração & TI" : "Gestão do Servidor"}
                 </span>
 
                 <button
@@ -615,8 +628,16 @@ export const Navbar: React.FC = () => {
                   }`}
                 >
                   <div className="flex items-center space-x-2.5">
-                    <LayoutDashboard className="w-4 h-4" />
-                    <span>Painel Administrativo Institucional</span>
+                    {currentUser.role === "SERVIDOR" ? (
+                      <Building2 className="w-4 h-4" />
+                    ) : (
+                      <LayoutDashboard className="w-4 h-4" />
+                    )}
+                    <span>
+                      {currentUser.role === "SERVIDOR"
+                        ? "Painel do Servidor"
+                        : "Painel Administrativo Institucional"}
+                    </span>
                   </div>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-700/20 dark:bg-emerald-400/20">
                     {currentUser.role}
@@ -670,7 +691,7 @@ export const Navbar: React.FC = () => {
               <button
                 onClick={() => handleNavClick("/versoes")}
                 className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                  pathname === "/versoes"
+                  pathname === "/versoes" || routeKey === "versions"
                     ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
                     : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
                 }`}

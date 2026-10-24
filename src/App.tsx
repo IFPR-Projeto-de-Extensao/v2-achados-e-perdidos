@@ -16,6 +16,7 @@ import { SupportView } from "./components/SupportView";
 import { PrivacyPolicyView } from "./components/PrivacyPolicyView";
 import { TermsOfUseView } from "./components/TermsOfUseView";
 import { EmailVerificationView } from "./components/EmailVerificationView";
+import { VersionHistoryView } from "./components/VersionHistoryView";
 import { NotFoundView } from "./components/NotFoundView";
 import { ItemDetailModal } from "./components/ItemDetailModal";
 import { QRCodeScannerModal } from "./components/QRCodeScannerModal";
@@ -43,6 +44,8 @@ import {
 } from "./lib/routeAnimations";
 import { AppRouteKey } from "./lib/routes";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
+import { GitBranch, LogIn } from "lucide-react";
+import { vibrateClick } from "./lib/utils";
 
 const MainContent: React.FC = () => {
   const {
@@ -58,6 +61,9 @@ const MainContent: React.FC = () => {
     items,
     requestAuthForRegistration,
     isEmailVerificationRequired,
+    isAuthenticated,
+    isGuest,
+    darkMode,
   } = useApp();
 
   const { routeKey, pathname, searchParams, navigate } = useRouter();
@@ -292,6 +298,51 @@ const MainContent: React.FC = () => {
         return <PrivacyPolicyView />;
       case "terms_of_use":
         return <TermsOfUseView />;
+      case "versions": {
+        if (!isAuthenticated || isGuest) {
+          return (
+            <div className="max-w-2xl mx-auto py-12 px-4 animate-in fade-in duration-300">
+              <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-8 sm:p-10 border border-neutral-200 dark:border-neutral-800 shadow-xl text-center space-y-6">
+                <div className="w-20 h-20 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-[#00843D] dark:text-green-400 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center mx-auto shadow-inner">
+                  <GitBranch className="w-10 h-10" />
+                </div>
+
+                <div className="space-y-2">
+                  <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                    Histórico Oficial de Versões
+                  </h1>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-300 max-w-md mx-auto leading-relaxed">
+                    O acesso ao changelog institucional e histórico de releases é restrito a membros autenticados da comunidade acadêmica do IFPR. Entre com sua conta institucional (@ifpr.edu.br ou @estudantes.ifpr.edu.br).
+                  </p>
+                </div>
+
+                <div className="pt-2 flex flex-col sm:flex-row gap-3 justify-center">
+                  <button
+                    onClick={() => {
+                      vibrateClick();
+                      setAuthModalOpen(true);
+                    }}
+                    className="py-3.5 px-6 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-black text-sm shadow-lg shadow-[#00843D]/20 transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    <span>Entrar com Conta Institucional</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      vibrateClick();
+                      navigate("/");
+                    }}
+                    className="py-3.5 px-6 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 font-bold text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                  >
+                    <span>Voltar ao Início</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        }
+        return <VersionHistoryView darkMode={darkMode} />;
+      }
       case "not_found":
       default:
         return <NotFoundView />;

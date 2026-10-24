@@ -56,8 +56,12 @@ interface VersionHistoryViewProps {
 export const VersionHistoryView: React.FC<VersionHistoryViewProps> = ({ darkMode }) => {
   const { addToast, currentUser } = useApp();
 
-  // Top-level Navigation Tab: Changelog vs Test Battery Manager
+  // Role-Based Access Control: Test Batteries & Validation are restricted to Staff/Admins
+  const canAccessTestBatteries = currentUser?.role === "ADMIN" || currentUser?.role === "SERVIDOR";
+
+  // Top-level Navigation Tab: Changelog vs Test Battery Manager (guarded by role)
   const [mainTab, setMainTab] = useState<"CHANGELOG" | "TEST_BATTERIES">("CHANGELOG");
+  const effectiveMainTab = canAccessTestBatteries ? mainTab : "CHANGELOG";
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"ALL" | "ADDITIONS" | "FIXES">("ALL");
@@ -226,8 +230,13 @@ export const VersionHistoryView: React.FC<VersionHistoryViewProps> = ({ darkMode
           filterType: filterToUse,
           selectedVersion: verToUse,
           selectedModule: selectedModule,
-          issuedByName: currentUser?.name || "Administrador do Sistema",
-          issuedByRole: currentUser?.role || "SEBAC / TI Campus Ivaiporã",
+          issuedByName: currentUser?.name || "Membro da Comunidade Acadêmica",
+          issuedByRole:
+            currentUser?.role === "ADMIN"
+              ? "Administrador do Sistema"
+              : currentUser?.role === "SERVIDOR"
+              ? "Servidor / SEBAC"
+              : "Aluno / Acadêmico",
           includeSignatures: signaturesToUse,
         });
 
@@ -306,7 +315,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               setMainTab("CHANGELOG");
             }}
             className={`px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center space-x-2 cursor-pointer ${
-              mainTab === "CHANGELOG"
+              effectiveMainTab === "CHANGELOG"
                 ? "bg-[#00843D] text-white shadow-sm"
                 : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
             }`}
@@ -314,40 +323,42 @@ Relatório completo de atualizações e manutenções desde a criação do siste
             <GitBranch className="w-4 h-4" />
             <span>Changelog & Histórico de Versões</span>
             <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-              mainTab === "CHANGELOG" ? "bg-white/20 text-white" : "bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
+              effectiveMainTab === "CHANGELOG" ? "bg-white/20 text-white" : "bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
             }`}>
               {TOTAL_VERSIONS_COUNT} Releases
             </span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              vibrateClick();
-              setMainTab("TEST_BATTERIES");
-            }}
-            className={`px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center space-x-2 cursor-pointer ${
-              mainTab === "TEST_BATTERIES"
-                ? "bg-purple-600 text-white shadow-sm"
-                : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4" />
-            <span>Bateria de Testes & Validação</span>
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-              mainTab === "TEST_BATTERIES" ? "bg-white/20 text-white" : "bg-purple-500/10 text-purple-600 dark:text-purple-400"
-            }`}>
-              Governança & QA
-            </span>
-          </button>
+          {canAccessTestBatteries && (
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                setMainTab("TEST_BATTERIES");
+              }}
+              className={`px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center space-x-2 cursor-pointer ${
+                effectiveMainTab === "TEST_BATTERIES"
+                  ? "bg-purple-600 text-white shadow-sm"
+                  : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>Bateria de Testes & Validação</span>
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                effectiveMainTab === "TEST_BATTERIES" ? "bg-white/20 text-white" : "bg-purple-500/10 text-purple-600 dark:text-purple-400"
+              }`}>
+                Governança & QA
+              </span>
+            </button>
+          )}
         </div>
 
         <div className="text-[11px] text-neutral-500 font-medium px-3">
-          {mainTab === "CHANGELOG" ? "Relatório Oficial de Alterações" : "Validação com Trilha de Auditoria"}
+          {effectiveMainTab === "CHANGELOG" ? "Relatório Oficial de Alterações" : "Validação com Trilha de Auditoria"}
         </div>
       </div>
 
-      {mainTab === "TEST_BATTERIES" ? (
+      {effectiveMainTab === "TEST_BATTERIES" && canAccessTestBatteries ? (
         <TestBatteryManagerView darkMode={darkMode} />
       ) : (
         <>

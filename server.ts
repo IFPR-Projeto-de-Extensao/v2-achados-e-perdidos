@@ -309,12 +309,14 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
         let isAdmin = isRoot || decoded.role === "ADMIN" || decoded.admin === true;
         let isEmailVerified = isRoot ? true : decoded.email_verified === true;
 
+        let dbRole: string | undefined = undefined;
         const adminFirestore = getAdminFirestore();
         if (adminFirestore) {
           try {
             const uDoc = await adminFirestore.collection("users").doc(decoded.uid).get();
             if (uDoc.exists) {
               const uData = uDoc.data();
+              dbRole = uData?.role;
               if (uData?.role === "ADMIN") {
                 isAdmin = true;
               }
@@ -333,7 +335,7 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
           uid: decoded.uid,
           email: decoded.email,
           email_verified: isEmailVerified,
-          role: isAdmin ? "ADMIN" : (decoded.role as string) || "ALUNO",
+          role: isAdmin ? "ADMIN" : (dbRole || (decoded.role as string) || "ALUNO"),
           isAdmin,
         };
         return next();

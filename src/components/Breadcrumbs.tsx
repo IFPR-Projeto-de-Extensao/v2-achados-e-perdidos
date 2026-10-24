@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import { useRouter, Link } from "../context/RouterContext";
+import { useApp } from "../context/AppContext";
 import {
   Home,
   ChevronRight,
@@ -25,6 +26,8 @@ import {
   FileCheck,
   AlertCircle,
   ArrowLeft,
+  GitBranch,
+  Building2,
 } from "lucide-react";
 import { vibrateClick } from "../lib/utils";
 
@@ -78,6 +81,11 @@ const SEGMENT_CONFIG: Record<
   suporte: { label: "Central de Suporte", icon: LifeBuoy },
   privacidade: { label: "Política de Privacidade", icon: Shield },
   termos: { label: "Termos de Uso", icon: FileCheck },
+  versoes: { label: "Histórico de Versões", icon: GitBranch },
+  "historico-de-versoes": { label: "Histórico de Versões", icon: GitBranch },
+  changelog: { label: "Changelog", icon: GitBranch },
+  servidor: { label: "Painel do Servidor", icon: Building2 },
+  "painel-servidor": { label: "Painel do Servidor", icon: Building2 },
 };
 
 /**
@@ -89,6 +97,7 @@ function formatSegmentTitle(segment: string): string {
 }
 
 export const Breadcrumbs: React.FC = () => {
+  const { currentUser } = useApp();
   const { pathname, searchParams, routeKey, navigate } = useRouter();
 
   // Decompose the current pathname and build breadcrumb path trail
@@ -115,10 +124,18 @@ export const Breadcrumbs: React.FC = () => {
       const lowerSeg = seg.toLowerCase();
       const config = SEGMENT_CONFIG[lowerSeg];
 
-      const itemLabel = config?.label || formatSegmentTitle(seg);
-      const itemIcon = config?.icon;
-      const itemBadge = config?.badge;
-      const itemBadgeColor = config?.badgeColor;
+      let itemLabel = config?.label || formatSegmentTitle(seg);
+      let itemIcon = config?.icon;
+      let itemBadge = config?.badge;
+      let itemBadgeColor = config?.badgeColor;
+
+      // Dynamic adjustment for staff role accessing operational panel
+      if ((lowerSeg === "admin" || lowerSeg === "servidor") && currentUser?.role === "SERVIDOR") {
+        itemLabel = "Painel do Servidor";
+        itemIcon = Building2;
+        itemBadge = "Servidor";
+        itemBadgeColor = "emerald";
+      }
 
       trail.push({
         label: itemLabel,
