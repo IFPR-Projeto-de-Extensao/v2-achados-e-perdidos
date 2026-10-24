@@ -39,6 +39,13 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "ADMIN",
         tag: "RBAC & Interface",
       },
+      {
+        id: "v1103-add-maintenance-button-visibility",
+        title: "Restrição de Visibilidade do Botão Modo Manutenção para Administradores",
+        description: "Ajuste cirúrgico em DashboardView para ocultar o botão de ativação do Modo Manutenção para usuários com perfil SERVIDOR ou ALUNO, exibindo-o exclusivamente para Administradores TI.",
+        module: "ADMIN",
+        tag: "RBAC & Interface",
+      },
     ],
     bugFixes: [],
   },

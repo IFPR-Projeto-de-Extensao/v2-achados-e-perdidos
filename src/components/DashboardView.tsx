@@ -1764,20 +1764,22 @@ export const DashboardView: React.FC = () => {
                       })}
                   </div>
 
-                  {/* System Maintenance Control */}
-                  <div className="flex items-center space-x-2 shrink-0">
-                    <button
-                      onClick={toggleMaintenanceMode}
-                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer border ${
-                        maintenanceMode
-                          ? "bg-amber-500 text-black border-amber-600 animate-pulse font-bold"
-                          : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
-                      }`}
-                    >
-                      <ShieldAlert className="w-3.5 h-3.5" />
-                      <span>{maintenanceMode ? "Manutenção Ativa" : "Modo Manutenção"}</span>
-                    </button>
-                  </div>
+                  {/* System Maintenance Control (Admin Only) */}
+                  {currentUser.role === "ADMIN" && (
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <button
+                        onClick={toggleMaintenanceMode}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer border ${
+                          maintenanceMode
+                            ? "bg-amber-500 text-black border-amber-600 animate-pulse font-bold"
+                            : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
+                        }`}
+                      >
+                        <ShieldAlert className="w-3.5 h-3.5" />
+                        <span>{maintenanceMode ? "Manutenção Ativa" : "Modo Manutenção"}</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Level 2: Specific Sub-Tabs of Active Category */}

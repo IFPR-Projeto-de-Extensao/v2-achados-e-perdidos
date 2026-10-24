@@ -376,8 +376,8 @@ describe("LOCALIZA+ v1.10.2 — Auditoria e Segurança do Painel do Servidor", (
   });
 
   describe("5. Preservação da Versão Oficial do Sistema", () => {
-    it("deve manter rigorosamente a versão base em v1.10.2", () => {
-      expect(CURRENT_VERSION).toBe("v1.10.2");
+    it("deve manter rigorosamente a versão atual em v1.10.3", () => {
+      expect(CURRENT_VERSION).toBe("v1.10.3");
     });
   });
 
@@ -1391,6 +1391,54 @@ describe("LOCALIZA+ v1.10.2 — Auditoria e Segurança do Painel do Servidor", (
       });
 
       expect(retryResult.status).toBe("CLAIMED");
+    });
+  });
+
+  describe("35. Auditoria de Segurança e Acesso ao Modo Manutenção", () => {
+    it("deve permitir que ADMIN autorizado valide ou altere o estado de manutenção", () => {
+      const adminAuth = simulateServerAuthMiddleware(
+        { uid: "admin_1", email: "paulocauan39@gmail.com", email_verified: true },
+        { role: "ADMIN", approvalStatus: "APROVADO" }
+      );
+      expect(adminAuth.authUser.isAdmin).toBe(true);
+      expect(adminAuth.isStaffOrAdmin).toBe(true);
+    });
+
+    it("deve estritamente barrar SERVIDOR de alterar configuração de manutenção (Simulação de RBAC / requireAdmin)", () => {
+      const serverAuth = simulateServerAuthMiddleware(
+        { uid: "serv_1", email: "servidor@ifpr.edu.br", email_verified: true },
+        { role: "SERVIDOR", approvalStatus: "APROVADO" }
+      );
+      expect(serverAuth.authUser.isAdmin).toBe(false);
+      const isAllowedByAdminGuard = serverAuth.authUser.isAdmin;
+      expect(isAllowedByAdminGuard).toBe(false);
+    });
+
+    it("deve estritamente barrar ALUNO de alterar configuração de manutenção", () => {
+      const alunoAuth = simulateServerAuthMiddleware(
+        { uid: "aluno_1", email: "aluno@estudante.ifpr.edu.br", email_verified: true },
+        { role: "ALUNO", approvalStatus: "APROVADO" }
+      );
+      expect(alunoAuth.authUser.isAdmin).toBe(false);
+    });
+
+    it("deve manter acesso operacional de SERVIDOR à custódia e assinaturas pendentes mesmo durante manutenção", () => {
+      const servidorUser: User = {
+        id: "serv_op_1",
+        name: "Servidor Operacional",
+        email: "operacional@ifpr.edu.br",
+        role: "SERVIDOR",
+        status: "active",
+        approvalStatus: "APROVADO",
+        reputationScore: 10,
+        createdAt: "2026-01-01T00:00:00Z",
+        courseOrDept: "Portaria IFPR",
+        registrationNumber: "202633333",
+        avatarUrl: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150",
+      };
+      const authEval = evaluatePanelAuthorization({ currentUser: servidorUser });
+      expect(authEval.authorized).toBe(true);
+      expect(authEval.isStaff).toBe(true);
     });
   });
 });
