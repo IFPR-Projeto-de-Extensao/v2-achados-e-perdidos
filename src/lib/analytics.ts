@@ -12,11 +12,26 @@ declare global {
   }
 }
 
-const defaultMeasurementId = typeof import.meta !== 'undefined' ? ((import.meta as any).env?.VITE_GA_MEASUREMENT_ID || '') : '';
+const defaultMeasurementId =
+  (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GA_MEASUREMENT_ID) ||
+  (typeof process !== 'undefined' && process.env?.VITE_GA_MEASUREMENT_ID) ||
+  '';
 
 // Initialize Google Analytics Global Tracking
 export function initGoogleAnalytics(measurementId = defaultMeasurementId) {
-  if (typeof window === 'undefined' || !measurementId) return;
+  if (
+    typeof window === 'undefined' ||
+    !measurementId ||
+    typeof measurementId !== 'string' ||
+    !measurementId.trim() ||
+    measurementId.trim() === 'undefined' ||
+    measurementId.trim() === 'null' ||
+    measurementId.trim() === 'G-'
+  ) {
+    return;
+  }
+
+  const cleanId = measurementId.trim();
 
   // Check if gtag script is already present
   if (!document.getElementById('ga-gtag-script')) {
@@ -25,18 +40,18 @@ export function initGoogleAnalytics(measurementId = defaultMeasurementId) {
       window.dataLayer.push(arguments);
     };
     window.gtag('js', new Date());
-    window.gtag('config', measurementId, { send_page_view: true });
+    window.gtag('config', cleanId, { send_page_view: true });
 
     const script = document.createElement('script');
     script.id = 'ga-gtag-script';
     script.async = true;
-    script.src = `https://www.googletagmanager.com/gtag/js?id=${measurementId}`;
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${cleanId}`;
     script.onerror = () => {
-      console.warn(`[Analytics Notice] Não foi possível carregar o script do Google Analytics (${measurementId}). O aplicativo continuará funcionando normalmente.`);
+      console.warn(`[Analytics Notice] Não foi possível carregar o script do Google Analytics (${cleanId}). O aplicativo continuará funcionando normalmente.`);
     };
     document.head.appendChild(script);
 
-    console.log(`Google Analytics (${measurementId}) inicializado.`);
+    console.log(`Google Analytics (${cleanId}) inicializado.`);
   }
 }
 

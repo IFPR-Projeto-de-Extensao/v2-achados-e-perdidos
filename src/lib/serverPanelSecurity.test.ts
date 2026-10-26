@@ -376,8 +376,8 @@ describe("LOCALIZA+ v1.10.2 — Auditoria e Segurança do Painel do Servidor", (
   });
 
   describe("5. Preservação da Versão Oficial do Sistema", () => {
-    it("deve manter rigorosamente a versão atual em v1.10.4", () => {
-      expect(CURRENT_VERSION).toBe("v1.10.4");
+    it("deve manter rigorosamente a versão atual em v1.10.5", () => {
+      expect(CURRENT_VERSION).toBe("v1.10.5");
     });
   });
 

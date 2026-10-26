@@ -24,12 +24,64 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.10.5",
+    codename: "Blindagem de CSP, Recuperação de Avatares Google e Harmonização de Listeners Firestore",
+    releaseDate: "26/10/2026",
+    releaseDateTime: "26 de Outubro de 2026 • 20:15 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "LOCALIZA+ v1.10.5 — Correção e alinhamento das políticas de Content Security Policy (CSP) para suporte a fotos Google (lh3.googleusercontent.com), avatares DiceBear e Google Tag Manager; eliminação cirúrgica de erros de permissão no listener da coleção comments para visitantes não autenticados; e desativação condicional da telemetria de rede do Firebase Performance via variável VITE_ENABLE_FIREBASE_PERF.",
+    additions: [
+      {
+        id: "v1105-add-csp-googleusercontent-connect-src",
+        title: "Autorização de Conexões para Fotos Google na CSP",
+        description: "Inclusão estrita de https://*.googleusercontent.com na diretiva connect-src em vercel.json, server.ts e securityHeaders.ts, autorizando requisições fetch do Service Worker e permitindo cache offline de avatares Google.",
+        module: "PWA",
+        tag: "CSP & Avatares",
+      },
+      {
+        id: "v1105-add-csp-gtm-and-dicebear-connect",
+        title: "Autorização de DiceBear e Google Tag Manager na CSP",
+        description: "Inclusão de https://www.googletagmanager.com em script-src e origens DiceBear e Analytics em connect-src, associada a verificação rigorosa de measurementId em analytics.ts para evitar injeções indevidas.",
+        module: "GERAL",
+        tag: "Segurança & CSP",
+      },
+      {
+        id: "v1105-add-firebase-perf-conditional-flag",
+        title: "Controle Condicional da Telemetria do Firebase Performance",
+        description: "Introdução da variável de ambiente VITE_ENABLE_FIREBASE_PERF para manter a telemetria Firelog inativa por padrão, eliminando avisos repetitivos de rede sem afetar métricas locais do IndexedDB ou Vercel Analytics.",
+        module: "FIRESTORE",
+        tag: "Telemetria & Performance",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1105-fix-comments-listener-permission-denied",
+        title: "Correção Cirúrgica do Listener da Coleção Comments",
+        description: "Adição de cláusula de guarda defensiva if (!firebaseUser) no listener onSnapshot da coleção comments em AppContext.tsx, limpando o estado em sessões anônimas e eliminando erros de permissão no carregamento inicial da página.",
+        module: "FIRESTORE",
+        tag: "Segurança & Listeners",
+      },
+      {
+        id: "v1105-fix-csp-connect-src-blocking",
+        title: "Eliminação de Bloqueios CSP em Pré-carregamento de Imagens",
+        description: "Resolução definitiva dos bloqueios connect-src para api.dicebear.com e lh3.googleusercontent.com durante execuções de fetch no Service Worker e rotinas de cache PWA.",
+        module: "PWA",
+        tag: "CSP & PWA",
+      },
+    ],
+    stats: {
+      additionsCount: 3,
+      fixesCount: 2,
+    },
+  },
+  {
     version: "v1.10.4",
     codename: "Resolução e Sincronização Automática da Foto de Perfil do Google OAuth",
     releaseDate: "24/10/2026",
     releaseDateTime: "24 de Outubro de 2026 • 16:00 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "LOCALIZA+ v1.10.4 — Resolução da regressão de exibição da foto de perfil para contas Google OAuth. Implementação dos auxiliares getGoogleProviderPhoto e isCustomUploadedAvatar para extração resiliente da foto via FirebaseUser (photoURL e providerData), garantindo que fotos do Google sejam vinculadas e exibidas automaticamente quando o usuário não possuir um avatar customizado, sem sobrescrever uploads manuais em Base64 ou Firebase Storage.",
     additions: [
       {

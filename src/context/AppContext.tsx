@@ -2617,8 +2617,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, [currentUser?.id, currentUser?.role, firebaseUser?.uid]);
 
-  // Sync Comments from Firestore
+  // Sync Comments from Firestore (requires authenticated session - least privilege)
   useEffect(() => {
+    if (!firebaseUser) {
+      setComments([]);
+      return;
+    }
+
     const unsubscribe = onSnapshot(
       collection(db, "comments"),
       async (snapshot) => {
@@ -2635,7 +2640,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [firebaseUser]);
 
   const addCommentToItem = async (itemId: string, text: string) => {
     if (!text.trim()) return;
