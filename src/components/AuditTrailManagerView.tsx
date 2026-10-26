@@ -29,13 +29,108 @@ import {
   X,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
-import { SystemAuditLog, AuditObjectType, UserRole } from "../types";
+import { SystemAuditLog, AuditObjectType, UserRole, ActivityLog } from "../types";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { vibrateClick, vibrateSuccess } from "../lib/utils";
 
 interface AuditTrailManagerViewProps {
   darkMode?: boolean;
+}
+
+/**
+ * Constrói a lista unificada de logs de auditoria combinando systemAuditLogs (primário)
+ * e activityLogs (legado). Aplica deduplicação estrita apenas quando houver identificador
+ * real comprovando que ambos representam o mesmo evento (via ID ou transactionId idêntico).
+ * Para registros legados sem ID confiável, gera uma chave sintética determinística em memória
+ * e assegura que nenhum evento distinto seja omitido ou descartado.
+ */
+export function buildUnifiedAuditLogs(
+  systemAuditLogs: SystemAuditLog[] = [],
+  activityLogs: ActivityLog[] = []
+): SystemAuditLog[] {
+  const resultList: SystemAuditLog[] = [];
+  const knownAuditIds = new Set<string>();
+  const knownTransactionIds = new Set<string>();
+
+  // 1. Adicionar logs primários de auditoria (audit_logs)
+  (systemAuditLogs || []).forEach((log) => {
+    if (log && log.id && !knownAuditIds.has(log.id)) {
+      knownAuditIds.add(log.id);
+      if (log.transactionId) {
+        knownTransactionIds.add(log.transactionId);
+      }
+      resultList.push(log);
+    }
+  });
+
+  // 2. Mapear logs legados de atividades (activity_logs) preservando eventos distintos
+  const seenActivityIds = new Set<string>();
+  const baseKeyCounts = new Map<string, number>();
+
+  (activityLogs || []).forEach((act, idx) => {
+    if (!act) return;
+
+    // Deduplicação estrita: apenas descarta quando houver identificador real comprovando mesmo evento
+    if (act.id && (knownAuditIds.has(act.id) || seenActivityIds.has(act.id))) {
+      return;
+    }
+    if (act.transactionId && knownTransactionIds.has(act.transactionId)) {
+      return;
+    }
+
+    if (act.id) {
+      seenActivityIds.add(act.id);
+    }
+    if (act.transactionId) {
+      knownTransactionIds.add(act.transactionId);
+    }
+
+    // Para registros legados sem ID confiável, gera uma chave sintética determinística em memória
+    // garantindo que registros distintos (mesmo com mesmo timestamp e adminId) NUNCA sejam descartados
+    const baseKey = act.id
+      ? String(act.id)
+      : `act-legacy-${act.timestamp ? act.timestamp.replace(/[:.]/g, "-") : "sem-data"}-${act.adminId || "anon"}`;
+
+    const seq = (baseKeyCounts.get(baseKey) || 0) + 1;
+    baseKeyCounts.set(baseKey, seq);
+
+    const safeActId = act.id ? String(act.id) : `${baseKey}-${seq}`;
+
+    const actionStr = String(act.action || "LOG");
+    const detailsStr = String(act.details || "");
+    const objType: AuditObjectType = act.objectType || (
+      actionStr.includes("ITEM") || actionStr.includes("OCORRENCIA") ? "ITEM" :
+      actionStr.includes("TEST") ? "TEST_CASE" :
+      actionStr.includes("USER") || actionStr.includes("PERMISSAO") ? "USER" :
+      actionStr.includes("DEVOLUCAO") ? "RETURN" :
+      actionStr.includes("REIVINDICACAO") ? "CLAIM" :
+      actionStr.includes("DOCUMENTO") ? "DOCUMENT" :
+      "PROJECT_SETTINGS"
+    );
+
+    resultList.push({
+      id: safeActId,
+      transactionId: act.transactionId || `TX-${objType}-${safeActId.replace(/^(log-|act-)/, "").substring(0, 8).toUpperCase()}`,
+      objectId: act.objectId || safeActId,
+      objectType: objType,
+      objectTitle: detailsStr.split(" ")[0] || actionStr,
+      action: actionStr,
+      actorId: act.adminId || "sistema",
+      actorName: act.adminName || "Administrador",
+      actorEmail: "localizamais0@gmail.com",
+      actorRole: "ADMIN",
+      timestamp: act.timestamp || new Date().toISOString(),
+      fieldChanged: act.fieldChanged || "dados_gerais",
+      oldValue: act.oldValue || undefined,
+      newValue: act.newValue || undefined,
+      details: detailsStr,
+      immutable: true,
+    });
+  });
+
+  resultList.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return resultList;
 }
 
 export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ darkMode }) => {
@@ -53,56 +148,7 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
 
   // Combine systemAuditLogs and activityLogs (ensuring rich coverage)
   const unifiedLogs: SystemAuditLog[] = useMemo(() => {
-    const map = new Map<string, SystemAuditLog>();
-
-    // 1. Add primary systemAuditLogs
-    systemAuditLogs.forEach((log) => {
-      if (log && log.id) {
-        map.set(log.id, log);
-      }
-    });
-
-    // 2. Map legacy activityLogs if not already in systemAuditLogs
-    activityLogs.forEach((act, idx) => {
-      if (!act) return;
-      const safeActId = String(act.id || `act-log-${idx}`);
-      if (!map.has(safeActId)) {
-        const actionStr = String(act.action || "LOG");
-        const detailsStr = String(act.details || "");
-        const objType: AuditObjectType = act.objectType || (
-          actionStr.includes("ITEM") || actionStr.includes("OCORRENCIA") ? "ITEM" :
-          actionStr.includes("TEST") ? "TEST_CASE" :
-          actionStr.includes("USER") || actionStr.includes("PERMISSAO") ? "USER" :
-          actionStr.includes("DEVOLUCAO") ? "RETURN" :
-          actionStr.includes("REIVINDICACAO") ? "CLAIM" :
-          actionStr.includes("DOCUMENTO") ? "DOCUMENT" :
-          "PROJECT_SETTINGS"
-        );
-
-        map.set(safeActId, {
-          id: safeActId,
-          transactionId: act.transactionId || `TX-${objType}-${safeActId.replace("log-", "").substring(0, 8).toUpperCase()}`,
-          objectId: act.objectId || safeActId,
-          objectType: objType,
-          objectTitle: detailsStr.split(" ")[0] || actionStr,
-          action: actionStr,
-          actorId: act.adminId || "sistema",
-          actorName: act.adminName || "Administrador",
-          actorEmail: "localizamais0@gmail.com",
-          actorRole: "ADMIN",
-          timestamp: act.timestamp || new Date().toISOString(),
-          fieldChanged: act.fieldChanged || "dados_gerais",
-          oldValue: act.oldValue || undefined,
-          newValue: act.newValue || undefined,
-          details: detailsStr,
-          immutable: true,
-        });
-      }
-    });
-
-    const list = Array.from(map.values());
-    list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    return list;
+    return buildUnifiedAuditLogs(systemAuditLogs, activityLogs);
   }, [systemAuditLogs, activityLogs]);
 
   // Filtered Logs

@@ -4088,7 +4088,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           `Alterou o status do objeto #${id} para '${status}'`
         );
       }
-      addToast(`Status do objeto atualizado para: ${status.replace("_", " ")}`, "info");
+      addToast(`Status do objeto atualizado para: ${String(status || "").replace("_", " ")}`, "info");
 
       // Automated email notification when marked as DEVOLVIDO
       if (status === "DEVOLVIDO" && existing) {

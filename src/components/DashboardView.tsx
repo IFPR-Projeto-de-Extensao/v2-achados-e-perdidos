@@ -3082,7 +3082,7 @@ export const DashboardView: React.FC = () => {
                                     : "bg-blue-500/10 text-blue-600 border-blue-500/30"
                                 }`}
                               >
-                                {log.action.replace("_", " ")}
+                                {String(log?.action || "LOG").replace("_", " ")}
                               </span>
                             </td>
                             <td className="p-3.5 text-neutral-700 dark:text-neutral-300">
