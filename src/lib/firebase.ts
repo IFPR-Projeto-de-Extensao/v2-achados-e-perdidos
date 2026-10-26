@@ -30,6 +30,23 @@ async function testConnection() {
 testConnection();
 
 /**
+ * Checks whether Firebase Performance Monitoring should be initialized.
+ * Strictly requires VITE_ENABLE_FIREBASE_PERF to be explicitly "true".
+ * Defaults to false to prevent unintended background telemetry and DNS errors.
+ */
+export function isFirebasePerformanceEnabled(): boolean {
+  try {
+    if (typeof import.meta !== "undefined" && import.meta.env?.VITE_ENABLE_FIREBASE_PERF === "true") {
+      return true;
+    }
+    if (typeof process !== "undefined" && process.env?.VITE_ENABLE_FIREBASE_PERF === "true") {
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
+/**
  * Asynchronously initializes secondary Firebase services (Analytics and Performance)
  * without blocking the critical render path or main thread during initial DOM load.
  */
@@ -47,7 +64,7 @@ export async function initFirebaseSecondaryServices() {
   }
 
   try {
-    if (!firebasePerformance) {
+    if (isFirebasePerformanceEnabled() && !firebasePerformance) {
       firebasePerformance = getPerformance(app);
       console.log("[Firebase] Performance Monitoring inicializado de forma assíncrona.");
     }
