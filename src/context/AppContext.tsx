@@ -443,7 +443,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const cancelUploadTask = async (taskId: string): Promise<void> => {
     const task = activeUploadTasks.find((t) => t.id === taskId);
-    const resolvedItemId = task?.itemId || taskId.replace(/^(task|sync-task|upload-task)-/, "");
+    const resolvedItemId = task?.itemId || (typeof taskId === "string" ? taskId.replace(/^(task|sync-task|upload-task)-/, "") : String(taskId || ""));
 
     // 1. Remove physical entry from IndexedDB by itemId and by entry id
     await removeSyncQueueEntryByItemId(resolvedItemId);
@@ -486,7 +486,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const task = activeUploadTasks.find((t) => t.id === taskId);
-    const resolvedItemId = task?.itemId || taskId.replace(/^(task|sync-task|upload-task)-/, "");
+    const resolvedItemId = task?.itemId || (typeof taskId === "string" ? taskId.replace(/^(task|sync-task|upload-task)-/, "") : String(taskId || ""));
     const canonicalTaskId = getUploadTaskId(resolvedItemId);
 
     // 2. Localização da entrada existente na fila mantendo ID original e prevenindo duplicação
@@ -559,7 +559,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const processedItemIds = new Set<string>();
 
       for (const entry of queue) {
-        const itemId = entry.itemId || entry.payload?.id || entry.id.replace(/^queue-/, "");
+        const itemId = entry.itemId || entry.payload?.id || (typeof entry.id === "string" ? entry.id.replace(/^queue-/, "") : String(entry.id || ""));
         if (processedItemIds.has(itemId)) {
           // Remove duplicate legacy entry for already processed item
           await removeSyncQueueEntry(entry.id);

@@ -372,7 +372,7 @@ export function getItemAgeText(input?: unknown, fallback = "Data não informada"
  * Supports automatic stripping of the +55 country code when pasted.
  */
 export function formatPhone(value: string): string {
-  if (!value) return "";
+  if (!value || typeof value !== "string") return "";
   let digits = value.replace(/\D/g, "");
   // Handle Brazilian country code (+55) when pasted
   if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) {
@@ -391,7 +391,7 @@ export function formatPhone(value: string): string {
  * Validates Brazilian DDD (11-99), 9-digit mobile prefix, and rejects invalid sequences.
  */
 export function isValidPhone(value: string): boolean {
-  if (!value) return false;
+  if (!value || typeof value !== "string") return false;
   let digits = value.replace(/\D/g, "");
   // Handle Brazilian country code (+55) when pasted
   if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) {

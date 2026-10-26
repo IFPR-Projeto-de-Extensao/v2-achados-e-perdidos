@@ -192,7 +192,7 @@ export async function getPendingSyncQueue(): Promise<SyncQueueEntry[]> {
         // Normalize legacy entries to ensure itemId is always populated
         const normalized = all.map((entry) => ({
           ...entry,
-          itemId: entry.itemId || entry.payload?.id || entry.id.replace(/^queue-/, ""),
+          itemId: entry.itemId || entry.payload?.id || (typeof entry.id === "string" ? entry.id.replace(/^queue-/, "") : String(entry.id || "legacy")),
         }));
         // Sort by creation date
         normalized.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());

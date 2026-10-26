@@ -57,38 +57,44 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
 
     // 1. Add primary systemAuditLogs
     systemAuditLogs.forEach((log) => {
-      map.set(log.id, log);
+      if (log && log.id) {
+        map.set(log.id, log);
+      }
     });
 
     // 2. Map legacy activityLogs if not already in systemAuditLogs
-    activityLogs.forEach((act) => {
-      if (!map.has(act.id)) {
+    activityLogs.forEach((act, idx) => {
+      if (!act) return;
+      const safeActId = String(act.id || `act-log-${idx}`);
+      if (!map.has(safeActId)) {
+        const actionStr = String(act.action || "LOG");
+        const detailsStr = String(act.details || "");
         const objType: AuditObjectType = act.objectType || (
-          act.action.includes("ITEM") || act.action.includes("OCORRENCIA") ? "ITEM" :
-          act.action.includes("TEST") ? "TEST_CASE" :
-          act.action.includes("USER") || act.action.includes("PERMISSAO") ? "USER" :
-          act.action.includes("DEVOLUCAO") ? "RETURN" :
-          act.action.includes("REIVINDICACAO") ? "CLAIM" :
-          act.action.includes("DOCUMENTO") ? "DOCUMENT" :
+          actionStr.includes("ITEM") || actionStr.includes("OCORRENCIA") ? "ITEM" :
+          actionStr.includes("TEST") ? "TEST_CASE" :
+          actionStr.includes("USER") || actionStr.includes("PERMISSAO") ? "USER" :
+          actionStr.includes("DEVOLUCAO") ? "RETURN" :
+          actionStr.includes("REIVINDICACAO") ? "CLAIM" :
+          actionStr.includes("DOCUMENTO") ? "DOCUMENT" :
           "PROJECT_SETTINGS"
         );
 
-        map.set(act.id, {
-          id: act.id,
-          transactionId: act.transactionId || `TX-${objType}-${act.id.replace("log-", "").substring(0, 8).toUpperCase()}`,
-          objectId: act.objectId || act.id,
+        map.set(safeActId, {
+          id: safeActId,
+          transactionId: act.transactionId || `TX-${objType}-${safeActId.replace("log-", "").substring(0, 8).toUpperCase()}`,
+          objectId: act.objectId || safeActId,
           objectType: objType,
-          objectTitle: act.details.split(" ")[0] || act.action,
-          action: act.action,
+          objectTitle: detailsStr.split(" ")[0] || actionStr,
+          action: actionStr,
           actorId: act.adminId || "sistema",
           actorName: act.adminName || "Administrador",
           actorEmail: "localizamais0@gmail.com",
           actorRole: "ADMIN",
-          timestamp: act.timestamp,
+          timestamp: act.timestamp || new Date().toISOString(),
           fieldChanged: act.fieldChanged || "dados_gerais",
           oldValue: act.oldValue || undefined,
           newValue: act.newValue || undefined,
-          details: act.details,
+          details: detailsStr,
           immutable: true,
         });
       }

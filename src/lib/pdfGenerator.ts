@@ -91,17 +91,18 @@ export function buildDynamicFormFields(
     }
 
     // Formatar rótulo amigável a partir do nome_da_tag
-    const friendlyLabel = tagName
+    const safeTag = String(tagName || "tag");
+    const friendlyLabel = safeTag
       .replace(/[_-]/g, " ")
       .replace(/\b\w/g, (char) => char.toUpperCase());
 
-    const isDate = tagName.toLowerCase().includes("data");
+    const isDate = safeTag.toLowerCase().includes("data");
     const isLongText =
-      tagName.toLowerCase().includes("descricao") ||
-      tagName.toLowerCase().includes("motivo") ||
-      tagName.toLowerCase().includes("observacao") ||
-      tagName.toLowerCase().includes("conteudo") ||
-      tagName.toLowerCase().includes("integrantes");
+      safeTag.toLowerCase().includes("descricao") ||
+      safeTag.toLowerCase().includes("motivo") ||
+      safeTag.toLowerCase().includes("observacao") ||
+      safeTag.toLowerCase().includes("conteudo") ||
+      safeTag.toLowerCase().includes("integrantes");
 
     return {
       id: `auto_fld_${index}_${tagName}`,
