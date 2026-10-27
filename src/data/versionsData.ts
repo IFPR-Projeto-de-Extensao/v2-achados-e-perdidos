@@ -24,12 +24,60 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.10.6",
+    codename: "Correção de CSP de Fontes, Resiliência PWA e Harmonização de Permissões Firestore para Claims e Notifications",
+    releaseDate: "26/10/2026",
+    releaseDateTime: "26 de Outubro de 2026 • 20:35 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "LOCALIZA+ v1.10.6 — Correção de Content Security Policy (CSP) adicionando https://fonts.gstatic.com em connect-src para autorizar o fetch do Service Worker/Workbox para pré-caching de fontes Poppins; guarda global de unhandledrejection no Service Worker para resiliência offline; e alinhamento das consultas do Firestore para as coleções claims e notifications com o princípio de menor privilégio e regras de segurança, eliminando falhas de Missing or insufficient permissions.",
+    additions: [
+      {
+        id: "v1106-add-csp-fonts-gstatic-connect-src",
+        title: "Autorização de Conexões de Fontes na CSP (connect-src)",
+        description: "Inclusão estrita de https://fonts.gstatic.com em connect-src em securityHeaders.ts, vercel.json e server.ts, viabilizando o cache offline de fontes Poppins e eliminando erros no-response do Workbox.",
+        module: "PWA",
+        tag: "CSP & Fontes",
+      },
+      {
+        id: "v1106-add-sw-unhandledrejection-guard",
+        title: "Guarda Global contra Rejeições de Rede no Service Worker",
+        description: "Implementação de listener unhandledrejection em sw-custom.js para capturar e evitar falhas não tratadas do Workbox durante oscilações de conectividade.",
+        module: "PWA",
+        tag: "PWA & Offline",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1106-fix-claims-least-privilege-listener",
+        title: "Isolamento de Menor Privilégio no Listener de Claims",
+        description: "Ajuste do listener de claims em AppContext.tsx para consultar estritamente por claimerId == firebaseUser.uid para usuários não-privilegiados (alunos/intrusos) e coleção global para administradores e servidores.",
+        module: "FIRESTORE",
+        tag: "Claims & Segurança",
+      },
+      {
+        id: "v1106-fix-notifications-target-alignment",
+        title: "Alinhamento das Metas de Notificação com as Regras de Segurança",
+        description: "Remoção de alvos não mapeados nas regras (como 'global') e sincronização com [fbUid, 'all', 'todos_alunos', 'todos'], eliminando erros de permissão no listener de notificações.",
+        module: "FIRESTORE",
+        tag: "Notificações & RBAC",
+      },
+      {
+        id: "v1106-fix-analytics-nonblocking-hardening",
+        title: "Isolamento Defensivo e Não-Bloqueante do Google Analytics",
+        description: "Blindagem de script e envio de eventos para garantir que falhas de DNS ou resolução de rede não impactem serviços e ciclo de vida da aplicação.",
+        module: "GERAL",
+        tag: "Analytics & Resiliência",
+      },
+    ],
+  },
+  {
     version: "v1.10.5",
     codename: "Blindagem de CSP, Recuperação de Avatares Google e Harmonização de Listeners Firestore",
     releaseDate: "26/10/2026",
     releaseDateTime: "26 de Outubro de 2026 • 20:15 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "LOCALIZA+ v1.10.5 — Correção e alinhamento das políticas de Content Security Policy (CSP) para suporte a fotos Google (lh3.googleusercontent.com), avatares DiceBear e Google Tag Manager; eliminação cirúrgica de erros de permissão no listener da coleção comments para visitantes não autenticados; e desativação condicional da telemetria de rede do Firebase Performance via variável VITE_ENABLE_FIREBASE_PERF.",
     additions: [
       {

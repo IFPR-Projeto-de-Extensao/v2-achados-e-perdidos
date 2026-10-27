@@ -2517,14 +2517,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // Sync Claims from Firestore
+  // Sync Claims from Firestore (Strict Least Privilege & RBAC Compliance)
   useEffect(() => {
     if (!firebaseUser) {
       setClaims([]);
       return;
     }
+
+    const isPrivileged = currentUser?.role === "ADMIN" || currentUser?.role === "SERVIDOR";
+    const claimsQuery = isPrivileged
+      ? collection(db, "claims")
+      : query(collection(db, "claims"), where("claimerId", "==", firebaseUser.uid));
+
     const unsubscribe = onSnapshot(
-      collection(db, "claims"),
+      claimsQuery,
       async (snapshot) => {
         if (snapshot.empty) {
           setClaims([]);
@@ -2538,13 +2544,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [firebaseUser]);
+  }, [firebaseUser, currentUser?.role]);
 
   // Track seen notification IDs to only alert on newly arriving real-time notifications
   const initialNotifsLoadedRef = React.useRef(false);
   const seenNotifsRef = React.useRef<Set<string>>(new Set());
 
-  // Sync Notifications from Firestore
+  // Sync Notifications from Firestore (Least Privilege matching firestore.rules)
   useEffect(() => {
     // Unauthenticated visitors do not have access to notifications
     if (!firebaseUser) {
@@ -2553,18 +2559,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Determine query scope: Admins can view all notifications for oversight;
-    // non-admin users only listen to notifications addressed to their UID or broadcast targets.
+    // non-admin users only listen to notifications addressed to their UID or broadcast targets strictly authorized in firestore.rules.
     const isAdminUser = currentUser?.role === "ADMIN";
-    const currentUid = currentUser?.id && currentUser.id !== DEFAULT_GUEST_USER.id ? currentUser.id : null;
     const fbUid = firebaseUser.uid;
 
     let notifsQuery;
     if (isAdminUser) {
       notifsQuery = collection(db, "notifications");
     } else {
-      const allowedTargets = Array.from(
-        new Set([currentUid, fbUid, "all", "todos_alunos", "todos", "global"].filter(Boolean))
-      ) as string[];
+      // Must strictly match target expressions in firestore.rules: request.auth.uid, 'all', 'todos_alunos', 'todos'
+      const allowedTargets = [fbUid, "all", "todos_alunos", "todos"];
       notifsQuery = query(collection(db, "notifications"), where("userId", "in", allowedTargets));
     }
 
@@ -2615,7 +2619,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [currentUser?.id, currentUser?.role, firebaseUser?.uid]);
+  }, [currentUser?.role, firebaseUser?.uid]);
 
   // Sync Comments from Firestore (requires authenticated session - least privilege)
   useEffect(() => {

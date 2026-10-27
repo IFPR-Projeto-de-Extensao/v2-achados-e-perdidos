@@ -52,6 +52,7 @@ export const CSP_DIRECTIVES = {
     "https://*.dicebear.com",
     "https://*.google-analytics.com",
     "https://*.analytics.google.com",
+    "https://fonts.gstatic.com",
   ],
   "frame-src": [
     "'self'",

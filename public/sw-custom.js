@@ -381,3 +381,20 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
+// ------------------------------------------------------------------------------
+// 5. Global Unhandled Rejection Guard for Service Worker
+// ------------------------------------------------------------------------------
+self.addEventListener("unhandledrejection", (event) => {
+  if (event && event.reason) {
+    const reasonStr = String(event.reason?.message || event.reason);
+    if (
+      reasonStr.includes("no-response") ||
+      reasonStr.includes("Failed to fetch") ||
+      reasonStr.includes("NetworkError") ||
+      reasonStr.includes("Load failed")
+    ) {
+      event.preventDefault();
+    }
+  }
+});
