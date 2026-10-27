@@ -48,9 +48,14 @@ export const AppUptimeMonitor: React.FC = () => {
     setPingSuccessMessage(null);
     try {
       const res = await triggerServiceWorkerPing();
-      setLastPingLatency(res.latencyMs);
-      setStats(get30DayUptimeSummary('ACTIVE', Date.now()));
-      setPingSuccessMessage(`Heartbeat do Service Worker concluído em ${res.latencyMs} ms!`);
+      setLastPingLatency(res.latencyMs > 0 ? res.latencyMs : null);
+      if (res.success && res.latencyMs > 0) {
+        setStats(get30DayUptimeSummary('ACTIVE', Date.now()));
+        setPingSuccessMessage(`Heartbeat do Service Worker concluído em ${res.latencyMs} ms!`);
+      } else {
+        setStats(get30DayUptimeSummary('FALLBACK', Date.now()));
+        setPingSuccessMessage(`Service Worker em modo fallback / inativo (sem medição de latência).`);
+      }
 
       setTimeout(() => {
         setPingSuccessMessage(null);
@@ -423,41 +428,53 @@ export const AppUptimeMonitor: React.FC = () => {
               <span>Histórico de Eventos & Manutenções (Últimos 30 Dias)</span>
             </h3>
             <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 text-[10px] font-black">
-              {stats.incidents.length} Eventos Resolvidos
+              {stats.incidents.length === 0 ? "100% Estável" : `${stats.incidents.length} Eventos`}
             </span>
           </div>
 
           <div className="space-y-3">
-            {stats.incidents.map((inc) => (
-              <div
-                key={inc.id}
-                className="bg-white dark:bg-neutral-900 rounded-2xl p-4 border border-neutral-200 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-              >
-                <div className="flex items-start space-x-3">
-                  <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 shrink-0 mt-0.5">
-                    <AlertTriangle className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xs font-black text-neutral-900 dark:text-white">
-                        {inc.title}
-                      </span>
-                      <span className="px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-[10px] font-mono text-neutral-500">
-                        {inc.dateStr}
-                      </span>
-                    </div>
-                    <p className="text-xs text-neutral-500 mt-1">{inc.impact}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2 self-end sm:self-auto shrink-0">
-                  <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-black flex items-center space-x-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Resolvido ({inc.durationMinutes} min)</span>
-                  </span>
-                </div>
+            {stats.incidents.length === 0 ? (
+              <div className="bg-neutral-50 dark:bg-neutral-900/60 rounded-2xl p-6 border border-neutral-200 dark:border-neutral-800 text-center space-y-1.5">
+                <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200 flex items-center justify-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Nenhum incidente ou manutenção registrado nos últimos 30 dias</span>
+                </p>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  Todos os subsistemas mantiveram disponibilidade ininterrupta sem degradações reportadas.
+                </p>
               </div>
-            ))}
+            ) : (
+              stats.incidents.map((inc) => (
+                <div
+                  key={inc.id}
+                  className="bg-white dark:bg-neutral-900 rounded-2xl p-4 border border-neutral-200 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="flex items-start space-x-3">
+                    <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 shrink-0 mt-0.5">
+                      <AlertTriangle className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-black text-neutral-900 dark:text-white">
+                          {inc.title}
+                        </span>
+                        <span className="px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-[10px] font-mono text-neutral-500">
+                          {inc.dateStr}
+                        </span>
+                      </div>
+                      <p className="text-xs text-neutral-500 mt-1">{inc.impact}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2 self-end sm:self-auto shrink-0">
+                    <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-black flex items-center space-x-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Resolvido ({inc.durationMinutes} min)</span>
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>

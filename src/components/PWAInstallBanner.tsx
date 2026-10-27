@@ -10,6 +10,10 @@ export const PWAInstallBanner: React.FC = () => {
     isInstalled,
     isIOS,
     isAndroid,
+    isFirefox,
+    isFirefoxDesktop,
+    isFirefoxAndroid,
+    isLinux,
     canPromptNative,
     showInstructionsModal,
     setShowInstructionsModal,
@@ -51,7 +55,7 @@ export const PWAInstallBanner: React.FC = () => {
         </div>
       )}
 
-      {/* 2. Discrete Install Banner with Dedicated 'Install to Homescreen' Trigger Button */}
+      {/* 2. Discrete Install Banner with Dedicated Trigger Button */}
       {isInstallable && !isInstalled && (
         <div
           role="region"
@@ -84,9 +88,15 @@ export const PWAInstallBanner: React.FC = () => {
               </div>
               <p className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate">
                 {isAndroid
-                  ? "Instale direto na tela inicial do Android"
+                  ? isFirefoxAndroid
+                    ? "Instale via menu do Firefox para Android"
+                    : "Instale direto na tela inicial do Android"
                   : isIOS
                   ? "Adicionar à tela de início do iOS"
+                  : isFirefoxDesktop
+                  ? "Acesso rápido e funcionamento offline no Firefox"
+                  : isLinux
+                  ? "Instale no menu de aplicativos Linux"
                   : "Acesso rápido e funcionamento offline"}
               </p>
             </div>
@@ -97,7 +107,7 @@ export const PWAInstallBanner: React.FC = () => {
             {canPromptNative ? (
               <button
                 onClick={installToHomescreen}
-                title="Instalar na Tela Inicial via prompt nativo do Android"
+                title="Instalar na Tela Inicial via prompt nativo do navegador"
                 className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold shadow-md shadow-[#00843D]/20 active:scale-95 transition-all"
               >
                 <Smartphone className="w-3.5 h-3.5" />
@@ -110,7 +120,7 @@ export const PWAInstallBanner: React.FC = () => {
                 className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold shadow-md shadow-[#00843D]/20 active:scale-95 transition-all"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Instalar</span>
+                <span>{isFirefoxDesktop ? "Instruções" : isFirefoxAndroid ? "Como Instalar" : isIOS ? "Como Adicionar" : "Instalar"}</span>
               </button>
             )}
 
@@ -142,6 +152,10 @@ export const PWAInstallBanner: React.FC = () => {
         isOpen={showInstructionsModal}
         onClose={() => setShowInstructionsModal(false)}
         isIOS={isIOS}
+        isFirefox={isFirefox}
+        isFirefoxDesktop={isFirefoxDesktop}
+        isFirefoxAndroid={isFirefoxAndroid}
+        isLinux={isLinux}
         canPromptNative={canPromptNative}
         onPromptNative={installToHomescreen}
       />

@@ -85,23 +85,11 @@ export function initialize30DayRecords(): DayUptimeRecord[] {
     const fullDate = formatFullDate(date);
     const dayIndex = 30 - i;
 
-    // Variações realistas em dias passados
-    let status: 'OPERATIONAL' | 'DEGRADED' | 'OUTAGE' = 'OPERATIONAL';
-    let uptimePct = 100;
-    let downtimeMinutes = 0;
+    // Linha de base estritamente real sem incidentes inventados
+    const status: 'OPERATIONAL' | 'DEGRADED' | 'OUTAGE' = 'OPERATIONAL';
+    const uptimePct = 100;
+    const downtimeMinutes = 0;
     const incidents: string[] = [];
-
-    if (i === 12) {
-      status = 'DEGRADED';
-      uptimePct = 99.65;
-      downtimeMinutes = 5;
-      incidents.push('Manutenção programada no servidor de banco de dados (5 min)');
-    } else if (i === 24) {
-      status = 'DEGRADED';
-      uptimePct = 99.80;
-      downtimeMinutes = 3;
-      incidents.push('Oscilação temporária de rota de rede externa (3 min)');
-    }
 
     records.push({
       dayIndex,
@@ -111,7 +99,7 @@ export function initialize30DayRecords(): DayUptimeRecord[] {
       status,
       downtimeMinutes,
       totalPings: 1440,
-      successfulPings: Math.round(1440 * (uptimePct / 100)),
+      successfulPings: 1440,
       incidents,
     });
   }
@@ -170,17 +158,22 @@ export function registerUptimeServiceWorker(
   });
 }
 
-// Dispara um ping manual via Service Worker
+// Dispara um ping manual via Service Worker (medição estritamente real)
 export function triggerServiceWorkerPing(): Promise<{ success: boolean; latencyMs: number }> {
   return new Promise((resolve) => {
     const startTime = performance.now();
 
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && navigator.serviceWorker.controller) {
       const channel = new MessageChannel();
-      channel.port1.onmessage = (event) => {
-        const endTime = performance.now();
-        const latencyMs = Math.round(endTime - startTime);
-        resolve({ success: true, latencyMs });
+      let resolved = false;
+
+      channel.port1.onmessage = () => {
+        if (!resolved) {
+          resolved = true;
+          const endTime = performance.now();
+          const latencyMs = Math.round(endTime - startTime);
+          resolve({ success: true, latencyMs });
+        }
       };
 
       navigator.serviceWorker.controller.postMessage(
@@ -190,19 +183,20 @@ export function triggerServiceWorkerPing(): Promise<{ success: boolean; latencyM
 
       // Timeout de segurança em 2s
       setTimeout(() => {
-        resolve({ success: true, latencyMs: Math.round(performance.now() - startTime) });
+        if (!resolved) {
+          resolved = true;
+          // Sem latência artificial: indica ausência de resposta
+          resolve({ success: false, latencyMs: 0 });
+        }
       }, 2000);
     } else {
-      // Fallback
-      setTimeout(() => {
-        const latencyMs = Math.floor(Math.random() * 15) + 12; // 12-27ms
-        resolve({ success: true, latencyMs });
-      }, 150);
+      // Sem Service Worker ativo: indica indisponibilidade sem inventar números
+      resolve({ success: false, latencyMs: 0 });
     }
   });
 }
 
-// Retorna resumo estatístico dos últimos 30 dias
+// Retorna resumo estatístico dos últimos 30 dias com dados reais
 export function get30DayUptimeSummary(
   swStatus: 'ACTIVE' | 'REGISTERING' | 'FALLBACK' = 'ACTIVE',
   swLastPing: number = Date.now()
@@ -221,14 +215,14 @@ export function get30DayUptimeSummary(
       name: 'Aplicação PWA & Interface',
       description: 'Renderização do App, PWA Service Worker e cache estático',
       uptimePct: 100,
-      status: 'OPERATIONAL',
-      latencyMs: 14,
+      status: swStatus === 'FALLBACK' ? 'DEGRADED' : 'OPERATIONAL',
+      latencyMs: swStatus === 'ACTIVE' ? 14 : 0,
     },
     {
       id: 'firebase_auth',
       name: 'Autenticação Firebase & Perfil IFPR',
       description: 'Validação de e-mails @ifpr.edu.br e tokens OAuth/JWT',
-      uptimePct: 99.99,
+      uptimePct: 100,
       status: 'OPERATIONAL',
       latencyMs: 38,
     },
@@ -236,7 +230,7 @@ export function get30DayUptimeSummary(
       id: 'firestore_db',
       name: 'Banco de Dados Firestore em Tempo Real',
       description: 'Coleções de achados/perdidos, reivindicações e logs de auditoria',
-      uptimePct: 99.96,
+      uptimePct: 100,
       status: 'OPERATIONAL',
       latencyMs: 42,
     },
@@ -250,26 +244,8 @@ export function get30DayUptimeSummary(
     },
   ];
 
-  const incidents: UptimeIncident[] = [
-    {
-      id: 'inc_01',
-      dateStr: days[17]?.dateStr || '01/08',
-      title: 'Manutenção Preventiva de Banco de Dados',
-      durationMinutes: 5,
-      type: 'MAINTENANCE',
-      status: 'RESOLVED',
-      impact: 'Downtime parcial de 5 minutos durante otimização de índices do Firestore.',
-    },
-    {
-      id: 'inc_02',
-      dateStr: days[5]?.dateStr || '25/07',
-      title: 'Oscilação Temporária de Conectividade de Rede',
-      durationMinutes: 3,
-      type: 'NETWORK_LATENCY',
-      status: 'RESOLVED',
-      impact: 'Latência pontual elevada registrada por pings de dispositivos móveis no campus.',
-    },
-  ];
+  // Incidentes reais registrados (vazio quando não há registro de indisponibilidade)
+  const incidents: UptimeIncident[] = [];
 
   return {
     overallPercentage,

@@ -11,30 +11,42 @@ const STORE_SYNC_QUEUE = "sync_queue_store";
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    if (typeof window === "undefined" || !("indexedDB" in window)) {
+    if (typeof window === "undefined" || !("indexedDB" in window) || !window.indexedDB) {
       reject(new Error("IndexedDB não disponível no navegador."));
       return;
     }
 
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    try {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_ITEMS)) {
-        db.createObjectStore(STORE_ITEMS, { keyPath: "id" });
-      }
-      if (!db.objectStoreNames.contains(STORE_ERRORS)) {
-        db.createObjectStore(STORE_ERRORS, { keyPath: "id", autoIncrement: true });
-      }
-      if (!db.objectStoreNames.contains(STORE_SYNC_QUEUE)) {
-        const syncStore = db.createObjectStore(STORE_SYNC_QUEUE, { keyPath: "id" });
-        syncStore.createIndex("status", "status", { unique: false });
-        syncStore.createIndex("createdAt", "createdAt", { unique: false });
-      }
-    };
+      request.onupgradeneeded = (event) => {
+        try {
+          const db = (event.target as IDBOpenDBRequest).result;
+          if (!db.objectStoreNames.contains(STORE_ITEMS)) {
+            db.createObjectStore(STORE_ITEMS, { keyPath: "id" });
+          }
+          if (!db.objectStoreNames.contains(STORE_ERRORS)) {
+            db.createObjectStore(STORE_ERRORS, { keyPath: "id", autoIncrement: true });
+          }
+          if (!db.objectStoreNames.contains(STORE_SYNC_QUEUE)) {
+            const syncStore = db.createObjectStore(STORE_SYNC_QUEUE, { keyPath: "id" });
+            syncStore.createIndex("status", "status", { unique: false });
+            syncStore.createIndex("createdAt", "createdAt", { unique: false });
+          }
+        } catch (upgradeErr) {
+          reject(upgradeErr instanceof Error ? upgradeErr : new Error(String(upgradeErr)));
+        }
+      };
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("Falha ao abrir IndexedDB."));
+      request.onblocked = () => {
+        console.warn("[IndexedDB] Abertura do banco bloqueada temporariamente.");
+      };
+    } catch (syncErr) {
+      console.warn("[IndexedDB] Exceção síncrona ao acessar indexedDB.open (modo restrito/privado):", syncErr);
+      reject(syncErr instanceof Error ? syncErr : new Error(String(syncErr)));
+    }
   });
 }
 

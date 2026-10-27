@@ -19,39 +19,48 @@ export interface PerformanceMetricLog {
 
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    if (!window.indexedDB) {
+    if (typeof window === "undefined" || !window.indexedDB) {
       reject(new Error("IndexedDB não é suportado neste navegador."));
       return;
     }
 
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    try {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error("Erro ao abrir banco offline IndexedDB."));
+      request.onsuccess = () => resolve(request.result);
 
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
+      request.onupgradeneeded = (event) => {
+        try {
+          const db = (event.target as IDBOpenDBRequest).result;
 
-      // Store 1: Items
-      if (!db.objectStoreNames.contains("items")) {
-        db.createObjectStore("items", { keyPath: "id" });
-      }
+          // Store 1: Items
+          if (!db.objectStoreNames.contains("items")) {
+            db.createObjectStore("items", { keyPath: "id" });
+          }
 
-      // Store 2: Claims
-      if (!db.objectStoreNames.contains("claims")) {
-        db.createObjectStore("claims", { keyPath: "id" });
-      }
+          // Store 2: Claims
+          if (!db.objectStoreNames.contains("claims")) {
+            db.createObjectStore("claims", { keyPath: "id" });
+          }
 
-      // Store 3: Sync Queue
-      if (!db.objectStoreNames.contains("syncQueue")) {
-        db.createObjectStore("syncQueue", { keyPath: "id", autoIncrement: true });
-      }
+          // Store 3: Sync Queue
+          if (!db.objectStoreNames.contains("syncQueue")) {
+            db.createObjectStore("syncQueue", { keyPath: "id", autoIncrement: true });
+          }
 
-      // Store 4: Performance Logs
-      if (!db.objectStoreNames.contains("performanceLogs")) {
-        db.createObjectStore("performanceLogs", { keyPath: "id", autoIncrement: true });
-      }
-    };
+          // Store 4: Performance Logs
+          if (!db.objectStoreNames.contains("performanceLogs")) {
+            db.createObjectStore("performanceLogs", { keyPath: "id", autoIncrement: true });
+          }
+        } catch (upgradeErr) {
+          reject(upgradeErr instanceof Error ? upgradeErr : new Error(String(upgradeErr)));
+        }
+      };
+    } catch (syncErr) {
+      console.warn("[offlineDb] Falha síncrona ao acessar indexedDB.open:", syncErr);
+      reject(syncErr instanceof Error ? syncErr : new Error(String(syncErr)));
+    }
   });
 }
 

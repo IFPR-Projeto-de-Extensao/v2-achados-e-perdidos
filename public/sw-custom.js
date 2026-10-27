@@ -4,7 +4,7 @@
 // Handles: Offline Recent Items Preview, Uptime Health Ping/Pong, Upload Broadcasts, Push Notifications & Background Sync
 // ==============================================================================
 
-const SW_CUSTOM_VERSION = "v1.9.6-pwa";
+const SW_CUSTOM_VERSION = "v1.10.7-pwa";
 const CACHE_RECENT_ITEMS = "localiza-recent-items-v1";
 const OFFLINE_RECENT_ITEMS_URL = "/api/offline-recent-items";
 const OFFLINE_PREVIEW_ENDPOINT = "/offline-recent-items.json";
@@ -98,6 +98,8 @@ self.addEventListener("message", (event) => {
           count: items.length,
           cachedAt,
         });
+      }).catch((err) => {
+        console.warn("[SW Custom] Erro ao gravar itens recentes no cache:", err);
       })
     );
 
@@ -138,6 +140,18 @@ self.addEventListener("message", (event) => {
         } else if (event.source) {
           event.source.postMessage(reply);
         }
+      }).catch((err) => {
+        console.warn("[SW Custom] Erro ao recuperar itens recentes do cache:", err);
+        const reply = {
+          type: "OFFLINE_RECENT_ITEMS_RESPONSE",
+          success: false,
+          data: { items: [], count: 0, cachedAt: Date.now() },
+        };
+        if (event.ports && event.ports[0]) {
+          event.ports[0].postMessage(reply);
+        } else if (event.source) {
+          event.source.postMessage(reply);
+        }
       })
     );
     return;
@@ -161,6 +175,8 @@ self.addEventListener("message", (event) => {
             }
           } catch (_) {}
         }
+      }).catch((err) => {
+        console.warn("[SW Custom] Erro ao gravar item no cache:", err);
       })
     );
     return;
@@ -168,7 +184,11 @@ self.addEventListener("message", (event) => {
 
   // Clear offline recent items cache
   if (data.type === "CLEAR_OFFLINE_RECENT_ITEMS") {
-    event.waitUntil(caches.delete(CACHE_RECENT_ITEMS));
+    event.waitUntil(
+      caches.delete(CACHE_RECENT_ITEMS).catch((err) => {
+        console.warn("[SW Custom] Erro ao limpar cache de itens recentes:", err);
+      })
+    );
     if (event.ports && event.ports[0]) {
       event.ports[0].postMessage({ type: "CLEAR_OFFLINE_RECENT_ITEMS_SUCCESS" });
     }
@@ -320,6 +340,16 @@ self.addEventListener("fetch", (event) => {
         if (cached) return cached;
 
         // If not cached yet, return a valid empty offline response
+        return new Response(
+          JSON.stringify({ items: [], count: 0, cachedAt: Date.now(), offline: true }),
+          {
+            headers: {
+              "Content-Type": "application/json",
+              "X-Localiza-Offline": "true",
+            },
+          }
+        );
+      }).catch(() => {
         return new Response(
           JSON.stringify({ items: [], count: 0, cachedAt: Date.now(), offline: true }),
           {

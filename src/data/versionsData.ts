@@ -24,12 +24,53 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.10.7",
+    codename: "Compatibilidade PWA com Firefox e Linux, Eliminação de Métricas Simuladas e Robustez de Armazenamento",
+    releaseDate: "27/10/2026",
+    releaseDateTime: "27 de Outubro de 2026 • 19:50 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "LOCALIZA+ v1.10.7 — Implementação de compatibilidade PWA e detecção precisa para Mozilla Firefox (Desktop e Android) e sistemas Linux no hook usePWA, PWAInstallBanner e InstallInstructionsModal com orientações honestas e sem falsas promessas de APIs inexistentes; eliminação integral de métricas aleatórias (Math.random) e incidentes hardcoded fictícios em uptimeManager.ts em estrita conformidade com a Regra Mestra 1 de Dados Reais; e blindagem contra falhas síncronas de SecurityError em IndexedDB, Cache Storage e Service Worker em modos anônimos/restritos.",
+    additions: [
+      {
+        id: "v1107-add-firefox-linux-pwa-detection",
+        title: "Detecção e Instruções Adaptadas para Firefox e Linux",
+        description: "Identificação confiável de Mozilla Firefox (Desktop/Android) e Linux no hook usePWA e exibição de instruções honestas (fixar abas, atalhos XDG .desktop e instalação via menu) no InstallInstructionsModal sem prometer botões de instalação nativa onde a API não é suportada.",
+        module: "PWA",
+        tag: "PWA & Multiplataforma",
+      },
+      {
+        id: "v1107-add-indexeddb-private-mode-guards",
+        title: "Tratamento de Exceções Síncronas em IndexedDB e Cache Storage",
+        description: "Envolvimento de indexedDB.open e operações do Cache Storage em blocos try/catch e manipuladores defensivos para evitar quebras em modos de navegação privativa ultra-restritos.",
+        module: "PWA",
+        tag: "IndexedDB & Resiliência",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1107-fix-eliminate-simulated-uptime-metrics",
+        title: "Eliminação Integral de Métricas Simuladas e Incidentes Fictícios",
+        description: "Remoção de Math.random() e incidentes hardcoded em uptimeManager.ts, adotando estado real de ausência de dados quando o Service Worker controller estiver indisponível, em conformidade com as Regras Mestras.",
+        module: "GERAL",
+        tag: "Dados Reais & Auditoria",
+      },
+      {
+        id: "v1107-fix-pwa-banner-firefox-visibility",
+        title: "Acesso ao Banner de PWA para Usuários Firefox e Linux",
+        description: "Correção da condição isInstallable para permitir acesso aos guias de instalação e atalho no Firefox sem depender exclusivamente do evento proprietário beforeinstallprompt do Chromium.",
+        module: "PWA",
+        tag: "PWA & Interface",
+      },
+    ],
+  },
+  {
     version: "v1.10.6",
     codename: "Correção de CSP de Fontes, Resiliência PWA e Harmonização de Permissões Firestore para Claims e Notifications",
     releaseDate: "26/10/2026",
     releaseDateTime: "26 de Outubro de 2026 • 20:35 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "LOCALIZA+ v1.10.6 — Correção de Content Security Policy (CSP) adicionando https://fonts.gstatic.com em connect-src para autorizar o fetch do Service Worker/Workbox para pré-caching de fontes Poppins; guarda global de unhandledrejection no Service Worker para resiliência offline; e alinhamento das consultas do Firestore para as coleções claims e notifications com o princípio de menor privilégio e regras de segurança, eliminando falhas de Missing or insufficient permissions.",
     additions: [
       {

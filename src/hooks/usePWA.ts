@@ -19,6 +19,10 @@ export function usePWA() {
   const [isInstalled, setIsInstalled] = useState<boolean>(false);
   const [isIOS, setIsIOS] = useState<boolean>(false);
   const [isAndroid, setIsAndroid] = useState<boolean>(false);
+  const [isFirefox, setIsFirefox] = useState<boolean>(false);
+  const [isFirefoxDesktop, setIsFirefoxDesktop] = useState<boolean>(false);
+  const [isFirefoxAndroid, setIsFirefoxAndroid] = useState<boolean>(false);
+  const [isLinux, setIsLinux] = useState<boolean>(false);
   const [showInstructionsModal, setShowInstructionsModal] = useState<boolean>(false);
   const [isUpdateAvailable, setIsUpdateAvailable] = useState<boolean>(false);
   const [swRegistration, setSwRegistration] = useState<ServiceWorkerRegistration | null>(null);
@@ -32,7 +36,7 @@ export function usePWA() {
     );
   });
 
-  // Check standalone mode and device OS
+  // Check standalone mode and device OS / browser
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -57,12 +61,22 @@ export function usePWA() {
       mediaQuery.addListener(handleMediaChange);
     }
 
-    // Check OS
+    // Check OS & Browser
     const userAgent = window.navigator.userAgent.toLowerCase();
     const isApple = /iphone|ipad|ipod/.test(userAgent) && !(window as any).MSStream;
     const isAndroidDevice = /android/.test(userAgent);
+    const hasInstallTrigger = typeof (window as any).InstallTrigger !== "undefined";
+    const isFirefoxBrowser = hasInstallTrigger || /firefox|fxios/.test(userAgent);
+    const isLinuxOS = /linux/.test(userAgent) && !isAndroidDevice;
+    const isFirefoxDesk = isFirefoxBrowser && !isAndroidDevice && !isApple;
+    const isFirefoxAndr = isFirefoxBrowser && isAndroidDevice;
+
     setIsIOS(isApple);
     setIsAndroid(isAndroidDevice);
+    setIsFirefox(isFirefoxBrowser);
+    setIsFirefoxDesktop(isFirefoxDesk);
+    setIsFirefoxAndroid(isFirefoxAndr);
+    setIsLinux(isLinuxOS);
 
     return () => {
       try {
@@ -175,15 +189,13 @@ export function usePWA() {
         }
         setDeferredPrompt(null);
       } catch (err) {
-        console.error("[PWA] Erro ao invocar prompt nativo do Android:", err);
+        console.error("[PWA] Erro ao invocar prompt nativo de instalação:", err);
         setShowInstructionsModal(true);
       }
-    } else if (isIOS) {
-      setShowInstructionsModal(true);
     } else {
       setShowInstructionsModal(true);
     }
-  }, [deferredPrompt, isIOS]);
+  }, [deferredPrompt]);
 
   // General install prompt
   const promptInstall = useCallback(
@@ -220,10 +232,14 @@ export function usePWA() {
   }, [swRegistration]);
 
   return {
-    isInstallable: (isInstallable || (isIOS && !isInstalled)) && !isSessionDismissed && !isInstalled,
+    isInstallable: (isInstallable || (isIOS && !isInstalled) || (isFirefox && !isInstalled)) && !isSessionDismissed && !isInstalled,
     isInstalled,
     isIOS,
     isAndroid,
+    isFirefox,
+    isFirefoxDesktop,
+    isFirefoxAndroid,
+    isLinux,
     canPromptNative: !!deferredPrompt,
     showInstructionsModal,
     setShowInstructionsModal,
