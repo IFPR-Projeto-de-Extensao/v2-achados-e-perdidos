@@ -56,11 +56,41 @@ export async function initFirebaseSecondaryServices() {
   try {
     const supported = await isAnalyticsSupported();
     if (supported && !firebaseAnalytics) {
+      // Monitor DOM injection of the Firebase Analytics gtag script to attach a non-blocking error handler
+      if (typeof document !== "undefined") {
+        try {
+          const observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+              for (const node of Array.from(mutation.addedNodes)) {
+                if (
+                  node.nodeName === "SCRIPT" &&
+                  (node as HTMLScriptElement).src &&
+                  (node as HTMLScriptElement).src.includes("googletagmanager.com/gtag/js")
+                ) {
+                  const scriptEl = node as HTMLScriptElement;
+                  scriptEl.addEventListener("error", () => {
+                    console.warn(
+                      `[Firebase Analytics Notice] Falha na resolução de rede/DNS para Google Tag Manager (${scriptEl.src}). A aplicação e os serviços essenciais continuam operando normalmente sem telemetria externa.`
+                    );
+                  });
+                  observer.disconnect();
+                  return;
+                }
+              }
+            }
+          });
+          observer.observe(document.head || document.documentElement, { childList: true, subtree: true });
+          setTimeout(() => {
+            try { observer.disconnect(); } catch (_) {}
+          }, 5000);
+        } catch (_) {}
+      }
+
       firebaseAnalytics = getAnalytics(app);
       console.log("[Firebase] Analytics inicializado de forma assíncrona.");
     }
-  } catch (_) {
-    // Non-blocking in dev or restricted domains
+  } catch (analyticsErr) {
+    console.warn("[Firebase] Aviso ao inicializar Analytics (serviço secundário não essencial):", analyticsErr);
   }
 
   try {

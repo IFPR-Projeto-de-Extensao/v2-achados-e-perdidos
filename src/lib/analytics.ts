@@ -17,6 +17,15 @@ const defaultMeasurementId =
   (typeof process !== 'undefined' && process.env?.VITE_GA_MEASUREMENT_ID) ||
   '';
 
+// Helper to check whether Google Analytics / GTM script is already present in DOM
+export function isGoogleAnalyticsScriptPresent(): boolean {
+  if (typeof document === 'undefined') return false;
+  return Boolean(
+    (typeof document.getElementById === 'function' && document.getElementById('ga-gtag-script')) ||
+    (typeof document.querySelector === 'function' && document.querySelector('script[src*="googletagmanager.com/gtag/js"]'))
+  );
+}
+
 // Initialize Google Analytics Global Tracking
 export function initGoogleAnalytics(measurementId = defaultMeasurementId) {
   if (
@@ -33,26 +42,31 @@ export function initGoogleAnalytics(measurementId = defaultMeasurementId) {
 
   const cleanId = measurementId.trim();
 
-  // Check if gtag script is already present
-  if (!document.getElementById('ga-gtag-script')) {
-    window.dataLayer = window.dataLayer || [];
-    window.gtag = function () {
-      window.dataLayer.push(arguments);
-    };
-    window.gtag('js', new Date());
-    window.gtag('config', cleanId, { send_page_view: true });
-
-    const script = document.createElement('script');
-    script.id = 'ga-gtag-script';
-    script.async = true;
-    script.src = `https://www.googletagmanager.com/gtag/js?id=${cleanId}`;
-    script.onerror = () => {
-      console.warn(`[Analytics Notice] Não foi possível carregar o script do Google Analytics (${cleanId}). O aplicativo continuará funcionando normalmente.`);
-    };
-    document.head.appendChild(script);
-
-    console.log(`Google Analytics (${cleanId}) inicializado.`);
+  // Deduplication check: prevent multiple injections if gtag.js is already in DOM
+  if (isGoogleAnalyticsScriptPresent()) {
+    console.debug(`[Analytics Notice] Script do Google Analytics já presente no DOM. Evitando injeção duplicada para ${cleanId}.`);
+    return;
   }
+
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = function () {
+    try {
+      window.dataLayer.push(arguments);
+    } catch (_) {}
+  };
+  window.gtag('js', new Date());
+  window.gtag('config', cleanId, { send_page_view: true });
+
+  const script = document.createElement('script');
+  script.id = 'ga-gtag-script';
+  script.async = true;
+  script.src = `https://www.googletagmanager.com/gtag/js?id=${cleanId}`;
+  script.onerror = () => {
+    console.warn(`[Analytics Notice] Não foi possível carregar o script do Google Analytics (${cleanId}). O aplicativo continuará funcionando normalmente.`);
+  };
+  document.head.appendChild(script);
+
+  console.log(`Google Analytics (${cleanId}) inicializado.`);
 }
 
 // Track Custom Event across Google Analytics, Firebase, and Backend API
@@ -76,26 +90,28 @@ export function trackCustomEvent(eventName: string, params: Record<string, any> 
   }
 
   // 3. Backend Express Server Analytics Endpoint
-  if (typeof window !== 'undefined') {
-    fetch('/api/analytics/track', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        eventName,
-        params,
-        timestamp,
-        url: window.location.href,
-        userAgent: navigator.userAgent,
-      }),
-    })
-      .then((res) => {
-        if (!res.ok) {
-          // Endpoint not available on current hosting provider, ignore silently
-        }
+  if (typeof window !== 'undefined' && typeof fetch === 'function') {
+    try {
+      fetch('/api/analytics/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventName,
+          params,
+          timestamp,
+          url: window.location?.href || '',
+          userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+        }),
       })
-      .catch(() => {
-        // Non-blocking background analytics ping failure
-      });
+        .then((res) => {
+          if (!res.ok) {
+            // Endpoint not available on current hosting provider, ignore silently
+          }
+        })
+        .catch(() => {
+          // Non-blocking background analytics ping failure
+        });
+    } catch (_) {}
   }
 }
 

@@ -14,18 +14,18 @@ export async function initializeAppServices(): Promise<void> {
 
   console.log("[AppInit] Inicializando serviços em segundo plano após montagem do DOM...");
 
-  // 1. Google Analytics
-  try {
-    initGoogleAnalytics();
-  } catch (err) {
-    console.warn("[AppInit] Google Analytics init notice:", err);
-  }
-
-  // 2. Firebase Secondary (Analytics & Performance Monitoring)
+  // 1. Firebase Secondary Services (Analytics & Performance Monitoring)
   try {
     await initFirebaseSecondaryServices();
   } catch (err) {
     console.warn("[AppInit] Firebase Secondary services init notice:", err);
+  }
+
+  // 2. Google Analytics (standalone fallback only if not already initialized by Firebase)
+  try {
+    initGoogleAnalytics();
+  } catch (err) {
+    console.warn("[AppInit] Google Analytics init notice:", err);
   }
 
   // 3. Service Worker Heartbeat Watchdog (attaches to active SW controller without registering anew)

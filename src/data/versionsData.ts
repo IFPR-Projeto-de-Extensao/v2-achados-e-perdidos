@@ -64,8 +64,8 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
       },
       {
         id: "v1106-fix-analytics-nonblocking-hardening",
-        title: "Isolamento Defensivo e Não-Bloqueante do Google Analytics",
-        description: "Blindagem de script e envio de eventos para garantir que falhas de DNS ou resolução de rede não impactem serviços e ciclo de vida da aplicação.",
+        title: "Deduplicação e Resiliência Não-Bloqueante do Google Analytics",
+        description: "Deduplicação da injeção de script GTM entre Firebase Analytics e gtag local, guarda com MutationObserver e captura defensiva de erro para falhas de DNS (ERR_NAME_NOT_RESOLVED por adblockers ou redes restritas), garantindo continuidade irrestrita da autenticação e serviços do Firebase.",
         module: "GERAL",
         tag: "Analytics & Resiliência",
       },
