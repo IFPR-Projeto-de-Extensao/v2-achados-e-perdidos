@@ -22,6 +22,19 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
+    function isAccountBlocked() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             (
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'banned' ||
+                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'suspended'
+             );
+    }
+
+    function isAccountActive() {
+      return !isAccountBlocked();
+    }
+
     function hasAdminClaim() {
       return isSignedIn() && 
              (request.auth.token.role == 'ADMIN' || 
@@ -30,6 +43,7 @@ service cloud.firestore {
 
     function isRootAdmin() {
       return isSignedIn() && 
+             isEmailVerified() &&
              request.auth.token.email != null &&
              (request.auth.token.email == 'paulocauan39@gmail.com' ||
               request.auth.token.email.lower() == 'paulocauan39@gmail.com');
@@ -37,20 +51,23 @@ service cloud.firestore {
 
     function isDocAdmin() {
       return isSignedIn() && 
+             isAccountActive() &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN' &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'APROVADO';
     }
 
     function isAdmin() {
-      return hasAdminClaim() || isRootAdmin() || isDocAdmin();
+      return isRootAdmin() || (isAccountActive() && (hasAdminClaim() || isDocAdmin()));
     }
 
     function isDocServidor() {
       return isSignedIn() && 
              isEmailVerified() &&
+             isAccountActive() &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'SERVIDOR';
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'SERVIDOR' &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'APROVADO';
     }
 
     function isDocAluno() {
@@ -66,6 +83,30 @@ service cloud.firestore {
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'INTRUSO';
     }
 
+    function isInstitutionalStudentEmail() {
+      return isSignedIn() && isEmailVerified() && request.auth.token.email != null && (
+        request.auth.token.email.matches('.*@estudantes[.]ifpr[.]edu[.]br') ||
+        request.auth.token.email.matches('.*@estudante[.]ifpr[.]edu[.]br') ||
+        request.auth.token.email.matches('.*@aluno[.]ifpr[.]edu[.]br')
+      );
+    }
+
+    function isInstitutionalStaffEmail() {
+      return isSignedIn() && isEmailVerified() && request.auth.token.email != null && (
+        request.auth.token.email.matches('.*@ifpr[.]edu[.]br') &&
+        !request.auth.token.email.matches('.*@aluno[.]ifpr[.]edu[.]br') &&
+        !request.auth.token.email.matches('.*@estudante[.]ifpr[.]edu[.]br') &&
+        !request.auth.token.email.matches('.*@estudantes[.]ifpr[.]edu[.]br') &&
+        !request.auth.token.email.matches('.*@escola[.]ifpr[.]edu[.]br')
+      );
+    }
+
+    function isServidor() {
+      return isSignedIn() && 
+             (isAdmin() ||
+              (isAccountActive() && isEmailVerified() && isDocServidor()));
+    }
+
     function isIntruso() {
       return isSignedIn() && (
         !isEmailVerified() ||
@@ -78,41 +119,6 @@ service cloud.firestore {
           !request.auth.token.email.matches('.*@ifpr[.]edu[.]br')
         ))
       );
-    }
-
-    function isAccountBlocked() {
-      return isSignedIn() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             (
-                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'banned' ||
-                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'suspended'
-             );
-    }
-
-    function isAccountActive() {
-      return !isAccountBlocked();
-    }
-
-    function isInstitutionalStudentEmail() {
-      return isSignedIn() && isEmailVerified() && request.auth.token.email != null && (
-        request.auth.token.email.matches('.*@estudantes[.]ifpr[.]edu[.]br') ||
-        request.auth.token.email.matches('.*@estudante[.]ifpr[.]edu[.]br') ||
-        request.auth.token.email.matches('.*@aluno[.]ifpr[.]edu[.]br')
-      );
-    }
-
-    function isServidor() {
-      return isSignedIn() && 
-             (isAdmin() ||
-              (isEmailVerified() && (
-                (request.auth.token.role == 'SERVIDOR') ||
-                isDocServidor() ||
-                (!isDocAluno() && request.auth.token.email != null && (
-                   request.auth.token.email.matches('.*@ifpr[.]edu[.]br') &&
-                   !request.auth.token.email.matches('.*@aluno[.]ifpr[.]edu[.]br') &&
-                   !request.auth.token.email.matches('.*@escola[.]ifpr[.]edu[.]br')
-                ))
-              )));
     }
 
     function incoming() {
@@ -141,34 +147,41 @@ service cloud.firestore {
     match /users/{userId} {
       // 1. Get: Users can ONLY read their own profile doc (isAuthUser(userId)); Only Admins can read other users' documents
       // Blocked: Non-admin users (students, staff, visitors) cannot inspect other users' personal documents
-      allow get: if resource == null || isAuthUser(userId) || isAdmin();
+      allow get: if isAuthUser(userId) || isAdmin();
 
       // 2. List: Only Admins can list/enumerate the users directory.
       // Individual authenticated users can only query specifically for their own authenticated email (where email == auth.token.email).
       // Blocked: Global listing and user enumeration by students and regular staff are strictly forbidden.
       allow list: if isAdmin() || 
-                     (isSignedIn() && isAccountActive() && resource.data.email == request.auth.token.email);
+                     (isSignedIn() && isAccountActive() && resource != null && resource.data.email == request.auth.token.email);
 
       // 3. Create: User can ONLY create their own document with their real UID and verified email.
       // Privilege escalation prevention:
       // - Cannot set role to 'ADMIN' unless isRootAdmin() or hasAdminClaim()
-      // - Cannot set role to 'SERVIDOR' unless authorized institutional email
+      // - Cannot set role to 'ALUNO' unless possessing verified institutional student email
+      // - Cannot set role to 'SERVIDOR' unless possesses verified institutional staff credentials
       // - Cannot inject admin=true claim
-      // - Default status is active / approved upon verified institutional email
+      // - Unverified emails can strictly only register as INTRUSO
       allow create: if isSignedIn() && 
                        request.auth.uid == userId && 
-                       incoming().id == userId &&
+                       incoming().id == userId && 
                        incoming().email == request.auth.token.email &&
                        (
                          isRootAdmin() || hasAdminClaim() ||
                          (
                            (
-                             incoming().role == 'ALUNO' || 
-                             (incoming().role == 'SERVIDOR' && isServidor()) ||
+                             (incoming().role == 'ALUNO' && isInstitutionalStudentEmail()) || 
+                             (incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail()) ||
                              incoming().role == 'INTRUSO'
                            ) &&
                            (!('admin' in incoming()) || incoming().admin == false) &&
-                           (incoming().approvalStatus == 'PENDENTE' || incoming().approvalStatus == 'APROVADO')
+                           (
+                             incoming().approvalStatus == 'PENDENTE' || 
+                             (incoming().approvalStatus == 'APROVADO' && (
+                               incoming().role == 'INTRUSO' ||
+                               (incoming().role == 'ALUNO' && isInstitutionalStudentEmail())
+                             ))
+                           )
                          )
                        );
 
@@ -192,10 +205,10 @@ service cloud.firestore {
                          (
                            incoming().role == existing().role ||
                            (existing().role == 'INTRUSO' && incoming().role == 'ALUNO' && isInstitutionalStudentEmail()) ||
-                           (existing().role == 'INTRUSO' && incoming().role == 'SERVIDOR' && isServidor())
+                           (existing().role == 'INTRUSO' && incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail())
                          ) &&
                          (!('admin' in incoming()) || incoming().admin == existing().admin) &&
-                         (incoming().approvalStatus == existing().approvalStatus || (isEmailVerified() && incoming().approvalStatus == 'APROVADO')) &&
+                         (incoming().approvalStatus == existing().approvalStatus) &&
                          (!('status' in incoming()) || incoming().status == existing().status) &&
                          (!('suspendedUntil' in incoming()) || incoming().suspendedUntil == existing().suspendedUntil) &&
                          (!('reputationScore' in incoming()) || incoming().reputationScore == existing().reputationScore)
@@ -320,10 +333,10 @@ service cloud.firestore {
                incoming().distinctiveFeatures == existing().distinctiveFeatures;
       }
 
-      // Claims can only be read by the claimer, the item author, or Admin/Active Servidor
+      // Claims can only be read by active claimers, the item author, or Admin/Active Servidor
       allow get: if isSignedIn() && (
-        resource == null ||
-        (isAccountActive() && (
+        (isAccountActive() && request.auth.uid != null && claimId.matches('claim_' + request.auth.uid + '_.*')) ||
+        (resource != null && isAccountActive() && (
           existing().claimerId == request.auth.uid || 
           (exists(/databases/$(database)/documents/items/$(existing().itemId)) && 
            get(/databases/$(database)/documents/items/$(existing().itemId)).data.registeredByUserId == request.auth.uid)
@@ -345,6 +358,7 @@ service cloud.firestore {
       allow create: if isEmailVerified() && 
                     isAccountActive() && 
                     !isIntruso() && 
+                    claimId == 'claim_' + request.auth.uid + '_' + incoming().itemId &&
                     incoming().claimerId == request.auth.uid &&
                     incoming().status == 'PENDENTE' &&
                     incoming().itemId is string && incoming().itemId.size() > 0 &&
@@ -425,23 +439,26 @@ service cloud.firestore {
     match /notifications/{notificationId} {
       // 1. Read (Get): A user can ONLY read notifications addressed to them, or authorized broadcasts; Admins can read all for monitoring
       allow get: if isSignedIn() && (
-        resource == null ||
-        existing().userId == request.auth.uid || 
-        isAdmin() || 
-        existing().userId == 'all' || 
-        existing().userId == 'todos_alunos' || 
-        existing().userId == 'todos' ||
-        existing().isGlobal == true
+        (resource != null && (
+          existing().userId == request.auth.uid || 
+          existing().userId == 'all' || 
+          existing().userId == 'todos_alunos' || 
+          existing().userId == 'todos' ||
+          existing().isGlobal == true
+        )) ||
+        isAdmin()
       );
 
       // 2. Read (List): A user query only returns documents matching their UID or authorized broadcasts; Admins can query all
       allow list: if isSignedIn() && (
-        resource.data.userId == request.auth.uid || 
         isAdmin() || 
-        resource.data.userId == 'all' || 
-        resource.data.userId == 'todos_alunos' || 
-        resource.data.userId == 'todos' || 
-        resource.data.isGlobal == true
+        (resource != null && (
+          resource.data.userId == request.auth.uid || 
+          resource.data.userId == 'all' || 
+          resource.data.userId == 'todos_alunos' || 
+          resource.data.userId == 'todos' || 
+          resource.data.isGlobal == true
+        ))
       );
 
       // 3. Create:
@@ -650,9 +667,9 @@ service cloud.firestore {
     // ==========================================
     match /support_tickets/{ticketId} {
       // Get: Author can read their own ticket (resource.data.userId == request.auth.uid); Admins can read all tickets
-      allow get: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow get: if isSignedIn() && ((resource != null && resource.data.userId == request.auth.uid) || isAdmin());
       // List: Admins can list all tickets; Authenticated users can list/query only their own tickets
-      allow list: if isAdmin() || (isSignedIn() && isAccountActive() && resource.data.userId == request.auth.uid);
+      allow list: if isAdmin() || (isSignedIn() && isAccountActive() && resource != null && resource.data.userId == request.auth.uid);
       // Support tickets: allow creation by visitors (no userId/userRole allowed) or authenticated users (must match auth.uid and auth email)
       allow create: if (
         (isSignedIn() && 

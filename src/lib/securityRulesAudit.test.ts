@@ -26,7 +26,7 @@ describe("Firestore Security Rules - Audit & Privilege Escalation Hardening", ()
 
   describe("Scenario B: Aluno trying to become Servidor", () => {
     it("should reject setting role to SERVIDOR on creation for non-institutional accounts", () => {
-      expect(rulesContent).toContain("(incoming().role == 'SERVIDOR' && isServidor())");
+      expect(rulesContent).toContain("(incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail())");
     });
 
     it("should prevent updating role to SERVIDOR unless performed by an ADMIN", () => {
@@ -80,11 +80,11 @@ describe("Firestore Security Rules - Audit & Privilege Escalation Hardening", ()
 
   describe("Least Privilege & Personal Data Protection (/users)", () => {
     it("should block indiscriminate user directory listing by students and regular staff", () => {
-      expect(rulesContent).toMatch(/allow list: if isAdmin\(\) \|\|\s*\(isSignedIn\(\) && isAccountActive\(\) && resource\.data\.email == request\.auth\.token\.email\);/);
+      expect(rulesContent).toMatch(/allow list: if isAdmin\(\) \|\|\s*\(isSignedIn\(\) && isAccountActive\(\) && (resource != null && )?resource\.data\.email == request\.auth\.token\.email\);/);
     });
 
     it("should allow individual users to only read their own profile doc and block reading other users' docs", () => {
-      expect(rulesContent).toMatch(/allow get: if (resource == null \|\| )?isAuthUser\(userId\) \|\| isAdmin\(\);/);
+      expect(rulesContent).toMatch(/allow get: if isAuthUser\(userId\) \|\| isAdmin\(\);/);
     });
   });
 
@@ -129,11 +129,11 @@ describe("Firestore Security Rules - Audit & Privilege Escalation Hardening", ()
 
   describe("Support Tickets Protection & Identity Spoofing Prevention (/support_tickets)", () => {
     it("should restrict collection listing to administrators or self-query", () => {
-      expect(rulesContent).toMatch(/match \/support_tickets\/\{ticketId\}[\s\S]*?allow list: if isAdmin\(\) \|\| \(isSignedIn\(\) && isAccountActive\(\) && resource\.data\.userId == request\.auth\.uid\);/);
+      expect(rulesContent).toMatch(/match \/support_tickets\/\{ticketId\}[\s\S]*?allow list: if isAdmin\(\) \|\| \(isSignedIn\(\) && isAccountActive\(\) && (resource != null && )?resource\.data\.userId == request\.auth\.uid\);/);
     });
 
     it("should prevent cross-user ticket inspection (users can only get their own ticket)", () => {
-      expect(rulesContent).toMatch(/allow get: if isSignedIn\(\) && \(resource\.data\.userId == request\.auth\.uid \|\| isAdmin\(\)\);/);
+      expect(rulesContent).toMatch(/allow get: if isSignedIn\(\) && \(\((resource != null && )?resource\.data\.userId == request\.auth\.uid\) \|\| isAdmin\(\)\);/);
     });
 
     it("should prevent authenticated users from spoofing another userId or author email", () => {

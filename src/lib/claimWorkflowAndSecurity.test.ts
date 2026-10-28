@@ -64,6 +64,9 @@ class FirestoreRulesEvaluator {
     if (incoming.claimerId !== auth.id) {
       throw new Error("PERMISSION_DENIED: Claimer ID must match authenticated UID.");
     }
+    if (claimId !== `claim_${auth.id}_${incoming.itemId}`) {
+      throw new Error("PERMISSION_DENIED: Claim document ID must match deterministic format claim_{uid}_{itemId}.");
+    }
     if (incoming.status !== "PENDENTE") {
       throw new Error("PERMISSION_DENIED: New claim status must strictly be 'PENDENTE'.");
     }
@@ -180,6 +183,41 @@ class FirestoreRulesEvaluator {
     }
 
     throw new Error("PERMISSION_DENIED: Unauthorized claim update.");
+  }
+
+  evaluateGet(auth: Partial<User> | null, claimId: string): void {
+    if (!auth || !auth.id || auth.id === "guest") {
+      throw new Error("PERMISSION_DENIED: Unauthenticated user cannot read claims.");
+    }
+    if (auth.status === "suspended" || auth.status === "banned") {
+      throw new Error("PERMISSION_DENIED: Suspended or banned accounts cannot read claims.");
+    }
+    const isStaffOrAdmin = auth.role === "ADMIN" || auth.role === "SERVIDOR" || auth.email === "paulocauan39@gmail.com";
+
+    // Branch A: Deterministic claim ID pattern for claimant's own UID (requires active account)
+    if (claimId.startsWith(`claim_${auth.id}_`)) {
+      return; // Allowed whether doc exists or not
+    }
+
+    const existingDoc = this.db.claims.get(claimId);
+
+    // Branch B: Existing claim document read by owner or item author (requires active account & existing doc)
+    if (existingDoc && auth.status === "active") {
+      if (existingDoc.claimerId === auth.id) {
+        return; // Allowed: owner
+      }
+      const item = this.db.items.get(existingDoc.itemId);
+      if (item && item.registeredByUserId === auth.id) {
+        return; // Allowed: item author
+      }
+    }
+
+    // Branch C: Staff / Admin full read access
+    if (isStaffOrAdmin && auth.status === "active") {
+      return; // Allowed: active staff/admin
+    }
+
+    throw new Error("PERMISSION_DENIED: Unauthorized claim read.");
   }
 
   evaluateList(auth: Partial<User> | null, filterClaimerId?: string): void {
@@ -1046,5 +1084,155 @@ describe("LOCALIZA+ v1.10.8 — Fluxo de Solicitação de Devolução (RNF04) e 
         decisionNotes: "Tentando alterar notas após devolução concluída",
       })
     ).toThrow("PERMISSION_DENIED: Concluded claims are terminal and cannot be modified.");
+  });
+
+  describe("LOCALIZA+ v1.10.9 — Validação Estrita das 7 Condições de Segurança de /claims/{claimId}", () => {
+    const studentA: Partial<User> = {
+      id: "std_student_A",
+      name: "Aluno A",
+      email: "aluno.a@estudantes.ifpr.edu.br",
+      role: "ALUNO",
+      status: "active",
+      approvalStatus: "APROVADO",
+      createdAt: "2026-01-01T00:00:00Z",
+    };
+
+    const studentB: Partial<User> = {
+      id: "std_student_B",
+      name: "Aluno B",
+      email: "aluno.b@estudantes.ifpr.edu.br",
+      role: "ALUNO",
+      status: "active",
+      approvalStatus: "APROVADO",
+      createdAt: "2026-01-01T00:00:00Z",
+    };
+
+    const suspendedStudent: Partial<User> = {
+      id: "std_suspended",
+      name: "Aluno Suspenso",
+      email: "suspenso@estudantes.ifpr.edu.br",
+      role: "ALUNO",
+      status: "suspended",
+      approvalStatus: "APROVADO",
+      createdAt: "2026-01-01T00:00:00Z",
+    };
+
+    const mockAdmin: Partial<User> = {
+      id: "admin_master",
+      name: "Admin Master",
+      email: "admin@ifpr.edu.br",
+      role: "ADMIN",
+      status: "active",
+      approvalStatus: "APROVADO",
+      createdAt: "2026-01-01T00:00:00Z",
+    };
+
+    const mockStaffUser: Partial<User> = {
+      id: "staff_servidor",
+      name: "Servidor SEBAC",
+      email: "servidor@ifpr.edu.br",
+      role: "SERVIDOR",
+      status: "active",
+      approvalStatus: "APROVADO",
+      createdAt: "2026-01-01T00:00:00Z",
+    };
+
+    it("1. ID próprio com documento inexistente: permite leitura transacional para verificação de duplicidade", () => {
+      const nonexistentOwnClaimId = `claim_${studentA.id}_item_999`;
+      expect(() =>
+        workflow.rulesEvaluator.evaluateGet(studentA, nonexistentOwnClaimId)
+      ).not.toThrow();
+    });
+
+    it("2. ID de terceiro com documento inexistente: bloqueia sondagem ou leitura indevida por aluno", () => {
+      const nonexistentOtherClaimId = `claim_${studentB.id}_item_999`;
+      expect(() =>
+        workflow.rulesEvaluator.evaluateGet(studentA, nonexistentOtherClaimId)
+      ).toThrow("PERMISSION_DENIED: Unauthorized claim read.");
+    });
+
+    it("3. claim própria existente: permite leitura e acompanhamento pelo requerente legítimo", async () => {
+      const claim = await workflow.submitClaim(studentA, mockItem.id, {
+        distinctiveFeatures: "Pertence próprio existente",
+      });
+      expect(() => workflow.rulesEvaluator.evaluateGet(studentA, claim.id)).not.toThrow();
+    });
+
+    it("4. claim de terceiro existente: bloqueia acesso de outro aluno à solicitação privada", async () => {
+      const claim = await workflow.submitClaim(studentB, mockItem.id, {
+        distinctiveFeatures: "Pertence do Aluno B",
+      });
+      expect(() => workflow.rulesEvaluator.evaluateGet(studentA, claim.id)).toThrow(
+        "PERMISSION_DENIED: Unauthorized claim read."
+      );
+    });
+
+    it("5. claim com ID que não corresponde ao claimerId: rejeita criação se claimId não respeitar padrão determinístico", () => {
+      const mismatchedClaimId = `claim_${studentB.id}_${mockItem.id}`; // Attempting studentA claim with studentB's claimId
+      const payload = {
+        id: mismatchedClaimId,
+        itemId: mockItem.id,
+        claimerId: studentA.id,
+        status: "PENDENTE",
+        distinctiveFeatures: "Tentativa de injeção de ID de outro usuário",
+      };
+      expect(() =>
+        workflow.rulesEvaluator.evaluateCreate(studentA, mismatchedClaimId, payload)
+      ).toThrow("PERMISSION_DENIED: Claim document ID must match deterministic format claim_{uid}_{itemId}.");
+    });
+
+    it("6. usuário sem perfil ativo: bloqueia criação e leituras (existente ou inexistente) por conta suspensa ou banida", async () => {
+      // 1. Existing claim created by studentA
+      const claim = await workflow.submitClaim(studentA, mockItem.id, {
+        distinctiveFeatures: "Solicitação para teste de conta suspensa",
+      });
+
+      // Suspended user trying to read existing claim
+      expect(() => workflow.rulesEvaluator.evaluateGet(suspendedStudent, claim.id)).toThrow(
+        "PERMISSION_DENIED: Suspended or banned accounts cannot read claims."
+      );
+
+      // Banned user trying to consult nonexistent own claim
+      const bannedUser: User = {
+        id: "std_banned",
+        name: "Aluno Banido",
+        email: "banido@estudantes.ifpr.edu.br",
+        role: "ALUNO",
+        courseOrDept: "Informática",
+        registrationNumber: "20260099",
+        avatarUrl: "",
+        status: "banned",
+        approvalStatus: "APROVADO",
+        createdAt: "2026-01-01T00:00:00Z",
+      };
+      const nonexistentBannedClaimId = `claim_${bannedUser.id}_item_999`;
+      expect(() => workflow.rulesEvaluator.evaluateGet(bannedUser, nonexistentBannedClaimId)).toThrow(
+        "PERMISSION_DENIED: Suspended or banned accounts cannot read claims."
+      );
+
+      // Block creation by suspended account
+      expect(() =>
+        workflow.rulesEvaluator.evaluateCreate(suspendedStudent, `claim_${suspendedStudent.id}_${mockItem.id}`, {
+          itemId: mockItem.id,
+          claimerId: suspendedStudent.id,
+          status: "PENDENTE",
+          distinctiveFeatures: "Tentativa por usuário suspenso",
+        })
+      ).toThrow("PERMISSION_DENIED: Inactive or blocked account.");
+    });
+
+    it("7. acesso administrativo autorizado e não autorizado: SERVIDOR/ADMIN pode ler claims de terceiros; ALUNO não", async () => {
+      const claim = await workflow.submitClaim(studentB, mockItem.id, {
+        distinctiveFeatures: "Solicitação do Aluno B para análise do Servidor",
+      });
+      // Servidor e Admin autorizados
+      expect(() => workflow.rulesEvaluator.evaluateGet(mockStaffUser, claim.id)).not.toThrow();
+      expect(() => workflow.rulesEvaluator.evaluateGet(mockAdmin, claim.id)).not.toThrow();
+
+      // Aluno tentando se passar por perfil não autorizado ao tentar ler claim alheia
+      expect(() => workflow.rulesEvaluator.evaluateGet(studentA, claim.id)).toThrow(
+        "PERMISSION_DENIED: Unauthorized claim read."
+      );
+    });
   });
 });

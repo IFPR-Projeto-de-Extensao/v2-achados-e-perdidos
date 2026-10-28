@@ -2121,9 +2121,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const isVerified = Boolean(fbUser.emailVerified);
         const resolvedApprovalStatus: ApprovalStatus = isRoot
           ? "APROVADO"
-          : isVerified
-          ? "APROVADO"
-          : (existingData.approvalStatus || "APROVADO");
+          : (existingData.approvalStatus || (targetRole === "SERVIDOR" ? "PENDENTE" : "APROVADO"));
 
         const updatedUser: User = sanitizeFirestoreData({
           ...existingData,
@@ -2153,7 +2151,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           existingData.role !== targetRole ||
           !existingData.email ||
           existingData.emailVerified !== isVerified ||
-          (isVerified && existingData.approvalStatus !== "APROVADO") ||
           !existingData.createdAt ||
           (pendingData && pendingData.name !== existingData.name) ||
           avatarNeedsSync
@@ -2217,9 +2214,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const isVerified = Boolean(fbUser.emailVerified);
           const resolvedApprovalStatus: ApprovalStatus = isRoot
             ? "APROVADO"
-            : isVerified
-            ? "APROVADO"
-            : (legacyData.approvalStatus || "APROVADO");
+            : (legacyData.approvalStatus || (targetRole === "SERVIDOR" ? "PENDENTE" : "APROVADO"));
 
           const migratedUser: User = sanitizeFirestoreData({
             ...legacyData,
@@ -2258,7 +2253,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // External users (@gmail.com, etc.) are allowed, classified as INTRUSO with active status and restricted permissions
     const isVerified = Boolean(fbUser.emailVerified);
     const resolvedRole: UserRole = isRoot ? "ADMIN" : verifiedRoleDetermination.role;
-    const defaultApprovalStatus: ApprovalStatus = "APROVADO";
+    const defaultApprovalStatus: ApprovalStatus = (isRoot || resolvedRole === "INTRUSO" || resolvedRole === "ALUNO") ? "APROVADO" : "PENDENTE";
     const resolvedName = fbUser.displayName || pendingData?.name || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário");
     const resolvedCourse = pendingData?.courseOrDept || extraData?.courseOrDept || (
       previewDetermination.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" :

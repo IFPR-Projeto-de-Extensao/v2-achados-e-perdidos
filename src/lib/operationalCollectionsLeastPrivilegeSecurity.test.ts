@@ -464,7 +464,7 @@ describe("Operational & Administrative Collections Least Privilege Security Audi
     });
 
     it("Declaração estrita de anti-spoofing para /support_tickets", () => {
-      expect(rulesContent).toMatch(/match \/support_tickets\/\{ticketId\}[\s\S]*?allow get: if isSignedIn\(\) && \(resource\.data\.userId == request\.auth\.uid \|\| isAdmin\(\)\);/);
+      expect(rulesContent).toMatch(/match \/support_tickets\/\{ticketId\}[\s\S]*?allow get: if isSignedIn\(\) && \(\((resource != null && )?resource\.data\.userId == request\.auth\.uid\) \|\| isAdmin\(\)\);/);
       expect(rulesContent).toMatch(/match \/support_tickets\/\{ticketId\}[\s\S]*?allow update: if isAdmin\(\);/);
     });
 

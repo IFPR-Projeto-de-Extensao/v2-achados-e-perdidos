@@ -76,16 +76,38 @@ describe("Users Collection Least Privilege, Anti-Enumeration & Privilege Escalat
         return { allowed: true };
       }
 
-      const isPermittedRole = ["ALUNO", "SERVIDOR", "INTRUSO"].includes(incomingData.role);
       const isPrivilegeEscalation = incomingData.role === "ADMIN" || incomingData.admin === true;
       if (isPrivilegeEscalation) {
         return { allowed: false, reason: "PRIVILEGE_ESCALATION_ADMIN_FORBIDDEN" };
       }
 
-      if (isPermittedRole) {
-        return { allowed: true };
+      const isStudentDomain =
+        tokenEmail.endsWith("@estudantes.ifpr.edu.br") ||
+        tokenEmail.endsWith("@estudante.ifpr.edu.br") ||
+        tokenEmail.endsWith("@aluno.ifpr.edu.br");
+
+      const isStaffDomain =
+        tokenEmail.endsWith("@ifpr.edu.br") &&
+        !tokenEmail.includes("estudante") &&
+        !tokenEmail.includes("aluno") &&
+        !tokenEmail.includes("escola");
+
+      const isStudentRoleAllowed = incomingData.role === "ALUNO" && isEmailVerified && isStudentDomain;
+      const isStaffRoleAllowed = incomingData.role === "SERVIDOR" && isEmailVerified && isStaffDomain;
+      const isIntrusoRoleAllowed = incomingData.role === "INTRUSO";
+
+      if (!isStudentRoleAllowed && !isStaffRoleAllowed && !isIntrusoRoleAllowed) {
+        return { allowed: false, reason: "UNVERIFIED_OR_INVALID_ROLE_CREATION" };
       }
-      return { allowed: false, reason: "INVALID_ROLE" };
+
+      if (
+        incomingData.approvalStatus === "APROVADO" &&
+        !(isIntrusoRoleAllowed || isStudentRoleAllowed || isStaffRoleAllowed)
+      ) {
+        return { allowed: false, reason: "UNAPPROVED_STATUS_CREATION" };
+      }
+
+      return { allowed: true };
     }
 
     // 4. UPDATE (Profile Edit & Management)
@@ -399,10 +421,115 @@ describe("Users Collection Least Privilege, Anti-Enumeration & Privilege Escalat
     expect(res.allowed).toBe(true);
   });
 
-  // Test L: Validação das regras declaradas em firestore.rules
-  it("L. firestore.rules declara explicitamente least-privilege para get e list na coleção /users", () => {
-    expect(rulesContent).toMatch(/match \/users\/\{userId\}[\s\S]*?allow get: if (resource == null \|\| )?isAuthUser\(userId\) \|\| isAdmin\(\);/);
-    expect(rulesContent).toMatch(/match \/users\/\{userId\}[\s\S]*?allow list: if isAdmin\(\) \|\|\s*\(isSignedIn\(\) && isAccountActive\(\) && resource\.data\.email == request\.auth\.token\.email\);/);
+  // Test M: Conta com e-mail não verificado tentando criar perfil ALUNO ou SERVIDOR APROVADO
+  it("M. Conta com e-mail não verificado tentando criar perfil ALUNO ou SERVIDOR com APROVADO é REJEITADA", () => {
+    const unverifiedAuth = {
+      uid: "unverified-uid-123",
+      email: "unverified@estudantes.ifpr.edu.br",
+      emailVerified: false,
+    };
+
+    const resAluno = evaluateUsersRule({
+      operation: "create",
+      targetUserId: "unverified-uid-123",
+      auth: unverifiedAuth,
+      incomingData: {
+        id: "unverified-uid-123",
+        email: "unverified@estudantes.ifpr.edu.br",
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+      },
+    });
+    expect(resAluno.allowed).toBe(false);
+    expect(resAluno.reason).toBe("UNVERIFIED_OR_INVALID_ROLE_CREATION");
+
+    const resServidor = evaluateUsersRule({
+      operation: "create",
+      targetUserId: "unverified-uid-123",
+      auth: {
+        uid: "unverified-uid-123",
+        email: "servidor@ifpr.edu.br",
+        emailVerified: false,
+      },
+      incomingData: {
+        id: "unverified-uid-123",
+        email: "servidor@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+      },
+    });
+    expect(resServidor.allowed).toBe(false);
+    expect(resServidor.reason).toBe("UNVERIFIED_OR_INVALID_ROLE_CREATION");
+  });
+
+  // Test N: Usuário institucional verificado criando perfil legítimo ALUNO ou SERVIDOR
+  it("N. Usuário institucional verificado criando perfil legítimo ALUNO ou SERVIDOR é PERMITIDO", () => {
+    const verifiedStudentAuth = {
+      uid: "verified-std-100",
+      email: "aluno.verificado@estudantes.ifpr.edu.br",
+      emailVerified: true,
+    };
+
+    const resStudent = evaluateUsersRule({
+      operation: "create",
+      targetUserId: "verified-std-100",
+      auth: verifiedStudentAuth,
+      incomingData: {
+        id: "verified-std-100",
+        email: "aluno.verificado@estudantes.ifpr.edu.br",
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+      },
+    });
+    expect(resStudent.allowed).toBe(true);
+
+    const verifiedStaffAuth = {
+      uid: "verified-staff-200",
+      email: "servidor.verificado@ifpr.edu.br",
+      emailVerified: true,
+    };
+
+    const resStaff = evaluateUsersRule({
+      operation: "create",
+      targetUserId: "verified-staff-200",
+      auth: verifiedStaffAuth,
+      incomingData: {
+        id: "verified-staff-200",
+        email: "servidor.verificado@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+      },
+    });
+    expect(resStaff.allowed).toBe(true);
+  });
+
+  // Test O: Criação de perfil administrativo autorizada (Root / Admin Claim)
+  it("O. Criação de perfil por administrador autorizado (Root / Admin claim) é PERMITIDA", () => {
+    const adminAuth = {
+      uid: "admin-creator-999",
+      email: "paulocauan39@gmail.com",
+      emailVerified: true,
+    };
+
+    const resAdminCreate = evaluateUsersRule({
+      operation: "create",
+      targetUserId: "admin-creator-999",
+      auth: adminAuth,
+      incomingData: {
+        id: "admin-creator-999",
+        email: "paulocauan39@gmail.com",
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        admin: true,
+      },
+    });
+    expect(resAdminCreate.allowed).toBe(true);
+  });
+
+  // Test P: Validação das regras declaradas em firestore.rules
+  it("P. firestore.rules declara explicitamente least-privilege para get e list na coleção /users", () => {
+    expect(rulesContent).toMatch(/match \/users\/\{userId\}[\s\S]*?allow get: if isAuthUser\(userId\) \|\| isAdmin\(\);/);
+    expect(rulesContent).toMatch(/match \/users\/\{userId\}[\s\S]*?allow list: if isAdmin\(\) \|\|\s*\(isSignedIn\(\) && isAccountActive\(\) && (resource != null && )?resource\.data\.email == request\.auth\.token\.email\);/);
     expect(rulesContent).toContain("(!('admin' in incoming()) || incoming().admin == false)");
   });
 });
