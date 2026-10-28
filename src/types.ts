@@ -197,14 +197,30 @@ export interface ItemClaim {
   id: string;
   itemId: string;
   itemTitle: string;
+  itemCategory?: ItemCategory;
+  itemLocation?: string;
+  itemImageUrl?: string;
   claimerId: string;
   claimerName: string;
   claimerEmail: string;
   claimerRole: UserRole;
+  claimerRegistration?: string;
+  claimerPhone?: string;
+  distinctiveFeatures?: string;
+  additionalInfo?: string;
   verificationAnswer: string;
-  status: "PENDENTE" | "APROVADO" | "REJEITADO" | "CONCLUIDO";
+  status: "PENDENTE" | "APROVADO" | "REJEITADO" | "CONCLUIDO" | "CANCELADO";
   createdAt: string;
   notes?: string;
+  reviewedByUserId?: string;
+  reviewedByName?: string;
+  reviewedByRole?: UserRole;
+  reviewedAt?: string;
+  rejectionReason?: string;
+  decisionNotes?: string;
+  cancelledAt?: string;
+  completedAt?: string;
+  resubmittedAt?: string;
 }
 
 export interface NotificationItem {

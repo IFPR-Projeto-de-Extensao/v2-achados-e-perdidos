@@ -68,11 +68,13 @@ export const ProfileView: React.FC = () => {
     toggleDarkMode,
     t,
     language,
+    cancelClaim,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<"my_items" | "claims">("my_items");
   const [isEditing, setIsEditing] = useState(false);
   const [isSubscribingFCM, setIsSubscribingFCM] = useState(false);
+  const [cancellingClaimId, setCancellingClaimId] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -850,36 +852,147 @@ export const ProfileView: React.FC = () => {
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {userClaims.map((claim) => (
-                <div
-                  key={claim.id}
-                  className="p-5 rounded-2xl bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold text-sm text-neutral-900 dark:text-white">
-                        {claim.itemTitle}
-                      </span>
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                          claim.status === "PENDENTE"
-                            ? "bg-amber-500/10 text-amber-600"
-                            : "bg-green-500/10 text-green-600"
-                        }`}
-                      >
-                        {claim.status}
-                      </span>
+            <div className="space-y-4">
+              {userClaims.map((claim) => {
+                const relatedItem = items.find((it) => it.id === claim.itemId);
+                const isPending = claim.status === "PENDENTE";
+                const isApproved = claim.status === "APROVADO";
+                const isRejected = claim.status === "REJEITADO";
+
+                return (
+                  <div
+                    key={claim.id}
+                    className="p-5 rounded-3xl bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-3 transition-colors"
+                  >
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-neutral-100 dark:border-neutral-800 pb-3">
+                      <div>
+                        <div className="flex items-center space-x-2 flex-wrap">
+                          <span className="font-extrabold text-base text-neutral-900 dark:text-white">
+                            {claim.itemTitle || relatedItem?.title || "Objeto"}
+                          </span>
+                          <span className="text-[10px] font-mono text-neutral-400">
+                            #{claim.itemId}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-neutral-400 block mt-0.5">
+                          Solicitado em: {formatDateTime(claim.createdAt)}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${
+                            claim.status === "PENDENTE"
+                              ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                              : claim.status === "APROVADO"
+                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                              : claim.status === "REJEITADO"
+                              ? "bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30"
+                              : claim.status === "CONCLUIDO"
+                              ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                              : "bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border-neutral-300 dark:border-neutral-700"
+                          }`}
+                        >
+                          {claim.status === "PENDENTE"
+                            ? "Em Análise"
+                            : claim.status === "APROVADO"
+                            ? "Aprovado"
+                            : claim.status === "REJEITADO"
+                            ? "Rejeitado"
+                            : claim.status === "CONCLUIDO"
+                            ? "Concluído"
+                            : "Cancelado"}
+                        </span>
+                      </div>
                     </div>
-                    <p className="text-xs text-neutral-500">
-                      Sua comprovação: &quot;{claim.verificationAnswer}&quot;
-                    </p>
-                    <span className="text-[11px] text-neutral-400 block">
-                      Solicitado em: {formatDateTime(claim.createdAt)}
-                    </span>
+
+                    {/* Declared Features */}
+                    <div className="space-y-1 text-xs">
+                      <span className="font-bold text-neutral-700 dark:text-neutral-300 block">
+                        Características particulares informadas (RNF04):
+                      </span>
+                      <p className="text-neutral-800 dark:text-neutral-200 bg-neutral-50 dark:bg-neutral-800/60 p-3 rounded-2xl border border-neutral-200 dark:border-neutral-700/60 leading-relaxed whitespace-pre-wrap">
+                        {claim.distinctiveFeatures || claim.verificationAnswer || "Sem características descritas."}
+                      </p>
+                      {claim.additionalInfo && (
+                        <p className="text-[11px] text-neutral-500 italic mt-1">
+                          Informações adicionais: {claim.additionalInfo}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Approved Notice */}
+                    {isApproved && (
+                      <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-xs text-emerald-900 dark:text-emerald-200 space-y-1">
+                        <div className="flex items-center gap-2 font-bold text-emerald-800 dark:text-emerald-300">
+                          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span>Pedido Aprovado pela Secretaria!</span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed">
+                          Sua solicitação de posse foi aceita. Compareça à Secretaria / SEBAC portando um documento oficial com foto para realizar a retirada física do pertence.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Rejected Notice */}
+                    {isRejected && claim.rejectionReason && (
+                      <div className="p-3.5 bg-red-500/10 border border-red-500/30 rounded-2xl text-xs text-red-900 dark:text-red-200 space-y-1">
+                        <div className="flex items-center gap-2 font-bold text-red-700 dark:text-red-400">
+                          <AlertOctagon className="w-4 h-4 shrink-0" />
+                          <span>Solicitação Não Aprovada</span>
+                        </div>
+                        <p className="text-[11px] leading-relaxed">
+                          Motivo informado: <strong>{claim.rejectionReason}</strong>
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Bottom Actions */}
+                    <div className="flex items-center justify-between pt-2 border-t border-neutral-100 dark:border-neutral-800 flex-wrap gap-2">
+                      {relatedItem ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            vibrateClick();
+                            setSelectedItemForDetail(relatedItem);
+                          }}
+                          className="text-xs font-bold text-[#00843D] hover:underline cursor-pointer"
+                        >
+                          Ver Detalhes do Objeto
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-neutral-400">ID #{claim.itemId}</span>
+                      )}
+
+                      {isPending && (
+                        <button
+                          type="button"
+                          disabled={cancellingClaimId === claim.id}
+                          onClick={async () => {
+                            if (!window.confirm("Deseja realmente cancelar esta solicitação de devolução?")) {
+                              return;
+                            }
+                            vibrateClick();
+                            try {
+                              setCancellingClaimId(claim.id);
+                              await cancelClaim(claim.id);
+                              vibrateSuccess();
+                              addToast("Solicitação de devolução cancelada com sucesso.", "info");
+                            } catch (e: any) {
+                              addToast(e?.message || "Erro ao cancelar solicitação.", "error");
+                            } finally {
+                              setCancellingClaimId(null);
+                            }
+                          }}
+                          className="px-3.5 py-1.5 rounded-xl border border-red-500/40 text-red-600 hover:bg-red-500/10 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          {cancellingClaimId === claim.id ? "Cancelando..." : "Cancelar Solicitação"}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

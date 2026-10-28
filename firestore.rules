@@ -302,6 +302,27 @@ service cloud.firestore {
     // 3. Item Claims Collection (Solicitações de Devolução)
     // ==========================================
     match /claims/{claimId} {
+      // Helper to ensure administrative review fields are absent on creation/resubmission
+      function hasNoAdminReviewFields(data) {
+        return !('reviewedByUserId' in data) &&
+               !('reviewedByName' in data) &&
+               !('reviewedByRole' in data) &&
+               !('reviewedAt' in data) &&
+               !('rejectionReason' in data) &&
+               !('decisionNotes' in data) &&
+               !('completedAt' in data) &&
+               !('cancelledAt' in data);
+      }
+
+      // Helper to validate immutable claim attributes
+      function areImmutableFieldsPreserved() {
+        return incoming().id == existing().id &&
+               incoming().itemId == existing().itemId &&
+               incoming().claimerId == existing().claimerId &&
+               incoming().createdAt == existing().createdAt &&
+               incoming().distinctiveFeatures == existing().distinctiveFeatures;
+      }
+
       // Claims can only be read by the claimer, the item author, or Admin/Active Servidor
       allow get: if isSignedIn() && (
         (isAccountActive() && (
@@ -312,24 +333,89 @@ service cloud.firestore {
         (isServidor() && isAccountActive()) || 
         isAdmin()
       );
-      allow list: if isSignedIn() && ((isServidor() && isAccountActive()) || isAdmin() || (isAccountActive() && resource.data.claimerId == request.auth.uid));
+      allow list: if isSignedIn() && (
+        (isServidor() && isAccountActive()) || 
+        isAdmin() || 
+        (isAccountActive() && resource.data.claimerId == request.auth.uid)
+      );
 
-      // Create: Authenticated user making a claim with their own real user id, verified email and active account
-      allow create: if isEmailVerified() && isAccountActive() && !isIntruso() && incoming().claimerId == request.auth.uid;
+      // Create: Authenticated user making a claim with their own real user id, verified email and active account.
+      // - Must begin with status 'PENDENTE'
+      // - Cannot inject administrative review fields
+      // - Item must actually exist in the database and cannot be DEVOLVIDO or ENCERRADO
+      // - Required text fields must not be empty and must respect length limits
+      allow create: if isEmailVerified() && 
+                    isAccountActive() && 
+                    !isIntruso() && 
+                    incoming().claimerId == request.auth.uid &&
+                    incoming().status == 'PENDENTE' &&
+                    incoming().itemId is string && incoming().itemId.size() > 0 &&
+                    incoming().distinctiveFeatures is string && 
+                    incoming().distinctiveFeatures.size() > 0 && 
+                    incoming().distinctiveFeatures.size() <= 1000 &&
+                    (!('additionalInfo' in incoming()) || incoming().additionalInfo == null || (incoming().additionalInfo is string && incoming().additionalInfo.size() <= 1000)) &&
+                    hasNoAdminReviewFields(incoming()) &&
+                    exists(/databases/$(database)/documents/items/$(incoming().itemId)) &&
+                    get(/databases/$(database)/documents/items/$(incoming().itemId)).data.status != 'DEVOLVIDO' &&
+                    get(/databases/$(database)/documents/items/$(incoming().itemId)).data.status != 'ENCERRADO';
 
-      // Update: Admin / Active Servidor can change claim status/notes;
-      // Claimer can update ONLY while status is 'PENDENTE', and CANNOT modify claimerId, itemId, or self-approve
-      allow update: if isAdmin() || 
-                       (isServidor() && isAccountActive()) ||
-                       (
-                         isSignedIn() && 
-                         isAccountActive() &&
-                         existing().claimerId == request.auth.uid && 
-                         existing().status == 'PENDENTE' &&
-                         incoming().claimerId == existing().claimerId &&
-                         incoming().itemId == existing().itemId &&
-                         (incoming().status == 'PENDENTE' || incoming().status == 'CANCELADO')
-                       );
+      // Update:
+      // 1. Claimant can ONLY cancel their own PENDENTE claim (strictly status & cancelledAt keys)
+      // 2. Claimant can resubmit if previously CANCELADO or REJEITADO (resets to PENDENTE, no admin fields)
+      // 3. Staff / Admin can review and transition claims according to valid lifecycle
+      allow update: if 
+        // 1. Claimant Cancellation (Strict least privilege: only status & cancelledAt)
+        (
+          isSignedIn() && 
+          isAccountActive() &&
+          existing().claimerId == request.auth.uid && 
+          existing().status == 'PENDENTE' &&
+          incoming().status == 'CANCELADO' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt'])
+        ) ||
+        // 2. Claimant Resubmission (If previous claim was CANCELADO or REJEITADO)
+        (
+          isSignedIn() && 
+          isAccountActive() && 
+          !isIntruso() &&
+          existing().claimerId == request.auth.uid &&
+          existing().status in ['CANCELADO', 'REJEITADO'] &&
+          incoming().id == existing().id &&
+          incoming().claimerId == request.auth.uid &&
+          incoming().itemId == existing().itemId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().status == 'PENDENTE' &&
+          incoming().distinctiveFeatures is string &&
+          incoming().distinctiveFeatures.size() > 0 &&
+          incoming().distinctiveFeatures.size() <= 1000 &&
+          (!('additionalInfo' in incoming()) || incoming().additionalInfo == null || (incoming().additionalInfo is string && incoming().additionalInfo.size() <= 1000)) &&
+          hasNoAdminReviewFields(incoming()) &&
+          exists(/databases/$(database)/documents/items/$(incoming().itemId)) &&
+          get(/databases/$(database)/documents/items/$(incoming().itemId)).data.status != 'DEVOLVIDO' &&
+          get(/databases/$(database)/documents/items/$(incoming().itemId)).data.status != 'ENCERRADO'
+        ) ||
+        // 3. Staff / Admin Review & Lifecycle Transitions
+        (
+          (isAdmin() || (isServidor() && isAccountActive())) &&
+          areImmutableFieldsPreserved() &&
+          // Settled terminal states cannot be altered
+          existing().status != 'CONCLUIDO' &&
+          existing().status != 'CANCELADO' &&
+          (
+            // PENDENTE -> APROVADO, REJEITADO, CANCELADO
+            (existing().status == 'PENDENTE' && incoming().status in ['APROVADO', 'REJEITADO', 'CANCELADO']) ||
+            // APROVADO -> CONCLUIDO (physical return) or REJEITADO (revocation upon conflicting evidence)
+            (existing().status == 'APROVADO' && incoming().status in ['CONCLUIDO', 'REJEITADO']) ||
+            // REJEITADO -> APROVADO (Secretariat re-evaluation upon physical verification at counter)
+            (existing().status == 'REJEITADO' && incoming().status == 'APROVADO') ||
+            // Updating notes or evaluation details without status change (strictly while PENDENTE or APROVADO)
+            (incoming().status == existing().status && existing().status in ['PENDENTE', 'APROVADO'])
+          ) &&
+          // When REJEITADO, rejectionReason is mandatory
+          (incoming().status != 'REJEITADO' || (incoming().rejectionReason is string && incoming().rejectionReason.size() > 0)) &&
+          // When CONCLUIDO, completedAt is mandatory
+          (incoming().status != 'CONCLUIDO' || (incoming().completedAt is string && incoming().completedAt.size() > 0))
+        );
 
       // Delete: Admin only
       allow delete: if isAdmin();

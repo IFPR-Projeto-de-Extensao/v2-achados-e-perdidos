@@ -44,6 +44,7 @@ import {
   deleteDoc,
   deleteField,
   writeBatch,
+  runTransaction,
 } from "firebase/firestore";
 import {
   signInWithPopup,
@@ -338,8 +339,16 @@ interface AppContextType {
   ) => Promise<void>;
   logItemLabelGenerated: (itemId: string) => Promise<void>;
   deleteItem: (id: string) => void;
-  submitClaim: (itemId: string, verificationAnswer: string) => void;
-  updateClaimStatus: (claimId: string, status: ItemClaim["status"]) => void;
+  submitClaim: (
+    itemId: string,
+    claimInput: string | { distinctiveFeatures: string; additionalInfo?: string }
+  ) => Promise<{ success: boolean; claimId?: string; message: string }>;
+  updateClaimStatus: (
+    claimId: string,
+    status: ItemClaim["status"],
+    options?: { rejectionReason?: string; decisionNotes?: string }
+  ) => Promise<void>;
+  cancelClaim: (claimId: string) => Promise<void>;
   sendNotificationToUser: (targetUserId: string, title: string, message: string, relatedItemId?: string) => Promise<void>;
   markNotificationRead: (id: string) => void;
   clearAllNotifications: () => void;
@@ -1108,6 +1117,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Claims state
   const [claims, setClaims] = useState<ItemClaim[]>([]);
+  const inFlightClaimSubmissionsRef = useRef<Set<string>>(new Set());
 
   // Comments state
   const [comments, setComments] = useState<ItemComment[]>([]);
@@ -4335,9 +4345,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     try {
-      await updateDoc(doc(db, "items", itemId), updatePayload);
+      const batch = writeBatch(db);
+      batch.update(doc(db, "items", itemId), updatePayload);
 
-      // Immediately update local state
+      // Conclude any approved claims associated with this item atomically
+      const linkedApprovedClaims = claims.filter((c) => c.itemId === itemId && c.status === "APROVADO");
+      const completedClaimPayload = {
+        status: "CONCLUIDO" as const,
+        completedAt: now.toISOString(),
+        decisionNotes: `Devolução presencial concluída para ${returnData.recipientName} (${returnData.recipientBond}).`,
+      };
+
+      for (const clm of linkedApprovedClaims) {
+        batch.update(doc(db, "claims", clm.id), sanitizeFirestoreData(completedClaimPayload));
+      }
+
+      // Atomic commit: both item and linked claims are committed together or both roll back
+      await batch.commit();
+
+      // Immediately update local state for both items and claims
       setItems((prev) =>
         prev.map((it) =>
           it.id === itemId
@@ -4345,6 +4371,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : it
         )
       );
+
+      if (linkedApprovedClaims.length > 0) {
+        setClaims((prev) =>
+          prev.map((c) =>
+            c.itemId === itemId && c.status === "APROVADO"
+              ? { ...c, ...completedClaimPayload }
+              : c
+          )
+        );
+      }
       
       const returnTxId = `TX-RET-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
       await recordAuditLog({
@@ -4714,67 +4750,321 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const submitClaim = async (itemId: string, verificationAnswer: string) => {
+  const submitClaim = async (
+    itemId: string,
+    claimInput: string | { distinctiveFeatures: string; additionalInfo?: string }
+  ): Promise<{ success: boolean; claimId?: string; message: string }> => {
     if (isGuest || !auth.currentUser) {
       setAuthModalOpen(true);
-      addToast("Faça login para solicitar a devolução deste objeto.", "warning");
+      addToast("Faça login com sua conta institucional para solicitar este objeto.", "warning");
       throw new Error("Autenticação necessária para solicitar devolução.");
     }
 
-    const item = items.find((i) => i.id === itemId);
-    if (!item) {
-      addToast("Objeto não encontrado.", "error");
-      return;
+    const effectiveUserId = auth.currentUser.uid;
+    const effectiveUserEmail = auth.currentUser.email || currentUser?.email || "";
+    const effectiveUserName = currentUser?.name || auth.currentUser.displayName || (effectiveUserEmail ? effectiveUserEmail.split("@")[0] : "Usuário IFPR");
+    const effectiveUserRole: UserRole = currentUser?.role || (effectiveUserEmail === "paulocauan39@gmail.com" ? "ADMIN" : "ALUNO");
+
+    if (isAccountBlocked(currentUser)) {
+      addToast("Ação Bloqueada: Sua conta institucional está temporariamente suspensa ou banida.", "error");
+      throw new Error("Conta suspensa ou banida.");
     }
 
-    const effectiveUserId = auth.currentUser.uid;
-    const effectiveUserName = currentUser?.name || auth.currentUser.displayName || "Usuário IFPR";
-    const effectiveUserEmail = auth.currentUser.email || currentUser?.email || "";
-    const effectiveUserRole: UserRole = currentUser?.role || "ALUNO";
+    // Normalização das características declaradas
+    let featuresText = "";
+    let additionalText = "";
+    if (typeof claimInput === "string") {
+      featuresText = claimInput.trim();
+    } else if (claimInput && typeof claimInput === "object") {
+      featuresText = (claimInput.distinctiveFeatures || "").trim();
+      additionalText = (claimInput.additionalInfo || "").trim();
+    }
 
-    const newClaim: ItemClaim = {
-      id: `claim-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      itemId,
-      itemTitle: item.title,
-      claimerId: effectiveUserId,
-      claimerName: effectiveUserName,
-      claimerEmail: effectiveUserEmail,
-      claimerRole: effectiveUserRole,
-      verificationAnswer,
-      status: "PENDENTE",
-      createdAt: new Date().toISOString(),
-    };
+    if (!featuresText) {
+      addToast("Por favor, descreva as características particulares do objeto.", "warning");
+      throw new Error("Descrição das características particulares do objeto é obrigatória.");
+    }
+
+    if (featuresText.length > 1000 || additionalText.length > 1000) {
+      addToast("A descrição das características não pode ultrapassar 1000 caracteres.", "warning");
+      throw new Error("Limite de caracteres excedido (máximo 1000 caracteres).");
+    }
+
+    // Validação da existência e disponibilidade do objeto
+    const item = items.find((i) => i.id === itemId);
+    if (!item) {
+      addToast("Objeto não encontrado no catálogo.", "error");
+      throw new Error("Objeto não encontrado.");
+    }
+
+    if (item.status === "DEVOLVIDO" || item.status === "ENCERRADO") {
+      addToast("Este objeto já foi devolvido ou encerrado e não recebe novas solicitações.", "warning");
+      throw new Error("Objeto indisponível para solicitação de devolução.");
+    }
+
+    // Prevenção de concorrência simultânea (in-flight guard)
+    const flightKey = `${itemId}_${effectiveUserId}`;
+    if (inFlightClaimSubmissionsRef.current.has(flightKey)) {
+      addToast("Uma solicitação para este objeto já está sendo enviada. Aguarde.", "info");
+      throw new Error("Solicitação concorrente em processamento.");
+    }
+    inFlightClaimSubmissionsRef.current.add(flightKey);
+
+    const claimDocId = `claim_${effectiveUserId}_${itemId}`;
+    const claimDocRef = doc(db, "claims", claimDocId);
 
     try {
-      await setDoc(doc(db, "claims", newClaim.id), sanitizeFirestoreData(newClaim));
-      await updateItemStatus(itemId, "EM_ANALISE");
+      // Prevenção de duplicidade: checagem local no cache de claims em memória
+      const localDuplicate = claims.find(
+        (c) => c.itemId === itemId && c.claimerId === effectiveUserId && (c.status === "PENDENTE" || c.status === "APROVADO")
+      );
+      if (localDuplicate) {
+        const statusLabel = localDuplicate.status === "APROVADO" ? "aprovada" : "em análise";
+        addToast(`Você já possui uma solicitação ${statusLabel} para este pertence. Acompanhe em seu perfil.`, "warning");
+        throw new Error(`Solicitação já existente com status '${localDuplicate.status}'.`);
+      }
 
-      const claimerNotif: NotificationItem = {
-        id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        userId: effectiveUserId,
-        isGlobal: false,
-        title: "Solicitação de Devolução Registrada",
-        message: `Sua solicitação de devolução para "${item.title}" foi enviada com sucesso e está em análise pela equipe do IFPR.`,
-        timestamp: new Date().toISOString(),
-        read: false,
-        type: "CLAIM_UPDATE",
-        relatedItemId: itemId,
+      const compositeAnswer = additionalText
+        ? `${featuresText}\n\n[Informações Adicionais]: ${additionalText}`
+        : featuresText;
+
+      const newClaim: ItemClaim = {
+        id: claimDocId,
+        itemId,
+        itemTitle: item.title,
+        itemCategory: item.category,
+        itemLocation: item.location,
+        itemImageUrl: item.imageUrl || "",
+        claimerId: effectiveUserId,
+        claimerName: effectiveUserName,
+        claimerEmail: effectiveUserEmail,
+        claimerRole: effectiveUserRole,
+        claimerRegistration: currentUser?.registrationNumber || "",
+        claimerPhone: currentUser?.phone || "",
+        distinctiveFeatures: featuresText,
+        additionalInfo: additionalText || undefined,
+        verificationAnswer: compositeAnswer,
+        status: "PENDENTE",
+        createdAt: new Date().toISOString(),
       };
-      await setDoc(doc(db, "notifications", claimerNotif.id), sanitizeFirestoreData(claimerNotif));
 
-      addToast("Solicitação salva no Firestore! A equipe do IFPR analisará a comprovação.", "success");
+      // Execução transacional atômica no Firestore: previne duplicidade entre abas e dispositivos
+      await runTransaction(db, async (transaction) => {
+        const docSnap = await transaction.get(claimDocRef);
+        if (docSnap.exists()) {
+          const existingData = docSnap.data() as ItemClaim;
+          if (existingData.status === "PENDENTE" || existingData.status === "APROVADO") {
+            const statusLabel = existingData.status === "APROVADO" ? "aprovada" : "em análise";
+            throw new Error(`Você já possui uma solicitação ${statusLabel} para este pertence. Acompanhe em seu perfil.`);
+          }
+          if (existingData.status === "CONCLUIDO") {
+            throw new Error("Este pertence já foi retirado e sua solicitação encontra-se concluída.");
+          }
+          // Preserva estritamente a data original de criação e autoria no reenvio
+          newClaim.createdAt = existingData.createdAt;
+          newClaim.resubmittedAt = new Date().toISOString();
+        }
+        transaction.set(claimDocRef, sanitizeFirestoreData(newClaim));
+      });
+
+      // Atualiza o estado local imediatamente
+      setClaims((prev) => [newClaim, ...prev.filter((c) => c.id !== newClaim.id)]);
+
+      // Notificação ao solicitante (desacoplada e resiliente)
+      try {
+        const claimerNotif: NotificationItem = {
+          id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          userId: effectiveUserId,
+          isGlobal: false,
+          title: "Solicitação Registrada",
+          message: `Sua declaração de posse para "${item.title}" foi registrada com sucesso. A Secretaria do IFPR analisará as características informadas.`,
+          timestamp: new Date().toISOString(),
+          read: false,
+          type: "CLAIM_UPDATE",
+          relatedItemId: itemId,
+        };
+        await setDoc(doc(db, "notifications", claimerNotif.id), sanitizeFirestoreData(claimerNotif));
+      } catch (notifErr) {
+        console.warn("[submitClaim] Aviso não-fatal ao registrar notificação inicial:", notifErr);
+      }
+
+      addToast("Solicitação de devolução enviada com sucesso para análise da Secretaria!", "success");
+      return {
+        success: true,
+        claimId: newClaim.id,
+        message: "Solicitação de devolução enviada com sucesso para análise da Secretaria!",
+      };
+    } catch (e: any) {
+      if (e?.message?.includes("já possui uma solicitação") || e?.message?.includes("Solicitação já existente")) {
+        addToast(e.message, "warning");
+      } else if (!e?.message?.includes("indisponível")) {
+        handleFirestoreError(e, OperationType.WRITE, `claims/${claimDocId}`);
+      }
+      throw e;
+    } finally {
+      inFlightClaimSubmissionsRef.current.delete(flightKey);
+    }
+  };
+
+  const updateClaimStatus = async (
+    claimId: string,
+    status: ItemClaim["status"],
+    options?: { rejectionReason?: string; decisionNotes?: string }
+  ) => {
+    if (isGuest || !auth.currentUser) {
+      addToast("É necessário estar autenticado para gerenciar solicitações.", "error");
+      throw new Error("Autenticação necessária.");
+    }
+
+    const isStaffOrAdmin =
+      currentUser?.role === "ADMIN" ||
+      currentUser?.role === "SERVIDOR" ||
+      auth.currentUser?.email === "paulocauan39@gmail.com";
+
+    if (!isStaffOrAdmin) {
+      addToast("Apenas servidores ou administradores podem alterar o status de solicitações.", "error");
+      throw new Error("Permissão negada: ação restrita a servidores e administradores.");
+    }
+
+    const existingClaim = claims.find((c) => c.id === claimId);
+    if (!existingClaim) {
+      addToast("Solicitação não encontrada.", "error");
+      throw new Error("Solicitação não encontrada.");
+    }
+
+    if (existingClaim.status === "CONCLUIDO" && status !== "CONCLUIDO") {
+      addToast("Esta solicitação já foi concluída e vinculada à devolução física do objeto.", "warning");
+      throw new Error("Solicitação já concluída.");
+    }
+
+    if (existingClaim.status === "CANCELADO" && status !== "CANCELADO") {
+      addToast("Solicitações canceladas pelo usuário não podem ter seu status alterado.", "warning");
+      throw new Error("Solicitação cancelada pelo aluno.");
+    }
+
+    if (status === "REJEITADO") {
+      const reason = options?.rejectionReason?.trim();
+      if (!reason) {
+        addToast("A justificativa/motivo do indeferimento é obrigatória.", "warning");
+        throw new Error("Justificativa obrigatória para indeferimento.");
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const effectiveUserId = auth.currentUser.uid;
+    const effectiveUserName = currentUser?.name || auth.currentUser.displayName || "Servidor IFPR";
+    const effectiveUserRole: UserRole = currentUser?.role || (auth.currentUser.email === "paulocauan39@gmail.com" ? "ADMIN" : "SERVIDOR");
+
+    const updatePayload: Partial<ItemClaim> = {
+      status,
+      reviewedByUserId: effectiveUserId,
+      reviewedByName: effectiveUserName,
+      reviewedByRole: effectiveUserRole,
+      reviewedAt: nowIso,
+      rejectionReason: status === "REJEITADO" ? options?.rejectionReason?.trim() : undefined,
+      decisionNotes: options?.decisionNotes?.trim() || undefined,
+    };
+
+    if (status === "CONCLUIDO") {
+      updatePayload.completedAt = nowIso;
+    }
+
+    try {
+      await updateDoc(doc(db, "claims", claimId), sanitizeFirestoreData(updatePayload));
+
+      setClaims((prev) =>
+        prev.map((c) => (c.id === claimId ? { ...c, ...updatePayload } : c))
+      );
+
+      // Notifica o solicitante sobre a decisão administrativa (desacoplada, não interrompe operação bem-sucedida)
+      if (existingClaim.claimerId) {
+        const decisionNotifTitle =
+          status === "APROVADO"
+            ? "Solicitação Deferida pela Secretaria"
+            : status === "REJEITADO"
+            ? "Solicitação Indeferida pela Secretaria"
+            : `Atualização de Solicitação (${status})`;
+
+        const decisionNotifMessage =
+          status === "APROVADO"
+            ? `Sua solicitação para "${existingClaim.itemTitle}" foi APROVADA! Compareça à SEBAC / Portaria com documento oficial com foto para retirar seu pertence.`
+            : status === "REJEITADO"
+            ? `Sua solicitação para "${existingClaim.itemTitle}" foi indeferida. Motivo: ${options?.rejectionReason || "Características informadas não conferem com o pertence em custódia."}`
+            : `O status da sua solicitação para "${existingClaim.itemTitle}" foi atualizado para ${status}.`;
+
+        try {
+          await sendNotificationToUser(
+            existingClaim.claimerId,
+            decisionNotifTitle,
+            decisionNotifMessage,
+            existingClaim.itemId
+          );
+        } catch (notifErr) {
+          console.warn("[updateClaimStatus] Aviso não-fatal ao despachar notificação ao aluno:", notifErr);
+        }
+      }
+
+      // Log de auditoria (desacoplado, não interrompe operação bem-sucedida)
+      try {
+        await recordAuditLog({
+          objectId: claimId,
+          objectType: "CLAIM",
+          objectTitle: existingClaim.itemTitle || claimId,
+          action: `DECISAO_SOLICITACAO_${status}`,
+          fieldChanged: "status",
+          oldValue: existingClaim.status,
+          newValue: status,
+          details: `Solicitação #${claimId} do aluno '${existingClaim.claimerName}' alterada para ${status} por ${effectiveUserName} (${effectiveUserRole}).${options?.rejectionReason ? ` Motivo: ${options.rejectionReason}` : ""}`,
+        });
+      } catch (auditErr) {
+        console.warn("[updateClaimStatus] Aviso não-fatal ao registrar log de auditoria:", auditErr);
+      }
+
+      const actionVerb = status === "APROVADO" ? "aprovada" : status === "REJEITADO" ? "rejeitada" : "atualizada";
+      addToast(`Solicitação de ${existingClaim.claimerName} ${actionVerb} com sucesso!`, "success");
     } catch (e) {
-      handleFirestoreError(e, OperationType.WRITE, `claims/${newClaim.id}`);
+      handleFirestoreError(e, OperationType.UPDATE, `claims/${claimId}`);
       throw e;
     }
   };
 
-  const updateClaimStatus = async (claimId: string, status: ItemClaim["status"]) => {
+  const cancelClaim = async (claimId: string) => {
+    if (isGuest || !auth.currentUser) {
+      addToast("Faça login para gerenciar suas solicitações.", "warning");
+      throw new Error("Autenticação necessária.");
+    }
+
+    const claim = claims.find((c) => c.id === claimId);
+    if (!claim) {
+      addToast("Solicitação não encontrada.", "error");
+      throw new Error("Solicitação não encontrada.");
+    }
+
+    if (claim.claimerId !== auth.currentUser.uid) {
+      addToast("Você só pode cancelar suas próprias solicitações.", "error");
+      throw new Error("Permissão negada: não é o autor da solicitação.");
+    }
+
+    if (claim.status !== "PENDENTE") {
+      addToast("Apenas solicitações com status 'Pendente' podem ser canceladas.", "warning");
+      throw new Error("Apenas solicitações pendentes podem ser canceladas.");
+    }
+
+    const nowIso = new Date().toISOString();
+    const updatePayload = {
+      status: "CANCELADO" as const,
+      cancelledAt: nowIso,
+    };
+
     try {
-      await updateDoc(doc(db, "claims", claimId), sanitizeFirestoreData({ status }));
-      addToast(`Solicitação marcada como ${status} no Firestore`, "info");
+      await updateDoc(doc(db, "claims", claimId), sanitizeFirestoreData(updatePayload));
+      setClaims((prev) =>
+        prev.map((c) => (c.id === claimId ? { ...c, ...updatePayload } : c))
+      );
+      addToast("Solicitação de devolução cancelada com sucesso.", "info");
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `claims/${claimId}`);
+      throw e;
     }
   };
 
@@ -4945,6 +5235,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteItem,
         submitClaim,
         updateClaimStatus,
+        cancelClaim,
         sendNotificationToUser,
         markNotificationRead,
         clearAllNotifications,

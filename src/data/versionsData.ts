@@ -24,12 +24,88 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.10.8",
+    codename: "Reformulação da Verificação de Posse RNF04, Gestão Administrativa de Devoluções e Blindagem de Permissões Firestore",
+    releaseDate: "27/10/2026",
+    releaseDateTime: "27 de Outubro de 2026 • 21:00 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "LOCALIZA+ v1.10.8 — Eliminação da exigência de senhas/PINs cadastrados e bloqueios arbitrários de 3 tentativas na verificação de posse RNF04; adoção de declaração de características particulares do pertence; resolução definitiva de falhas de permissão no Firestore causadas por updateItemStatus em submitClaim; implementação da aba administrativa 'Solicitações de Devolução' no Dashboard para Servidores e Administradores avaliarem pedidos (com aprovação e justificativa obrigatória de rejeição); integração automática com a devolução formal; e suporte a cancelamento de pedidos pendentes na aba 'Minhas Solicitações'.",
+    additions: [
+      {
+        id: "v1108-add-declarative-possession-verification",
+        title: "Declaração de Características Particulares (RNF04)",
+        description: "Substituição de senha/PIN por campos declarativos de marcas específicas, adesivos e detalhes particulares do objeto para verificação documental e presencial na Secretaria.",
+        module: "ADMIN",
+        tag: "RNF04 & Verificação de Posse",
+      },
+      {
+        id: "v1108-add-claims-management-dashboard",
+        title: "Módulo Administrativo de Solicitações de Devolução (Secretaria/SEBAC)",
+        description: "Aba completa em Custódia & Devoluções permitindo a Servidores e Administradores filtrar, pesquisar, aprovar ou rejeitar solicitações com justificativa institucional e direcionar para devolução formal.",
+        module: "ADMIN",
+        tag: "Gestão Administrativa",
+      },
+      {
+        id: "v1108-add-claim-cancellation-and-user-tracking",
+        title: "Acompanhamento e Cancelamento de Solicitações no Perfil",
+        description: "Exibição clara de status (Em Análise, Aprovado, Rejeitado, Cancelado), orientações para retirada na SEBAC e botão para o próprio requerente cancelar solicitações pendentes.",
+        module: "AUTH",
+        tag: "Minhas Solicitações",
+      },
+      {
+        id: "v1108-add-claim-devolution-auto-transition",
+        title: "Transição Automática para Concluído na Devolução Formal",
+        description: "Integração do registro formal de devolução (com assinatura digital) à transição automática das solicitações aprovadas para o estado CONCLUIDO.",
+        module: "FIRESTORE",
+        tag: "Devolução Formal",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1108-fix-firestore-permission-cascade-submit-claim",
+        title: "Resolução de Erro de Permissões em submitClaim",
+        description: "Eliminação da chamada secundária updateItemStatus(itemId, 'EM_ANALISE') por usuários sem privilégio de edição do item, mantendo a integridade do catálogo e respeitando estritamente as regras de segurança.",
+        module: "FIRESTORE",
+        tag: "Permissões & Firestore",
+      },
+      {
+        id: "v1108-fix-remove-artificial-token-lockout",
+        title: "Remoção de Bloqueio Fictício de 3 Tentativas e Hooks Obsoletos",
+        description: "Exclusão dos hooks usePossessionVerification e useOwnershipVerification que geravam falsos bloqueios e tokens de verificação artificiais no cliente.",
+        module: "GERAL",
+        tag: "Anti-Simulação & Código Limpo",
+      },
+      {
+        id: "v1108-fix-firestore-rules-claims-security",
+        title: "Blindagem Adversarial das Regras de Segurança da Coleção claims",
+        description: "Validação estrita de status inicial PENDENTE, bloqueio integral de injeção de campos administrativos (completedAt, decisionNotes, reviewedByName), obrigatoriedade de existência e não-encerramento do item, restrição com affectedKeys para cancelamento pelo requerente e validação estrita de transições de ciclo de vida e imutabilidade para servidores.",
+        module: "FIRESTORE",
+        tag: "Segurança & Regras",
+      },
+      {
+        id: "v1108-fix-claims-concurrency-atomic-deterministic-ids",
+        title: "Prevenção de Duplicidade Atômica e IDs Determinísticos",
+        description: "Adoção de ID determinístico de documento (claim_{userId}_{itemId}) e transações atômicas no Firestore (runTransaction), eliminando race conditions de cliques rápidos, abas simultâneas ou múltiplos dispositivos.",
+        module: "FIRESTORE",
+        tag: "Concorrência & Atomicidade",
+      },
+      {
+        id: "v1108-fix-notification-decoupling-resilience",
+        title: "Desacoplamento de Notificações e Logs de Auditoria",
+        description: "Envolvimento de despachos de notificação e logs de auditoria em blocos não-fatais após o commit bem-sucedido no banco, evitando reversões ou falsos erros ao operador.",
+        module: "ADMIN",
+        tag: "Resiliência Operacional",
+      },
+    ],
+  },
+  {
     version: "v1.10.7",
     codename: "Compatibilidade PWA com Firefox e Linux, Eliminação de Métricas Simuladas e Robustez de Armazenamento",
     releaseDate: "27/10/2026",
     releaseDateTime: "27 de Outubro de 2026 • 19:50 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "LOCALIZA+ v1.10.7 — Implementação de compatibilidade PWA e detecção precisa para Mozilla Firefox (Desktop e Android) e sistemas Linux no hook usePWA, PWAInstallBanner e InstallInstructionsModal com orientações honestas e sem falsas promessas de APIs inexistentes; eliminação integral de métricas aleatórias (Math.random) e incidentes hardcoded fictícios em uptimeManager.ts em estrita conformidade com a Regra Mestra 1 de Dados Reais; e blindagem contra falhas síncronas de SecurityError em IndexedDB, Cache Storage e Service Worker em modos anônimos/restritos.",
     additions: [
       {

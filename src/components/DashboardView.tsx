@@ -3,7 +3,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useApp } from "../context/AppContext";
 import { formatDate, formatDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeIncludes, sanitizeQuery } from "../lib/utils";
-import { UserRole, User, AccountStatus, ActivityLog, BackupScheduleConfig } from "../types";
+import { UserRole, User, AccountStatus, ActivityLog, BackupScheduleConfig, ItemClaim } from "../types";
 import { AppUptimeMonitor } from "./AppUptimeMonitor";
 import { MonthlyItemsD3Chart } from "./MonthlyItemsD3Chart";
 import { WeeklyFlowD3Chart } from "./WeeklyFlowD3Chart";
@@ -120,6 +120,7 @@ export const DashboardView: React.FC = () => {
     updateBackupScheduleConfig,
     executeFirestoreBackupNow,
     claims,
+    updateClaimStatus,
     activityLogs,
     logAdminAction,
     systemLatencyMs,
@@ -183,17 +184,27 @@ export const DashboardView: React.FC = () => {
 
   // Admin Sub-Tab State
   const [adminSubTab, setAdminSubTab] = useState<
-    "users" | "accounts" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "test_batteries" | "test_distribution" | "custody_reminders" | "digital_returns" | "pending_signatures"
+    "users" | "accounts" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "test_batteries" | "test_distribution" | "custody_reminders" | "digital_returns" | "pending_signatures" | "claims"
   >("users");
 
   useEffect(() => {
     if (currentUser.role === "SERVIDOR") {
-      const allowedTabs = ["pending_signatures", "custody_reminders", "digital_returns"];
+      const allowedTabs = ["claims", "pending_signatures", "custody_reminders", "digital_returns"];
       if (!allowedTabs.includes(adminSubTab)) {
-        setAdminSubTab("pending_signatures");
+        setAdminSubTab("claims");
       }
     }
   }, [currentUser.role, adminSubTab]);
+
+  // Claim Management State (Secretaria / SEBAC)
+  const [claimSearchText, setClaimSearchText] = useState("");
+  const [claimStatusFilter, setClaimStatusFilter] = useState<"TODAS" | "PENDENTE" | "APROVADO" | "REJEITADO" | "CONCLUIDO" | "CANCELADO">("PENDENTE");
+  const [claimToReject, setClaimToReject] = useState<ItemClaim | null>(null);
+  const [rejectionReasonInput, setRejectionReasonInput] = useState("");
+  const [claimToApprove, setClaimToApprove] = useState<ItemClaim | null>(null);
+  const [isProcessingClaimAction, setIsProcessingClaimAction] = useState(false);
+
+
 
   // Items with pending institutional staff signature (filtered strictly per identified issuer)
   const pendingSignaturesItems = items.filter(
@@ -1717,8 +1728,8 @@ export const DashboardView: React.FC = () => {
                         id: "custody_returns",
                         label: "Custódia & Devoluções",
                         icon: PackageCheck,
-                        tabs: ["pending_signatures", "custody_reminders", "digital_returns"],
-                        badge: pendingSignaturesCount > 0 ? pendingSignaturesCount : itemsOver90DaysCount,
+                        tabs: ["claims", "pending_signatures", "custody_reminders", "digital_returns"],
+                        badge: pendingClaimsCount > 0 ? pendingClaimsCount : (pendingSignaturesCount > 0 ? pendingSignaturesCount : itemsOver90DaysCount),
                       },
                       {
                         id: "quality_tests",
@@ -1873,8 +1884,25 @@ export const DashboardView: React.FC = () => {
                     )}
 
                     {/* Category: Custody & Returns */}
-                    {(adminSubTab === "pending_signatures" || adminSubTab === "custody_reminders" || adminSubTab === "digital_returns") && (
+                    {(adminSubTab === "claims" || adminSubTab === "pending_signatures" || adminSubTab === "custody_reminders" || adminSubTab === "digital_returns") && (
                       <>
+                        <button
+                          onClick={() => setAdminSubTab("claims")}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
+                            adminSubTab === "claims"
+                              ? "bg-[#00843D] text-white shadow-xs font-bold"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                          }`}
+                        >
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>Solicitações de Devolução</span>
+                          {pendingClaimsCount > 0 && (
+                            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-bold">
+                              {pendingClaimsCount}
+                            </span>
+                          )}
+                        </button>
+
                         <button
                           onClick={() => setAdminSubTab("pending_signatures")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
@@ -3225,6 +3253,393 @@ export const DashboardView: React.FC = () => {
             </div>
           )}
 
+
+          {/* TAB: GESTÃO DE SOLICITAÇÕES DE DEVOLUÇÃO (SECRETARIA / SEBAC / RNF04) */}
+          {adminSubTab === "claims" && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-100 dark:border-neutral-800 pb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className="p-2.5 rounded-2xl bg-[#00843D]/10 text-[#00843D] border border-[#00843D]/20">
+                      <ShieldCheck className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-black text-neutral-900 dark:text-white flex items-center space-x-2">
+                        <span>Solicitações de Devolução de Objetos</span>
+                        {pendingClaimsCount > 0 && (
+                          <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase">
+                            {pendingClaimsCount} Pendentes
+                          </span>
+                        )}
+                      </h2>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                        Análise de posse, aprovação de pedidos e triagem da Secretaria / SEBAC (IFPR Campus Ivaiporã)
+                      </p>
+                    </div>
+                  </div>
+                  <span className="self-start sm:self-auto px-3 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-xs font-bold border border-neutral-200 dark:border-neutral-700">
+                    {(claims || []).length} Registros no Total
+                  </span>
+                </div>
+
+                {/* Filter and Search Bar */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {(["TODAS", "PENDENTE", "APROVADO", "REJEITADO", "CONCLUIDO", "CANCELADO"] as const).map((st) => {
+                      const count = st === "TODAS"
+                        ? (claims || []).length
+                        : (claims || []).filter((c) => c && c.status === st).length;
+                      const isActive = claimStatusFilter === st;
+                      return (
+                        <button
+                          key={st}
+                          type="button"
+                          onClick={() => {
+                            vibrateClick();
+                            setClaimStatusFilter(st);
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            isActive
+                              ? "bg-[#00843D] text-white shadow-xs"
+                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          }`}
+                        >
+                          {st === "TODAS" ? "Todas" : st === "PENDENTE" ? "Pendentes" : st === "APROVADO" ? "Aprovadas" : st === "REJEITADO" ? "Rejeitadas" : st === "CONCLUIDO" ? "Concluídas" : "Canceladas"} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-400" />
+                    <input
+                      type="text"
+                      value={claimSearchText}
+                      onChange={(e) => setClaimSearchText(e.target.value)}
+                      placeholder="Buscar por objeto, solicitante, matrícula..."
+                      className="pl-8 pr-3 py-1.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs outline-none w-full md:w-64"
+                    />
+                  </div>
+                </div>
+
+                {/* Claims Table / List */}
+                {(() => {
+                  const filteredClaims = (claims || []).filter((c) => {
+                    if (!c) return false;
+                    const matchStatus = claimStatusFilter === "TODAS" || c.status === claimStatusFilter;
+                    const q = sanitizeQuery(claimSearchText);
+                    const matchQuery =
+                      !q ||
+                      safeIncludes(c.itemTitle, q) ||
+                      safeIncludes(c.claimerName, q) ||
+                      safeIncludes(c.claimerEmail, q) ||
+                      safeIncludes(c.claimerRegistration, q) ||
+                      safeIncludes(c.distinctiveFeatures, q) ||
+                      safeIncludes(c.additionalInfo, q) ||
+                      safeIncludes(c.itemId, q);
+                    return matchStatus && matchQuery;
+                  });
+
+                  if (filteredClaims.length === 0) {
+                    return (
+                      <div className="bg-neutral-50 dark:bg-neutral-900/50 rounded-2xl p-8 text-center space-y-2 border border-dashed border-neutral-200 dark:border-neutral-800">
+                        <CheckCircle2 className="w-10 h-10 text-neutral-400 mx-auto" />
+                        <p className="text-sm font-bold text-neutral-800 dark:text-neutral-200">
+                          Nenhuma solicitação encontrada
+                        </p>
+                        <p className="text-xs text-neutral-500 max-w-md mx-auto">
+                          Não foram localizadas solicitações de devolução para o filtro selecionado.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="overflow-x-auto rounded-2xl border border-neutral-200 dark:border-neutral-800">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-neutral-50 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-300 uppercase font-extrabold text-[10px]">
+                          <tr>
+                            <th className="p-3.5">Objeto / Categoria</th>
+                            <th className="p-3.5">Solicitante</th>
+                            <th className="p-3.5">Características Declaradas (RNF04)</th>
+                            <th className="p-3.5">Data / Status</th>
+                            <th className="p-3.5 text-right">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                          {filteredClaims.map((claim) => {
+                            const relatedItem = items.find((it) => it.id === claim.itemId);
+                            return (
+                              <tr key={claim.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
+                                <td className="p-3.5">
+                                  <div className="font-bold text-neutral-900 dark:text-white">
+                                    {claim.itemTitle || relatedItem?.title || "Objeto"}
+                                  </div>
+                                  <div className="text-[10px] text-neutral-400 font-mono flex items-center gap-1.5 mt-0.5">
+                                    <span>#{claim.itemId}</span>
+                                    <span>•</span>
+                                    <span>{claim.itemCategory || relatedItem?.category || "Categoria"}</span>
+                                  </div>
+                                  {relatedItem && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        vibrateClick();
+                                        setSelectedItemForDetail(relatedItem);
+                                      }}
+                                      className="text-[10px] text-[#00843D] hover:underline font-bold mt-1 inline-flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <span>Ver ficha completa do item</span>
+                                    </button>
+                                  )}
+                                </td>
+
+                                <td className="p-3.5">
+                                  <div className="font-bold text-neutral-800 dark:text-neutral-200">
+                                    {claim.claimerName}
+                                  </div>
+                                  <div className="text-[10px] text-neutral-500">
+                                    {claim.claimerEmail}
+                                  </div>
+                                  <div className="text-[10px] text-neutral-400 mt-0.5">
+                                    {claim.claimerRole || "Aluno"} {claim.claimerRegistration ? `• Matrícula: ${claim.claimerRegistration}` : ""}
+                                  </div>
+                                </td>
+
+                                <td className="p-3.5 max-w-xs">
+                                  <div className="text-neutral-800 dark:text-neutral-200 text-xs bg-neutral-50 dark:bg-neutral-800/70 p-2 rounded-xl border border-neutral-200 dark:border-neutral-700/60 leading-relaxed whitespace-pre-wrap">
+                                    {claim.distinctiveFeatures || "Sem características registradas."}
+                                  </div>
+                                  {claim.additionalInfo && (
+                                    <div className="text-[10px] text-neutral-500 mt-1 italic">
+                                      Info adicional: {claim.additionalInfo}
+                                    </div>
+                                  )}
+                                  {claim.rejectionReason && (
+                                    <div className="text-[10px] text-red-600 dark:text-red-400 font-bold mt-1 bg-red-500/10 p-1.5 rounded-lg border border-red-500/20">
+                                      Motivo da Rejeição: {claim.rejectionReason}
+                                    </div>
+                                  )}
+                                </td>
+
+                                <td className="p-3.5 whitespace-nowrap">
+                                  <div className="text-[11px] font-mono text-neutral-600 dark:text-neutral-400 mb-1">
+                                    {formatDateTime(claim.createdAt)}
+                                  </div>
+                                  <span
+                                    className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                                      claim.status === "PENDENTE"
+                                        ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                                        : claim.status === "APROVADO"
+                                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                        : claim.status === "REJEITADO"
+                                        ? "bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30"
+                                        : claim.status === "CONCLUIDO"
+                                        ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                                        : "bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border-neutral-300 dark:border-neutral-700"
+                                    }`}
+                                  >
+                                    {claim.status === "PENDENTE"
+                                      ? "Em Análise"
+                                      : claim.status === "APROVADO"
+                                      ? "Aprovado (Aguardando Retirada)"
+                                      : claim.status === "REJEITADO"
+                                      ? "Rejeitado"
+                                      : claim.status === "CONCLUIDO"
+                                      ? "Devolvido ao Dono"
+                                      : "Cancelado"}
+                                  </span>
+                                  {claim.reviewedByName && (
+                                    <div className="text-[9px] text-neutral-400 mt-1">
+                                      Por: {claim.reviewedByName}
+                                    </div>
+                                  )}
+                                </td>
+
+                                <td className="p-3.5 text-right whitespace-nowrap">
+                                  {claim.status === "PENDENTE" && (
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      <button
+                                        type="button"
+                                        disabled={isProcessingClaimAction}
+                                        onClick={async () => {
+                                          vibrateClick();
+                                          try {
+                                            setIsProcessingClaimAction(true);
+                                            await updateClaimStatus(claim.id, "APROVADO", {
+                                              decisionNotes: "Solicitação deferida após conferência das características particulares.",
+                                            });
+                                            vibrateSuccess();
+                                            addToast(`Solicitação de ${claim.claimerName} APROVADA com sucesso!`, "success");
+                                          } catch (e: any) {
+                                            addToast(e?.message || "Erro ao aprovar solicitação.", "error");
+                                          } finally {
+                                            setIsProcessingClaimAction(false);
+                                          }
+                                        }}
+                                        className="px-3 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-xs transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                                        title="Aprovar posse e autorizar retirada no balcão"
+                                      >
+                                        Aprovar
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={isProcessingClaimAction}
+                                        onClick={() => {
+                                          vibrateClick();
+                                          setClaimToReject(claim);
+                                          setRejectionReasonInput("");
+                                        }}
+                                        className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                                        title="Rejeitar solicitação com justificativa"
+                                      >
+                                        Rejeitar
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {claim.status === "APROVADO" && (
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      {relatedItem && relatedItem.status !== "DEVOLVIDO" && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            vibrateClick();
+                                            setSelectedItemForDetail(relatedItem);
+                                          }}
+                                          className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all shadow-xs cursor-pointer inline-flex items-center gap-1"
+                                          title="Abrir o modal do objeto para registrar entrega formal com assinatura"
+                                        >
+                                          <FileSignature className="w-3.5 h-3.5" />
+                                          <span>Devolução Formal</span>
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        disabled={isProcessingClaimAction}
+                                        onClick={() => {
+                                          vibrateClick();
+                                          setClaimToReject(claim);
+                                          setRejectionReasonInput("");
+                                        }}
+                                        className="px-2.5 py-1.5 rounded-xl border border-red-500/40 text-red-600 hover:bg-red-500/10 font-bold text-xs transition-all cursor-pointer"
+                                        title="Revogar aprovação e rejeitar"
+                                      >
+                                        Revogar
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {(claim.status === "REJEITADO" || claim.status === "CONCLUIDO" || claim.status === "CANCELADO") && (
+                                    <span className="text-[11px] text-neutral-400 italic">
+                                      Encerrada
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* Modal de Rejeição de Solicitação */}
+          {claimToReject && (
+            <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 dark:bg-black/85 backdrop-blur-md transition-all duration-200">
+              <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-md w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-red-600" />
+                    <div>
+                      <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                        Rejeitar Solicitação de Devolução
+                      </h3>
+                      <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
+                        Secretaria IFPR • Decisão Administrativa
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setClaimToReject(null)}
+                    className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-2xl text-xs space-y-1">
+                  <p className="text-red-900 dark:text-red-300">
+                    Solicitante: <strong>{claimToReject.claimerName}</strong> ({claimToReject.claimerEmail})
+                  </p>
+                  <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                    Objeto: {claimToReject.itemTitle} (#{claimToReject.itemId})
+                  </p>
+                </div>
+
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!rejectionReasonInput.trim()) {
+                      addToast("Informe o motivo da rejeição para registrar a decisão.", "error");
+                      return;
+                    }
+                    try {
+                      setIsProcessingClaimAction(true);
+                      await updateClaimStatus(claimToReject.id, "REJEITADO", {
+                        rejectionReason: rejectionReasonInput.trim(),
+                        decisionNotes: `Rejeitado por ${currentUser.name} (${currentUser.role}).`,
+                      });
+                      vibrateSuccess();
+                      addToast("Solicitação rejeitada e requerente notificado.", "info");
+                      setClaimToReject(null);
+                      setRejectionReasonInput("");
+                    } catch (err: any) {
+                      addToast(err?.message || "Erro ao rejeitar solicitação.", "error");
+                    } finally {
+                      setIsProcessingClaimAction(false);
+                    }
+                  }}
+                  className="space-y-4"
+                >
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                      Justificativa da Rejeição * (Será exibida ao solicitante)
+                    </label>
+                    <textarea
+                      required
+                      rows={3}
+                      value={rejectionReasonInput}
+                      onChange={(e) => setRejectionReasonInput(e.target.value)}
+                      placeholder="Ex: Características informadas não coincidem com o objeto arquivado na guarita..."
+                      className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-red-500"
+                    />
+                  </div>
+
+                  <div className="flex justify-end space-x-2 pt-2 border-t border-neutral-200 dark:border-neutral-800">
+                    <button
+                      type="button"
+                      onClick={() => setClaimToReject(null)}
+                      className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isProcessingClaimAction || !rejectionReasonInput.trim()}
+                      className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs shadow-md cursor-pointer disabled:opacity-50"
+                    >
+                      <span>{isProcessingClaimAction ? "Processando..." : "Confirmar Rejeição"}</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
           {/* TAB: FILA DE ASSINATURAS INSTITUCIONAIS PENDENTES (ATENDENTE / SERVIDOR) */}
           {adminSubTab === "pending_signatures" && (

@@ -3,7 +3,6 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { LostFoundItem } from "../types";
 import { useApp } from "../context/AppContext";
-import { usePossessionVerification } from "../hooks/usePossessionVerification";
 import { formatDateTime, formatSafeDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, isItemNew, getItemAgeText, getTodayDateString, isFutureDate, validateItemOccurrenceDate, validateItemTextFields, ITEM_FIELD_LIMITS, generateSecureSignatureToken } from "../lib/utils";
 import { auth } from "../lib/firebase";
 import { getItemPublicUrl, getItemQrValue } from "../lib/qrCodeUtils";
@@ -130,7 +129,6 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   } = useApp();
 
   const currentItem = items.find((i) => i.id === item.id) || item;
-  const ownership = usePossessionVerification(currentItem);
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [mainImageError, setMainImageError] = useState(false);
@@ -168,9 +166,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     currentItem?.contactInfo,
   ]);
   const [claimModalOpen, setClaimModalOpen] = useState(false);
-  const [claimSecretPasswordInput, setClaimSecretPasswordInput] = useState("");
-  const [claimBrandInput, setClaimBrandInput] = useState("");
-  const [claimHiddenFeaturesInput, setClaimHiddenFeaturesInput] = useState("");
+  const [claimDistinctiveFeatures, setClaimDistinctiveFeatures] = useState("");
+  const [claimAdditionalInfo, setClaimAdditionalInfo] = useState("");
   const [isSubmittingClaim, setIsSubmittingClaim] = useState(false);
 
   // Devolution Registration Flow State
@@ -333,6 +330,28 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
   // Find associated approved claim for PDF receipt details
   const approvedClaim = claims.find((c) => c.itemId === item.id && (c.status === "APROVADO" || c.status === "CONCLUIDO"));
+  // Find current user's active claim (PENDENTE or APROVADO)
+  const userActiveClaim = currentUser && currentUser.id !== "guest"
+    ? claims.find((c) => c.itemId === item.id && c.claimerId === currentUser.id && (c.status === "PENDENTE" || c.status === "APROVADO"))
+    : undefined;
+
+  // Auto-fill recipient information in return modal if there is an approved claim
+  useEffect(() => {
+    if (returnModalOpen && approvedClaim) {
+      if (!returnRecipientName && approvedClaim.claimerName) {
+        setReturnRecipientName(approvedClaim.claimerName);
+      }
+      if (!returnRecipientEmail && approvedClaim.claimerEmail) {
+        setReturnRecipientEmail(approvedClaim.claimerEmail);
+      }
+      if (!returnRecipientDocument && approvedClaim.claimerRegistration) {
+        setReturnRecipientDocument(approvedClaim.claimerRegistration);
+      }
+      if (approvedClaim.claimerRole === "SERVIDOR") {
+        setReturnRecipientBond("Servidor");
+      }
+    }
+  }, [returnModalOpen, approvedClaim]);
 
   // Helper to convert SVG QR code to image data URL for embedding in jsPDF
   const getQRCodeDataUrl = async (qrId: string): Promise<string | null> => {
@@ -1340,30 +1359,34 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     }
   };
 
-  const handleClaimSubmit = (e: React.FormEvent) => {
+  const handleClaimSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const isVerified = ownership.verifyPossession(
-      claimSecretPasswordInput,
-      claimBrandInput,
-      claimHiddenFeaturesInput
-    );
-    if (!isVerified) {
-      if (ownership.errorMessage) {
-        addToast(ownership.errorMessage, "error");
-      }
+    if (isGuest || !currentUser || currentUser.id === "guest") {
+      addToast("Faça login institucional para solicitar a devolução deste objeto.", "warning");
+      return;
+    }
+    if (!claimDistinctiveFeatures.trim()) {
+      addToast("Informe as características particulares para comprovar a posse do objeto.", "error");
       return;
     }
 
-    setIsSubmittingClaim(true);
-    const fullProofAnswer = `[RNF04 Validação de Posse] Senha/Série: ${claimSecretPasswordInput.trim() || 'N/A'} | Marca: ${claimBrandInput.trim() || 'N/A'} | Detalhes: ${claimHiddenFeaturesInput.trim() || 'N/A'} | Token: ${ownership.verificationToken} | Precisão: ${ownership.score}%`;
-
-    setTimeout(() => {
-      submitClaim(item.id, fullProofAnswer);
-      setIsSubmittingClaim(false);
+    try {
+      setIsSubmittingClaim(true);
+      await submitClaim(currentItem.id, {
+        distinctiveFeatures: claimDistinctiveFeatures.trim(),
+        additionalInfo: claimAdditionalInfo.trim() || undefined,
+      });
+      vibrateSuccess();
+      addToast("Solicitação de devolução registrada com sucesso! A Secretaria avaliará suas informações.", "success");
       setClaimModalOpen(false);
-      addToast(`Solicitação registrada com sucesso! Validação de Posse RNF04: ${ownership.score}% de precisão.`, "success");
-      onClose();
-    }, 600);
+      setClaimDistinctiveFeatures("");
+      setClaimAdditionalInfo("");
+    } catch (err: any) {
+      console.error("[handleClaimSubmit] Erro:", err);
+      addToast(err?.message || "Erro ao registrar solicitação de devolução.", "error");
+    } finally {
+      setIsSubmittingClaim(false);
+    }
   };
 
   const handleMarkAsReturned = () => {
@@ -1909,13 +1932,37 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             <div className="pt-2 space-y-2.5 border-t border-neutral-200 dark:border-neutral-800">
               {/* Primary User Action: Claim Ownership */}
               {item.status !== "DEVOLVIDO" && item.status !== "ENCERRADO" && (
-                <button
-                  onClick={() => setClaimModalOpen(true)}
-                  className="w-full py-3 px-4 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-sm shadow-md shadow-[#00843D]/20 transition-all flex items-center justify-center space-x-2 cursor-pointer"
-                >
-                  <ShieldCheck className="w-5 h-5" />
-                  <span>Solicitar Este Objeto (Reclamar Posse)</span>
-                </button>
+                userActiveClaim ? (
+                  <div
+                    className={`p-4 rounded-2xl border text-xs space-y-1.5 ${
+                      userActiveClaim.status === "APROVADO"
+                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-200"
+                        : "bg-blue-500/10 border-blue-500/30 text-blue-900 dark:text-blue-200"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 font-bold">
+                      <ShieldCheck className="w-4 h-4 text-[#00843D]" />
+                      <span>
+                        {userActiveClaim.status === "APROVADO"
+                          ? "Sua solicitação foi APROVADA pela Secretaria!"
+                          : "Solicitação de Devolução em Análise"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed">
+                      {userActiveClaim.status === "APROVADO"
+                        ? "Compareça à Secretaria / SEBAC portando documento oficial com foto para concluir a retirada do pertence."
+                        : "Você já enviou uma solicitação para este objeto. A equipe da Secretaria está analisando as informações fornecidas. Você pode acompanhar ou cancelar seu pedido na aba 'Meu Perfil'."}
+                    </p>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setClaimModalOpen(true)}
+                    className="w-full py-3 px-4 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-sm shadow-md shadow-[#00843D]/20 transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                  >
+                    <ShieldCheck className="w-5 h-5" />
+                    <span>Solicitar Este Objeto (Reclamar Posse)</span>
+                  </button>
+                )
               )}
 
               {/* Operational Actions for Servidores and Admins */}
@@ -2098,7 +2145,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
         </div>
       </div>
 
-      {/* Claim Modal (Reclamar Posse) */}
+      {/* Claim Modal (Solicitar Devolução / RNF04) */}
       {claimModalOpen && (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 dark:bg-black/85 backdrop-blur-md transition-all duration-200">
           <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-lg w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 transition-colors">
@@ -2107,84 +2154,66 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <ShieldCheck className="w-5 h-5 text-[#00843D]" />
                 <div>
                   <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
-                    Verificação de Posse RNF04
+                    Solicitar Devolução de Objeto
                   </h3>
                   <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
-                    Proteção Anti-Furto & Dono Falso • IFPR
+                    Verificação de Posse • IFPR Campus Ivaiporã
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setClaimModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-3 bg-[#00843D]/10 border border-[#00843D]/20 rounded-2xl text-xs text-neutral-800 dark:text-neutral-200 space-y-1">
-              <span className="font-extrabold text-[#00843D] block">Desafio de Segurança de Posse:</span>
-              <p className="text-[11px] leading-relaxed">{ownership.hiddenChallengePrompt}</p>
+            <div className="p-3 bg-neutral-50 dark:bg-neutral-800/80 rounded-2xl border border-neutral-200 dark:border-neutral-700 text-xs space-y-1">
+              <div className="font-bold text-neutral-800 dark:text-neutral-200">
+                Objeto: {currentItem.title}
+              </div>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                Para que a Secretaria do IFPR comprove a posse, informe detalhes particulares do objeto (marcas de uso, adesivos, itens no interior, marcas específicas).
+              </p>
             </div>
 
             <form onSubmit={handleClaimSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
-                  1. Senha, PIN, Número de Série ou Marca Única de Posse * (RNF04)
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={claimSecretPasswordInput}
-                  onChange={(e) => setClaimSecretPasswordInput(e.target.value)}
-                  placeholder="Ex: Senha de bloqueio, número de série S/N, PIN ou palavra-chave..."
-                  className="w-full p-3 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs focus:ring-2 focus:ring-[#00843D] outline-none font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
-                  2. Marca, Modelo ou Fabricante *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={claimBrandInput}
-                  onChange={(e) => setClaimBrandInput(e.target.value)}
-                  placeholder="Ex: Samsung / Dell / Nike / Chaveiro do Batman..."
-                  className="w-full p-3 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs focus:ring-2 focus:ring-[#00843D] outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
-                  3. Detalhes Ocultos & Marcas não Visíveis na Foto *
+                  Características Particulares / Marcas de Identificação *
                 </label>
                 <textarea
                   required
-                  rows={3}
-                  value={claimHiddenFeaturesInput}
-                  onChange={(e) => setClaimHiddenFeaturesInput(e.target.value)}
-                  placeholder="Ex: No zíper do bolso interno há uma fita verde amarrada, e um adesivo rasgado na contracapa..."
+                  rows={4}
+                  value={claimDistinctiveFeatures}
+                  onChange={(e) => setClaimDistinctiveFeatures(e.target.value)}
+                  placeholder="Ex: No bolso interno há um adesivo azul, pequena marca de arranhão na quina esquerda, capa de proteção preta..."
                   className="w-full p-3 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs focus:ring-2 focus:ring-[#00843D] outline-none"
                 />
               </div>
 
-              {ownership.errorMessage && (
-                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-[11px] text-red-600 dark:text-red-400 font-bold flex items-center space-x-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span>{ownership.errorMessage}</span>
-                </div>
-              )}
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                  Informações Adicionais (Opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={claimAdditionalInfo}
+                  onChange={(e) => setClaimAdditionalInfo(e.target.value)}
+                  placeholder="Ex: Data aproximada em que perdeu, local provável ou qualquer outro detalhe útil..."
+                  className="w-full p-3 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs focus:ring-2 focus:ring-[#00843D] outline-none"
+                />
+              </div>
 
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-700 dark:text-amber-300 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
                 <span>
-                  As informações fornecidas serão validadas com os detalhes arquivados pela Secretaria (SEBAC). Apresente documento oficial com foto no ato da retirada.
+                  Sua solicitação será analisada pela equipe da Secretaria (SEBAC). Se aprovada, você receberá orientações para comparecer ao setor munido de documento oficial com foto.
                 </span>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-2 border-t border-neutral-200 dark:border-neutral-800">
                 <button
                   type="button"
                   onClick={() => setClaimModalOpen(false)}
@@ -2194,11 +2223,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmittingClaim}
-                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md flex items-center space-x-1.5"
+                  disabled={isSubmittingClaim || !claimDistinctiveFeatures.trim()}
+                  className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                 >
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>{isSubmittingClaim ? "Verificando..." : "Confirmar & Solicitar Devolução"}</span>
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isSubmittingClaim ? "Enviando..." : "Enviar Solicitação"}</span>
                 </button>
               </div>
             </form>

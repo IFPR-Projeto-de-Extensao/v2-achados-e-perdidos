@@ -136,11 +136,11 @@ describe("LOCALIZA+ v1.10.7 — Compatibilidade PWA com Firefox e Linux & Elimin
       expect(code).toContain('const SW_CUSTOM_VERSION = "v1.10.7-pwa";');
     });
 
-    it("package.json deve declarar a versão 1.10.7", () => {
+    it("package.json deve declarar a versão 1.10.8", () => {
       const pkgPath = path.resolve(process.cwd(), "package.json");
       const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
 
-      expect(pkg.version).toBe("1.10.7");
+      expect(pkg.version).toBe("1.10.8");
     });
   });
 });
