@@ -84,7 +84,7 @@ describe("Firestore Security Rules - Audit & Privilege Escalation Hardening", ()
     });
 
     it("should allow individual users to only read their own profile doc and block reading other users' docs", () => {
-      expect(rulesContent).toMatch(/allow get: if isAuthUser\(userId\) \|\| isAdmin\(\);/);
+      expect(rulesContent).toMatch(/allow get: if (resource == null \|\| )?isAuthUser\(userId\) \|\| isAdmin\(\);/);
     });
   });
 

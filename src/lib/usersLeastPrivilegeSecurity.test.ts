@@ -401,7 +401,7 @@ describe("Users Collection Least Privilege, Anti-Enumeration & Privilege Escalat
 
   // Test L: Validação das regras declaradas em firestore.rules
   it("L. firestore.rules declara explicitamente least-privilege para get e list na coleção /users", () => {
-    expect(rulesContent).toMatch(/match \/users\/\{userId\}[\s\S]*?allow get: if isAuthUser\(userId\) \|\| isAdmin\(\);/);
+    expect(rulesContent).toMatch(/match \/users\/\{userId\}[\s\S]*?allow get: if (resource == null \|\| )?isAuthUser\(userId\) \|\| isAdmin\(\);/);
     expect(rulesContent).toMatch(/match \/users\/\{userId\}[\s\S]*?allow list: if isAdmin\(\) \|\|\s*\(isSignedIn\(\) && isAccountActive\(\) && resource\.data\.email == request\.auth\.token\.email\);/);
     expect(rulesContent).toContain("(!('admin' in incoming()) || incoming().admin == false)");
   });

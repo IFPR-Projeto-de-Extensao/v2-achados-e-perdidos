@@ -25,12 +25,12 @@ export interface AppVersion {
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
     version: "v1.10.9",
-    codename: "Restrição Oficial de Cadastro de Objetos para Perfis SERVIDOR/TAE e ADMIN",
+    codename: "Restrição Oficial de Cadastro de Objetos e Resolução de Permissões Firestore",
     releaseDate: "27/10/2026",
-    releaseDateTime: "27 de Outubro de 2026 • 23:30 BRT",
+    releaseDateTime: "27 de Outubro de 2026 • 23:55 BRT",
     type: "PATCH",
     isCurrent: true,
-    summary: "LOCALIZA+ v1.10.9 — Implementação e blindagem em dupla camada (aplicação e Cloud Firestore) da diretriz institucional que restringe estritamente o cadastro de objetos perdidos e encontrados aos perfis SERVIDOR/TAE e ADMIN, bloqueando inequivocamente alunos (ALUNO), usuários não autenticados e perfis inválidos para prevenir registros falsos ou inadequados, mantendo intactas todas as prerrogativas de consulta, busca e solicitação de devolução para a comunidade discente.",
+    summary: "LOCALIZA+ v1.10.9 — Restrição de cadastro de objetos a Servidores/TAE e Administradores; resolução de erros de permissão 'Missing or insufficient permissions' em transações de solicitação (`claims`) através de salvaguardas `resource == null`; e adiamento de escutas administrativas no `AppContext.tsx` aguardando a resolução de autenticação (`authLoading`).",
     additions: [
       {
         id: "v1109-add-role-restricted-item-creation",
@@ -42,11 +42,11 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
     ],
     bugFixes: [
       {
-        id: "v1109-fix-student-registration-block",
-        title: "Bloqueio Defensivo de Cadastros por Alunos e Intrusos",
-        description: "Garantia de que tentativas de cadastro por alunos ou usuários sem papel adequado sejam rejeitadas no cliente e no servidor com mensagem clara, sem impactar o acesso discente ao catálogo de achados e perdidos ou ao fluxo de solicitação de devolução.",
+        id: "v1109-fix-firestore-transaction-permissions-and-session",
+        title: "Resolução de Erros de Permissão Firestore em Transações e Inicialização",
+        description: "Salvaguardas `resource == null` em regras de segurança para transações de claims e guarda `authLoading` em ganchos useEffect administrativos do AppContext.",
         module: "FIRESTORE",
-        tag: "Controle de Acesso",
+        tag: "Permissões & Sessão",
       },
     ],
   },

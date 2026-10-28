@@ -1043,7 +1043,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync System Error Logs for Admin Dashboard Monitoring
   useEffect(() => {
-    if (!firebaseUser || (currentUser?.role !== "ADMIN" && currentUser?.role !== "SERVIDOR")) {
+    if (authLoading || !firebaseUser || (currentUser?.role !== "ADMIN" && currentUser?.role !== "SERVIDOR")) {
       setErrorLogsList([]);
       return;
     }

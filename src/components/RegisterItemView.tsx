@@ -32,6 +32,7 @@ import {
   ArrowLeft,
   X,
   ShieldCheck,
+  ShieldAlert,
   AlertCircle,
   Clock,
   Save,

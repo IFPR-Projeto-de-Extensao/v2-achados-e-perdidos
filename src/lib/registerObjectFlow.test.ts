@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ItemCategory, LostFoundItem, RegistrationStatus, UploadTaskStatus } from "../types";
+import { User, ItemCategory, LostFoundItem, RegistrationStatus, UploadTaskStatus } from "../types";
 import {
   formatPhone,
   isValidPhone,
@@ -451,7 +451,7 @@ describe("LOCALIZA+ — Restrição Oficial de Cadastro de Objetos por Perfil (A
     }
   }
 
-  const adminUser: User = {
+  const adminUser: Partial<User> = {
     id: "admin_01",
     name: "Carlos Admin",
     email: "carlos.admin@ifpr.edu.br",
@@ -461,7 +461,7 @@ describe("LOCALIZA+ — Restrição Oficial de Cadastro de Objetos por Perfil (A
     createdAt: "2026-01-01T00:00:00Z",
   };
 
-  const servidorUser: User = {
+  const servidorUser: Partial<User> = {
     id: "servidor_02",
     name: "Ana Servidora",
     email: "ana.servidor@ifpr.edu.br",
@@ -471,7 +471,7 @@ describe("LOCALIZA+ — Restrição Oficial de Cadastro de Objetos por Perfil (A
     createdAt: "2026-01-01T00:00:00Z",
   };
 
-  const alunoUser: User = {
+  const alunoUser: Partial<User> = {
     id: "aluno_03",
     name: "João Aluno",
     email: "joao.aluno@estudante.ifpr.edu.br",
@@ -508,7 +508,7 @@ describe("LOCALIZA+ — Restrição Oficial de Cadastro de Objetos por Perfil (A
   });
 
   it("5. Usuário com papel ausente, inválido ou INTRUSO não consegue cadastrar objeto", () => {
-    const invalidUser: User = {
+    const invalidUser: Partial<User> = {
       id: "intruso_04",
       name: "Intruso",
       email: "intruso@gmail.com",

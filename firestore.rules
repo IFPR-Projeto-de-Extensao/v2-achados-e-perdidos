@@ -141,7 +141,7 @@ service cloud.firestore {
     match /users/{userId} {
       // 1. Get: Users can ONLY read their own profile doc (isAuthUser(userId)); Only Admins can read other users' documents
       // Blocked: Non-admin users (students, staff, visitors) cannot inspect other users' personal documents
-      allow get: if isAuthUser(userId) || isAdmin();
+      allow get: if resource == null || isAuthUser(userId) || isAdmin();
 
       // 2. List: Only Admins can list/enumerate the users directory.
       // Individual authenticated users can only query specifically for their own authenticated email (where email == auth.token.email).
@@ -322,6 +322,7 @@ service cloud.firestore {
 
       // Claims can only be read by the claimer, the item author, or Admin/Active Servidor
       allow get: if isSignedIn() && (
+        resource == null ||
         (isAccountActive() && (
           existing().claimerId == request.auth.uid || 
           (exists(/databases/$(database)/documents/items/$(existing().itemId)) && 
@@ -424,6 +425,7 @@ service cloud.firestore {
     match /notifications/{notificationId} {
       // 1. Read (Get): A user can ONLY read notifications addressed to them, or authorized broadcasts; Admins can read all for monitoring
       allow get: if isSignedIn() && (
+        resource == null ||
         existing().userId == request.auth.uid || 
         isAdmin() || 
         existing().userId == 'all' || 
