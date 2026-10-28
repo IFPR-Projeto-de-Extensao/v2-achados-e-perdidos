@@ -223,7 +223,6 @@ service cloud.firestore {
                     incoming().registeredByUserId == request.auth.uid && 
                     isValidItemTextFields(incoming()) &&
                     (
-                      incoming().registeredByRole == 'ALUNO' ||
                       (incoming().registeredByRole == 'SERVIDOR' && isServidor()) ||
                       (incoming().registeredByRole == 'ADMIN' && isAdmin())
                     );
@@ -253,7 +252,6 @@ service cloud.firestore {
                     incoming().registeredByUserId == request.auth.uid && 
                     isValidItemTextFields(incoming()) &&
                     (
-                      incoming().registeredByRole == 'ALUNO' ||
                       (incoming().registeredByRole == 'SERVIDOR' && isServidor()) ||
                       (incoming().registeredByRole == 'ADMIN' && isAdmin())
                     );
@@ -280,7 +278,6 @@ service cloud.firestore {
                     incoming().registeredByUserId == request.auth.uid && 
                     isValidItemTextFields(incoming()) &&
                     (
-                      incoming().registeredByRole == 'ALUNO' ||
                       (incoming().registeredByRole == 'SERVIDOR' && isServidor()) ||
                       (incoming().registeredByRole == 'ADMIN' && isAdmin())
                     );

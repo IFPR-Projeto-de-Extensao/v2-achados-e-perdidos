@@ -206,6 +206,36 @@ export const RegisterItemView: React.FC = () => {
       "Apenas usuários autenticados podem cadastrar novos itens no IFPR. Faça login para continuar.",
   });
 
+  // Strict Student Access Guard: ALUNO cannot access registration flow directly or via route
+  useEffect(() => {
+    if (currentUser?.role === "ALUNO") {
+      addToast("Apenas Servidores/TAE e Administradores podem cadastrar objetos no Localiza+.", "error");
+      navigate("/");
+    }
+  }, [currentUser?.role, navigate, addToast]);
+
+  if (currentUser?.role === "ALUNO") {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-2xl p-8 shadow-xl border border-slate-200 dark:border-slate-800 text-center space-y-4">
+          <div className="w-16 h-16 mx-auto rounded-full bg-red-500/10 text-red-500 flex items-center justify-center">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-black text-slate-900 dark:text-white">Acesso Restrito ao Cadastro</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            O cadastro de objetos perdidos e encontrados é restrito a Servidores/TAE e Administradores do IFPR. Alunos podem consultar o catálogo e solicitar a devolução de pertences.
+          </p>
+          <button
+            onClick={() => navigate("/")}
+            className="w-full py-3 px-4 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-sm tracking-wide transition-all shadow-md cursor-pointer"
+          >
+            Voltar à Página Inicial
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Step Management (1: Tipo, 2: Informações, 3: Local e Data, 4: Revisão, 5: Conclusão)
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 

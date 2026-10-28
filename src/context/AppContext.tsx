@@ -3643,6 +3643,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error("Perfil institucional não disponível para autorização no Firestore.");
     }
 
+    if (effectiveUserRole === "ALUNO" && !isRootAdmin) {
+      addToast("Apenas Servidores/TAE e Administradores podem cadastrar objetos no Localiza+.", "error");
+      throw new Error("Permissão negada: O cadastro de itens é restrito a servidores e administradores do IFPR.");
+    }
+
     if (isAccountBlocked(currentUser)) {
       addToast("Sua conta institucional está suspensa ou banida.", "error");
       throw new Error("Ação bloqueada: Conta suspensa ou banida.");

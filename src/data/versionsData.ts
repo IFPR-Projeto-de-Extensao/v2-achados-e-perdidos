@@ -24,12 +24,39 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.10.9",
+    codename: "Restrição Oficial de Cadastro de Objetos para Perfis SERVIDOR/TAE e ADMIN",
+    releaseDate: "27/10/2026",
+    releaseDateTime: "27 de Outubro de 2026 • 23:30 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "LOCALIZA+ v1.10.9 — Implementação e blindagem em dupla camada (aplicação e Cloud Firestore) da diretriz institucional que restringe estritamente o cadastro de objetos perdidos e encontrados aos perfis SERVIDOR/TAE e ADMIN, bloqueando inequivocamente alunos (ALUNO), usuários não autenticados e perfis inválidos para prevenir registros falsos ou inadequados, mantendo intactas todas as prerrogativas de consulta, busca e solicitação de devolução para a comunidade discente.",
+    additions: [
+      {
+        id: "v1109-add-role-restricted-item-creation",
+        title: "Restrição de Cadastro de Objetos por Papel (SERVIDOR/TAE e ADMIN)",
+        description: "Implementação da matriz de permissões oficial no backend/AppContext e nas regras de segurança do Cloud Firestore (/items, /found_items, /lost_items), garantindo que apenas usuários autenticados com papéis SERVIDOR ou ADMIN possam registrar ocorrências.",
+        module: "ADMIN",
+        tag: "RBAC & Segurança",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v1109-fix-student-registration-block",
+        title: "Bloqueio Defensivo de Cadastros por Alunos e Intrusos",
+        description: "Garantia de que tentativas de cadastro por alunos ou usuários sem papel adequado sejam rejeitadas no cliente e no servidor com mensagem clara, sem impactar o acesso discente ao catálogo de achados e perdidos ou ao fluxo de solicitação de devolução.",
+        module: "FIRESTORE",
+        tag: "Controle de Acesso",
+      },
+    ],
+  },
+  {
     version: "v1.10.8",
     codename: "Reformulação da Verificação de Posse RNF04, Gestão Administrativa de Devoluções e Blindagem de Permissões Firestore",
     releaseDate: "27/10/2026",
     releaseDateTime: "27 de Outubro de 2026 • 21:00 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "LOCALIZA+ v1.10.8 — Eliminação da exigência de senhas/PINs cadastrados e bloqueios arbitrários de 3 tentativas na verificação de posse RNF04; adoção de declaração de características particulares do pertence; resolução definitiva de falhas de permissão no Firestore causadas por updateItemStatus em submitClaim; implementação da aba administrativa 'Solicitações de Devolução' no Dashboard para Servidores e Administradores avaliarem pedidos (com aprovação e justificativa obrigatória de rejeição); integração automática com a devolução formal; e suporte a cancelamento de pedidos pendentes na aba 'Minhas Solicitações'.",
     additions: [
       {

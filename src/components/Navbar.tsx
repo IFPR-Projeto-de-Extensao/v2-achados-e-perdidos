@@ -255,14 +255,16 @@ export const Navbar: React.FC = () => {
           {/* Right Action Cluster */}
           <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
             {/* Primary Action CTA: Novo Registro */}
-            <Link
-              to="/cadastrar"
-              title="Cadastrar Novo Objeto Perdido ou Encontrado"
-              className="hidden sm:inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-black tracking-wide uppercase shadow-[0_2px_10px_rgba(0,132,61,0.28)] transition-all cursor-pointer active:scale-95"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Novo Registro</span>
-            </Link>
+            {currentUser?.role !== "ALUNO" && (
+              <Link
+                to="/cadastrar"
+                title="Cadastrar Novo Objeto Perdido ou Encontrado"
+                className="hidden sm:inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-black tracking-wide uppercase shadow-[0_2px_10px_rgba(0,132,61,0.28)] transition-all cursor-pointer active:scale-95"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Novo Registro</span>
+              </Link>
+            )}
             {/* Quick Action Icons Group (Suporte, QR Code, Notificações, Tema) */}
             <div className="navbar-icons-group flex items-center space-x-1 sm:space-x-1.5 shrink-0">
               {/* Quick Support Link to /suporte - Desktop only */}

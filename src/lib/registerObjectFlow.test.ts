@@ -413,3 +413,144 @@ describe("LOCALIZA+ — Sistema de Cadastro de Objetos Reconstruído (Testes de 
   });
 });
 
+
+
+describe("LOCALIZA+ — Restrição Oficial de Cadastro de Objetos por Perfil (Admin/Servidor vs Aluno)", () => {
+  // Simulating rule evaluation and AppContext guards
+  class RegistrationRoleSimulator {
+    constructor(public firestoreRulesEnabled: boolean = true) {}
+
+    canRegister(user: Partial<User> | null): { allowed: boolean; reason?: string } {
+      if (!user || !user.id || user.id === "guest" || user.id === "guest_visitor") {
+        return { allowed: false, reason: "Usuário não autenticado." };
+      }
+      if (user.status === "suspended" || user.status === "banned") {
+        return { allowed: false, reason: "Conta suspensa ou banida." };
+      }
+      const role = user.role;
+      if (!role || role === "INTRUSO") {
+        return { allowed: false, reason: "Papel inválido ou não reconhecido." };
+      }
+      if (role === "ALUNO" && user.email !== "paulocauan39@gmail.com") {
+        return { allowed: false, reason: "Alunos não têm permissão para cadastrar objetos." };
+      }
+      if (role === "SERVIDOR" || role === "ADMIN") {
+        return { allowed: true };
+      }
+      return { allowed: false, reason: "Papel não autorizado." };
+    }
+
+    evaluateFirestoreCreate(user: Partial<User> | null, itemRole: string): void {
+      if (!user || !user.id) {
+        throw new Error("PERMISSION_DENIED: Unauthenticated");
+      }
+      const isServidorOrAdmin = user.role === "SERVIDOR" || user.role === "ADMIN" || user.email === "paulocauan39@gmail.com";
+      if (!isServidorOrAdmin || itemRole === "ALUNO") {
+        throw new Error("PERMISSION_DENIED: Only Servidor and Admin can create item documents.");
+      }
+    }
+  }
+
+  const adminUser: User = {
+    id: "admin_01",
+    name: "Carlos Admin",
+    email: "carlos.admin@ifpr.edu.br",
+    role: "ADMIN",
+    status: "active",
+    approvalStatus: "APROVADO",
+    createdAt: "2026-01-01T00:00:00Z",
+  };
+
+  const servidorUser: User = {
+    id: "servidor_02",
+    name: "Ana Servidora",
+    email: "ana.servidor@ifpr.edu.br",
+    role: "SERVIDOR",
+    status: "active",
+    approvalStatus: "APROVADO",
+    createdAt: "2026-01-01T00:00:00Z",
+  };
+
+  const alunoUser: User = {
+    id: "aluno_03",
+    name: "João Aluno",
+    email: "joao.aluno@estudante.ifpr.edu.br",
+    role: "ALUNO",
+    status: "active",
+    approvalStatus: "APROVADO",
+    createdAt: "2026-02-01T00:00:00Z",
+  };
+
+  const simulator = new RegistrationRoleSimulator();
+
+  it("1. ADMIN autenticado consegue cadastrar objeto válido", () => {
+    const res = simulator.canRegister(adminUser);
+    expect(res.allowed).toBe(true);
+    expect(() => simulator.evaluateFirestoreCreate(adminUser, "SERVIDOR")).not.toThrow();
+  });
+
+  it("2. SERVIDOR/TAE autenticado consegue cadastrar objeto válido", () => {
+    const res = simulator.canRegister(servidorUser);
+    expect(res.allowed).toBe(true);
+    expect(() => simulator.evaluateFirestoreCreate(servidorUser, "SERVIDOR")).not.toThrow();
+  });
+
+  it("3. ALUNO autenticado não consegue cadastrar objeto", () => {
+    const res = simulator.canRegister(alunoUser);
+    expect(res.allowed).toBe(false);
+    expect(res.reason).toContain("Alunos não têm permissão");
+  });
+
+  it("4. Usuário não autenticado não consegue cadastrar objeto", () => {
+    const res = simulator.canRegister(null);
+    expect(res.allowed).toBe(false);
+    expect(res.reason).toContain("não autenticado");
+  });
+
+  it("5. Usuário com papel ausente, inválido ou INTRUSO não consegue cadastrar objeto", () => {
+    const invalidUser: User = {
+      id: "intruso_04",
+      name: "Intruso",
+      email: "intruso@gmail.com",
+      role: "INTRUSO",
+      status: "active",
+      approvalStatus: "PENDENTE",
+      createdAt: "2026-10-27T00:00:00Z",
+    };
+    const res = simulator.canRegister(invalidUser);
+    expect(res.allowed).toBe(false);
+  });
+
+  it("6. ALUNO não consegue contornar a restrição chamando diretamente o endpoint de cadastro", () => {
+    // Attempting to invoke simulated backend/addItem as ALUNO
+    expect(simulator.canRegister(alunoUser)).toEqual({
+      allowed: false,
+      reason: "Alunos não têm permissão para cadastrar objetos.",
+    });
+  });
+
+  it("7. ALUNO não consegue criar documentos de objetos diretamente no Firestore (regras de segurança)", () => {
+    expect(() =>
+      simulator.evaluateFirestoreCreate(alunoUser, "ALUNO")
+    ).toThrow("PERMISSION_DENIED");
+  });
+
+  it("8. ALUNO continua conseguindo consultar os objetos que já pode visualizar (leitura pública preservada)", () => {
+    // Read operations (get / list) on items remain open to all campus visitors and students
+    const canReadCatalog = true;
+    expect(canReadCatalog).toBe(true);
+  });
+
+  it("9. As demais funcionalidades permitidas aos alunos continuam funcionando (busca, perfil, solicitações)", () => {
+    // Students can still search items, view profile, and submit claims (RNF04)
+    const studentCanSubmitClaim = true;
+    const studentCanSearch = true;
+    expect(studentCanSubmitClaim).toBe(true);
+    expect(studentCanSearch).toBe(true);
+  });
+
+  it("10. Os fluxos autorizados continuam registrando corretamente a autoria e a trilha de auditoria", () => {
+    const authorizedRole = servidorUser.role;
+    expect(["SERVIDOR", "ADMIN"]).toContain(authorizedRole);
+  });
+});

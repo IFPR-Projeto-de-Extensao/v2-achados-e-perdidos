@@ -43,6 +43,7 @@ export const HomeView: React.FC = () => {
     t,
     language,
     requestAuthForRegistration,
+    currentUser,
   } = useApp();
 
   const { navigate } = useRouter();
@@ -94,6 +95,8 @@ export const HomeView: React.FC = () => {
           : i.type === statusFilter || i.status === statusFilter
       );
 
+  const isAluno = currentUser?.role === "ALUNO";
+
   return (
     <div className="space-y-8 sm:space-y-10 pb-16">
       {/* 1. ARCHITECTURAL HERO & LIVE CAMPUS MONITOR */}
@@ -120,73 +123,82 @@ export const HomeView: React.FC = () => {
             </div>
           </div>
 
-          {/* 3 Dedicated Action Tiles */}
-          <div className="relative z-10 grid grid-cols-1 sm:grid-cols-3 gap-3 pt-6 sm:pt-8">
-            {/* Tile 1: Cadastrar */}
-            <div
-              onClick={() => handleRegister("ENCONTRADO")}
-              className="p-4 rounded-2xl bg-white text-slate-900 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col justify-between group active:scale-98"
-            >
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-[#00843D]/10 text-[#00843D] flex items-center justify-center font-bold mb-3 group-hover:scale-110 transition-transform">
-                  <PlusCircle className="w-5 h-5" />
+          {/* Dedicated Action Tiles */}
+          <div className={`relative z-10 grid grid-cols-1 ${isAluno ? "sm:grid-cols-2" : "sm:grid-cols-3"} gap-3 pt-6 sm:pt-8`}>
+            {!isAluno && (
+              <>
+                {/* Tile 1: Cadastrar */}
+                <div
+                  onClick={() => handleRegister("ENCONTRADO")}
+                  className="p-4 rounded-2xl bg-white text-slate-900 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col justify-between group active:scale-98"
+                >
+                  <div>
+                    <div className="w-10 h-10 rounded-xl bg-[#00843D]/10 text-[#00843D] flex items-center justify-center font-bold mb-3 group-hover:scale-110 transition-transform">
+                      <PlusCircle className="w-5 h-5" />
+                    </div>
+                    <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 leading-tight">
+                      Cadastrar Pertence
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                      Abra uma ocorrência oficial com protocolo e foto.
+                    </p>
+                  </div>
+                  <div className="pt-3 flex items-center text-[11px] font-bold text-[#00843D] group-hover:translate-x-1 transition-transform">
+                    <span>Registrar agora</span>
+                    <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                  </div>
                 </div>
-                <h4 className="font-extrabold text-xs sm:text-sm text-slate-900 leading-tight">
-                  Cadastrar Pertence
-                </h4>
-                <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-                  Abra uma ocorrência oficial com protocolo e foto.
-                </p>
-              </div>
-              <div className="pt-3 flex items-center text-[11px] font-bold text-[#00843D] group-hover:translate-x-1 transition-transform">
-                <span>Registrar agora</span>
-                <ArrowRight className="w-3.5 h-3.5 ml-1" />
-              </div>
-            </div>
 
-            {/* Tile 2: Perdi um Item */}
-            <div
-              onClick={() => handleRegister("PERDIDO")}
-              className="p-4 rounded-2xl bg-white/12 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white shadow-xs hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col justify-between group active:scale-98"
-            >
-              <div>
-                <div className="w-10 h-10 rounded-xl bg-red-500/20 text-red-200 flex items-center justify-center font-bold mb-3 group-hover:scale-110 transition-transform border border-red-400/30">
-                  <PackageSearch className="w-5 h-5" />
+                {/* Tile 2: Perdi um Item */}
+                <div
+                  onClick={() => handleRegister("PERDIDO")}
+                  className="p-4 rounded-2xl bg-white/12 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white shadow-xs hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col justify-between group active:scale-98"
+                >
+                  <div>
+                    <div className="w-10 h-10 rounded-xl bg-red-500/20 text-red-200 flex items-center justify-center font-bold mb-3 group-hover:scale-110 transition-transform border border-red-400/30">
+                      <PackageSearch className="w-5 h-5" />
+                    </div>
+                    <h4 className="font-extrabold text-xs sm:text-sm text-white leading-tight">
+                      Perdi um Objeto
+                    </h4>
+                    <p className="text-[11px] text-emerald-100/80 mt-1 leading-snug">
+                      Notifique o campus para busca e cruzamento automático.
+                    </p>
+                  </div>
+                  <div className="pt-3 flex items-center text-[11px] font-bold text-white group-hover:translate-x-1 transition-transform">
+                    <span>Relatar perda</span>
+                    <ArrowRight className="w-3.5 h-3.5 ml-1" />
+                  </div>
                 </div>
-                <h4 className="font-extrabold text-xs sm:text-sm text-white leading-tight">
-                  Perdi um Objeto
-                </h4>
-                <p className="text-[11px] text-emerald-100/80 mt-1 leading-snug">
-                  Notifique o campus para busca e cruzamento automático.
-                </p>
-              </div>
-              <div className="pt-3 flex items-center text-[11px] font-bold text-white group-hover:translate-x-1 transition-transform">
-                <span>Relatar perda</span>
-                <ArrowRight className="w-3.5 h-3.5 ml-1" />
-              </div>
-            </div>
+              </>
+            )}
 
-            {/* Tile 3: Scanner QR */}
+            {/* Tile 3: Scanner QR (ou Catálogo para Alunos) */}
             <div
               onClick={() => {
-                vibrateClick();
-                setQrScannerOpen(true);
+                if (isAluno) {
+                  vibrateClick();
+                  navigate("/buscar");
+                } else {
+                  vibrateClick();
+                  setQrScannerOpen(true);
+                }
               }}
               className="p-4 rounded-2xl bg-white/12 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white shadow-xs hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col justify-between group active:scale-98"
             >
               <div>
                 <div className="w-10 h-10 rounded-xl bg-emerald-400/20 text-emerald-200 flex items-center justify-center font-bold mb-3 group-hover:scale-110 transition-transform border border-emerald-400/30">
-                  <QrCode className="w-5 h-5" />
+                  {isAluno ? <Search className="w-5 h-5" /> : <QrCode className="w-5 h-5" />}
                 </div>
                 <h4 className="font-extrabold text-xs sm:text-sm text-white leading-tight">
-                  Escanear Etiqueta
+                  {isAluno ? "Consultar Catálogo" : "Escanear Etiqueta"}
                 </h4>
                 <p className="text-[11px] text-emerald-100/80 mt-1 leading-snug">
-                  Leitura de código QR para identificação na portaria.
+                  {isAluno ? "Pesquise ocorrências e solicite devoluções." : "Leitura de código QR para identificação na portaria."}
                 </p>
               </div>
               <div className="pt-3 flex items-center text-[11px] font-bold text-emerald-200 group-hover:translate-x-1 transition-transform">
-                <span>Abrir câmera</span>
+                <span>{isAluno ? "Ver acervo" : "Abrir câmera"}</span>
                 <ArrowRight className="w-3.5 h-3.5 ml-1" />
               </div>
             </div>

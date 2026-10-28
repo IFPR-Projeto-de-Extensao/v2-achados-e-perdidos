@@ -30,13 +30,15 @@ export const MobileBottomNav: React.FC = () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const isAluno = currentUser?.role === "ALUNO";
+
   return (
     <nav
       role="navigation"
       aria-label="Barra de navegação inferior mobile PWA"
       className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#0b1019]/95 backdrop-blur-xl border-t border-slate-200/90 dark:border-slate-800/90 px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_-4px_24px_rgba(0,0,0,0.4)]"
     >
-      <div className="max-w-md mx-auto grid grid-cols-5 items-center justify-around">
+      <div className={`max-w-md mx-auto grid ${isAluno ? "grid-cols-4" : "grid-cols-5"} items-center justify-around`}>
         {/* Início */}
         <button
           onClick={() => handleTab("/")}
@@ -68,25 +70,27 @@ export const MobileBottomNav: React.FC = () => {
         </button>
 
         {/* Cadastrar (Center Action - perfectly integrated) */}
-        <button
-          onClick={handleRegisterClick}
-          aria-label="Cadastrar novo item"
-          aria-current={routeKey === "register" ? "page" : undefined}
-          className="flex flex-col items-center justify-center py-0.5 cursor-pointer group"
-        >
-          <div
-            className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-xs transition-transform group-active:scale-95 ${
-              routeKey === "register"
-                ? "bg-[#00843D] text-white ring-2 ring-emerald-500/40"
-                : "bg-[#00843D] text-white hover:bg-[#006e33]"
-            }`}
+        {!isAluno && (
+          <button
+            onClick={handleRegisterClick}
+            aria-label="Cadastrar novo item"
+            aria-current={routeKey === "register" ? "page" : undefined}
+            className="flex flex-col items-center justify-center py-0.5 cursor-pointer group"
           >
-            <PlusCircle className="w-5 h-5" />
-          </div>
-          <span className="text-[9px] font-bold text-[#00843D] dark:text-emerald-400 mt-0.5 tracking-tight uppercase">
-            Novo
-          </span>
-        </button>
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center shadow-xs transition-transform group-active:scale-95 ${
+                routeKey === "register"
+                  ? "bg-[#00843D] text-white ring-2 ring-emerald-500/40"
+                  : "bg-[#00843D] text-white hover:bg-[#006e33]"
+              }`}
+            >
+              <PlusCircle className="w-5 h-5" />
+            </div>
+            <span className="text-[9px] font-bold text-[#00843D] dark:text-emerald-400 mt-0.5 tracking-tight uppercase">
+              Novo
+            </span>
+          </button>
+        )}
 
         {/* Encontrados */}
         <button
