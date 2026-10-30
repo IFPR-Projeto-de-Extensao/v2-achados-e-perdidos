@@ -1418,7 +1418,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       role="dialog"
       aria-modal="true"
       aria-labelledby="item-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 dark:bg-black/80 backdrop-blur-md transition-all duration-200 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md transition-all duration-200 overflow-y-auto"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           vibrateClick();
@@ -1427,14 +1427,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       }}
     >
       <div
-        className="relative w-full max-w-4xl bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden my-8 animate-in fade-in zoom-in-95 duration-200 transition-colors"
+        className="relative w-full max-w-4xl bg-[#0b0f17] text-slate-100 rounded-2xl sm:rounded-3xl shadow-2xl border border-white/10 overflow-hidden my-6 sm:my-8 animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header Bar */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-[#181818]">
-          <div className="flex flex-wrap items-center gap-2.5">
+        {/* Modern Minimalist Header Bar */}
+        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-white/10 bg-[#0f172a]/70">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
             <span
-              className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${getStatusBadgeClass(
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wider border ${getStatusBadgeClass(
                 item?.status || "PERDIDO"
               )}`}
             >
@@ -1443,17 +1443,31 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             {isItemNew(item) && (
               <span
                 id={`detail-new-badge-${item.id}`}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-gradient-to-r from-emerald-600 to-[#00843D] text-white border border-emerald-400/60 shadow-sm animate-pulse"
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-500/40"
                 title="Cadastrado nas últimas 24 horas no campus"
               >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
-                <span>Item Novo • 24h</span>
+                <Sparkles className="w-3 h-3 text-amber-300 fill-amber-300" />
+                <span>Recente (24h)</span>
               </span>
             )}
-            <span className="text-xs text-neutral-500 font-mono">ID: {item.id}</span>
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                if (typeof navigator !== "undefined" && navigator.clipboard) {
+                  navigator.clipboard.writeText(item.id);
+                  addToast("ID do objeto copiado para a área de transferência!", "info");
+                }
+              }}
+              title="Clique para copiar o ID do registro"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-slate-200 text-xs font-mono border border-white/5 transition-colors cursor-pointer"
+            >
+              <Copy className="w-3 h-3 text-slate-400" />
+              <span>ID: {item.id.length > 14 ? `${item.id.slice(0, 10)}...` : item.id}</span>
+            </button>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             {/* Printable PDF Campus Summary Report Button */}
             <button
               onClick={() => {
@@ -1462,10 +1476,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               }}
               role="button"
               aria-label="Gerar Laudo e Relatório Oficial em PDF deste Item"
-              className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-[#00843D] hover:text-white border border-[#00843D]/30 text-[#00843D] dark:text-green-400 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-[#00843D] hover:text-white border border-[#00843D]/30 text-emerald-400 font-semibold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
               title="Gerar Laudo / Relatório Oficial em PDF (jsPDF)"
             >
-              <FileText className="w-4 h-4" />
+              <FileText className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Relatório PDF</span>
             </button>
 
@@ -1477,10 +1491,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               }}
               role="button"
               aria-label="Compartilhar link deste item"
-              className="px-3 py-1.5 rounded-xl bg-neutral-200 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white text-neutral-700 dark:text-neutral-200 font-bold text-xs transition-all flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 hover:text-white text-slate-300 border border-white/10 font-semibold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
               title="Compartilhar Link do Item"
             >
-              <Share2 className="w-4 h-4" />
+              <Share2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Compartilhar</span>
             </button>
 
@@ -1491,7 +1505,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               }}
               role="button"
               aria-label="Fechar detalhes do item"
-              className="p-2 rounded-full text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors"
+              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1499,29 +1513,30 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
         </div>
 
         {/* Modal Main Body */}
-        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 max-h-[75vh] overflow-y-auto">
-          {/* Left Column: Image Gallery & QR Code */}
+        <div className="p-5 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 max-h-[78vh] overflow-y-auto">
+          {/* Left Column: Image Gallery, Tramitation Journey & QR Code */}
           <div className="space-y-4">
-            <div className="relative h-64 sm:h-80 w-full rounded-2xl bg-neutral-100 dark:bg-neutral-800 overflow-hidden border border-neutral-200 dark:border-neutral-800">
+            {/* Object Image Presentation */}
+            <div className="relative h-64 sm:h-72 w-full rounded-2xl bg-[#0e1626] overflow-hidden border border-white/10 flex items-center justify-center">
               {allImages.length > 0 && allImages[activeImageIndex] && !mainImageError ? (
                 <img
                   src={allImages[activeImageIndex]}
                   alt={item.title}
                   onError={() => setMainImageError(true)}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain bg-black/40"
                 />
               ) : (
                 <div
-                  className="w-full h-full flex flex-col items-center justify-center bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 p-6 text-center"
+                  className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-slate-400"
                   aria-label="Sem foto anexada"
                 >
-                  <div className="w-16 h-16 rounded-2xl bg-neutral-200/70 dark:bg-neutral-700/60 flex items-center justify-center text-neutral-400 dark:text-neutral-500 mb-3">
-                    <CameraOff className="w-8 h-8" />
+                  <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 mb-2.5">
+                    <CameraOff className="w-6 h-6 text-slate-500" />
                   </div>
-                  <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                  <span className="text-xs font-semibold text-slate-300">
                     Sem foto anexada
                   </span>
-                  <span className="text-xs text-neutral-400 dark:text-neutral-500 mt-1 max-w-xs">
+                  <span className="text-[11px] text-slate-500 mt-1 max-w-xs leading-relaxed">
                     Este objeto foi registrado no IFPR Campus Ivaiporã sem fotografia.
                   </span>
                 </div>
@@ -1530,7 +1545,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
             {/* Thumbnails if multiple */}
             {allImages.length > 1 && !mainImageError && (
-              <div className="flex space-x-2">
+              <div className="flex gap-2">
                 {allImages.map((img, idx) => (
                   <button
                     key={idx}
@@ -1538,10 +1553,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                       setMainImageError(false);
                       setActiveImageIndex(idx);
                     }}
-                    className={`w-16 h-16 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                    className={`w-14 h-14 rounded-xl overflow-hidden border transition-all cursor-pointer ${
                       activeImageIndex === idx
-                        ? "border-[#00843D] scale-105"
-                        : "border-transparent opacity-60 hover:opacity-100"
+                        ? "border-[#00843D] ring-2 ring-[#00843D]/50 scale-105"
+                        : "border-white/10 opacity-60 hover:opacity-100"
                     }`}
                   >
                     <img src={img} alt="" className="w-full h-full object-cover" />
@@ -1550,15 +1565,21 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               </div>
             )}
 
-            {/* Visual Journey Progress Tracker */}
-            <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700/60 space-y-3">
-              <h4 className="text-xs font-bold text-neutral-900 dark:text-white flex items-center gap-1.5 uppercase tracking-wider">
-                <Clock className="w-4 h-4 text-[#00843D]" /> Jornada de Tramitação do Objeto
-              </h4>
+            {/* Visual Journey Progress Tracker (Minimalist Stepper) */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-[#0e1626] border border-white/10 space-y-3">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                <div className="flex items-center gap-1.5 text-emerald-400">
+                  <Clock className="w-4 h-4 text-[#00843D]" />
+                  <span>Jornada de Tramitação</span>
+                </div>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  {item.status === "DEVOLVIDO" ? "Concluído" : "Em andamento"}
+                </span>
+              </div>
 
-              <div className="relative flex items-center justify-between pt-2 px-2">
+              <div className="relative flex items-center justify-between pt-2 px-3">
                 {/* Connecting Line */}
-                <div className="absolute top-6 left-8 right-8 h-1 bg-neutral-200 dark:bg-neutral-700 -z-0">
+                <div className="absolute top-5 left-8 right-8 h-0.5 bg-slate-800 -z-0">
                   <div
                     className="h-full bg-[#00843D] transition-all duration-500"
                     style={{
@@ -1569,77 +1590,77 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
                 {/* Step 1: Reported */}
                 <div className="relative z-10 flex flex-col items-center text-center space-y-1">
-                  <div className="w-9 h-9 rounded-full bg-[#00843D] text-white flex items-center justify-center font-bold text-xs shadow-md">
-                    <CheckCircle2 className="w-5 h-5" />
+                  <div className="w-8 h-8 rounded-full bg-[#00843D] text-white flex items-center justify-center font-bold text-xs shadow-md">
+                    <CheckCircle2 className="w-4 h-4" />
                   </div>
-                  <span className="font-extrabold text-[11px] text-neutral-900 dark:text-white">
+                  <span className="font-bold text-[11px] text-slate-200">
                     Registrado
                   </span>
-                  <span className="text-[9px] text-neutral-500">{formatDate(item.date)}</span>
+                  <span className="text-[9px] text-slate-400 font-mono">{formatDate(item.date)}</span>
                 </div>
 
                 {/* Step 2: Under Review */}
                 <div className="relative z-10 flex flex-col items-center text-center space-y-1">
                   <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shadow-md transition-colors ${
+                    className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-md transition-colors ${
                       step2Done
                         ? "bg-[#00843D] text-white"
-                        : "bg-neutral-200 dark:bg-neutral-700 text-neutral-500"
+                        : "bg-slate-800 border border-slate-700 text-slate-400"
                     }`}
                   >
-                    <ShieldCheck className="w-5 h-5" />
+                    <ShieldCheck className="w-4 h-4" />
                   </div>
-                  <span className={`font-extrabold text-[11px] ${step2Done ? "text-neutral-900 dark:text-white" : "text-neutral-400"}`}>
+                  <span className={`font-bold text-[11px] ${step2Done ? "text-slate-200" : "text-slate-500"}`}>
                     Em Análise
                   </span>
-                  <span className="text-[9px] text-neutral-500">Validação SEBAC</span>
+                  <span className="text-[9px] text-slate-400">Validação SEBAC</span>
                 </div>
 
                 {/* Step 3: Returned */}
                 <div className="relative z-10 flex flex-col items-center text-center space-y-1">
                   <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shadow-md transition-colors ${
+                    className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-md transition-colors ${
                       step3Done
-                        ? "bg-blue-600 text-white"
-                        : "bg-neutral-200 dark:bg-neutral-700 text-neutral-500"
+                        ? "bg-sky-600 text-white"
+                        : "bg-slate-800 border border-slate-700 text-slate-400"
                     }`}
                   >
-                    <FileCheck className="w-5 h-5" />
+                    <FileCheck className="w-4 h-4" />
                   </div>
-                  <span className={`font-extrabold text-[11px] ${step3Done ? "text-blue-600 dark:text-blue-400" : "text-neutral-400"}`}>
+                  <span className={`font-bold text-[11px] ${step3Done ? "text-sky-400" : "text-slate-500"}`}>
                     Devolvido
                   </span>
-                  <span className="text-[9px] text-neutral-500">
-                    {item.resolutionDate ? formatDate(item.resolutionDate) : "Finalizado"}
+                  <span className="text-[9px] text-slate-400 font-mono">
+                    {item.resolutionDate ? formatDate(item.resolutionDate) : "Pendente"}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* QR Code Container */}
-            <div className="p-4 rounded-2xl bg-[#00843D]/5 dark:bg-[#00843D]/10 border border-[#00843D]/20 space-y-3">
-              <div className="flex items-center space-x-4">
-                <div className="p-2 bg-white rounded-xl shadow-xs shrink-0">
-                  <QRCodeSVG id={`qr-code-svg-${item.id}`} value={getItemQrValue(item)} size={72} level="H" />
+            {/* QR Code & Label Container */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-[#0c1424] border border-[#00843D]/25 space-y-3.5">
+              <div className="flex items-center gap-3.5">
+                <div className="p-2 bg-white rounded-xl shadow-md shrink-0">
+                  <QRCodeSVG id={`qr-code-svg-${item.id}`} value={getItemQrValue(item)} size={68} level="H" />
                 </div>
-                <div>
-                  <h5 className="font-bold text-xs text-neutral-900 dark:text-white flex items-center gap-1">
+                <div className="min-w-0 flex-1">
+                  <h5 className="font-bold text-xs text-white flex items-center gap-1.5">
                     <QrCode className="w-3.5 h-3.5 text-[#00843D]" /> Código Etiqueta QR
                   </h5>
-                  <p className="text-[11px] text-neutral-600 dark:text-neutral-300 font-mono mt-0.5">
+                  <p className="text-[11px] text-slate-300 font-mono mt-0.5 truncate">
                     {item.qrCodeId}
                   </p>
-                  <p className="text-[10px] text-neutral-500 mt-1">
-                    Apresente este código no balcão de Achados e Perdidos do IFPR para liberação.
+                  <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                    Apresente este código no balcão de Achados e Perdidos do IFPR para liberação e baixa oficial.
                   </p>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 pt-1">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => setShowRestrictedQRView(true)}
-                  className="flex-1 min-w-[110px] py-2 px-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs transition-all flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer"
+                  className="py-2 px-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-white/5 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                 >
                   <Eye className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Modo QR</span>
@@ -1648,7 +1669,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <button
                   type="button"
                   onClick={handleDownloadQRCodePNG}
-                  className="flex-1 min-w-[110px] py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer"
+                  className="py-2 px-2.5 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                   title="Baixar imagem PNG do QR Code em alta resolução"
                 >
                   <Download className="w-3.5 h-3.5" />
@@ -1658,7 +1679,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <button
                   type="button"
                   onClick={handlePrintQRTag}
-                  className="flex-1 min-w-[100px] py-2 px-3 rounded-xl bg-white dark:bg-neutral-800 border border-[#00843D]/30 text-[#00843D] dark:text-green-400 font-bold text-xs hover:bg-[#00843D] hover:text-white transition-all flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer"
+                  className="py-2 px-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-[#00843D]/30 text-emerald-400 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>Etiqueta</span>
@@ -1667,17 +1688,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <button
                   type="button"
                   onClick={handleGenerateItemSummaryPDF}
-                  className="flex-1 min-w-[100px] py-2 px-3 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs transition-all flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer"
+                  className="py-2 px-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-white/5 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                   title="Gerar Ficha / Relatório Oficial do Campus em PDF (jsPDF)"
                 >
-                  <FileText className="w-3.5 h-3.5 text-emerald-300" />
+                  <FileText className="w-3.5 h-3.5 text-emerald-400" />
                   <span>Laudo PDF</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={handlePrintReceiptPDF}
-                  className="flex-1 min-w-[100px] py-2 px-3 rounded-xl bg-[#00843D] text-white font-bold text-xs hover:bg-[#006e33] transition-all flex items-center justify-center space-x-1.5 shadow-xs cursor-pointer"
+                  className="py-2 px-2.5 rounded-xl bg-sky-950/40 hover:bg-sky-900/50 border border-sky-500/30 text-sky-300 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs col-span-2 sm:col-span-1"
                   title="Recibo de Devolução Individual"
                 >
                   <FileCheck className="w-3.5 h-3.5" />
@@ -1687,45 +1708,45 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             </div>
           </div>
 
-          {/* Right Column: Information & Actions */}
-          <div className="space-y-5">
+          {/* Right Column: Information, Metadata, Signature & Actions */}
+          <div className="space-y-4 sm:space-y-5">
             <div>
-              <div className="flex items-center space-x-2 text-xs font-bold text-[#00843D] dark:text-green-400 mb-1">
+              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400 mb-1">
                 <Tag className="w-3.5 h-3.5" />
                 <span>{item.category}</span>
                 <span>•</span>
                 <span>{item.type}</span>
               </div>
 
-              <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white break-words">
+              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight break-words">
                 {item.title}
               </h2>
             </div>
 
-            {/* Details Grid */}
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800">
-                <span className="text-neutral-400 block mb-0.5">Cor Predominante</span>
-                <span className="font-bold text-neutral-900 dark:text-white">{item.color || "N/I"}</span>
+            {/* Details Grid (Minimalist Cards) */}
+            <div className="grid grid-cols-2 gap-2.5 text-xs">
+              <div className="p-3 rounded-xl bg-[#0e1626] border border-white/5">
+                <span className="text-slate-400 block mb-0.5">Cor Predominante</span>
+                <span className="font-semibold text-slate-100">{item.color || "Não informada"}</span>
               </div>
-              <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800">
-                <span className="text-neutral-400 block mb-0.5">Marca / Fabricante</span>
-                <span className="font-bold text-neutral-900 dark:text-white">{item.brand || "N/I"}</span>
+              <div className="p-3 rounded-xl bg-[#0e1626] border border-white/5">
+                <span className="text-slate-400 block mb-0.5">Marca / Fabricante</span>
+                <span className="font-semibold text-slate-100">{item.brand || "Não informada"}</span>
               </div>
-              <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800">
-                <span className="text-neutral-400 block mb-0.5">Data do Registro</span>
+              <div className="p-3 rounded-xl bg-[#0e1626] border border-white/5">
+                <span className="text-slate-400 block mb-0.5">Data do Registro</span>
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="font-bold text-neutral-900 dark:text-white">{formatDate(item.date)}</span>
+                  <span className="font-semibold text-slate-100">{formatDate(item.date)}</span>
                   {item.createdAt && (
-                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                    <span className="text-[10px] text-emerald-400 font-medium font-mono">
                       ({getItemAgeText(item.createdAt)})
                     </span>
                   )}
                 </div>
               </div>
-              <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800">
-                <span className="text-neutral-400 block mb-0.5">Cadastrado por</span>
-                <span className="font-bold text-neutral-900 dark:text-white truncate block">
+              <div className="p-3 rounded-xl bg-[#0e1626] border border-white/5">
+                <span className="text-slate-400 block mb-0.5">Cadastrado por</span>
+                <span className="font-semibold text-slate-100 truncate block">
                   {item.registeredByName}
                 </span>
               </div>
@@ -1736,21 +1757,21 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
             {/* Description Box */}
             <div className="space-y-1.5">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-500">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
                 Descrição Detalhada
               </h4>
-              <p className="text-xs sm:text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed bg-neutral-50 dark:bg-neutral-800/80 p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-700 break-words">
+              <p className="text-xs sm:text-sm text-slate-200 leading-relaxed bg-[#0e1626] p-3.5 rounded-xl border border-white/5 break-words">
                 {item.description}
               </p>
             </div>
 
             {/* Contact / Delivery instructions */}
-            <div className="p-3.5 rounded-xl bg-blue-500/5 dark:bg-blue-500/10 border border-blue-500/20 space-y-1">
-              <div className="flex items-center space-x-2 text-xs font-bold text-blue-600 dark:text-blue-400">
+            <div className="p-3.5 rounded-xl bg-sky-950/20 border border-sky-500/20 space-y-1">
+              <div className="flex items-center space-x-2 text-xs font-semibold text-sky-400">
                 <Building className="w-4 h-4" />
                 <span>Instruções de Retirada / Contato</span>
               </div>
-              <p className="text-xs text-neutral-600 dark:text-neutral-300">
+              <p className="text-xs text-slate-300 leading-relaxed">
                 {item.contactInfo}
               </p>
             </div>
@@ -1760,8 +1781,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <div
                 className={`p-4 rounded-2xl border transition-all ${
                   item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
-                    ? "bg-emerald-500/10 border-emerald-500/30 dark:bg-emerald-950/20"
-                    : "bg-amber-500/10 border-amber-500/30 dark:bg-amber-950/20"
+                    ? "bg-emerald-950/20 border-emerald-500/30"
+                    : "bg-amber-950/20 border-amber-500/30"
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -1769,7 +1790,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     <div
                       className={`p-2 rounded-xl shrink-0 ${
                         item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
-                          ? "bg-emerald-500 text-white"
+                          ? "bg-[#00843D] text-white"
                           : "bg-amber-500 text-white"
                       }`}
                     >
@@ -1777,14 +1798,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-extrabold text-xs text-neutral-900 dark:text-white uppercase tracking-wider">
+                        <h4 className="font-bold text-xs text-white uppercase tracking-wider">
                           Termo de Devolução & Assinatura Digital
                         </h4>
                         <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wider ${
                             item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
-                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-300"
-                              : "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300"
+                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                              : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
                           }`}
                         >
                           {item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
@@ -1793,7 +1814,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                         </span>
                       </div>
 
-                      <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-1">
+                      <p className="text-xs text-slate-300 mt-1 leading-relaxed">
                         {item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
                           ? `Recebido por: ${item.recipientSignatureName || item.registeredByName || "Proprietário"} (${item.recipientSignatureBond || "Comunidade IFPR"}) em ${formatDateTime(item.recipientSignatureDate || item.resolutionDate)}.`
                           : `Link de assinatura despachado para ${item.recipientSignatureEmail || item.contactInfo || "o e-mail do proprietário"}.`}
@@ -1806,7 +1827,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 {(item.recipientSignatureUrl || returnSignatureDataUrl) && (
                   <div className="mt-3 pt-3 border-t border-emerald-500/20 flex items-center justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-3">
-                      <div className="bg-white dark:bg-neutral-900 p-1.5 rounded-xl border border-emerald-500/30 shadow-xs">
+                      <div className="bg-white p-1.5 rounded-xl border border-emerald-500/30 shadow-xs">
                         <img
                           src={item.recipientSignatureUrl || returnSignatureDataUrl}
                           alt="Assinatura Digital"
@@ -1814,10 +1835,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                         />
                       </div>
                       <div className="text-[11px]">
-                        <span className="font-bold text-neutral-800 dark:text-neutral-200 block">
+                        <span className="font-semibold text-slate-200 block">
                           Assinatura Registrada
                         </span>
-                        <span className="text-neutral-500 text-[10px] font-mono">
+                        <span className="text-slate-400 text-[10px] font-mono">
                           Código: {item.signatureToken || item.id}
                         </span>
                       </div>
@@ -1826,7 +1847,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     <button
                       type="button"
                       onClick={handlePrintReceiptPDF}
-                      className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                      className="py-1.5 px-3 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
                     >
                       <Printer className="w-3.5 h-3.5" />
                       <span>Imprimir Recibo Assinado</span>
@@ -1840,7 +1861,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     <button
                       type="button"
                       onClick={() => setRemoteSignatureModalOpen(true)}
-                      className="py-1.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                      className="py-1.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
                     >
                       <PenTool className="w-3.5 h-3.5" />
                       <span>Assinar no Dispositivo Agora</span>
@@ -1857,7 +1878,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                           vibrateSuccess();
                           addToast("Link de assinatura digital copiado para a área de transferência!", "success");
                         }}
-                        className="py-1.5 px-3 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                        className="py-1.5 px-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-200 font-semibold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                       >
                         <Copy className="w-3.5 h-3.5" />
                         <span>Copiar Link</span>
@@ -1867,7 +1888,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                         type="button"
                         onClick={handleResendSignatureEmail}
                         disabled={isResendingSignatureEmail}
-                        className="py-1.5 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-900 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                        className="py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${isResendingSignatureEmail ? "animate-spin" : ""}`} />
                         <span>{isResendingSignatureEmail ? "Reenviando..." : "Reenviar E-mail"}</span>
@@ -1883,14 +1904,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               currentItem.recipientSignatureStatus === "SIGNED" &&
               currentItem.staffSignatureStatus !== "SIGNED" &&
               !currentItem.returnedByUserId && (
-                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2">
-                  <div className="flex items-center space-x-2 text-amber-900 dark:text-amber-200">
-                    <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                <div className="p-4 rounded-2xl bg-amber-950/20 border border-amber-500/30 space-y-2">
+                  <div className="flex items-center space-x-2 text-amber-200">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
                     <div>
-                      <h4 className="font-extrabold text-xs uppercase tracking-wider">
+                      <h4 className="font-bold text-xs uppercase tracking-wider">
                         Atestação Bloqueada — Emissor Não Identificado
                       </h4>
-                      <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                      <p className="text-[11px] text-slate-300 leading-relaxed mt-0.5">
                         Esta devolução não possui o servidor emissor registrado no sistema. Por segurança e auditoria, a atestação está bloqueada para impedir a atribuição retroativa não comprovada.
                       </p>
                     </div>
@@ -1905,14 +1926,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               (currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") &&
               Boolean(currentItem.returnedByUserId) &&
               currentItem.returnedByUserId === currentUser.id && (
-                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-3">
-                  <div className="flex items-center space-x-2 text-amber-900 dark:text-amber-200">
-                    <FileSignature className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                <div className="p-4 rounded-2xl bg-amber-950/20 border border-amber-500/30 space-y-3">
+                  <div className="flex items-center space-x-2 text-amber-200">
+                    <FileSignature className="w-5 h-5 text-amber-400 shrink-0" />
                     <div>
-                      <h4 className="font-extrabold text-xs uppercase tracking-wider">
+                      <h4 className="font-bold text-xs uppercase tracking-wider">
                         Atestação Institucional do Atendente Pendente
                       </h4>
-                      <p className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                      <p className="text-[11px] text-slate-300 leading-relaxed mt-0.5">
                         O receptor ({currentItem.recipientName || currentItem.recipientSignatureName || "Aluno"}) assinou a devolução. Registre sua atestação e assinatura como servidor emissor responsável.
                       </p>
                     </div>
@@ -1920,35 +1941,35 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   <button
                     type="button"
                     onClick={() => setStaffSignatureModalOpen(true)}
-                    className="w-full py-2.5 px-4 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                    className="w-full py-2.5 px-4 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer"
                   >
                     <PenTool className="w-4 h-4" />
-                    <span>✍️ Atestar e Assinar Devolução (Atendente)</span>
+                    <span>Atestar e Assinar Devolução (Atendente)</span>
                   </button>
                 </div>
               )}
 
             {/* Action Area: Primary Action & Operational Controls */}
-            <div className="pt-2 space-y-2.5 border-t border-neutral-200 dark:border-neutral-800">
+            <div className="pt-2 space-y-2.5 border-t border-white/10">
               {/* Primary User Action: Claim Ownership */}
               {item.status !== "DEVOLVIDO" && item.status !== "ENCERRADO" && (
                 userActiveClaim ? (
                   <div
                     className={`p-4 rounded-2xl border text-xs space-y-1.5 ${
                       userActiveClaim.status === "APROVADO"
-                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-200"
-                        : "bg-blue-500/10 border-blue-500/30 text-blue-900 dark:text-blue-200"
+                        ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-200"
+                        : "bg-sky-950/20 border-sky-500/30 text-sky-200"
                     }`}
                   >
                     <div className="flex items-center gap-2 font-bold">
-                      <ShieldCheck className="w-4 h-4 text-[#00843D]" />
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
                       <span>
                         {userActiveClaim.status === "APROVADO"
                           ? "Sua solicitação foi APROVADA pela Secretaria!"
                           : "Solicitação de Devolução em Análise"}
                       </span>
                     </div>
-                    <p className="text-[11px] leading-relaxed">
+                    <p className="text-[11px] leading-relaxed text-slate-300">
                       {userActiveClaim.status === "APROVADO"
                         ? "Compareça à Secretaria / SEBAC portando documento oficial com foto para concluir a retirada do pertence."
                         : "Você já enviou uma solicitação para este objeto. A equipe da Secretaria está analisando as informações fornecidas. Você pode acompanhar ou cancelar seu pedido na aba 'Meu Perfil'."}
@@ -1957,7 +1978,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 ) : (
                   <button
                     onClick={() => setClaimModalOpen(true)}
-                    className="w-full py-3 px-4 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-sm shadow-md shadow-[#00843D]/20 transition-all flex items-center justify-center space-x-2 cursor-pointer"
+                    className="w-full py-3.5 px-4 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-bold text-sm shadow-lg shadow-[#00843D]/25 transition-all flex items-center justify-center space-x-2 cursor-pointer"
                   >
                     <ShieldCheck className="w-5 h-5" />
                     <span>Solicitar Este Objeto (Reclamar Posse)</span>
@@ -1970,7 +1991,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
                     onClick={() => setReturnModalOpen(true)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs"
+                    className="w-full py-2.5 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs"
                   >
                     <CheckCircle className="w-4 h-4" />
                     <span>Registrar Devolução Formal</span>
@@ -1978,7 +1999,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
                   <button
                     onClick={() => setDestinationModalOpen(true)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-900 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs"
+                    className="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/5 font-semibold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs"
                   >
                     <PackageCheck className="w-4 h-4" />
                     <span>Registrar Destinação</span>
@@ -1990,7 +2011,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               {currentUser.role === "ADMIN" && item.status === "DEVOLVIDO" && (
                 <button
                   onClick={() => setReopenModalOpen(true)}
-                  className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer shadow-xs"
+                  className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer shadow-xs"
                 >
                   <RotateCcw className="w-4 h-4" />
                   <span>[Admin] Reabrir Devolução (Corrigir Erro)</span>
@@ -2001,7 +2022,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                 <button
                   onClick={() => setEmailModalOpen(true)}
-                  className="w-full py-2 px-3 rounded-xl border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300 font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
+                  className="w-full py-2 px-3 rounded-xl border border-white/10 hover:bg-white/5 text-slate-300 font-semibold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
                 >
                   <Send className="w-3.5 h-3.5 text-[#00843D]" />
                   <span>Enviar Mensagem</span>
@@ -2021,10 +2042,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                       setEditContactInfo(item.contactInfo || "");
                       setEditItemModalOpen(true);
                     }}
-                    className="w-full py-2 px-3 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 font-bold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
+                    className="w-full py-2 px-3 rounded-xl border border-amber-500/30 bg-amber-950/20 hover:bg-amber-900/30 text-amber-300 font-semibold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
                     title="Editar dados e informações do objeto"
                   >
-                    <Edit className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    <Edit className="w-3.5 h-3.5 text-amber-400" />
                     <span>Editar Informações</span>
                   </button>
                 )}
@@ -2032,36 +2053,36 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             </div>
 
             {/* Comments Section */}
-            <div className="space-y-3 pt-3 border-t border-neutral-200 dark:border-neutral-800">
+            <div className="space-y-3 pt-3 border-t border-white/10">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-neutral-900 dark:text-white flex items-center gap-1.5 uppercase tracking-wider">
-                  <MessageSquare className="w-4 h-4 text-[#00843D]" /> Perguntas & Comentários da Comunidade ({itemComments.length})
+                <h4 className="text-xs font-semibold text-white flex items-center gap-1.5 uppercase tracking-wider">
+                  <MessageSquare className="w-4 h-4 text-[#00843D]" /> Perguntas & Comentários ({itemComments.length})
                 </h4>
               </div>
 
               <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
                 {itemComments.length === 0 ? (
-                  <p className="text-xs text-neutral-400 italic py-2">
-                    Nenhum comentário cadastrado para este pertence. Seja o primeiro a perguntar!
+                  <p className="text-xs text-slate-500 italic py-2">
+                    Nenhum comentário cadastrado para este pertence.
                   </p>
                 ) : (
                   itemComments.map((com) => (
                     <div
                       key={com.id}
-                      className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/80 dark:border-neutral-700/60 text-xs space-y-1"
+                      className="p-3 rounded-xl bg-[#0e1626] border border-white/5 text-xs space-y-1"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center space-x-2">
-                          <span className="font-extrabold text-neutral-900 dark:text-white">
+                          <span className="font-bold text-slate-200">
                             {com.userName}
                           </span>
-                          <span className="px-1.5 py-0.2 text-[9px] font-black rounded-md bg-[#00843D]/10 text-[#00843D] dark:text-green-400">
+                          <span className="px-1.5 py-0.5 text-[9px] font-semibold rounded bg-[#00843D]/20 text-emerald-400 border border-[#00843D]/30">
                             {com.userRole}
                           </span>
                         </div>
-                        <span className="text-[10px] text-neutral-400">{formatDateTime(com.createdAt)}</span>
+                        <span className="text-[10px] text-slate-500 font-mono">{formatDateTime(com.createdAt)}</span>
                       </div>
-                      <p className="text-neutral-700 dark:text-neutral-300 leading-snug">{com.text}</p>
+                      <p className="text-slate-300 leading-snug">{com.text}</p>
                     </div>
                   ))
                 )}
@@ -2074,13 +2095,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   required
                   value={newCommentText}
                   onChange={(e) => setNewCommentText(e.target.value)}
-                  placeholder="Escreva uma pergunta ou informação adicional..."
-                  className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
+                  placeholder="Escreva uma pergunta ou esclarecimento..."
+                  className="flex-1 px-3 py-2 rounded-xl border border-white/10 bg-[#0e1626] text-xs text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
                 <button
                   type="submit"
                   disabled={isPostingComment}
-                  className="px-3.5 py-2 rounded-xl bg-[#00843D] text-white font-bold text-xs hover:bg-[#006e33] transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl bg-[#00843D] text-white font-semibold text-xs hover:bg-[#00A34D] transition-colors shrink-0 flex items-center gap-1 cursor-pointer disabled:opacity-50"
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>Enviar</span>
@@ -2089,48 +2110,46 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             </div>
 
             {/* Vertical Timeline History Section */}
-            <div className="space-y-3 pt-3 border-t border-neutral-200 dark:border-neutral-800">
+            <div className="space-y-3 pt-3 border-t border-white/10">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-extrabold uppercase tracking-wider text-neutral-900 dark:text-white flex items-center gap-1.5">
-                  <History className="w-4 h-4 text-indigo-500" /> Histórico da Ocorrência ({sortedTimeline.length})
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-white flex items-center gap-1.5">
+                  <History className="w-4 h-4 text-emerald-400" /> Trilha de Auditoria ({sortedTimeline.length})
                 </h4>
-                <span className="text-[10px] text-neutral-400 font-mono">Trilha Auditável</span>
+                <span className="text-[10px] text-slate-500 font-mono">Registro Histórico</span>
               </div>
 
               <div className="max-h-56 overflow-y-auto pr-2">
                 {sortedTimeline.length === 0 ? (
-                  <div className="p-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl text-xs text-neutral-400 italic">
+                  <div className="p-3 bg-[#0e1626] rounded-xl text-xs text-slate-500 italic">
                     Nenhum evento registrado ainda nesta ocorrência.
                   </div>
                 ) : (
-                  <div className="relative border-l-2 border-indigo-500/30 dark:border-indigo-500/40 ml-3 pl-4 space-y-4 py-1">
+                  <div className="relative border-l border-white/10 ml-3 pl-4 space-y-3.5 py-1">
                     {sortedTimeline.map((log: any, index: number) => (
                       <div key={log.id || index} className="relative group">
                         {/* Timeline Circle Bullet Node */}
-                        <div className="absolute -left-[23px] top-1 w-3.5 h-3.5 rounded-full bg-indigo-500 ring-4 ring-white dark:ring-[#1E1E1E] shadow-xs flex items-center justify-center">
-                          <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                        </div>
+                        <div className="absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full bg-[#00843D] ring-4 ring-[#0b0f17] shadow-xs" />
 
-                        <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/90 border border-neutral-200/80 dark:border-neutral-700/60 text-xs space-y-1 shadow-2xs">
+                        <div className="p-3 rounded-xl bg-[#0e1626] border border-white/5 text-xs space-y-1">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-black text-neutral-900 dark:text-white text-xs">
+                            <span className="font-bold text-slate-200 text-xs">
                               {log.action}
                             </span>
-                            <span className="text-[10px] font-mono font-bold text-neutral-500 dark:text-neutral-400 shrink-0">
+                            <span className="text-[10px] font-mono text-slate-500 shrink-0">
                               {formatDateTime(log.timestamp)}
                             </span>
                           </div>
 
                           {log.details && (
-                            <p className="text-neutral-700 dark:text-neutral-300 text-[11px] leading-relaxed">
+                            <p className="text-slate-400 text-[11px] leading-relaxed">
                               {log.details}
                             </p>
                           )}
 
-                          <div className="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium flex items-center gap-1 pt-0.5">
-                            <User className="w-3 h-3 text-indigo-500 shrink-0" />
+                          <div className="text-[10px] text-slate-500 font-medium flex items-center gap-1 pt-0.5">
+                            <User className="w-3 h-3 text-[#00843D] shrink-0" />
                             <span>
-                              Responsável: <strong className="text-neutral-800 dark:text-neutral-200">{log.actorName || log.userName || "Usuário"}</strong>
+                              Responsável: <strong className="text-slate-300">{log.actorName || log.userName || "Usuário"}</strong>
                               {log.actorRole || log.userRole ? ` (${log.actorRole || log.userRole})` : ""}
                             </span>
                           </div>
@@ -2147,40 +2166,40 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       {/* Claim Modal (Solicitar Devolução / RNF04) */}
       {claimModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 dark:bg-black/85 backdrop-blur-md transition-all duration-200">
-          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-lg w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 transition-colors">
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md transition-all duration-200">
+          <div className="bg-[#0b0f17] text-slate-100 rounded-3xl p-6 max-w-lg w-full border border-white/10 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-[#00843D]" />
+                <ShieldCheck className="w-5 h-5 text-emerald-400" />
                 <div>
-                  <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                  <h3 className="font-bold text-base text-white">
                     Solicitar Devolução de Objeto
                   </h3>
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
                     Verificação de Posse • IFPR Campus Ivaiporã
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setClaimModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500"
+                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-3 bg-neutral-50 dark:bg-neutral-800/80 rounded-2xl border border-neutral-200 dark:border-neutral-700 text-xs space-y-1">
-              <div className="font-bold text-neutral-800 dark:text-neutral-200">
+            <div className="p-3 bg-[#0e1626] rounded-2xl border border-white/5 text-xs space-y-1">
+              <div className="font-semibold text-slate-200">
                 Objeto: {currentItem.title}
               </div>
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
+              <p className="text-[11px] text-slate-400 leading-relaxed">
                 Para que a Secretaria do IFPR comprove a posse, informe detalhes particulares do objeto (marcas de uso, adesivos, itens no interior, marcas específicas).
               </p>
             </div>
 
             <form onSubmit={handleClaimSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Características Particulares / Marcas de Identificação *
                 </label>
                 <textarea
@@ -2189,12 +2208,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   value={claimDistinctiveFeatures}
                   onChange={(e) => setClaimDistinctiveFeatures(e.target.value)}
                   placeholder="Ex: No bolso interno há um adesivo azul, pequena marca de arranhão na quina esquerda, capa de proteção preta..."
-                  className="w-full p-3 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs focus:ring-2 focus:ring-[#00843D] outline-none"
+                  className="w-full p-3 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 focus:ring-2 focus:ring-[#00843D] outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Informações Adicionais (Opcional)
                 </label>
                 <textarea
@@ -2202,29 +2221,29 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   value={claimAdditionalInfo}
                   onChange={(e) => setClaimAdditionalInfo(e.target.value)}
                   placeholder="Ex: Data aproximada em que perdeu, local provável ou qualquer outro detalhe útil..."
-                  className="w-full p-3 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs focus:ring-2 focus:ring-[#00843D] outline-none"
+                  className="w-full p-3 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 focus:ring-2 focus:ring-[#00843D] outline-none"
                 />
               </div>
 
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+              <div className="p-3 bg-amber-950/20 border border-amber-500/20 rounded-xl text-[11px] text-amber-300 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
                 <span>
                   Sua solicitação será analisada pela equipe da Secretaria (SEBAC). Se aprovada, você receberá orientações para comparecer ao setor munido de documento oficial com foto.
                 </span>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2 border-t border-neutral-200 dark:border-neutral-800">
+              <div className="flex justify-end space-x-2 pt-2 border-t border-white/10">
                 <button
                   type="button"
                   onClick={() => setClaimModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingClaim || !claimDistinctiveFeatures.trim()}
-                  className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>{isSubmittingClaim ? "Enviando..." : "Enviar Solicitação"}</span>
@@ -2237,27 +2256,27 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       {/* Notification / Message Modal */}
       {emailModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 dark:bg-black/85 backdrop-blur-md transition-all duration-200">
-          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-lg w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 transition-colors">
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
-              <h3 className="font-bold text-base text-neutral-900 dark:text-white flex items-center gap-2">
-                <Send className="w-5 h-5 text-[#00843D]" /> Enviar Notificação Institucional
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md transition-all duration-200">
+          <div className="bg-[#0b0f17] text-slate-100 rounded-3xl p-6 max-w-lg w-full border border-white/10 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="font-bold text-base text-white flex items-center gap-2">
+                <Send className="w-5 h-5 text-emerald-400" /> Enviar Notificação Institucional
               </h3>
               <button
                 onClick={() => setEmailModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
+            <p className="text-xs text-slate-300 leading-relaxed">
               Envie uma notificação institucional sobre o objeto <strong>"{item.title}"</strong>. A mensagem será registrada no sistema e entregue ao destinatário no Localiza+.
             </p>
 
             <form onSubmit={handleSendEmailSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Destinatário (E-mail / Contato) *
                 </label>
                 <input
@@ -2266,12 +2285,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   value={recipientEmail}
                   onChange={(e) => setRecipientEmail(e.target.value)}
                   placeholder="exemplo@ifpr.edu.br"
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Assunto *
                 </label>
                 <input
@@ -2280,12 +2299,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   value={emailSubject}
                   onChange={(e) => setEmailSubject(e.target.value)}
                   placeholder="Ex: Informação sobre objeto encontrado"
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Conteúdo da Mensagem *
                 </label>
                 <textarea
@@ -2294,22 +2313,22 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   value={emailBody}
                   onChange={(e) => setEmailBody(e.target.value)}
                   placeholder="Escreva os detalhes ou esclarecimentos necessários..."
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-2 border-t border-white/10">
                 <button
                   type="button"
                   onClick={() => setEmailModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSendingEmail}
-                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>{isSendingEmail ? "Enviando..." : "Enviar Notificação"}</span>
@@ -2322,23 +2341,23 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       {/* Devolution Registration Modal */}
       {returnModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 dark:bg-black/85 backdrop-blur-md animate-in fade-in duration-200 transition-all">
-          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-xl w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto transition-colors">
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 transition-all">
+          <div className="bg-[#0b0f17] text-slate-100 rounded-3xl p-6 max-w-xl w-full border border-white/10 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <FileSignature className="w-5 h-5 text-[#00843D]" />
+                <FileSignature className="w-5 h-5 text-emerald-400" />
                 <div>
-                  <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                  <h3 className="font-bold text-base text-white">
                     Registrar Devolução & Assinatura Digital
                   </h3>
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
                     Protocolo Oficial SEBAC • IFPR Campus Ivaiporã
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setReturnModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500"
+                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2346,7 +2365,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
             <form onSubmit={handleRegisterReturnSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Nome Completo do Receptor / Proprietário *
                 </label>
                 <input
@@ -2355,13 +2374,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   value={returnRecipientName}
                   onChange={(e) => setReturnRecipientName(e.target.value)}
                   placeholder="Nome de quem está recebendo o pertence..."
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-1">
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
                     E-mail do Receptor *
                   </label>
                   <input
@@ -2370,28 +2389,28 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     value={returnRecipientEmail}
                     onChange={(e) => setReturnRecipientEmail(e.target.value)}
                     placeholder="email@estudantes.ifpr.edu.br"
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
                     Vínculo no Campus *
                   </label>
                   <select
                     value={returnRecipientBond}
                     onChange={(e) => setReturnRecipientBond(e.target.value as any)}
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-[#00843D]"
+                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-[#00843D]"
                   >
-                    <option value="Aluno">Aluno(a)</option>
-                    <option value="Servidor">Servidor / TAE / Professor</option>
-                    <option value="Terceirizado">Funcionário Terceirizado</option>
-                    <option value="Visitante">Visitante Externo</option>
+                    <option value="Aluno" className="bg-[#0b0f17] text-white">Aluno(a)</option>
+                    <option value="Servidor" className="bg-[#0b0f17] text-white">Servidor / TAE / Professor</option>
+                    <option value="Terceirizado" className="bg-[#0b0f17] text-white">Funcionário Terceirizado</option>
+                    <option value="Visitante" className="bg-[#0b0f17] text-white">Visitante Externo</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
                     Matrícula / Doc. ID
                   </label>
                   <input
@@ -2399,14 +2418,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     value={returnRecipientDocument}
                     onChange={(e) => setReturnRecipientDocument(e.target.value)}
                     placeholder="RG, CPF ou Matrícula..."
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                   />
                 </div>
               </div>
 
               {/* Signature Method Selector */}
               <div className="space-y-1.5 pt-1">
-                <label className="block text-xs font-extrabold uppercase tracking-wider text-neutral-700 dark:text-neutral-200">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
                   Etapa de Assinatura Digital de Recebimento
                 </label>
 
@@ -2416,15 +2435,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     onClick={() => setReturnSignatureMode("IN_PERSON_DEVICE")}
                     className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                       returnSignatureMode === "IN_PERSON_DEVICE"
-                        ? "bg-[#00843D]/10 border-[#00843D] text-[#00843D] dark:text-green-400 font-bold shadow-xs"
-                        : "border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                        ? "bg-[#00843D]/20 border-[#00843D] text-emerald-300 font-bold shadow-xs"
+                        : "border-white/10 text-slate-400 hover:bg-white/5"
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 text-xs font-black">
-                      <PenTool className="w-4 h-4" />
+                    <div className="flex items-center gap-1.5 text-xs font-bold">
+                      <PenTool className="w-4 h-4 text-emerald-400" />
                       <span>Presencial no Dispositivo</span>
                     </div>
-                    <p className="text-[10px] text-neutral-500 mt-1 leading-snug">
+                    <p className="text-[10px] text-slate-400 mt-1 leading-snug">
                       O aluno/servidor assina agora na tela do atendente.
                     </p>
                   </button>
@@ -2434,15 +2453,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     onClick={() => setReturnSignatureMode("REMOTE_EMAIL")}
                     className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                       returnSignatureMode === "REMOTE_EMAIL"
-                        ? "bg-[#00843D]/10 border-[#00843D] text-[#00843D] dark:text-green-400 font-bold shadow-xs"
-                        : "border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+                        ? "bg-[#00843D]/20 border-[#00843D] text-emerald-300 font-bold shadow-xs"
+                        : "border-white/10 text-slate-400 hover:bg-white/5"
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 text-xs font-black">
-                      <Send className="w-4 h-4" />
+                    <div className="flex items-center gap-1.5 text-xs font-bold">
+                      <Send className="w-4 h-4 text-emerald-400" />
                       <span>Link por E-mail (Remoto)</span>
                     </div>
-                    <p className="text-[10px] text-neutral-500 mt-1 leading-snug">
+                    <p className="text-[10px] text-slate-400 mt-1 leading-snug">
                       Envia link seguro para assinatura posterior no celular.
                     </p>
                   </button>
@@ -2461,12 +2480,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   />
                 </div>
               ) : (
-                <div className="p-3.5 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-xs text-blue-900 dark:text-blue-200 space-y-1.5">
-                  <div className="flex items-center gap-2 font-bold text-blue-700 dark:text-blue-300">
+                <div className="p-3.5 bg-sky-950/20 border border-sky-500/20 rounded-2xl text-xs text-sky-200 space-y-1.5">
+                  <div className="flex items-center gap-2 font-bold text-sky-300">
                     <MailCheck className="w-4 h-4" />
                     <span>Disparo Automático do Termo de Recebimento</span>
                   </div>
-                  <p className="text-[11px] leading-relaxed">
+                  <p className="text-[11px] leading-relaxed text-slate-300">
                     Ao registrar, um e-mail com link exclusivo e token de segurança será enviado para{" "}
                     <strong>{returnRecipientEmail || "o e-mail do receptor"}</strong>. Ele poderá assinar pelo próprio celular a qualquer momento.
                   </p>
@@ -2474,7 +2493,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               )}
 
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Observações de Entrega
                 </label>
                 <textarea
@@ -2482,36 +2501,36 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   value={returnObservations}
                   onChange={(e) => setReturnObservations(e.target.value)}
                   placeholder="Ex: Objeto conferido com êxito pelo proprietário na SEBAC..."
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-start gap-2.5">
+              <div className="p-3 bg-emerald-950/20 border border-emerald-500/20 rounded-xl flex items-start gap-2.5">
                 <input
                   type="checkbox"
                   id="confirmIdentityCheck"
                   required
                   checked={returnIdentityConfirmed}
                   onChange={(e) => setReturnIdentityConfirmed(e.target.checked)}
-                  className="mt-0.5 rounded border-neutral-300 text-[#00843D] focus:ring-[#00843D] cursor-pointer"
+                  className="mt-0.5 rounded border-white/20 bg-slate-800 text-[#00843D] focus:ring-[#00843D] cursor-pointer"
                 />
-                <label htmlFor="confirmIdentityCheck" className="text-xs text-emerald-900 dark:text-emerald-300 cursor-pointer font-bold">
+                <label htmlFor="confirmIdentityCheck" className="text-xs text-emerald-300 cursor-pointer font-bold">
                   Confirmo que conferi presencialmente o documento oficial com foto do receptor antes da liberação do objeto.
                 </label>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-2 border-t border-white/10">
                 <button
                   type="button"
                   onClick={() => setReturnModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isRegisteringReturn}
-                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <CheckCircle className="w-3.5 h-3.5" />
                   <span>
@@ -2543,35 +2562,35 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       {/* Reopen Return Modal (Admin Only) */}
       {reopenModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 dark:bg-black/85 backdrop-blur-md animate-in fade-in duration-200 transition-all">
-          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-md w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 transition-colors">
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 transition-all">
+          <div className="bg-[#0b0f17] text-slate-100 rounded-3xl p-6 max-w-md w-full border border-white/10 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <RotateCcw className="w-5 h-5 text-amber-500" />
+                <RotateCcw className="w-5 h-5 text-amber-400" />
                 <div>
-                  <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                  <h3 className="font-bold text-base text-white">
                     Reabrir Devolução de Objeto
                   </h3>
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
                     Ação Administrativa de Ajuste
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setReopenModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-800 dark:text-amber-300">
+            <div className="p-3 bg-amber-950/20 border border-amber-500/20 rounded-xl text-xs text-amber-300 leading-relaxed">
               A reabertura do item alterará o status de volta para ativo, removerá o carimbo de devolução e gravará um log de auditoria associado ao seu usuário.
             </div>
 
             <form onSubmit={handleReopenReturnSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Justificativa da Reabertura *
                 </label>
                 <textarea
@@ -2580,22 +2599,22 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   value={reopenReason}
                   onChange={(e) => setReopenReason(e.target.value)}
                   placeholder="Ex: Devolução cadastrada por engano no item incorreto durante conferência de estoque..."
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-2 border-t border-white/10">
                 <button
                   type="button"
                   onClick={() => setReopenModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isReopeningReturn}
-                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>{isReopeningReturn ? "Reabrindo..." : "Confirmar Reabertura"}</span>
@@ -2608,23 +2627,23 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       {/* Destination Modal (Unclaimed Items) */}
       {destinationModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 dark:bg-black/85 backdrop-blur-md animate-in fade-in duration-200 transition-all">
-          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-md w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 transition-colors">
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 transition-all">
+          <div className="bg-[#0b0f17] text-slate-100 rounded-3xl p-6 max-w-md w-full border border-white/10 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <PackageCheck className="w-5 h-5 text-neutral-800 dark:text-neutral-200" />
+                <PackageCheck className="w-5 h-5 text-emerald-400" />
                 <div>
-                  <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                  <h3 className="font-bold text-base text-white">
                     Destinação de Pertence Não Reclamado
                   </h3>
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
                     Destinação Institucional (Até 60 dias)
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setDestinationModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2632,23 +2651,23 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
             <form onSubmit={handleDestinationSubmit} className="space-y-3.5">
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Tipo de Destinação *
                 </label>
                 <select
                   value={destinationType}
                   onChange={(e) => setDestinationType(e.target.value as any)}
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-neutral-600"
+                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-[#00843D]"
                 >
-                  <option value="DOACAO">Doação para Entidade / Projeto Social</option>
-                  <option value="DESCARTE">Descarte Ecológico / Lixo Eletrônico</option>
-                  <option value="LEILAO_PROJETO">Uso em Projetos de Ensino / Pesquisa</option>
-                  <option value="OUTRO">Outra Destinação Autorizada</option>
+                  <option value="DOACAO" className="bg-[#0b0f17] text-white">Doação para Entidade / Projeto Social</option>
+                  <option value="DESCARTE" className="bg-[#0b0f17] text-white">Descarte Ecológico / Lixo Eletrônico</option>
+                  <option value="LEILAO_PROJETO" className="bg-[#0b0f17] text-white">Uso em Projetos de Ensino / Pesquisa</option>
+                  <option value="OUTRO" className="bg-[#0b0f17] text-white">Outra Destinação Autorizada</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Entidade Beneficiária / Justificativa *
                 </label>
                 <textarea
@@ -2657,22 +2676,22 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   value={destinationNotes}
                   onChange={(e) => setDestinationNotes(e.target.value)}
                   placeholder="Ex: Entregue à Instituição Social de Ivaiporã conforme autorização da Direção Geral..."
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-neutral-600"
+                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-2 border-t border-white/10">
                 <button
                   type="button"
                   onClick={() => setDestinationModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isRegisteringDestination}
-                  className="px-5 py-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer"
                 >
                   <PackageCheck className="w-3.5 h-3.5" />
                   <span>{isRegisteringDestination ? "Registrando..." : "Confirmar & Encerrar"}</span>
@@ -2682,19 +2701,18 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           </div>
         </div>
       )}
-
       {/* Edit Item Modal (Authorized Users) */}
       {editItemModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 dark:bg-black/85 backdrop-blur-md transition-all duration-200">
-          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-xl w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto transition-colors">
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md transition-all duration-200">
+          <div className="bg-[#0b0f17] text-slate-100 rounded-3xl p-6 max-w-xl w-full border border-white/10 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <Edit className="w-5 h-5 text-amber-500" />
+                <Edit className="w-5 h-5 text-amber-400" />
                 <div>
-                  <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                  <h3 className="font-bold text-base text-white">
                     Editar Informações do Objeto
                   </h3>
-                  <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
                     Apenas o Cadastrador do Item ou Servidores/Admins podem alterar
                   </p>
                 </div>
@@ -2702,7 +2720,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <button
                 type="button"
                 onClick={() => setEditItemModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500"
+                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2711,15 +2729,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             <form onSubmit={handleSaveEditedItem} className="space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                  <label className="block text-xs font-semibold text-slate-300">
                     Título / Nome do Objeto *
                   </label>
                   <span
                     id="edit-title-char-counter"
                     className={`text-[10px] font-mono font-medium ${
                       editTitle.length >= ITEM_FIELD_LIMITS.TITLE
-                        ? "text-amber-600 dark:text-amber-400 font-bold"
-                        : "text-neutral-400 dark:text-neutral-500"
+                        ? "text-amber-400 font-bold"
+                        : "text-slate-500"
                     }`}
                     title={`Limite máximo: ${ITEM_FIELD_LIMITS.TITLE} caracteres`}
                   >
@@ -2732,21 +2750,21 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   maxLength={ITEM_FIELD_LIMITS.TITLE}
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                  <label className="block text-xs font-semibold text-slate-300">
                     Descrição Detalhada
                   </label>
                   <span
                     id="edit-description-char-counter"
                     className={`text-[10px] font-mono font-medium ${
                       editDescription.length >= ITEM_FIELD_LIMITS.DESCRIPTION
-                        ? "text-amber-600 dark:text-amber-400 font-bold"
-                        : "text-neutral-400 dark:text-neutral-500"
+                        ? "text-amber-400 font-bold"
+                        : "text-slate-500"
                     }`}
                     title={`Limite máximo: ${ITEM_FIELD_LIMITS.DESCRIPTION} caracteres`}
                   >
@@ -2758,36 +2776,36 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   maxLength={ITEM_FIELD_LIMITS.DESCRIPTION}
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
                     Categoria
                   </label>
                   <select
                     value={editCategory}
                     onChange={(e) => setEditCategory(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-[#00843D]"
                   >
-                    <option value="ELETRONICOS">Eletrônicos</option>
-                    <option value="DOCUMENTOS">Documentos</option>
-                    <option value="VESTUARIO">Vestuário / Roupas</option>
-                    <option value="MATERIAL_ESCOLAR">Material Escolar</option>
-                    <option value="CHAVES">Chaves</option>
-                    <option value="ACESSORIOS">Acessórios / Objetos Pessoais</option>
-                    <option value="OUTROS">Outros</option>
+                    <option value="ELETRONICOS" className="bg-[#0b0f17] text-white">Eletrônicos</option>
+                    <option value="DOCUMENTOS" className="bg-[#0b0f17] text-white">Documentos</option>
+                    <option value="VESTUARIO" className="bg-[#0b0f17] text-white">Vestuário / Roupas</option>
+                    <option value="MATERIAL_ESCOLAR" className="bg-[#0b0f17] text-white">Material Escolar</option>
+                    <option value="CHAVES" className="bg-[#0b0f17] text-white">Chaves</option>
+                    <option value="ACESSORIOS" className="bg-[#0b0f17] text-white">Acessórios / Objetos Pessoais</option>
+                    <option value="OUTROS" className="bg-[#0b0f17] text-white">Outros</option>
                   </select>
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                    <label className="block text-xs font-semibold text-slate-300">
                       Localização no Campus
                     </label>
-                    <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+                    <span className="text-[10px] font-mono text-slate-500">
                       Máx. {ITEM_FIELD_LIMITS.LOCATION} carac.
                     </span>
                   </div>
@@ -2796,13 +2814,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     maxLength={ITEM_FIELD_LIMITS.LOCATION}
                     value={editLocation}
                     onChange={(e) => setEditLocation(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Data da Ocorrência *
                 </label>
                 <input
@@ -2811,17 +2829,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   max={getTodayDateString()}
                   value={editDate}
                   onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                    <label className="block text-xs font-semibold text-slate-300">
                       Cor Predominante
                     </label>
-                    <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+                    <span className="text-[10px] font-mono text-slate-500">
                       Máx. {ITEM_FIELD_LIMITS.COLOR} carac.
                     </span>
                   </div>
@@ -2830,16 +2848,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     maxLength={ITEM_FIELD_LIMITS.COLOR}
                     value={editColor}
                     onChange={(e) => setEditColor(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                   />
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                    <label className="block text-xs font-semibold text-slate-300">
                       Marca / Fabricante
                     </label>
-                    <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+                    <span className="text-[10px] font-mono text-slate-500">
                       Máx. {ITEM_FIELD_LIMITS.BRAND} carac.
                     </span>
                   </div>
@@ -2848,17 +2866,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     maxLength={ITEM_FIELD_LIMITS.BRAND}
                     value={editBrand}
                     onChange={(e) => setEditBrand(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                   />
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                  <label className="block text-xs font-semibold text-slate-300">
                     Contato / Instruções de Devolução
                   </label>
-                  <span className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500">
+                  <span className="text-[10px] font-mono text-slate-500">
                     Máx. {ITEM_FIELD_LIMITS.CONTACT_INFO} carac.
                   </span>
                 </div>
@@ -2867,22 +2885,22 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   maxLength={ITEM_FIELD_LIMITS.CONTACT_INFO}
                   value={editContactInfo}
                   onChange={(e) => setEditContactInfo(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
+                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2 border-t border-neutral-200 dark:border-neutral-800">
+              <div className="flex justify-end space-x-2 pt-2 border-t border-white/10">
                 <button
                   type="button"
                   onClick={() => setEditItemModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSavingEdit}
-                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>{isSavingEdit ? "Salvando..." : "Salvar Alterações"}</span>
@@ -2895,41 +2913,41 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       {/* Staff Attendant Signature Modal */}
       {staffSignatureModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 dark:bg-black/85 backdrop-blur-md transition-all duration-200">
-          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-lg w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 transition-colors">
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md transition-all duration-200">
+          <div className="bg-[#0b0f17] text-slate-100 rounded-3xl p-6 max-w-lg w-full border border-white/10 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <FileSignature className="w-5 h-5 text-[#00843D]" />
+                <FileSignature className="w-5 h-5 text-emerald-400" />
                 <div>
-                  <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                  <h3 className="font-bold text-base text-white">
                     Atestação Institucional do Atendente
                   </h3>
-                  <p className="text-[10px] text-neutral-500 uppercase font-bold">
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
                     IFPR Campus Ivaiporã • Servidor Responsável
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setStaffSignatureModalOpen(false)}
-                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500"
+                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-xl text-xs space-y-1">
-              <p className="font-bold text-neutral-900 dark:text-white">Objeto: {currentItem.title} (#{currentItem.id})</p>
-              <p className="text-neutral-600 dark:text-neutral-300">
+            <div className="p-3 bg-[#0e1626] rounded-xl border border-white/5 text-xs space-y-1">
+              <p className="font-semibold text-white">Objeto: {currentItem.title} (#{currentItem.id})</p>
+              <p className="text-slate-300">
                 Receptor: <strong>{currentItem.recipientName || currentItem.recipientSignatureName || "Receptor"}</strong> ({currentItem.recipientBond || "Aluno(a)"})
               </p>
-              <p className="text-neutral-500 text-[10px]">
+              <p className="text-slate-400 text-[10px] font-mono">
                 Assinado pelo receptor em: {formatDateTime(currentItem.signedAt || currentItem.resolutionDate)}
               </p>
             </div>
 
             <form onSubmit={handleConfirmStaffSignatureSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-2">
+                <label className="block text-xs font-semibold text-slate-300 mb-2">
                   Assinatura Digital do Servidor Atendente ({currentUser?.name || "Servidor IFPR"}) *
                 </label>
                 <DigitalSignaturePad
@@ -2944,18 +2962,18 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 />
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2">
+              <div className="flex justify-end space-x-2 pt-2 border-t border-white/10">
                 <button
                   type="button"
                   onClick={() => setStaffSignatureModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingStaffSignature || !staffSignatureDataUrl}
-                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <PenTool className="w-3.5 h-3.5" />
                   <span>{isSubmittingStaffSignature ? "Registrando..." : "Confirmar Atestação e Assinatura"}</span>

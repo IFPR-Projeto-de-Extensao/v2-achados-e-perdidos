@@ -24,12 +24,43 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.10.10",
+    codename: "Modernização Minimalista da Tela de Detalhes do Objeto",
+    releaseDate: "30/10/2026",
+    releaseDateTime: "30 de Outubro de 2026 • 19:35 BRT",
+    type: "PATCH",
+    isCurrent: true,
+    summary: "LOCALIZA+ v1.10.10 — Modernização minimalista da tela de detalhes do objeto (ItemDetailModal.tsx), incorporando paleta refinada em tema escuro (#0b0f17 / #0f172a), acentos institucionais (#00843D / #00A34D), hierarquia visual limpa e anti-slop, reorganização estruturada (cabeçalho, foto responsiva, jornada de tramitação, etiqueta QR e ações operacionais), preservando integralmente todas as funções, regras RBAC e persistência.",
+    additions: [
+      {
+        id: "v11010-add-minimalist-item-detail-ui",
+        title: "Interface Minimalista e Elegante da Tela de Detalhes",
+        description: "Reestruturação visual completa do modal de detalhes com cabeçalho limpo (status, ID copiável, atalhos de documento e compartilhamento), apresentação responsiva de imagens com fallback discreto, esteira de tramitação (stepper) distinguindo etapas concluídas, ativas e pendentes, e cartão QR de alto contraste com ações integradas (Modo QR, Download PNG, Impressão e Laudos PDF).",
+        module: "GERAL",
+        tag: "UI/UX & Design",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v11010-fix-detail-modal-visual-hierarchy",
+        title: "Eliminação de Poluição Visual e Correção de Responsividade dos Controles",
+        description: "Substituição do excesso de cartões aninhados e bordas conflitantes por um layout escuro consistente, garantindo que botões operacionais, formulários de devolução, assinaturas digitais e comentários mantenham legibilidade e usabilidade perfeitas em dispositivos móveis e desktops.",
+        module: "GERAL",
+        tag: "Responsividade & Estilo",
+      },
+    ],
+    stats: {
+      additionsCount: 1,
+      fixesCount: 1,
+    },
+  },
+  {
     version: "v1.10.9",
     codename: "Restrição Oficial de Cadastro de Objetos e Resolução de Permissões Firestore",
     releaseDate: "27/10/2026",
     releaseDateTime: "27 de Outubro de 2026 • 23:55 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "LOCALIZA+ v1.10.9 — Restrição de cadastro de objetos a Servidores/TAE e Administradores; resolução de erros de permissão 'Missing or insufficient permissions' em transações de solicitação (`claims`) através de salvaguardas `resource == null`; e adiamento de escutas administrativas no `AppContext.tsx` aguardando a resolução de autenticação (`authLoading`).",
     additions: [
       {

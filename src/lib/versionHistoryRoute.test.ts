@@ -118,9 +118,9 @@ describe("Version History Route & Access Control (/versoes)", () => {
   });
 
   describe("Version Integrity (Base Version Preservation)", () => {
-    it("should preserve current system version as v1.10.9 without modification", () => {
-      expect(CURRENT_VERSION).toBe("v1.10.9");
-      const currentEntry = APP_VERSIONS_DATA.find((v) => v.version === "v1.10.9");
+    it("should preserve current system version as v1.10.10 without modification", () => {
+      expect(CURRENT_VERSION).toBe("v1.10.10");
+      const currentEntry = APP_VERSIONS_DATA.find((v) => v.version === "v1.10.10");
       expect(currentEntry).toBeDefined();
       expect(currentEntry?.isCurrent).toBe(true);
     });
