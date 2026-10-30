@@ -4,7 +4,7 @@ import { User, AccountStatus, UserRole } from "../types";
 import { resolveAccountStatus, formatAccountStatusDetails, sortUsersByCreationDesc } from "../lib/accountStatusUtils";
 import { ManageUserStatusModal } from "./ManageUserStatusModal";
 import { getSafeAvatarUrl, handleAvatarError } from "../lib/avatarUtils";
-import { vibrateClick, vibrateSuccess, safeIncludes, sanitizeQuery } from "../lib/utils";
+import { vibrateClick, vibrateSuccess, safeIncludes, sanitizeQuery, safeParseDate } from "../lib/utils";
 import {
   Users,
   Search,
@@ -339,7 +339,7 @@ export const AccountManagementView: React.FC = () => {
                           </span>
                           {resolved.status === "suspended" && resolved.suspendedUntil && (
                             <span className="text-[9px] text-neutral-400 font-mono">
-                              Até {new Date(resolved.suspendedUntil).toLocaleDateString("pt-BR")}
+                              Até {safeParseDate(resolved.suspendedUntil)?.toLocaleDateString("pt-BR")}
                             </span>
                           )}
                         </div>

@@ -1,3 +1,5 @@
+import type { Timestamp } from "firebase/firestore";
+
 export type ItemStatus =
   | "PERDIDO"
   | "ENCONTRADO"
@@ -41,7 +43,8 @@ export interface User {
   statusChangedBy?: string;
   statusChangedByName?: string;
   statusChangedByEmail?: string;
-  suspendedUntil?: string;
+  suspendedUntil?: Timestamp | string | null;
+  blockExpiresAt?: Timestamp | string | null;
   createdAt?: string;
   emailVerified?: boolean;
 }

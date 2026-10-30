@@ -45,6 +45,7 @@ import {
   deleteField,
   writeBatch,
   runTransaction,
+  Timestamp,
 } from "firebase/firestore";
 import {
   signInWithPopup,
@@ -3443,7 +3444,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetUser = allUsers.find((u) => u.id === targetUserId);
     const nowIso = new Date().toISOString();
 
-    const updatePayload: Partial<User> = {
+    const parsedSuspendedUntil = (newStatus === "suspended" && suspendedUntil)
+      ? safeParseDate(suspendedUntil)
+      : null;
+
+    const firestoreSuspendedUntil = parsedSuspendedUntil
+      ? Timestamp.fromDate(parsedSuspendedUntil)
+      : deleteField();
+
+    const firestoreUpdatePayload: Record<string, any> = {
       status: newStatus,
       statusUpdatedAt: nowIso,
       statusUpdatedBy: currentUser.name || currentUser.email || "Administrador",
@@ -3452,19 +3461,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       statusChangedByName: currentUser.name || currentUser.email || "Administrador",
       statusChangedByEmail: currentUser.email || "",
       statusReason: reason?.trim() || undefined,
-      suspendedUntil: newStatus === "suspended" ? suspendedUntil : undefined,
+      suspendedUntil: firestoreSuspendedUntil,
+      ...(newStatus === "active" ? { blockExpiresAt: deleteField() } : {}),
+    };
+
+    const localUserPayload: Partial<User> = {
+      status: newStatus,
+      statusUpdatedAt: nowIso,
+      statusUpdatedBy: currentUser.name || currentUser.email || "Administrador",
+      statusChangedAt: nowIso,
+      statusChangedBy: currentUser.id,
+      statusChangedByName: currentUser.name || currentUser.email || "Administrador",
+      statusChangedByEmail: currentUser.email || "",
+      statusReason: reason?.trim() || undefined,
+      suspendedUntil: parsedSuspendedUntil ? parsedSuspendedUntil.toISOString() : undefined,
+      ...(newStatus === "active" ? { blockExpiresAt: undefined } : {}),
     };
 
     try {
       const userRef = doc(db, "users", targetUserId);
-      await setDoc(userRef, sanitizeFirestoreData(updatePayload), { merge: true });
+      await setDoc(userRef, sanitizeFirestoreData(firestoreUpdatePayload), { merge: true });
 
       setAllUsers((prev) =>
-        prev.map((u) => (u.id === targetUserId ? { ...u, ...updatePayload } : u))
+        prev.map((u) => (u.id === targetUserId ? { ...u, ...localUserPayload } : u))
       );
 
       if (currentUser.id === targetUserId) {
-        setCurrentUser((prev) => ({ ...prev, ...updatePayload }));
+        setCurrentUser((prev) => ({ ...prev, ...localUserPayload }));
       }
 
       const actionType =

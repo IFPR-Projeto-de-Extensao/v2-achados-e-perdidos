@@ -113,7 +113,8 @@ export function sanitizeUserList(users: User[]): User[] {
 }
 
 /**
- * Pure sanitizer for Firestore documents avoiding undefined values
+ * Pure sanitizer for Firestore documents avoiding undefined values while preserving
+ * native Firestore FieldValue sentinels (deleteField, serverTimestamp) and Timestamps.
  */
 export function sanitizeFirestoreData<T extends Record<string, any>>(data: T): Record<string, any> {
   if (!data || typeof data !== "object") return data;
@@ -121,9 +122,26 @@ export function sanitizeFirestoreData<T extends Record<string, any>>(data: T): R
   for (const key of Object.keys(data)) {
     const val = data[key];
     if (val !== undefined) {
-      if (val !== null && typeof val === "object" && !Array.isArray(val) && !(val instanceof Date) && typeof val.toMillis === "function") {
-        clean[key] = val;
-      } else if (val !== null && typeof val === "object" && !Array.isArray(val) && !(val instanceof Date) && (val as any)._methodName === "FieldValue.delete") {
+      const isTimestamp =
+        val !== null &&
+        typeof val === "object" &&
+        !Array.isArray(val) &&
+        !(val instanceof Date) &&
+        (typeof val.toMillis === "function" || typeof val.toDate === "function");
+
+      const isFieldValueSentinel =
+        val !== null &&
+        typeof val === "object" &&
+        !Array.isArray(val) &&
+        !(val instanceof Date) &&
+        ((val as any)._methodName === "FieldValue.delete" ||
+         (val as any)._methodName === "deleteField" ||
+         (val as any)._delegate?._methodName === "deleteField" ||
+         (val as any)._delegate?._methodName === "FieldValue.delete" ||
+         val.constructor?.name === "DeleteFieldValueImpl" ||
+         val.constructor?.name === "FieldValue");
+
+      if (isTimestamp || isFieldValueSentinel) {
         clean[key] = val;
       } else if (val !== null && typeof val === "object" && !Array.isArray(val) && !(val instanceof Date)) {
         clean[key] = sanitizeFirestoreData(val);

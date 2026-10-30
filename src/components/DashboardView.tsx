@@ -2337,7 +2337,7 @@ export const DashboardView: React.FC = () => {
                                       </span>
                                       {u.status === "suspended" && u.suspendedUntil && (
                                         <span className="text-[9px] font-normal opacity-80">
-                                          Até {new Date(u.suspendedUntil).toLocaleDateString("pt-BR")}
+                                          Até {safeParseDate(u.suspendedUntil)?.toLocaleDateString("pt-BR")}
                                         </span>
                                       )}
                                     </button>

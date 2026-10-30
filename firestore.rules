@@ -22,21 +22,56 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isTemporaryBlockActive(userData) {
+      return (
+        ('blockExpiresAt' in userData && userData.blockExpiresAt is timestamp && request.time < userData.blockExpiresAt) ||
+        ('suspendedUntil' in userData && userData.suspendedUntil is timestamp && request.time < userData.suspendedUntil)
+      );
+    }
+
+    function isTemporaryBlockExpired(userData) {
+      return !isTemporaryBlockActive(userData) &&
+             ('blockExpiresAt' in userData || 'suspendedUntil' in userData) &&
+             (!('blockExpiresAt' in userData) || (userData.blockExpiresAt is timestamp && request.time >= userData.blockExpiresAt)) &&
+             (!('suspendedUntil' in userData) || (userData.suspendedUntil is timestamp && request.time >= userData.suspendedUntil));
+    }
+
     function isAccountBlocked() {
       return isSignedIn() && 
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              (
-                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'banned' ||
-                get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == 'suspended'
+                ('status' in getUserData() && (
+                  getUserData().status == 'banned' ||
+                  (getUserData().status == 'suspended' && !isTemporaryBlockExpired(getUserData()))
+                )) ||
+                isTemporaryBlockActive(getUserData())
              );
     }
 
     function isAccountActive() {
-      return !isAccountBlocked();
+      return isSignedIn() && (
+        isRootAdmin() || (
+          (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          ('status' in getUserData()) &&
+          (
+            getUserData().status == 'active' ||
+            (getUserData().status == 'suspended' && isTemporaryBlockExpired(getUserData()))
+          ) &&
+          (!('role' in getUserData()) || getUserData().role != 'INTRUSO') &&
+          !isAccountBlocked()
+        )
+      );
     }
 
     function hasAdminClaim() {
       return isSignedIn() && 
+             isEmailVerified() &&
+             (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
              (request.auth.token.role == 'ADMIN' || 
               request.auth.token.admin == true);
     }
@@ -44,6 +79,7 @@ service cloud.firestore {
     function isRootAdmin() {
       return isSignedIn() && 
              isEmailVerified() &&
+             (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
              request.auth.token.email != null &&
              (request.auth.token.email == 'paulocauan39@gmail.com' ||
               request.auth.token.email.lower() == 'paulocauan39@gmail.com');
@@ -51,20 +87,24 @@ service cloud.firestore {
 
     function isDocAdmin() {
       return isSignedIn() && 
+             isEmailVerified() &&
              isAccountActive() &&
+             (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN' &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'APROVADO';
     }
 
     function isAdmin() {
-      return isRootAdmin() || (isAccountActive() && (hasAdminClaim() || isDocAdmin()));
+      return (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
+             (isRootAdmin() || (isAccountActive() && (hasAdminClaim() || isDocAdmin())));
     }
 
     function isDocServidor() {
       return isSignedIn() && 
              isEmailVerified() &&
              isAccountActive() &&
+             (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'SERVIDOR' &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'APROVADO';
@@ -73,6 +113,7 @@ service cloud.firestore {
     function isDocAluno() {
       return isSignedIn() && 
              isEmailVerified() &&
+             (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ALUNO';
     }
@@ -111,7 +152,7 @@ service cloud.firestore {
       return isSignedIn() && (
         !isEmailVerified() ||
         request.auth.token.role == 'INTRUSO' ||
-        isDocIntruso() ||
+        (isDocIntruso() && !isRootAdmin()) ||
         (!isAdmin() && !isServidor() && !isDocAluno() && request.auth.token.email != null && (
           !request.auth.token.email.matches('.*@estudantes[.]ifpr[.]edu[.]br') &&
           !request.auth.token.email.matches('.*@estudante[.]ifpr[.]edu[.]br') &&
@@ -253,7 +294,7 @@ service cloud.firestore {
                        )) && isValidItemTextFields(incoming());
 
       // Delete: Admin or the authenticated author who registered the item
-      allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && existing().registeredByUserId == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && !isIntruso() && existing().registeredByUserId == request.auth.uid);
     }
 
     match /found_items/{itemId} {
@@ -279,7 +320,7 @@ service cloud.firestore {
                          incoming().createdAt == existing().createdAt &&
                          incoming().registeredByRole == existing().registeredByRole
                        )) && isValidItemTextFields(incoming());
-      allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && existing().registeredByUserId == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && !isIntruso() && existing().registeredByUserId == request.auth.uid);
     }
 
     match /lost_items/{itemId} {
@@ -305,7 +346,7 @@ service cloud.firestore {
                          incoming().createdAt == existing().createdAt &&
                          incoming().registeredByRole == existing().registeredByRole
                        )) && isValidItemTextFields(incoming());
-      allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && existing().registeredByUserId == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && !isIntruso() && existing().registeredByUserId == request.auth.uid);
     }
 
     // ==========================================
@@ -380,6 +421,7 @@ service cloud.firestore {
         (
           isSignedIn() && 
           isAccountActive() &&
+          !isIntruso() &&
           existing().claimerId == request.auth.uid && 
           existing().status == 'PENDENTE' &&
           incoming().status == 'CANCELADO' &&

@@ -50,8 +50,8 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
   const [customUntilDate, setCustomUntilDate] = useState<string>(() => {
     if (user.suspendedUntil) {
       try {
-        const d = new Date(user.suspendedUntil);
-        return d.toISOString().slice(0, 16);
+        const d = safeParseDate(user.suspendedUntil);
+        if (d) return d.toISOString().slice(0, 16);
       } catch (_) {}
     }
     const defaultDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
