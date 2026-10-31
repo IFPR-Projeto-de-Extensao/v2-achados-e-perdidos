@@ -19,7 +19,9 @@ service cloud.firestore {
     }
 
     function isEmailVerified() {
-      return isSignedIn() && request.auth.token.email_verified == true;
+      return isSignedIn() && 
+             ('email_verified' in request.auth.token) && 
+             request.auth.token.email_verified == true;
     }
 
     function getUserData() {
@@ -72,14 +74,15 @@ service cloud.firestore {
       return isSignedIn() && 
              isEmailVerified() &&
              (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
-             (request.auth.token.role == 'ADMIN' || 
-              request.auth.token.admin == true);
+             (('role' in request.auth.token && request.auth.token.role == 'ADMIN') || 
+              ('admin' in request.auth.token && request.auth.token.admin == true));
     }
 
     function isRootAdmin() {
       return isSignedIn() && 
              isEmailVerified() &&
              (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
+             ('email' in request.auth.token) &&
              request.auth.token.email != null &&
              (request.auth.token.email == 'paulocauan39@gmail.com' ||
               request.auth.token.email.lower() == 'paulocauan39@gmail.com');
@@ -125,7 +128,7 @@ service cloud.firestore {
     }
 
     function isInstitutionalStudentEmail() {
-      return isSignedIn() && isEmailVerified() && request.auth.token.email != null && (
+      return isSignedIn() && isEmailVerified() && ('email' in request.auth.token) && request.auth.token.email != null && (
         request.auth.token.email.matches('.*@estudantes[.]ifpr[.]edu[.]br') ||
         request.auth.token.email.matches('.*@estudante[.]ifpr[.]edu[.]br') ||
         request.auth.token.email.matches('.*@aluno[.]ifpr[.]edu[.]br')
@@ -133,7 +136,7 @@ service cloud.firestore {
     }
 
     function isInstitutionalStaffEmail() {
-      return isSignedIn() && isEmailVerified() && request.auth.token.email != null && (
+      return isSignedIn() && isEmailVerified() && ('email' in request.auth.token) && request.auth.token.email != null && (
         request.auth.token.email.matches('.*@ifpr[.]edu[.]br') &&
         !request.auth.token.email.matches('.*@aluno[.]ifpr[.]edu[.]br') &&
         !request.auth.token.email.matches('.*@estudante[.]ifpr[.]edu[.]br') &&
@@ -151,9 +154,9 @@ service cloud.firestore {
     function isIntruso() {
       return isSignedIn() && (
         !isEmailVerified() ||
-        request.auth.token.role == 'INTRUSO' ||
+        ('role' in request.auth.token && request.auth.token.role == 'INTRUSO') ||
         (isDocIntruso() && !isRootAdmin()) ||
-        (!isAdmin() && !isServidor() && !isDocAluno() && request.auth.token.email != null && (
+        (!isAdmin() && !isServidor() && !isDocAluno() && ('email' in request.auth.token) && request.auth.token.email != null && (
           !request.auth.token.email.matches('.*@estudantes[.]ifpr[.]edu[.]br') &&
           !request.auth.token.email.matches('.*@estudante[.]ifpr[.]edu[.]br') &&
           !request.auth.token.email.matches('.*@aluno[.]ifpr[.]edu[.]br') &&
@@ -375,13 +378,17 @@ service cloud.firestore {
       }
 
       // Claims can only be read by active claimers, the item author, or Admin/Active Servidor
+      // Supports transactional reads (transaction.get) exclusively on non-existent deterministic claim IDs
       allow get: if isSignedIn() && (
-        (isAccountActive() && request.auth.uid != null && claimId.matches('claim_' + request.auth.uid + '_.*')) ||
+        // 1. Leitura tolerante EXCLUSIVA para documentos inexistentes (resource == null) com ID determinístico do solicitante
+        (resource == null && isAccountActive() && request.auth.uid != null && claimId.matches('claim_' + request.auth.uid + '_.*')) ||
+        // 2. Documentos existentes (resource != null): verificação estrita de titularidade (claimerId) ou autoria do item
         (resource != null && isAccountActive() && (
           existing().claimerId == request.auth.uid || 
           (exists(/databases/$(database)/documents/items/$(existing().itemId)) && 
            get(/databases/$(database)/documents/items/$(existing().itemId)).data.registeredByUserId == request.auth.uid)
         )) ||
+        // 3. Privilégios operacionais e administrativos
         (isServidor() && isAccountActive()) || 
         isAdmin()
       );

@@ -30,7 +30,7 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
     releaseDateTime: "30 de Outubro de 2026 • 19:35 BRT",
     type: "PATCH",
     isCurrent: true,
-    summary: "LOCALIZA+ v1.10.10 — Modernização minimalista da tela de detalhes do objeto (ItemDetailModal.tsx), incorporando paleta refinada em tema escuro (#0b0f17 / #0f172a), acentos institucionais (#00843D / #00A34D), hierarquia visual limpa e anti-slop, reorganização estruturada (cabeçalho, foto responsiva, jornada de tramitação, etiqueta QR e ações operacionais), preservando integralmente todas as funções, regras RBAC e persistência.",
+    summary: "LOCALIZA+ v1.10.10 — Modernização minimalista da tela de detalhes do objeto (ItemDetailModal.tsx) e correção cirúrgica das regras de segurança Firestore (firestore.rules): blindagem do acesso aos atributos do token contra exceções de chave ausente em autenticação Google, suporte a leitura transacional (allow get) em IDs determinísticos de reivindicações inexistentes na coleção /claims, preservação estrita do bloqueio contra intrusos e garantia de integridade RBAC de ponta a ponta.",
     additions: [
       {
         id: "v11010-add-minimalist-item-detail-ui",
@@ -48,10 +48,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "GERAL",
         tag: "Responsividade & Estilo",
       },
+      {
+        id: "v11010-fix-firestore-rules-claims-token-guard",
+        title: "Correção Cirúrgica de Custom Claims e Leitura Transacional de Reivindicações",
+        description: "Blindagem de 'hasAdminClaim()' e 'isIntruso()' em 'firestore.rules' com verificações seguras de presença de chave ('role' in token e 'admin' in token), eliminando falha de CEL que provocava HTTP 403 em contas Google sem custom claims, e garantia de leitura tolerante em 'allow get' na coleção 'claims' para leitura transacional de IDs determinísticos de documentos ainda não criados.",
+        module: "FIRESTORE",
+        tag: "Segurança & Firestore Rules",
+      },
     ],
     stats: {
       additionsCount: 1,
-      fixesCount: 1,
+      fixesCount: 2,
     },
   },
   {
