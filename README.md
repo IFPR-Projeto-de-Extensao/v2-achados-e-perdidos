@@ -4,12 +4,12 @@ Plataforma digital de gerenciamento de objetos perdidos e encontrados do Institu
 
 Desenvolvido pela equipe InovaIF, no contexto de um Projeto de Extensão do curso de Sistemas de Informação.
 
-""Projeto" (https://img.shields.io/badge/Projeto-Extensão-00843D)" (https://www.ifpr.edu.br/)
-""Versão" (https://img.shields.io/badge/Versão-1.10.10-blue)" (https://github.com/IFPR-Projeto-de-Extensao/v2-achados-e-perdidos)
-""React" (https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)" (https://react.dev/)
-""TypeScript" (https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)" (https://www.typescriptlang.org/)
-""Firebase" (https://img.shields.io/badge/Firebase-Backend-FFCA28?logo=firebase&logoColor=black)" (https://firebase.google.com/)
-""Vercel" (https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel)" (https://vercel.com/)
+[![Projeto](https://img.shields.io/badge/Projeto-Extensão-00843D)](https://www.ifpr.edu.br/)
+[![Versão](https://img.shields.io/badge/Versão-1.10.10-blue)](https://github.com/IFPR-Projeto-de-Extensao/v2-achados-e-perdidos)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Firebase](https://img.shields.io/badge/Firebase-Backend-FFCA28?logo=firebase&logoColor=black)](https://firebase.google.com/)
+[![Vercel](https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel)](https://vercel.com/)
 
 ---
 
