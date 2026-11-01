@@ -55,10 +55,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "FIRESTORE",
         tag: "Segurança & Firestore Rules",
       },
+      {
+        id: "v11010-fix-digital-signature-persistence",
+        title: "Correção Definitiva da Persistência da Assinatura Digital (Pointer Events & Canvas Lifecycle)",
+        description: "Eliminação do desaparecimento do traço ao soltar o dedo ou mouse em 'DigitalSignaturePad.tsx': desacoplamento completo do ciclo de vida do Canvas em relação a re-renderizações e callbacks do formulário pai via refs estáveis, implementação unificada de Pointer Events com 'setPointerCapture()' e 'touch-action: none', preservação integral do histórico acumulado de traços ('strokeHistory'), suporte a múltiplos traços e pontuações, e blindagem do redimensionamento responsivo sem perda de dados gráficos.",
+        module: "DOCUMENTOS",
+        tag: "Assinatura Digital & Canvas",
+      },
     ],
     stats: {
       additionsCount: 1,
-      fixesCount: 2,
+      fixesCount: 3,
     },
   },
   {
