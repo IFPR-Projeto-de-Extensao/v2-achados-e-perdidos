@@ -2,7 +2,7 @@ Localiza+ | Sistema de Achados e Perdidos
 
 Plataforma digital de gerenciamento de objetos perdidos e encontrados do Instituto Federal do Paraná – Campus Ivaiporã.
 
-Desenvolvido pela equipe InovaIF, no contexto de um Projeto de Extensão do curso de Sistemas de Informação..
+Desenvolvido pela equipe InovaIF, no contexto de um Projeto de Extensão do curso de Sistemas de Informação.
 
 [![Projeto](https://img.shields.io/badge/Projeto-Extensão-00843D)](https://www.ifpr.edu.br/)
 [![Versão](https://img.shields.io/badge/Versão-1.10.10-blue)](https://github.com/IFPR-Projeto-de-Extensao/v2-achados-e-perdidos)
