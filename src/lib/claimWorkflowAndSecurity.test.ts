@@ -323,8 +323,11 @@ class ClaimWorkflowSimulator {
       // Atomic transactional execution
       const existingDoc = this.db.claims.get(claimDocId);
       if (existingDoc) {
-        if (existingDoc.status === "PENDENTE" || existingDoc.status === "APROVADO") {
-          throw new Error("Já existe solicitação pendente ou aprovada para este objeto.");
+        if (existingDoc.status === "PENDENTE") {
+          throw new Error("Você já possui uma solicitação em análise para este objeto. Acompanhe o andamento em seu perfil.");
+        }
+        if (existingDoc.status === "APROVADO") {
+          throw new Error("Você já possui uma solicitação aprovada para este objeto. Acompanhe o andamento em seu perfil ou compareça à Secretaria/SEBAC para retirada.");
         }
         if (existingDoc.status === "CONCLUIDO") {
           throw new Error("Este pertence já foi retirado e sua solicitação encontra-se concluída.");

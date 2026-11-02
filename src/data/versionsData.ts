@@ -62,10 +62,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "DOCUMENTOS",
         tag: "Assinatura Digital & Canvas",
       },
+      {
+        id: "v11010-fix-claim-submission-duplicate-and-firestore-transaction",
+        title: "Correção Cirúrgica do Fluxo de Solicitação de Devolução (Prevenção de Sobrescrita e Tratamento Amigável)",
+        description: "Eliminação da tentativa de sobrescrita ilegal avaliada como 'allow update' no Firestore ao submeter solicitações para objetos já reivindicados: validação atômica dentro de 'runTransaction' interrompendo o fluxo sem executar 'transaction.set()' caso a reivindicação já se encontre 'PENDENTE' ou 'APROVADO'; retorno de mensagem amigável específica orientando o usuário a acompanhar em seu perfil; preservação estrita do 'createdAt' original e injeção de 'resubmittedAt' no reenvio de pedidos anteriormente 'CANCELADO' ou 'REJEITADO'; validação de integridade em tempo real do objeto no Firestore (/items/{itemId}) impedindo solicitações em objetos 'DEVOLVIDO' ou 'ENCERRADO'; e blindagem de 'isSubmittingClaim' no 'ItemDetailModal.tsx'.",
+        module: "FIRESTORE",
+        tag: "Claims & Transações Atômicas",
+      },
     ],
     stats: {
       additionsCount: 1,
-      fixesCount: 3,
+      fixesCount: 4,
     },
   },
   {

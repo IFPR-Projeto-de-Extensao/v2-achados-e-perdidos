@@ -1372,18 +1372,32 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
     try {
       setIsSubmittingClaim(true);
-      await submitClaim(currentItem.id, {
+      const result = await submitClaim(currentItem.id, {
         distinctiveFeatures: claimDistinctiveFeatures.trim(),
         additionalInfo: claimAdditionalInfo.trim() || undefined,
       });
+
+      if (result && !result.success) {
+        // Mensagem específica já foi emitida pelo submitClaim
+        setClaimModalOpen(false);
+        return;
+      }
+
       vibrateSuccess();
-      addToast("Solicitação de devolução registrada com sucesso! A Secretaria avaliará suas informações.", "success");
+      addToast(result?.message || "Solicitação de devolução registrada com sucesso! A Secretaria avaliará suas informações.", "success");
       setClaimModalOpen(false);
       setClaimDistinctiveFeatures("");
       setClaimAdditionalInfo("");
     } catch (err: any) {
       console.error("[handleClaimSubmit] Erro:", err);
-      addToast(err?.message || "Erro ao registrar solicitação de devolução.", "error");
+      if (
+        !err?.message?.includes("já possui uma solicitação") &&
+        !err?.message?.includes("Solicitação já existente") &&
+        !err?.message?.includes("indisponível") &&
+        !err?.message?.includes("não recebe novas")
+      ) {
+        addToast(err?.message || "Erro ao registrar solicitação de devolução.", "error");
+      }
     } finally {
       setIsSubmittingClaim(false);
     }

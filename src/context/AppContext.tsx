@@ -111,6 +111,11 @@ import {
   setupFCMForegroundListener,
 } from "../lib/fcm";
 import { isGenericAvatar, getSafeAvatarUrl, isCustomUploadedAvatar, getGoogleProviderPhoto } from "../lib/avatarUtils";
+import {
+  DuplicateClaimError,
+  ItemUnavailableError,
+  ClaimStateNotResubmittableError,
+} from "../lib/claimErrors";
 
 export interface InstitutionalRoleDetermination {
   role: UserRole;
@@ -4842,9 +4847,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         (c) => c.itemId === itemId && c.claimerId === effectiveUserId && (c.status === "PENDENTE" || c.status === "APROVADO")
       );
       if (localDuplicate) {
-        const statusLabel = localDuplicate.status === "APROVADO" ? "aprovada" : "em análise";
-        addToast(`Você já possui uma solicitação ${statusLabel} para este pertence. Acompanhe em seu perfil.`, "warning");
-        throw new Error(`Solicitação já existente com status '${localDuplicate.status}'.`);
+        const isApproved = localDuplicate.status === "APROVADO";
+        const message = isApproved
+          ? "Você já possui uma solicitação aprovada para este objeto. Acompanhe o andamento em seu perfil ou compareça à Secretaria/SEBAC para retirada."
+          : "Você já possui uma solicitação em análise para este objeto. Acompanhe o andamento em seu perfil.";
+        addToast(message, "warning");
+        return {
+          success: false,
+          claimId: localDuplicate.id,
+          message,
+        };
       }
 
       const compositeAnswer = additionalText
@@ -4873,20 +4885,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       // Execução transacional atômica no Firestore: previne duplicidade entre abas e dispositivos
       await runTransaction(db, async (transaction) => {
+        // 1. Validação de integridade do objeto no Firestore (sem presumir estados e sem confiar exclusivamente no cache)
+        const itemDocRef = doc(db, "items", itemId);
+        const itemSnap = await transaction.get(itemDocRef);
+        if (!itemSnap.exists()) {
+          throw new ItemUnavailableError("Objeto não encontrado no banco de dados do campus.");
+        }
+        const itemFirestoreData = itemSnap.data();
+        if (itemFirestoreData.status === "DEVOLVIDO" || itemFirestoreData.status === "ENCERRADO") {
+          throw new ItemUnavailableError("Este objeto já foi devolvido ou encerrado e não recebe novas solicitações.");
+        }
+
+        // 2. Consulta ao documento existente da Claim
         const docSnap = await transaction.get(claimDocRef);
         if (docSnap.exists()) {
           const existingData = docSnap.data() as ItemClaim;
-          if (existingData.status === "PENDENTE" || existingData.status === "APROVADO") {
-            const statusLabel = existingData.status === "APROVADO" ? "aprovada" : "em análise";
-            throw new Error(`Você já possui uma solicitação ${statusLabel} para este pertence. Acompanhe em seu perfil.`);
+          const currentStatus = (existingData.status || "").toUpperCase();
+
+          // 3 & 4. Se existir com status PENDENTE, interromper a operação sem executar transaction.set()
+          if (currentStatus === "PENDENTE") {
+            throw new DuplicateClaimError(
+              "PENDENTE",
+              "Você já possui uma solicitação em análise para este objeto. Acompanhe o andamento em seu perfil."
+            );
           }
-          if (existingData.status === "CONCLUIDO") {
-            throw new Error("Este pertence já foi retirado e sua solicitação encontra-se concluída.");
+
+          // 5. Se existir com status APROVADO, impedir nova solicitação
+          if (currentStatus === "APROVADO") {
+            throw new DuplicateClaimError(
+              "APROVADO",
+              "Você já possui uma solicitação aprovada para este objeto. Acompanhe o andamento em seu perfil ou compareça à Secretaria/SEBAC para retirada."
+            );
           }
-          // Preserva estritamente a data original de criação e autoria no reenvio
-          newClaim.createdAt = existingData.createdAt;
-          newClaim.resubmittedAt = new Date().toISOString();
+
+          // 6. Se estiver CANCELADO ou REJEITADO, permitir o reenvio conforme as regras existentes
+          if (currentStatus === "CANCELADO" || currentStatus === "REJEITADO") {
+            // 7. Preservar exatamente o createdAt original durante o reenvio
+            newClaim.createdAt = existingData.createdAt;
+            // 8. Manter o registro de resubmittedAt
+            newClaim.resubmittedAt = new Date().toISOString();
+          } else {
+            // 9. Não permitir que estados desconhecidos sejam sobrescritos automaticamente
+            if (currentStatus === "CONCLUIDO") {
+              throw new ClaimStateNotResubmittableError(
+                "Este pertence já foi retirado e sua solicitação encontra-se concluída."
+              );
+            }
+            throw new ClaimStateNotResubmittableError(
+              `Esta solicitação encontra-se no estado '${existingData.status}' e não pode ser reenviada.`
+            );
+          }
         }
+
+        // Executa transaction.set SOMENTE para criação nova ou reenvio válido de CANCELADO/REJEITADO
         transaction.set(claimDocRef, sanitizeFirestoreData(newClaim));
       });
 
@@ -4918,11 +4969,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         message: "Solicitação de devolução enviada com sucesso para análise da Secretaria!",
       };
     } catch (e: any) {
+      if (e instanceof DuplicateClaimError || e?.name === "DuplicateClaimError") {
+        addToast(e.message, "warning");
+        return {
+          success: false,
+          claimId: claimDocId,
+          message: e.message,
+        };
+      }
+      if (e instanceof ItemUnavailableError || e?.name === "ItemUnavailableError") {
+        addToast(e.message, "warning");
+        return {
+          success: false,
+          message: e.message,
+        };
+      }
+      if (e instanceof ClaimStateNotResubmittableError || e?.name === "ClaimStateNotResubmittableError") {
+        addToast(e.message, "warning");
+        return {
+          success: false,
+          claimId: claimDocId,
+          message: e.message,
+        };
+      }
       if (e?.message?.includes("já possui uma solicitação") || e?.message?.includes("Solicitação já existente")) {
         addToast(e.message, "warning");
-      } else if (!e?.message?.includes("indisponível")) {
-        handleFirestoreError(e, OperationType.WRITE, `claims/${claimDocId}`);
+        return {
+          success: false,
+          claimId: claimDocId,
+          message: e.message,
+        };
       }
+      if (e?.message?.includes("não recebe novas solicitações") || e?.message?.includes("Objeto não encontrado")) {
+        addToast(e.message, "warning");
+        return {
+          success: false,
+          message: e.message,
+        };
+      }
+
+      // Preservar o tratamento de erros reais do Firebase para novas tentativas não autorizadas
+      handleFirestoreError(e, OperationType.WRITE, `claims/${claimDocId}`);
       throw e;
     } finally {
       inFlightClaimSubmissionsRef.current.delete(flightKey);
