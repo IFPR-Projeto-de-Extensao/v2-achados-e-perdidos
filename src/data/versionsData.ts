@@ -76,10 +76,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "AUTH",
         tag: "RBAC & Identidade Institucional",
       },
+      {
+        id: "v11010-fix-users-control-fields-deletion-hardening",
+        title: "Endurecimento da Integridade dos Campos de Controle em /users/{userId} contra Exclusão Parcial",
+        description: "Blindagem de 'allow update' em 'firestore.rules' contra a exclusão maliciosa de campos de controle via 'FieldValue.delete()': eliminação da condição permissiva '!('status' in incoming())', exigindo expressamente que documentos com 'status', 'approvalStatus', 'admin', 'suspendedUntil', 'blockExpiresAt' e 'reputationScore' preservem a integridade e igualdade exata desses campos durante qualquer operação de escrita; suporte compatível a documentos legados sem perda de integridade; proteção estrita contra auto-desbloqueio de contas suspensas e garantia de que nenhum usuário não-administrador consiga omitir ou alterar privilégios institucionais.",
+        module: "FIRESTORE",
+        tag: "Segurança & Firestore Rules",
+      },
     ],
     stats: {
       additionsCount: 1,
-      fixesCount: 5,
+      fixesCount: 6,
     },
   },
   {

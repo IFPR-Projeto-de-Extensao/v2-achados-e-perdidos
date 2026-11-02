@@ -252,10 +252,10 @@ service cloud.firestore {
           (!('admin' in incoming()) || incoming().admin == false) && 
           (!('admin' in existing()) || existing().admin == false) && 
           (incoming().approvalStatus == existing().approvalStatus) && 
-          (!('status' in incoming()) || incoming().status == existing().status) && 
-          (!('suspendedUntil' in incoming()) || incoming().suspendedUntil == existing().suspendedUntil) && 
-          (!('blockExpiresAt' in incoming()) || incoming().blockExpiresAt == existing().blockExpiresAt) && 
-          (!('reputationScore' in incoming()) || incoming().reputationScore == existing().reputationScore) && 
+          (('status' in existing() && incoming().status == existing().status) || (!('status' in existing()) && (!('status' in incoming()) || incoming().status == 'active'))) && 
+          (('suspendedUntil' in existing() && incoming().suspendedUntil == existing().suspendedUntil) || (!('suspendedUntil' in existing()) && !('suspendedUntil' in incoming()))) && 
+          (('blockExpiresAt' in existing() && incoming().blockExpiresAt == existing().blockExpiresAt) || (!('blockExpiresAt' in existing()) && !('blockExpiresAt' in incoming()))) && 
+          (('reputationScore' in existing() && incoming().reputationScore == existing().reputationScore) || (!('reputationScore' in existing()) && (!('reputationScore' in incoming()) || incoming().reputationScore == 100))) && 
           (
             // Promoção para ALUNO (requer e-mail institucional de estudante verificado)
             (incoming().role == 'ALUNO' && isInstitutionalStudentEmail()) || 
@@ -273,10 +273,10 @@ service cloud.firestore {
           incoming().role == existing().role && 
           (!('admin' in incoming()) || incoming().admin == existing().admin) && 
           (incoming().approvalStatus == existing().approvalStatus) && 
-          (!('status' in incoming()) || incoming().status == existing().status) && 
-          (!('suspendedUntil' in incoming()) || incoming().suspendedUntil == existing().suspendedUntil) && 
-          (!('blockExpiresAt' in incoming()) || incoming().blockExpiresAt == existing().blockExpiresAt) && 
-          (!('reputationScore' in incoming()) || incoming().reputationScore == existing().reputationScore)
+          (('status' in existing() && incoming().status == existing().status) || (!('status' in existing()) && (!('status' in incoming()) || incoming().status == 'active'))) && 
+          (('suspendedUntil' in existing() && incoming().suspendedUntil == existing().suspendedUntil) || (!('suspendedUntil' in existing()) && !('suspendedUntil' in incoming()))) && 
+          (('blockExpiresAt' in existing() && incoming().blockExpiresAt == existing().blockExpiresAt) || (!('blockExpiresAt' in existing()) && !('blockExpiresAt' in incoming()))) && 
+          (('reputationScore' in existing() && incoming().reputationScore == existing().reputationScore) || (!('reputationScore' in existing()) && (!('reputationScore' in incoming()) || incoming().reputationScore == 100)))
         )
       );
 

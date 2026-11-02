@@ -258,10 +258,18 @@ class InstitutionalSecuritySimulator {
     const noAdminClaimIncoming = !("admin" in incomingData) || incomingData.admin === false;
     const noAdminClaimExisting = !("admin" in existingData) || existingData.admin === false;
     const approvalStatusUnchanged = incomingData.approvalStatus === existingData.approvalStatus;
-    const statusUnchanged = !("status" in incomingData) || incomingData.status === existingData.status;
-    const suspendedUntilUnchanged = !("suspendedUntil" in incomingData) || incomingData.suspendedUntil === existingData.suspendedUntil;
-    const blockExpiresAtUnchanged = !("blockExpiresAt" in incomingData) || incomingData.blockExpiresAt === existingData.blockExpiresAt;
-    const reputationScoreUnchanged = !("reputationScore" in incomingData) || incomingData.reputationScore === existingData.reputationScore;
+    const statusUnchanged =
+      ("status" in existingData && incomingData.status === existingData.status) ||
+      (!("status" in existingData) && (!("status" in incomingData) || incomingData.status === "active"));
+    const suspendedUntilUnchanged =
+      ("suspendedUntil" in existingData && incomingData.suspendedUntil === existingData.suspendedUntil) ||
+      (!("suspendedUntil" in existingData) && !("suspendedUntil" in incomingData));
+    const blockExpiresAtUnchanged =
+      ("blockExpiresAt" in existingData && incomingData.blockExpiresAt === existingData.blockExpiresAt) ||
+      (!("blockExpiresAt" in existingData) && !("blockExpiresAt" in incomingData));
+    const reputationScoreUnchanged =
+      ("reputationScore" in existingData && incomingData.reputationScore === existingData.reputationScore) ||
+      (!("reputationScore" in existingData) && (!("reputationScore" in incomingData) || incomingData.reputationScore === 100));
 
     const isStudentPromotion = incomingData.role === "ALUNO" && this.isInstitutionalStudentEmail(auth);
     const isStaffPromotion = incomingData.role === "SERVIDOR" && this.isInstitutionalStaffEmail(auth);
@@ -989,5 +997,210 @@ describe("LOCALIZA+ v1.10.10 — Suite de Homologação: Identidade Instituciona
     expect(rulesContent).toContain("(incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail())");
     // Confirmação de que a promoção não é acoplada a isAccountActive() circular
     expect(rulesContent).toContain("Promoção institucional legítima (INTRUSO -> ALUNO ou SERVIDOR)");
+    // Confirmação do endurecimento de integridade contra exclusão de status
+    expect(rulesContent).toContain("('status' in existing() && incoming().status == existing().status)");
+    // Confirmação do endurecimento contra exclusão de suspensão
+    expect(rulesContent).toContain("('suspendedUntil' in existing() && incoming().suspendedUntil == existing().suspendedUntil)");
+  });
+
+  // ==========================================
+  // 15. Endurecimento Final: Proteção contra Exclusão de Campos de Controle
+  // ==========================================
+  describe("15. Proteção contra Exclusão de Campos de Controle em /users/{userId}", () => {
+    let sim: InstitutionalSecuritySimulator;
+    const studentUid = "aluno_hardening_123";
+    const studentEmail = "estudante.teste@estudantes.ifpr.edu.br";
+    const staffUid = "servidor_hardening_456";
+    const staffEmail = "docente.teste@ifpr.edu.br";
+
+    const studentAuth: MockAuthToken = {
+      uid: studentUid,
+      email: studentEmail,
+      email_verified: true,
+    };
+
+    const staffAuth: MockAuthToken = {
+      uid: staffUid,
+      email: staffEmail,
+      email_verified: true,
+    };
+
+    const baseStudentDoc: MockFirestoreUserDoc = {
+      id: studentUid,
+      email: studentEmail,
+      name: "Aluno Teste",
+      role: "ALUNO",
+      status: "active",
+      approvalStatus: "APROVADO",
+      admin: false,
+    };
+
+    const baseStaffDoc: MockFirestoreUserDoc = {
+      id: staffUid,
+      email: staffEmail,
+      name: "Servidor Teste",
+      role: "SERVIDOR",
+      status: "active",
+      approvalStatus: "PENDENTE",
+      admin: false,
+    };
+
+    beforeEach(() => {
+      sim = new InstitutionalSecuritySimulator();
+      sim.usersDb.set(studentUid, { ...baseStudentDoc });
+      sim.usersDb.set(staffUid, { ...baseStaffDoc });
+    });
+
+    // 1. Exclusão de "status" por ALUNO
+    it("1. Exclusão de 'status' por ALUNO (via FieldValue.delete) é BLOQUEADA", () => {
+      const incomingWithoutStatus = { ...baseStudentDoc };
+      delete (incomingWithoutStatus as any).status;
+
+      const res = sim.allowUpdateUser(studentAuth, studentUid, baseStudentDoc, incomingWithoutStatus);
+      expect(res.allowed).toBe(false);
+    });
+
+    // 2. Exclusão de "status" por SERVIDOR
+    it("2. Exclusão de 'status' por SERVIDOR (via FieldValue.delete) é BLOQUEADA", () => {
+      const incomingWithoutStatus = { ...baseStaffDoc };
+      delete (incomingWithoutStatus as any).status;
+
+      const res = sim.allowUpdateUser(staffAuth, staffUid, baseStaffDoc, incomingWithoutStatus);
+      expect(res.allowed).toBe(false);
+    });
+
+    // 3. Exclusão de "approvalStatus"
+    it("3. Exclusão de 'approvalStatus' por qualquer usuário é BLOQUEADA", () => {
+      const incomingWithoutApproval = { ...baseStudentDoc };
+      delete (incomingWithoutApproval as any).approvalStatus;
+
+      const res = sim.allowUpdateUser(studentAuth, studentUid, baseStudentDoc, incomingWithoutApproval);
+      expect(res.allowed).toBe(false);
+    });
+
+    // 4. Exclusão de "role"
+    it("4. Exclusão de 'role' é BLOQUEADA", () => {
+      const incomingWithoutRole = { ...baseStudentDoc };
+      delete (incomingWithoutRole as any).role;
+
+      const res = sim.allowUpdateUser(studentAuth, studentUid, baseStudentDoc, incomingWithoutRole);
+      expect(res.allowed).toBe(false);
+    });
+
+    // 5. Exclusão de "admin" e prevenção de escalonamento
+    it("5. Exclusão de 'admin' e tentativa de injetar admin: true são rigorosamente controladas", () => {
+      const maliciousAdminEscalation = {
+        ...baseStudentDoc,
+        admin: true,
+      };
+
+      const res = sim.allowUpdateUser(studentAuth, studentUid, baseStudentDoc, maliciousAdminEscalation);
+      expect(res.allowed).toBe(false);
+
+      // Em Branch 1 (promoção de INTRUSO), a injeção de admin: true também é BLOQUEADA
+      const intrusoUid = "intruso_admin_exploit";
+      const intrusoEmail = "intruso@estudantes.ifpr.edu.br";
+      const intrusoAuth: MockAuthToken = { uid: intrusoUid, email: intrusoEmail, email_verified: true };
+      const intrusoDoc: MockFirestoreUserDoc = { id: intrusoUid, email: intrusoEmail, role: "INTRUSO", status: "active", approvalStatus: "APROVADO", admin: false };
+      sim.usersDb.set(intrusoUid, intrusoDoc);
+
+      const maliciousPromotion = { ...intrusoDoc, role: "ALUNO" as const, admin: true };
+      const promoRes = sim.allowUpdateUser(intrusoAuth, intrusoUid, intrusoDoc, maliciousPromotion);
+      expect(promoRes.allowed).toBe(false);
+    });
+
+    // 6. Alteração de "role" para ADMIN
+    it("6. Alteração de 'role' para ADMIN por usuário comum é BLOQUEADA", () => {
+      const maliciousPayload = {
+        ...baseStudentDoc,
+        role: "ADMIN" as any,
+        admin: true,
+      };
+
+      const res = sim.allowUpdateUser(studentAuth, studentUid, baseStudentDoc, maliciousPayload);
+      expect(res.allowed).toBe(false);
+    });
+
+    // 7. Autopromoção de SERVIDOR PENDENTE
+    it("7. Autopromoção de SERVIDOR PENDENTE para APROVADO é BLOQUEADA", () => {
+      const maliciousStaffPayload = {
+        ...baseStaffDoc,
+        approvalStatus: "APROVADO" as any,
+      };
+
+      const res = sim.allowUpdateUser(staffAuth, staffUid, baseStaffDoc, maliciousStaffPayload);
+      expect(res.allowed).toBe(false);
+    });
+
+    // 8. Promoção legítima de INTRUSO para ALUNO
+    it("8. Promoção legítima de INTRUSO para ALUNO é PERMITIDA", () => {
+      const intrusoUid = "intruso_aluno_valid";
+      const intrusoEmail = "novo.estudante@estudantes.ifpr.edu.br";
+      const intrusoAuth: MockAuthToken = {
+        uid: intrusoUid,
+        email: intrusoEmail,
+        email_verified: true,
+      };
+      const existingIntrusoDoc: MockFirestoreUserDoc = {
+        id: intrusoUid,
+        email: intrusoEmail,
+        name: "Novo Estudante",
+        role: "INTRUSO",
+        status: "active",
+        approvalStatus: "APROVADO",
+        admin: false,
+      };
+      sim.usersDb.set(intrusoUid, existingIntrusoDoc);
+
+      const legitimatePromotion = {
+        ...existingIntrusoDoc,
+        role: "ALUNO" as const,
+      };
+
+      const res = sim.allowUpdateUser(intrusoAuth, intrusoUid, existingIntrusoDoc, legitimatePromotion);
+      expect(res.allowed).toBe(true);
+    });
+
+    // 9. Promoção legítima de INTRUSO para SERVIDOR
+    it("9. Promoção legítima de INTRUSO para SERVIDOR é PERMITIDA com approvalStatus PENDENTE", () => {
+      const intrusoUid = "intruso_servidor_valid";
+      const intrusoEmail = "novo.docente@ifpr.edu.br";
+      const intrusoAuth: MockAuthToken = {
+        uid: intrusoUid,
+        email: intrusoEmail,
+        email_verified: true,
+      };
+      const existingIntrusoDoc: MockFirestoreUserDoc = {
+        id: intrusoUid,
+        email: intrusoEmail,
+        name: "Novo Docente",
+        role: "INTRUSO",
+        status: "active",
+        approvalStatus: "PENDENTE",
+        admin: false,
+      };
+      sim.usersDb.set(intrusoUid, existingIntrusoDoc);
+
+      const legitimatePromotion = {
+        ...existingIntrusoDoc,
+        role: "SERVIDOR" as const,
+      };
+
+      const res = sim.allowUpdateUser(intrusoAuth, intrusoUid, existingIntrusoDoc, legitimatePromotion);
+      expect(res.allowed).toBe(true);
+    });
+
+    // 10. Atualização legítima de campos comuns do perfil
+    it("10. Atualização legítima de campos comuns do perfil (nome, telefone, avatar) é PERMITIDA", () => {
+      const legitimateProfileUpdate = {
+        ...baseStudentDoc,
+        name: "Aluno Nome Atualizado",
+        phone: "(43) 98888-7777",
+        avatarUrl: "https://example.com/avatar.png",
+      };
+
+      const res = sim.allowUpdateUser(studentAuth, studentUid, baseStudentDoc, legitimateProfileUpdate);
+      expect(res.allowed).toBe(true);
+    });
   });
 });
