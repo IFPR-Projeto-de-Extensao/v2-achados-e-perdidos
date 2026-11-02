@@ -103,13 +103,17 @@ service cloud.firestore {
              (isRootAdmin() || (isAccountActive() && (hasAdminClaim() || isDocAdmin())));
     }
 
-    function isDocServidor() {
+    function isDocServidorIdentity() {
       return isSignedIn() && 
              isEmailVerified() &&
-             isAccountActive() &&
              (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
              exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'SERVIDOR' &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'SERVIDOR';
+    }
+
+    function isDocServidor() {
+      return isDocServidorIdentity() && 
+             isAccountActive() &&
              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.approvalStatus == 'APROVADO';
     }
 
@@ -129,19 +133,14 @@ service cloud.firestore {
 
     function isInstitutionalStudentEmail() {
       return isSignedIn() && isEmailVerified() && ('email' in request.auth.token) && request.auth.token.email != null && (
-        request.auth.token.email.matches('.*@estudantes[.]ifpr[.]edu[.]br') ||
-        request.auth.token.email.matches('.*@estudante[.]ifpr[.]edu[.]br') ||
-        request.auth.token.email.matches('.*@aluno[.]ifpr[.]edu[.]br')
+        request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*(estudantes|estudante|aluno)[.]ifpr[.]edu[.]br')
       );
     }
 
     function isInstitutionalStaffEmail() {
       return isSignedIn() && isEmailVerified() && ('email' in request.auth.token) && request.auth.token.email != null && (
-        request.auth.token.email.matches('.*@ifpr[.]edu[.]br') &&
-        !request.auth.token.email.matches('.*@aluno[.]ifpr[.]edu[.]br') &&
-        !request.auth.token.email.matches('.*@estudante[.]ifpr[.]edu[.]br') &&
-        !request.auth.token.email.matches('.*@estudantes[.]ifpr[.]edu[.]br') &&
-        !request.auth.token.email.matches('.*@escola[.]ifpr[.]edu[.]br')
+        request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*ifpr[.]edu[.]br') &&
+        !request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*(aluno|estudante|estudantes|escola)[.]ifpr[.]edu[.]br')
       );
     }
 
@@ -156,11 +155,9 @@ service cloud.firestore {
         !isEmailVerified() ||
         ('role' in request.auth.token && request.auth.token.role == 'INTRUSO') ||
         (isDocIntruso() && !isRootAdmin()) ||
-        (!isAdmin() && !isServidor() && !isDocAluno() && ('email' in request.auth.token) && request.auth.token.email != null && (
-          !request.auth.token.email.matches('.*@estudantes[.]ifpr[.]edu[.]br') &&
-          !request.auth.token.email.matches('.*@estudante[.]ifpr[.]edu[.]br') &&
-          !request.auth.token.email.matches('.*@aluno[.]ifpr[.]edu[.]br') &&
-          !request.auth.token.email.matches('.*@ifpr[.]edu[.]br')
+        (!isAdmin() && !isServidor() && !isDocAluno() && !isDocServidorIdentity() && ('email' in request.auth.token) && request.auth.token.email != null && (
+          !isInstitutionalStudentEmail() &&
+          !isInstitutionalStaffEmail()
         ))
       );
     }
@@ -231,32 +228,57 @@ service cloud.firestore {
 
       // 4. Update: 
       // - Admins can update any user profile (roles, approvals, status: active, suspended, banned)
-      // - Non-admin users can ONLY update their OWN profile if account is active (isAccountActive()):
-      //   * Can keep existing role OR upgrade from INTRUSO to ALUNO/SERVIDOR upon verified institutional email
-      //   * Cannot escalate to ADMIN under any circumstances
-      //   * Cannot inject admin=true
-      //   * Cannot change approvalStatus arbitrarily
-      //   * Cannot change email (incoming.email == existing.email)
-      //   * Cannot change ID (incoming.id == userId)
-      //   * Cannot change status / suspension / reputation fields (anti-tampering)
-      allow update: if isAdmin() ||
-                       (
-                         isSignedIn() && 
-                         isAccountActive() &&
-                         request.auth.uid == userId && 
-                         incoming().id == userId &&
-                         incoming().email == existing().email &&
-                         (
-                           incoming().role == existing().role ||
-                           (existing().role == 'INTRUSO' && incoming().role == 'ALUNO' && isInstitutionalStudentEmail()) ||
-                           (existing().role == 'INTRUSO' && incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail())
-                         ) &&
-                         (!('admin' in incoming()) || incoming().admin == existing().admin) &&
-                         (incoming().approvalStatus == existing().approvalStatus) &&
-                         (!('status' in incoming()) || incoming().status == existing().status) &&
-                         (!('suspendedUntil' in incoming()) || incoming().suspendedUntil == existing().suspendedUntil) &&
-                         (!('reputationScore' in incoming()) || incoming().reputationScore == existing().reputationScore)
-                       );
+      // - Legitimate Institutional Promotion (INTRUSO -> ALUNO / SERVIDOR):
+      //   * Eliminates circular dependency where an unpromoted INTRUSO was blocked by isAccountActive()
+      //   * Requires authenticated user updating strictly their own profile
+      //   * Requires existing doc to have role == 'INTRUSO'
+      //   * Requires verified institutional email matching student or staff domains
+      //   * Enforces immutability of id, email, approvalStatus, status, admin, suspension, reputation
+      // - Legitimate Self-Profile Updates (Active Non-Admin users):
+      //   * Account must be active (isAccountActive())
+      //   * Role is immutable (incoming.role == existing.role)
+      //   * Cannot escalate to admin (incoming.admin == existing.admin == false)
+      //   * Cannot change approvalStatus, email, id, status, suspension, reputation
+      allow update: if isAdmin() || (
+        // Branch 1: Promoção institucional legítima (INTRUSO -> ALUNO ou SERVIDOR)
+        (
+          isSignedIn() && 
+          request.auth.uid == userId && 
+          incoming().id == userId && 
+          incoming().email == existing().email && 
+          incoming().email == request.auth.token.email && 
+          existing().role == 'INTRUSO' && 
+          !isAccountBlocked() && 
+          (!('admin' in incoming()) || incoming().admin == false) && 
+          (!('admin' in existing()) || existing().admin == false) && 
+          (incoming().approvalStatus == existing().approvalStatus) && 
+          (!('status' in incoming()) || incoming().status == existing().status) && 
+          (!('suspendedUntil' in incoming()) || incoming().suspendedUntil == existing().suspendedUntil) && 
+          (!('blockExpiresAt' in incoming()) || incoming().blockExpiresAt == existing().blockExpiresAt) && 
+          (!('reputationScore' in incoming()) || incoming().reputationScore == existing().reputationScore) && 
+          (
+            // Promoção para ALUNO (requer e-mail institucional de estudante verificado)
+            (incoming().role == 'ALUNO' && isInstitutionalStudentEmail()) || 
+            // Promoção para SERVIDOR (requer e-mail institucional de servidor e preserva approvalStatus PENDENTE)
+            (incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail())
+          )
+        ) ||
+        // Branch 2: Atualizações normais de perfil próprio por usuários com conta ativa
+        (
+          isSignedIn() && 
+          isAccountActive() && 
+          request.auth.uid == userId && 
+          incoming().id == userId && 
+          incoming().email == existing().email && 
+          incoming().role == existing().role && 
+          (!('admin' in incoming()) || incoming().admin == existing().admin) && 
+          (incoming().approvalStatus == existing().approvalStatus) && 
+          (!('status' in incoming()) || incoming().status == existing().status) && 
+          (!('suspendedUntil' in incoming()) || incoming().suspendedUntil == existing().suspendedUntil) && 
+          (!('blockExpiresAt' in incoming()) || incoming().blockExpiresAt == existing().blockExpiresAt) && 
+          (!('reputationScore' in incoming()) || incoming().reputationScore == existing().reputationScore)
+        )
+      );
 
       // 5. Delete: Only Admin can delete accounts (and cannot delete their own active account)
       allow delete: if isAdmin() && request.auth.uid != userId;

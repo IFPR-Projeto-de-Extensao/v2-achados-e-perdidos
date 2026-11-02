@@ -2163,8 +2163,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ) {
           try {
             await setDoc(uidRef, updatedUser, { merge: true });
-          } catch (writeErr) {
-            console.warn("Aviso ao sincronizar campos pendentes no perfil:", writeErr);
+          } catch (writeErr: any) {
+            console.error("[SYNC_PROFILE_ERROR] Falha na persistência da atualização/promoção institucional do perfil:", {
+              userId: fbUser.uid,
+              attemptedRole: targetRole,
+              currentDbRole: existingData.role,
+              error: writeErr?.message || writeErr,
+            });
+            if (existingData.role !== targetRole) {
+              addToast("Aviso: Não foi possível sincronizar sua promoção institucional no banco de dados. Uma nova tentativa será realizada na próxima autenticação.", "warning");
+              // Preserva no estado local o papel real registrado no banco de dados para não falsificar autorizações locais
+              return { ...updatedUser, role: existingData.role };
+            }
           }
         }
         return updatedUser;
@@ -2242,7 +2252,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (legacyDoc.id !== fbUser.uid) {
               await deleteDoc(doc(db, "users", legacyDoc.id));
             }
-          } catch (_) {}
+          } catch (migWriteErr: any) {
+            console.error("[MIGRATE_PROFILE_ERROR] Falha na migração do perfil por e-mail:", {
+              email: userEmail,
+              attemptedRole: targetRole,
+              error: migWriteErr?.message || migWriteErr,
+            });
+            if (legacyData.role !== targetRole) {
+              addToast("Aviso: Falha ao persistir a migração de perfil institucional.", "warning");
+              return { ...migratedUser, role: legacyData.role };
+            }
+          }
           return migratedUser;
         }
       } catch (e: any) {
@@ -4796,6 +4816,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isAccountBlocked(currentUser)) {
       addToast("Ação Bloqueada: Sua conta institucional está temporariamente suspensa ou banida.", "error");
       throw new Error("Conta suspensa ou banida.");
+    }
+
+    if (!auth.currentUser.emailVerified && effectiveUserEmail !== "paulocauan39@gmail.com") {
+      addToast("Ação Bloqueada: Confirme a verificação do seu e-mail institucional antes de solicitar a devolução de objetos.", "warning");
+      throw new Error("E-mail não verificado: Confirme o link enviado para seu e-mail institucional.");
+    }
+
+    if (effectiveUserRole === "INTRUSO" && effectiveUserEmail !== "paulocauan39@gmail.com") {
+      addToast("Ação Restrita: Apenas estudantes (ALUNO) e servidores (SERVIDOR/TAE) com vínculo institucional ativo podem solicitar devolução de pertences.", "warning");
+      throw new Error("Usuários externos (INTRUSO) não possuem permissão para solicitar devolução de pertences.");
     }
 
     // Normalização das características declaradas

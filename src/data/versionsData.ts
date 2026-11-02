@@ -69,10 +69,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "FIRESTORE",
         tag: "Claims & Transações Atômicas",
       },
+      {
+        id: "v11010-fix-institutional-identity-circular-dependency-and-authorization",
+        title: "Correção Estrutural de Identidade Institucional e Eliminação do Ciclo de Autopromoção RBAC",
+        description: "Resolução definitiva do bloqueio de solicitações de devolução para ALUNO e SERVIDOR/TAE: eliminação do ciclo de dependência vicioso entre 'isAccountActive()' e a promoção de 'INTRUSO' para papéis institucionais em 'firestore.rules' (/users/{userId}), permitindo a atualização de perfil exclusivamente para usuários autenticados com e-mail institucional verificado preservando campos críticos (id, email, admin, approvalStatus, status, suspensão e reputação); expansão do reconhecimento de e-mails institucionais com suporte completo a subdomínios de campus (ex: @estudantes.ifpr.edu.br, @aluno.ifpr.edu.br, @ivaipora.ifpr.edu.br); dissociação formal entre identidade institucional de servidor ('isDocServidorIdentity') e privilégios operacionais ('isDocServidor' / 'isServidor' condicionados a 'approvalStatus == APROVADO'), garantindo que servidores pendentes possam solicitar devoluções como cidadãos sem adquirir permissões administrativas indevidas; tratamento defensivo no 'AppContext.tsx' eliminando falhas silenciosas na persistência de perfil e adicionando validações no cliente contra tentativas de envio por contas não verificadas ou intrusas.",
+        module: "AUTH",
+        tag: "RBAC & Identidade Institucional",
+      },
     ],
     stats: {
       additionsCount: 1,
-      fixesCount: 4,
+      fixesCount: 5,
     },
   },
   {
