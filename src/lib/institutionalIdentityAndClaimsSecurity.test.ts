@@ -251,8 +251,8 @@ class InstitutionalSecuritySimulator {
     // Branch 2: Promoção Institucional Legítima (INTRUSO -> ALUNO ou SERVIDOR)
     const isSelf = auth.uid === userId;
     const isIdMatch = incomingData.id === userId;
-    const isEmailUnchanged = incomingData.email === existingData.email;
-    const isEmailTokenMatch = incomingData.email === auth.email;
+    const isEmailUnchanged = incomingData.email?.toLowerCase() === existingData.email?.toLowerCase();
+    const isEmailTokenMatch = incomingData.email?.toLowerCase() === auth.email?.toLowerCase();
     const isCurrentlyIntruso = existingData.role === "INTRUSO";
     const isNotBlocked = !this.isAccountBlocked(auth, requestTime);
     const noAdminClaimIncoming = !("admin" in incomingData) || incomingData.admin === false;
@@ -310,6 +310,39 @@ class InstitutionalSecuritySimulator {
       suspendedUntilUnchanged &&
       blockExpiresAtUnchanged &&
       reputationScoreUnchanged
+    ) {
+      return { allowed: true };
+    }
+
+    // Branch 4: Inicialização de status para perfis institucionais legados sem o campo status (affectedKeys hasOnly status)
+    const isLegacyInstitutional = existingData.role === "ALUNO" || existingData.role === "SERVIDOR";
+    const isMissingStatus = !("status" in existingData);
+    const isSettingActive = incomingData.status === "active";
+    const isValidInstitutionalEmail =
+      (existingData.role === "ALUNO" && this.isInstitutionalStudentEmail(auth)) ||
+      (existingData.role === "SERVIDOR" && this.isInstitutionalStaffEmail(auth));
+    
+    // Verifica se apenas 'status' foi afetado em relação ao documento existente
+    const existingKeys = Object.keys(existingData);
+    const incomingKeys = Object.keys(incomingData);
+    const allKeys = new Set([...existingKeys, ...incomingKeys]);
+    const affectedKeys = Array.from(allKeys).filter(k => JSON.stringify(incomingData[k]) !== JSON.stringify(existingData[k]));
+    const hasOnlyStatusAffected = affectedKeys.length === 1 && affectedKeys[0] === "status";
+
+    if (
+      isSelf &&
+      isIdMatch &&
+      isEmailUnchanged &&
+      isEmailTokenMatch &&
+      isNotBlocked &&
+      isLegacyInstitutional &&
+      roleUnchanged &&
+      adminUnchanged &&
+      approvalStatusUnchanged &&
+      isMissingStatus &&
+      isSettingActive &&
+      hasOnlyStatusAffected &&
+      isValidInstitutionalEmail
     ) {
       return { allowed: true };
     }

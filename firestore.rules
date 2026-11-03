@@ -147,14 +147,21 @@ service cloud.firestore {
 
     function isInstitutionalStudentEmail() {
       return isSignedIn() && isEmailVerified() && ('email' in request.auth.token) && request.auth.token.email != null && (
-        request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*(estudantes|estudante|aluno)[.]ifpr[.]edu[.]br')
+        request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*(estudantes|estudante|aluno)[.]ifpr[.]edu[.]br') ||
+        request.auth.token.email.lower().matches('.*@([a-zA-Z0-9-]+\\.)*(estudantes|estudante|aluno)[.]ifpr[.]edu[.]br')
       );
     }
 
     function isInstitutionalStaffEmail() {
       return isSignedIn() && isEmailVerified() && ('email' in request.auth.token) && request.auth.token.email != null && (
-        request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*ifpr[.]edu[.]br') &&
-        !request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*(aluno|estudante|estudantes|escola)[.]ifpr[.]edu[.]br')
+        (
+          request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*ifpr[.]edu[.]br') &&
+          !request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*(aluno|estudante|estudantes|escola)[.]ifpr[.]edu[.]br')
+        ) ||
+        (
+          request.auth.token.email.lower().matches('.*@([a-zA-Z0-9-]+\\.)*ifpr[.]edu[.]br') &&
+          !request.auth.token.email.lower().matches('.*@([a-zA-Z0-9-]+\\.)*(aluno|estudante|estudantes|escola)[.]ifpr[.]edu[.]br')
+        )
       );
     }
 
@@ -216,7 +223,8 @@ service cloud.firestore {
       // Individual authenticated users can only query specifically for their own authenticated email (where email == auth.token.email).
       // Blocked: Global listing and user enumeration by students and regular staff are strictly forbidden.
       allow list: if isAdmin() || 
-                     (isSignedIn() && isAccountActive() && resource != null && resource.data.email == request.auth.token.email);
+                     (isSignedIn() && isAccountActive() && resource != null && 
+                      (resource.data.email == request.auth.token.email || resource.data.email.lower() == request.auth.token.email.lower()));
 
       // 3. Create: User can ONLY create their own document with their real UID and verified email.
       // Privilege escalation prevention:
@@ -228,7 +236,7 @@ service cloud.firestore {
       allow create: if isSignedIn() && 
                        request.auth.uid == userId && 
                        incoming().id == userId && 
-                       incoming().email == request.auth.token.email &&
+                       (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) &&
                        (
                          isRootAdmin() || hasAdminClaim() ||
                          (
@@ -267,8 +275,8 @@ service cloud.firestore {
           isSignedIn() && 
           request.auth.uid == userId && 
           incoming().id == userId && 
-          incoming().email == existing().email && 
-          incoming().email == request.auth.token.email && 
+          (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) && 
+          (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) && 
           existing().role == 'INTRUSO' && 
           !isAccountBlocked() && 
           (!('admin' in incoming()) || incoming().admin == false) && 
@@ -291,7 +299,7 @@ service cloud.firestore {
           isAccountActive() && 
           request.auth.uid == userId && 
           incoming().id == userId && 
-          incoming().email == existing().email && 
+          (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) && 
           incoming().role == existing().role && 
           (!('admin' in incoming()) || incoming().admin == existing().admin) && 
           (incoming().approvalStatus == existing().approvalStatus) && 
@@ -299,6 +307,27 @@ service cloud.firestore {
           (('suspendedUntil' in existing() && incoming().suspendedUntil == existing().suspendedUntil) || (!('suspendedUntil' in existing()) && !('suspendedUntil' in incoming()))) && 
           (('blockExpiresAt' in existing() && incoming().blockExpiresAt == existing().blockExpiresAt) || (!('blockExpiresAt' in existing()) && !('blockExpiresAt' in incoming()))) && 
           (('reputationScore' in existing() && incoming().reputationScore == existing().reputationScore) || (!('reputationScore' in existing()) && (!('reputationScore' in incoming()) || incoming().reputationScore == 100)))
+        ) ||
+        // Branch 3: Inicialização de status para perfis institucionais legados sem o campo status
+        (
+          isSignedIn() && 
+          request.auth.uid == userId && 
+          incoming().id == userId && 
+          (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) && 
+          (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) && 
+          (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
+          !isAccountBlocked() &&
+          (existing().role == 'ALUNO' || existing().role == 'SERVIDOR') &&
+          incoming().role == existing().role && 
+          (!('admin' in incoming()) || incoming().admin == false) && 
+          (!('admin' in existing()) || existing().admin == false) && 
+          (incoming().approvalStatus == existing().approvalStatus) && 
+          (!('status' in existing()) && incoming().status == 'active') && 
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+          (
+            (existing().role == 'ALUNO' && isInstitutionalStudentEmail()) || 
+            (existing().role == 'SERVIDOR' && isInstitutionalStaffEmail())
+          )
         )
       );
 

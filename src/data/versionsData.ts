@@ -90,10 +90,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "FIRESTORE",
         tag: "Segurança & Firestore Rules",
       },
+      {
+        id: "v11010-fix-profile-sync-casing-and-safe-claims-listener",
+        title: "Sincronização de Perfil com Tolerância a Caixa Alta e Inicialização Segura de Claims",
+        description: "Resolução definitiva das falhas de autorização de ALUNO ao consultar e solicitar devoluções (rejeições get e write em /claims): implementação de comparação case-insensitive em 'firestore.rules' para /users/{userId} ('incoming().email.lower() == request.auth.token.email.lower()') e nas funções institucionais ('isInstitutionalStudentEmail' / 'isInstitutionalStaffEmail'), eliminando falhas de criação de perfil causadas por tokens do Google Authentication com letras maiúsculas; garantia de persistência imediata do campo 'status: active' em perfis existentes no Firestore; blindagem do 'useEffect' do listener de 'claims' no 'AppContext.tsx' prevenindo execuções antecipadas antes do término de 'authLoading' e confirmação de conta ativa no banco; salvaguarda pré-voo em 'submitClaim'; e ampliação da bateria do Firebase Emulator para 16 testes oficiais.",
+        module: "FIRESTORE",
+        tag: "Claims & Sincronização de Perfil",
+      },
     ],
     stats: {
       additionsCount: 1,
-      fixesCount: 7,
+      fixesCount: 8,
     },
   },
   {

@@ -2155,6 +2155,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           !existingData.id ||
           existingData.id !== fbUser.uid ||
           existingData.role !== targetRole ||
+          !existingData.status ||
           !existingData.email ||
           existingData.emailVerified !== isVerified ||
           !existingData.createdAt ||
@@ -2550,9 +2551,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync Claims from Firestore (Strict Least Privilege & RBAC Compliance)
   useEffect(() => {
-    if (!firebaseUser) {
+    // 1. Must have authenticated Firebase user session
+    if (!firebaseUser || !firebaseUser.uid) {
       setClaims([]);
       return;
+    }
+
+    // 2. Prevent premature execution before profile verification handshake completes
+    if (authLoading) {
+      return;
+    }
+
+    // 3. User document must be loaded in state and match the authenticated UID
+    if (!currentUser || currentUser.id === DEFAULT_GUEST_USER.id || currentUser.id !== firebaseUser.uid) {
+      return;
+    }
+
+    // 4. Do not initialize listener if account is blocked or inactive
+    const isRoot = firebaseUser.email?.toLowerCase() === "paulocauan39@gmail.com";
+    if (!isRoot) {
+      if (isAccountBlocked(currentUser) || currentUser.status !== "active") {
+        setClaims([]);
+        return;
+      }
+      if (currentUser.role === "INTRUSO") {
+        setClaims([]);
+        return;
+      }
     }
 
     const isPrivileged = currentUser?.role === "ADMIN" || currentUser?.role === "SERVIDOR";
@@ -2575,7 +2600,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [firebaseUser, currentUser?.role]);
+  }, [firebaseUser, currentUser?.id, currentUser?.role, currentUser?.status, authLoading]);
 
   // Track seen notification IDs to only alert on newly arriving real-time notifications
   const initialNotifsLoadedRef = React.useRef(false);
@@ -4813,7 +4838,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const effectiveUserName = currentUser?.name || auth.currentUser.displayName || (effectiveUserEmail ? effectiveUserEmail.split("@")[0] : "Usuário IFPR");
     const effectiveUserRole: UserRole = currentUser?.role || (effectiveUserEmail === "paulocauan39@gmail.com" ? "ADMIN" : "ALUNO");
 
-    if (isAccountBlocked(currentUser)) {
+    if (authLoading) {
+      addToast("Aguarde a inicialização do perfil institucional antes de solicitar a devolução.", "info");
+      throw new Error("Perfil institucional em inicialização.");
+    }
+
+    if (isAccountBlocked(currentUser) || (currentUser && currentUser.status && currentUser.status !== "active")) {
       addToast("Ação Bloqueada: Sua conta institucional está temporariamente suspensa ou banida.", "error");
       throw new Error("Conta suspensa ou banida.");
     }
