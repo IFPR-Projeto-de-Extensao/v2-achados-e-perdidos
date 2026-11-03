@@ -2088,9 +2088,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const existingData = userSnap.data() as User;
         const targetRole: UserRole = isRoot
           ? "ADMIN"
-          : (existingData.role === "ADMIN" && existingData.approvalStatus === "APROVADO")
+          : (verifiedRoleDetermination.role === "INTRUSO")
+          ? "INTRUSO"
+          : (existingData.role === "ADMIN" && existingData.approvalStatus === "APROVADO" && isRoot)
           ? "ADMIN"
-          : (existingData.role === "SERVIDOR" && existingData.approvalStatus === "APROVADO")
+          : (existingData.role === "SERVIDOR" && existingData.approvalStatus === "APROVADO" && verifiedRoleDetermination.role === "SERVIDOR")
           ? "SERVIDOR"
           : verifiedRoleDetermination.role;
 
@@ -2199,9 +2201,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const legacyData = legacyDoc.data() as User;
           const targetRole: UserRole = isRoot
             ? "ADMIN"
-            : (legacyData.role === "ADMIN" && legacyData.approvalStatus === "APROVADO")
+            : (verifiedRoleDetermination.role === "INTRUSO")
+            ? "INTRUSO"
+            : (legacyData.role === "ADMIN" && legacyData.approvalStatus === "APROVADO" && isRoot)
             ? "ADMIN"
-            : (legacyData.role === "SERVIDOR" && legacyData.approvalStatus === "APROVADO")
+            : (legacyData.role === "SERVIDOR" && legacyData.approvalStatus === "APROVADO" && verifiedRoleDetermination.role === "SERVIDOR")
             ? "SERVIDOR"
             : verifiedRoleDetermination.role;
 
