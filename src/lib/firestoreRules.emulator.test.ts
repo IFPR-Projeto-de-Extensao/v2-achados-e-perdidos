@@ -5,6 +5,7 @@ import {
   assertSucceeds,
   assertFails,
 } from "@firebase/rules-unit-testing";
+import { collection, doc, setDoc } from "firebase/firestore";
 import fs from "fs";
 import path from "path";
 
@@ -37,7 +38,8 @@ describe("Firestore Rules Emulator Suite — Real Security Rules Validation", ()
 
   const setupUserDoc = async (uid: string, data: Record<string, any>) => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
-      await context.firestore().collection("users").doc(uid).set(data);
+      const db = context.firestore();
+      await setDoc(doc(db, "users", uid), data);
     });
   };
 
@@ -59,9 +61,9 @@ describe("Firestore Rules Emulator Suite — Real Security Rules Validation", ()
         email_verified: true,
       }).firestore();
 
-      const docRef = db.collection(itemCollectionPath).doc("item_1");
+      const docRef = doc(db, itemCollectionPath, "item_1");
       await assertSucceeds(
-        docRef.set({
+        setDoc(docRef, {
           id: "item_1",
           title: "Chave Perdida",
           description: "Chave do laboratório 03",
@@ -90,9 +92,9 @@ describe("Firestore Rules Emulator Suite — Real Security Rules Validation", ()
         email_verified: true,
       }).firestore();
 
-      const docRef = db.collection(itemCollectionPath).doc("item_2");
+      const docRef = doc(db, itemCollectionPath, "item_2");
       await assertSucceeds(
-        docRef.set({
+        setDoc(docRef, {
           id: "item_2",
           title: "Calculadora Científica",
           description: "Casio fx-991ES",
@@ -121,9 +123,9 @@ describe("Firestore Rules Emulator Suite — Real Security Rules Validation", ()
         email_verified: true,
       }).firestore();
 
-      const docRef = db.collection(itemCollectionPath).doc("item_3");
+      const docRef = doc(db, itemCollectionPath, "item_3");
       await assertFails(
-        docRef.set({
+        setDoc(docRef, {
           id: "item_3",
           title: "Item Falso",
           description: "Tentativa de falsificação",
@@ -151,9 +153,9 @@ describe("Firestore Rules Emulator Suite — Real Security Rules Validation", ()
         email_verified: true,
       }).firestore();
 
-      const docRef = db.collection(itemCollectionPath).doc("item_4");
+      const docRef = doc(db, itemCollectionPath, "item_4");
       await assertFails(
-        docRef.set({
+        setDoc(docRef, {
           id: "item_4",
           title: "Item Externo",
           description: "Tentativa de intruso",
@@ -183,9 +185,9 @@ describe("Firestore Rules Emulator Suite — Real Security Rules Validation", ()
         email_verified: true,
       }).firestore();
 
-      const docRef = db.collection(itemCollectionPath).doc("item_5");
+      const docRef = doc(db, itemCollectionPath, "item_5");
       await assertFails(
-        docRef.set({
+        setDoc(docRef, {
           id: "item_5",
           title: "Item Suspenso",
           description: "Tentativa",
@@ -214,9 +216,9 @@ describe("Firestore Rules Emulator Suite — Real Security Rules Validation", ()
         email_verified: true,
       }).firestore();
 
-      const docRef = db.collection(itemCollectionPath).doc("item_6");
+      const docRef = doc(db, itemCollectionPath, "item_6");
       await assertFails(
-        docRef.set({
+        setDoc(docRef, {
           id: "item_6",
           title: "Spoofing",
           description: "UID diferente",

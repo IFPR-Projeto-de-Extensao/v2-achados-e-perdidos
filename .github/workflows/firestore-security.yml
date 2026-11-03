@@ -29,5 +29,5 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Run Firestore Security Rules Tests (Emulator & Vitest)
-        run: npx vitest run src/lib/firestoreRules.emulator.test.ts src/lib/institutionalIdentityAndClaimsSecurity.test.ts
+      - name: Run Firestore Security Rules Tests in Emulator
+        run: npx firebase emulators:exec --only firestore --project localiza-plus-emulator-test "npx vitest run src/lib/firestoreRules.emulator.test.ts src/lib/institutionalIdentityAndClaimsSecurity.test.ts"
