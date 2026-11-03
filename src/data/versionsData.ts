@@ -83,10 +83,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "FIRESTORE",
         tag: "Segurança & Firestore Rules",
       },
+      {
+        id: "v11010-fix-firestore-rules-expression-limit-optimization",
+        title: "Otimização da Complexidade CEL das Firestore Security Rules e Resolução do Limite de 1000 Expressões",
+        description: "Diagnóstico e resolução definitiva do estouro do limite de avaliação de 1000 expressões CEL no Firebase Emulator (GitHub Actions Run 41632498197, linhas 321/333): refatoração e achatamento da árvore de chamadas das funções auxiliares ('canRegisterItems', 'isAccountActive', 'isIntruso', 'isDocAdmin', 'isDocServidorIdentity'); eliminação de avaliações recursivas e duplicadas de 'isAccountActive' e 'isRootAdmin'; otimização da ordem de validação das regras 'create' e 'update' em /items, /found_items e /lost_items com short-circuiting imediato por autoria de UID e e-mail verificado; correção da conversão de timestamps numéricos via 'timestamp.value(...)'; e validação automatizada de ponta a ponta com 36/36 testes aprovados (30 CEL + 6 Emulator).",
+        module: "FIRESTORE",
+        tag: "Segurança & Firestore Rules",
+      },
     ],
     stats: {
       additionsCount: 1,
-      fixesCount: 6,
+      fixesCount: 7,
     },
   },
   {
