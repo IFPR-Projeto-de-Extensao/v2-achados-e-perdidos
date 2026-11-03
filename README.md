@@ -618,7 +618,7 @@ A distribuição, utilização e eventual licenciamento do código-fonte devem o
 Projeto: Localiza+
 Equipe: InovaIF
 Instituição: Instituto Federal do Paraná – Campus Ivaiporã
-E-mail: localizamais6@gmail.com
+E-mail: localizamais0@gmail.com
 
 Repositório:
 https://github.com/IFPR-Projeto-de-Extensao/v2-achados-e-perdidos
