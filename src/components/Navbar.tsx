@@ -255,7 +255,7 @@ export const Navbar: React.FC = () => {
           {/* Right Action Cluster */}
           <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
             {/* Primary Action CTA: Novo Registro */}
-            {currentUser?.role !== "ALUNO" && (
+            {((currentUser?.role === "SERVIDOR" && currentUser?.approvalStatus === "APROVADO") || currentUser?.role === "ADMIN") && (
               <Link
                 to="/cadastrar"
                 title="Cadastrar Novo Objeto Perdido ou Encontrado"

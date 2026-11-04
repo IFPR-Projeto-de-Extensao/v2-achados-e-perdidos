@@ -207,15 +207,20 @@ export const RegisterItemView: React.FC = () => {
       "Apenas usuários autenticados podem cadastrar novos itens no IFPR. Faça login para continuar.",
   });
 
-  // Strict Student Access Guard: ALUNO cannot access registration flow directly or via route
+  // Strict Access Guard: ALUNO, INTRUSO, or unapproved SERVIDOR cannot access registration flow directly or via route
+  const isUnauthorized =
+    currentUser?.role === "ALUNO" ||
+    currentUser?.role === "INTRUSO" ||
+    (currentUser?.role === "SERVIDOR" && currentUser?.approvalStatus !== "APROVADO");
+
   useEffect(() => {
-    if (currentUser?.role === "ALUNO") {
-      addToast("Apenas Servidores/TAE e Administradores podem cadastrar objetos no Localiza+.", "error");
+    if (isUnauthorized) {
+      addToast("Apenas Servidores/TAE aprovados e Administradores podem cadastrar objetos no Localiza+.", "error");
       navigate("/");
     }
-  }, [currentUser?.role, navigate, addToast]);
+  }, [isUnauthorized, navigate, addToast]);
 
-  if (currentUser?.role === "ALUNO") {
+  if (isUnauthorized) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-2xl p-8 shadow-xl border border-slate-200 dark:border-slate-800 text-center space-y-4">
@@ -224,7 +229,9 @@ export const RegisterItemView: React.FC = () => {
           </div>
           <h2 className="text-xl font-black text-slate-900 dark:text-white">Acesso Restrito ao Cadastro</h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            O cadastro de objetos perdidos e encontrados é restrito a Servidores/TAE e Administradores do IFPR. Alunos podem consultar o catálogo e solicitar a devolução de pertences.
+            {currentUser?.role === "SERVIDOR"
+              ? "Sua conta de Servidor/TAE aguarda aprovação institucional pela Secretaria/Diretoria do Campus. O cadastro de objetos será liberado assim que o perfil for aprovado."
+              : "O cadastro de objetos perdidos e encontrados é restrito a Servidores/TAE aprovados e Administradores do IFPR."}
           </p>
           <button
             onClick={() => navigate("/")}

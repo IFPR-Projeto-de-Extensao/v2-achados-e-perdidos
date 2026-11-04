@@ -170,7 +170,7 @@ service cloud.firestore {
     }
 
     function canRegisterItems() {
-      return (isDocServidorIdentity() && isInstitutionalStaffEmail()) || hasAdminClaim() || isRootAdmin() || isDocAdmin();
+      return (isDocServidor() && isInstitutionalStaffEmail()) || hasAdminClaim() || isRootAdmin() || isDocAdmin();
     }
 
     function isIntruso() {

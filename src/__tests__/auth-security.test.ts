@@ -82,4 +82,19 @@ describe("Localiza+ Zero-Trust Authentication & Authorization Matrix", () => {
     expect(externalPreview.isInstitutional).toBe(false);
     expect(externalPreview.role).toBe("INTRUSO");
   });
+
+  // Scenario I: Registration Permission Matrix (Role & Approval Status)
+  it("Scenario I: Item registration eligibility strictly requires approved SERVIDOR or ADMIN", () => {
+    const canRegisterCheck = (role: string, approvalStatus: string) =>
+      (role === "SERVIDOR" && approvalStatus === "APROVADO") || role === "ADMIN";
+
+    expect(canRegisterCheck("SERVIDOR", "APROVADO")).toBe(true);
+    expect(canRegisterCheck("SERVIDOR", "PENDENTE")).toBe(false);
+    expect(canRegisterCheck("SERVIDOR", "REJEITADO")).toBe(false);
+    expect(canRegisterCheck("SERVIDOR", "")).toBe(false);
+    expect(canRegisterCheck("ALUNO", "APROVADO")).toBe(false);
+    expect(canRegisterCheck("INTRUSO", "APROVADO")).toBe(false);
+    expect(canRegisterCheck("ADMIN", "APROVADO")).toBe(true);
+    expect(canRegisterCheck("ADMIN", "PENDENTE")).toBe(true); // Admin always authorized
+  });
 });

@@ -95,6 +95,7 @@ export const HomeView: React.FC = () => {
           : i.type === statusFilter || i.status === statusFilter
       );
 
+  const canRegister = (currentUser?.role === "SERVIDOR" && currentUser?.approvalStatus === "APROVADO") || currentUser?.role === "ADMIN";
   const isAluno = currentUser?.role === "ALUNO";
 
   return (
@@ -124,8 +125,8 @@ export const HomeView: React.FC = () => {
           </div>
 
           {/* Dedicated Action Tiles */}
-          <div className={`relative z-10 grid grid-cols-1 ${isAluno ? "sm:grid-cols-2" : "sm:grid-cols-3"} gap-3 pt-6 sm:pt-8`}>
-            {!isAluno && (
+          <div className={`relative z-10 grid grid-cols-1 ${!canRegister ? "sm:grid-cols-2" : "sm:grid-cols-3"} gap-3 pt-6 sm:pt-8`}>
+            {canRegister && (
               <>
                 {/* Tile 1: Cadastrar */}
                 <div
