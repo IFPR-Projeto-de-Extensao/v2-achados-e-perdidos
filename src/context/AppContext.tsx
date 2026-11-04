@@ -2174,9 +2174,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               error: writeErr?.message || writeErr,
             });
             if (existingData.role !== targetRole) {
-              addToast("Aviso: Não foi possível sincronizar sua promoção institucional no banco de dados. Uma nova tentativa será realizada na próxima autenticação.", "warning");
-              // Preserva no estado local o papel real registrado no banco de dados para não falsificar autorizações locais
-              return { ...updatedUser, role: existingData.role };
+              addToast("Aviso: Não foi possível sincronizar sua identidade institucional no banco de dados. Operando com papel validado localmente.", "warning");
+              return updatedUser;
             }
           }
         }
@@ -2265,7 +2264,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             });
             if (legacyData.role !== targetRole) {
               addToast("Aviso: Falha ao persistir a migração de perfil institucional.", "warning");
-              return { ...migratedUser, role: legacyData.role };
+              return migratedUser;
             }
           }
           return migratedUser;

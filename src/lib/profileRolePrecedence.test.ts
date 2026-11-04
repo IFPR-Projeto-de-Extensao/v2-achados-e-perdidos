@@ -121,4 +121,54 @@ describe("LOCALIZA+ v1.10.10 — Precedência de Identidade Institucional em ver
     });
     expect(role).toBe("INTRUSO");
   });
+
+  it("10. Falha na escrita para Gmail externo com legado SERVIDOR -> targetRole INTRUSO (sem fallback inseguro)", () => {
+    const role = resolveTargetRole({
+      email: "contato.pclabs@gmail.com",
+      emailVerified: true,
+      existingRole: "SERVIDOR",
+      existingApprovalStatus: "APROVADO",
+    });
+    expect(role).toBe("INTRUSO");
+  });
+
+  it("11. Falha na escrita para Gmail externo com legado ADMIN -> targetRole INTRUSO", () => {
+    const role = resolveTargetRole({
+      email: "externo@gmail.com",
+      emailVerified: true,
+      existingRole: "ADMIN",
+      existingApprovalStatus: "APROVADO",
+    });
+    expect(role).toBe("INTRUSO");
+  });
+
+  it("12. Falha na escrita para Aluno institucional com legado SERVIDOR -> targetRole ALUNO", () => {
+    const role = resolveTargetRole({
+      email: "aluno@estudantes.ifpr.edu.br",
+      emailVerified: true,
+      existingRole: "SERVIDOR",
+      existingApprovalStatus: "APROVADO",
+    });
+    expect(role).toBe("ALUNO");
+  });
+
+  it("13. Falha na escrita para Servidor institucional -> targetRole SERVIDOR", () => {
+    const role = resolveTargetRole({
+      email: "servidor@ifpr.edu.br",
+      emailVerified: true,
+      existingRole: "SERVIDOR",
+      existingApprovalStatus: "PENDENTE",
+    });
+    expect(role).toBe("SERVIDOR");
+  });
+
+  it("14. Falha na escrita para Root Admin oficial -> targetRole ADMIN", () => {
+    const role = resolveTargetRole({
+      email: "paulocauan39@gmail.com",
+      emailVerified: true,
+      existingRole: "ALUNO",
+      existingApprovalStatus: "APROVADO",
+    });
+    expect(role).toBe("ADMIN");
+  });
 });
