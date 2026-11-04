@@ -80,7 +80,7 @@ describe("Firestore Security Rules - Audit & Privilege Escalation Hardening", ()
 
   describe("Least Privilege & Personal Data Protection (/users)", () => {
     it("should block indiscriminate user directory listing by students and regular staff", () => {
-      expect(rulesContent).toMatch(/allow list: if isAdmin\(\) \|\|\s*\(isSignedIn\(\) && isAccountActive\(\) && (resource != null && )?resource\.data\.email == request\.auth\.token\.email\);/);
+      expect(rulesContent).toMatch(/allow list: if isAdmin\(\) \|\|\s*\(isSignedIn\(\) && isAccountActive\(\) &&\s*(resource != null &&\s*)?\(?resource\.data\.email == request\.auth\.token\.email/);
     });
 
     it("should allow individual users to only read their own profile doc and block reading other users' docs", () => {

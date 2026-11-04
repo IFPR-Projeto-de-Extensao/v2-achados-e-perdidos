@@ -307,24 +307,42 @@ export const AccountManagementView: React.FC = () => {
                             >
                               <option value="ALUNO" className="bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white">ALUNO</option>
                               <option value="SERVIDOR" className="bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white">SERVIDOR</option>
-                              <option value="ADMIN" className="bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white">ADMIN</option>
+                              <option
+                                value="ADMIN"
+                                disabled={currentUser.email?.toLowerCase() !== "paulocauan39@gmail.com"}
+                                className="bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
+                              >
+                                ADMIN {currentUser.email?.toLowerCase() !== "paulocauan39@gmail.com" ? "(Exclusivo Root Admin)" : ""}
+                              </option>
                               <option value="INTRUSO" className="bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white">USUÁRIO EXTERNO</option>
                             </select>
+                            {u.roleAssignedBy && (
+                              <div className="text-[9px] text-neutral-400 mt-0.5" title={`Atribuído por: ${u.roleAssignedByName || u.roleAssignedBy}`}>
+                                Designado
+                              </div>
+                            )}
                           </div>
                         ) : (
-                          <span
-                            className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase border ${
-                              u.role === "ADMIN"
-                                ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20"
-                                : u.role === "SERVIDOR"
-                                ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20"
-                                : u.role === "INTRUSO"
-                                ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20"
-                                : "bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/20"
-                            }`}
-                          >
-                            {u.role === "INTRUSO" ? "USUÁRIO EXTERNO" : u.role || "ALUNO"}
-                          </span>
+                          <div className="flex flex-col items-start gap-0.5">
+                            <span
+                              className={`inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase border ${
+                                u.role === "ADMIN"
+                                  ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20"
+                                  : u.role === "SERVIDOR"
+                                  ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20"
+                                  : u.role === "INTRUSO"
+                                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20"
+                                  : "bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/20"
+                              }`}
+                            >
+                              {u.role === "INTRUSO" ? "USUÁRIO EXTERNO" : u.role || "ALUNO"}
+                            </span>
+                            {u.roleAssignedBy && (
+                              <span className="text-[9px] text-neutral-400 font-mono" title={`Designado administrativamente por ${u.roleAssignedByName || u.roleAssignedBy}`}>
+                                Designado
+                              </span>
+                            )}
+                          </div>
                         )}
                       </td>
 

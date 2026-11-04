@@ -24,6 +24,7 @@ import {
   ItemReturnData,
   SystemAuditLog,
   AuditObjectType,
+  RoleAssignment,
 } from "../types";
 import { DEFAULT_DOCUMENT_TEMPLATES } from "../lib/defaultDocumentTemplates";
 import { DEFAULT_PROJECT_SETTINGS } from "../lib/projectSettingsConstants";
@@ -215,6 +216,148 @@ export function determineInstitutionalRole(email: string, isEmailVerified: boole
   return previewInstitutionalRole(cleanEmail);
 }
 
+export interface EffectiveIdentityResolution {
+  role: UserRole;
+  approvalStatus: ApprovalStatus;
+  isInstitutional: boolean;
+  isDesignated: boolean;
+  label: string;
+}
+
+/**
+ * Resolver central e único de identidade do Localiza+.
+ * Determina o cargo e status de aprovação efetivos respeitando a ordem estrita de precedência:
+ * 1. Root Admin Whitelist (paulocauan39@gmail.com).
+ * 2. E-mail verificado (zero-trust: contas não verificadas são sempre INTRUSO).
+ * 3. Atribuição administrativa válida e ativa (roleAssignedBy presente e não vazio).
+ * 4. Classificação institucional automática por domínio (@estudantes.ifpr.edu.br / @ifpr.edu.br).
+ * 5. Documentos legados sem comprovação administrativa para e-mails externos são classificados como INTRUSO.
+ */
+export function resolveEffectiveUserIdentity({
+  email,
+  emailVerified,
+  userDocData,
+  roleAssignment,
+}: {
+  email?: string | null;
+  emailVerified?: boolean;
+  userDocData?: Partial<User> | null;
+  roleAssignment?: RoleAssignment | null;
+}): EffectiveIdentityResolution {
+  const cleanEmail = safeToLower(email || "").trim();
+  const isVerified = Boolean(emailVerified);
+
+  // 1. Superadmin Whitelist (paulocauan39@gmail.com)
+  if (cleanEmail === "paulocauan39@gmail.com") {
+    return {
+      role: "ADMIN",
+      approvalStatus: "APROVADO",
+      isInstitutional: true,
+      isDesignated: false,
+      label: "Administrador Geral (Root)",
+    };
+  }
+
+  // 2. Contas sem e-mail ou não verificadas são estritamente INTRUSO (Zero-Trust)
+  if (!cleanEmail || !cleanEmail.includes("@") || !isVerified) {
+    return {
+      role: "INTRUSO",
+      approvalStatus: "APROVADO",
+      isInstitutional: false,
+      isDesignated: false,
+      label: !isVerified ? "Conta não verificada (Externa/Intrusa)" : "Usuário externo",
+    };
+  }
+
+  // 3. Verificação de Atribuição Administrativa Segura (/role_assignments)
+  const hasActiveAssignmentDoc = Boolean(
+    roleAssignment &&
+    roleAssignment.active === true &&
+    roleAssignment.assignedRole &&
+    ["ALUNO", "SERVIDOR", "ADMIN", "INTRUSO"].includes(roleAssignment.assignedRole)
+  );
+
+  if (hasActiveAssignmentDoc) {
+    const assignedRole = roleAssignment!.assignedRole;
+    if (assignedRole === "ADMIN") {
+      const assignedApproval: ApprovalStatus = roleAssignment!.approvalStatus === "APROVADO" ? "APROVADO" : "PENDENTE";
+      return {
+        role: "ADMIN",
+        approvalStatus: assignedApproval,
+        isInstitutional: true,
+        isDesignated: true,
+        label: "Administrador Designado",
+      };
+    }
+
+    if (assignedRole === "SERVIDOR") {
+      const assignedApproval: ApprovalStatus = roleAssignment!.approvalStatus === "APROVADO" ? "APROVADO" : "PENDENTE";
+      return {
+        role: "SERVIDOR",
+        approvalStatus: assignedApproval,
+        isInstitutional: true,
+        isDesignated: true,
+        label: assignedApproval === "APROVADO" ? "Servidor Designado (Aprovado)" : "Servidor Designado (Pendente)",
+      };
+    }
+
+    if (assignedRole === "ALUNO") {
+      return {
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+        isInstitutional: true,
+        isDesignated: true,
+        label: "Estudante Designado",
+      };
+    }
+
+    if (assignedRole === "INTRUSO") {
+      return {
+        role: "INTRUSO",
+        approvalStatus: "APROVADO",
+        isInstitutional: false,
+        isDesignated: true,
+        label: "Usuário Externo",
+      };
+    }
+  }
+
+  // 4. Se NÃO houver atribuição administrativa ativa em /role_assignments:
+  // Aplicar classificação institucional automática baseada no domínio do e-mail:
+  const autoDomain = previewInstitutionalRole(cleanEmail);
+
+  if (autoDomain.role === "ALUNO") {
+    return {
+      role: "ALUNO",
+      approvalStatus: "APROVADO",
+      isInstitutional: true,
+      isDesignated: false,
+      label: autoDomain.label,
+    };
+  }
+
+  if (autoDomain.role === "SERVIDOR") {
+    const servApproval: ApprovalStatus = (userDocData?.approvalStatus === "APROVADO") ? "APROVADO" : "PENDENTE";
+    return {
+      role: "SERVIDOR",
+      approvalStatus: servApproval,
+      isInstitutional: true,
+      isDesignated: false,
+      label: servApproval === "APROVADO" ? "Servidor IFPR (Aprovado)" : "Servidor IFPR (Pendente)",
+    };
+  }
+
+  // 5. Contas externas sem atribuição administrativa ativa em /role_assignments:
+  // Metadados legados em /users (roleAssignedBy, role: SERVIDOR, etc.) são ignorados para concessão de privilégios
+  return {
+    role: "INTRUSO",
+    approvalStatus: "APROVADO",
+    isInstitutional: false,
+    isDesignated: false,
+    label: "Usuário externo",
+  };
+}
+
 interface Toast {
   id: string;
   type: "success" | "error" | "info" | "warning";
@@ -232,7 +375,7 @@ interface AppContextType {
   currentUser: User;
   setCurrentUser: (user: User) => void;
   allUsers: User[];
-  updateUserRole: (targetUserId: string, newRole: UserRole) => Promise<void>;
+  updateUserRole: (targetUserId: string, newRole: UserRole, reason?: string) => Promise<void>;
   updateUserStatus: (
     targetUserId: string,
     newStatus: AccountStatus,
@@ -2081,20 +2224,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const verifiedRoleDetermination = determineInstitutionalRole(userEmail, Boolean(fbUser.emailVerified));
     const previewDetermination = previewInstitutionalRole(userEmail);
 
+    // Query /role_assignments/{fbUser.uid} for verified administrative assignment
+    let roleAssignmentDoc: RoleAssignment | null = null;
+    try {
+      const assignmentSnap = await getDoc(doc(db, "role_assignments", fbUser.uid));
+      if (assignmentSnap.exists()) {
+        roleAssignmentDoc = assignmentSnap.data() as RoleAssignment;
+      }
+    } catch (_) {}
+
     // 1. Direct check in 'users' collection by fbUser.uid
     try {
       const userSnap = await getDoc(uidRef);
       if (userSnap.exists()) {
         const existingData = userSnap.data() as User;
-        const targetRole: UserRole = isRoot
-          ? "ADMIN"
-          : (verifiedRoleDetermination.role === "INTRUSO")
-          ? "INTRUSO"
-          : (existingData.role === "ADMIN" && existingData.approvalStatus === "APROVADO" && isRoot)
-          ? "ADMIN"
-          : (existingData.role === "SERVIDOR" && existingData.approvalStatus === "APROVADO" && verifiedRoleDetermination.role === "SERVIDOR")
-          ? "SERVIDOR"
-          : verifiedRoleDetermination.role;
+        const identity = resolveEffectiveUserIdentity({
+          email: userEmail,
+          emailVerified: fbUser.emailVerified,
+          userDocData: existingData,
+          roleAssignment: roleAssignmentDoc,
+        });
+        const targetRole: UserRole = identity.role;
+        const resolvedApprovalStatus: ApprovalStatus = identity.approvalStatus;
 
         const resolvedName = pendingData?.name || existingData.name || fbUser.displayName || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
 
@@ -2127,9 +2278,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const resolvedCourse = pendingData?.courseOrDept || existingData.courseOrDept || extraData?.courseOrDept || (previewDetermination.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
         const resolvedRegistration = pendingData?.registrationNumber || existingData.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
         const isVerified = Boolean(fbUser.emailVerified);
-        const resolvedApprovalStatus: ApprovalStatus = isRoot
-          ? "APROVADO"
-          : (existingData.approvalStatus || (targetRole === "SERVIDOR" ? "PENDENTE" : "APROVADO"));
 
         const updatedUser: User = sanitizeFirestoreData({
           ...existingData,
@@ -2145,6 +2293,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           approvalStatus: resolvedApprovalStatus,
           createdAt: existingData.createdAt || (fbUser.metadata?.creationTime ? new Date(fbUser.metadata.creationTime).toISOString() : new Date().toISOString()),
           emailVerified: isVerified,
+          roleAssignedBy: existingData.roleAssignedBy,
+          roleAssignedByName: existingData.roleAssignedByName,
+          roleAssignedAt: existingData.roleAssignedAt,
         }) as User;
 
         const avatarNeedsSync = Boolean(
@@ -2198,15 +2349,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!querySnap.empty) {
           const legacyDoc = querySnap.docs[0];
           const legacyData = legacyDoc.data() as User;
-          const targetRole: UserRole = isRoot
-            ? "ADMIN"
-            : (verifiedRoleDetermination.role === "INTRUSO")
-            ? "INTRUSO"
-            : (legacyData.role === "ADMIN" && legacyData.approvalStatus === "APROVADO" && isRoot)
-            ? "ADMIN"
-            : (legacyData.role === "SERVIDOR" && legacyData.approvalStatus === "APROVADO" && verifiedRoleDetermination.role === "SERVIDOR")
-            ? "SERVIDOR"
-            : verifiedRoleDetermination.role;
+          const identity = resolveEffectiveUserIdentity({
+            email: userEmail,
+            emailVerified: fbUser.emailVerified,
+            userDocData: legacyData,
+            roleAssignment: roleAssignmentDoc,
+          });
+          const targetRole: UserRole = identity.role;
+          const resolvedApprovalStatus: ApprovalStatus = identity.approvalStatus;
 
           const resolvedName = pendingData?.name || legacyData.name || fbUser.displayName || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
 
@@ -2232,9 +2382,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const resolvedCourse = pendingData?.courseOrDept || legacyData.courseOrDept || extraData?.courseOrDept || (previewDetermination.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
           const resolvedRegistration = pendingData?.registrationNumber || legacyData.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
           const isVerified = Boolean(fbUser.emailVerified);
-          const resolvedApprovalStatus: ApprovalStatus = isRoot
-            ? "APROVADO"
-            : (legacyData.approvalStatus || (targetRole === "SERVIDOR" ? "PENDENTE" : "APROVADO"));
 
           const migratedUser: User = sanitizeFirestoreData({
             ...legacyData,
@@ -2250,6 +2397,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             approvalStatus: resolvedApprovalStatus,
             createdAt: legacyData.createdAt || (fbUser.metadata?.creationTime ? new Date(fbUser.metadata.creationTime).toISOString() : new Date().toISOString()),
             emailVerified: isVerified,
+            roleAssignedBy: legacyData.roleAssignedBy,
+            roleAssignedByName: legacyData.roleAssignedByName,
+            roleAssignedAt: legacyData.roleAssignedAt,
           }) as User;
           try {
             await setDoc(uidRef, migratedUser, { merge: true });
@@ -2282,8 +2432,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 3. Create new user document in Firestore if no previous profile exists
     // External users (@gmail.com, etc.) are allowed, classified as INTRUSO with active status and restricted permissions
     const isVerified = Boolean(fbUser.emailVerified);
-    const resolvedRole: UserRole = isRoot ? "ADMIN" : verifiedRoleDetermination.role;
-    const defaultApprovalStatus: ApprovalStatus = (isRoot || resolvedRole === "INTRUSO" || resolvedRole === "ALUNO") ? "APROVADO" : "PENDENTE";
+    const identity = resolveEffectiveUserIdentity({
+      email: userEmail,
+      emailVerified: isVerified,
+      userDocData: null,
+      roleAssignment: roleAssignmentDoc,
+    });
+    const resolvedRole: UserRole = identity.role;
+    const defaultApprovalStatus: ApprovalStatus = identity.approvalStatus;
     const resolvedName = fbUser.displayName || pendingData?.name || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário");
     const resolvedCourse = pendingData?.courseOrDept || extraData?.courseOrDept || (
       previewDetermination.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" :
@@ -2386,6 +2542,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           (userSnap) => {
             if (userSnap.exists()) {
               const rawData = userSnap.data() as User;
+              const identity = resolveEffectiveUserIdentity({
+                email: fbUser.email,
+                emailVerified: fbUser.emailVerified,
+                userDocData: rawData,
+              });
               const googlePhoto = getGoogleProviderPhoto(fbUser);
               // Preserva avatar válido, priorizando foto customizada enviada pelo usuário, foto do Google OAuth, foto persistida no Firestore ou fallback
               const safeAvatar = isCustomUploadedAvatar(rawData.avatarUrl)
@@ -2399,6 +2560,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const userData: User = {
                 id: userSnap.id,
                 ...rawData,
+                role: identity.role,
+                approvalStatus: identity.approvalStatus,
                 avatarUrl: safeAvatar,
               };
               setCurrentUser(userData);
@@ -3430,7 +3593,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast("Sessão encerrada com sucesso.", "info");
   };
 
-  const updateUserRole = async (targetUserId: string, newRole: UserRole) => {
+  const updateUserRole = async (targetUserId: string, newRole: UserRole, reason?: string) => {
     if (!targetUserId) {
       addToast("ID de usuário inválido.", "error");
       return;
@@ -3441,12 +3604,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
+    if (targetUserId === currentUser.id) {
+      addToast("Operação não permitida: você não pode alterar o próprio cargo.", "error");
+      return;
+    }
+
+    const isRoot = (currentUser.email || "").toLowerCase() === "paulocauan39@gmail.com";
+    if (newRole === "ADMIN" && !isRoot) {
+      addToast("Apenas o Root Admin oficial (paulocauan39@gmail.com) tem autorização para conceder o papel ADMIN.", "error");
+      return;
+    }
+
     try {
-      const userRef = doc(db, "users", targetUserId);
-      await setDoc(userRef, { role: newRole }, { merge: true });
+      // 1. Obter Bearer Token atualizado do usuário autenticado no Firebase Auth
+      const idToken = await auth.currentUser?.getIdToken(true);
+      if (!idToken) {
+        throw new Error("Sessão administrativa não autenticada. Faça login novamente.");
+      }
+
+      // 2. Chamar endpoint administrativo server-authoritative exclusivo
+      const res = await fetch("/api/admin/assign-role", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          targetUserId,
+          targetRole: newRole,
+          reason: reason || `Atribuição administrativa de cargo para ${newRole}`,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data?.success) {
+        const errorMsg = data?.error || data?.message || `Falha na atribuição administrativa de cargo (HTTP ${res.status}).`;
+        throw new Error(errorMsg);
+      }
+
+      const nowIso = data?.assignment?.assignedAt || new Date().toISOString();
+      const approvalStatus: ApprovalStatus = (newRole === "SERVIDOR" || newRole === "ADMIN" || newRole === "ALUNO") ? "APROVADO" : "PENDENTE";
+
+      const roleAssignedPayload: Partial<User> = {
+        role: newRole,
+        roleAssignedBy: currentUser.email || currentUser.id || "ADMIN",
+        roleAssignedByName: currentUser.name || "Administrador",
+        roleAssignedAt: nowIso,
+        roleAssignmentActive: newRole !== "INTRUSO",
+        approvalStatus,
+      };
 
       setAllUsers((prev) =>
-        prev.map((u) => (u.id === targetUserId ? { ...u, role: newRole } : u))
+        prev.map((u) => (u.id === targetUserId ? { ...u, ...roleAssignedPayload } : u))
       );
 
       const targetUser = allUsers.find((u) => u.id === targetUserId);
@@ -3458,17 +3668,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fieldChanged: "role",
         oldValue: targetUser?.role || "ALUNO",
         newValue: newRole,
-        details: `Permissão de acesso do usuário '${targetUser?.name || targetUserId}' alterada de ${targetUser?.role || "ALUNO"} para ${newRole}.`,
+        details: `Permissão de acesso do usuário '${targetUser?.name || targetUserId}' alterada de ${targetUser?.role || "ALUNO"} para ${newRole} por ${currentUser.name || currentUser.email}.`,
       });
 
       if (currentUser.id === targetUserId) {
-        setCurrentUser((prev) => ({ ...prev, role: newRole }));
+        setCurrentUser((prev) => ({ ...prev, ...roleAssignedPayload }));
       }
 
-      addToast(`Função do usuário atualizada para ${newRole} com sucesso!`, "success");
+      addToast(data?.message || `Função do usuário atualizada para ${newRole} com sucesso!`, "success");
     } catch (e: any) {
-      console.error("Erro ao alterar função do usuário no Firestore:", e);
-      addToast("Erro de permissão ou rede ao salvar permissão no banco de dados.", "error");
+      console.error("[updateUserRole] Erro ao alterar função do usuário:", e);
+      addToast(e?.message || "Erro de permissão ou rede ao salvar permissão no banco de dados.", "error");
       throw e;
     }
   };

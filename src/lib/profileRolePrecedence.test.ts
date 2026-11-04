@@ -1,174 +1,408 @@
 import { describe, it, expect } from "vitest";
-import { determineInstitutionalRole, previewInstitutionalRole } from "../context/AppContext";
-import { UserRole } from "../types";
+import { resolveEffectiveUserIdentity } from "../context/AppContext";
+import { User } from "../types";
 
-/**
- * Função pura que espelha exatamente a regra de resolução e precedência de targetRole em verifyUserInFirestore()
- */
-function resolveTargetRole({
-  email,
-  emailVerified,
-  existingRole,
-  existingApprovalStatus,
-}: {
-  email: string;
-  emailVerified: boolean;
-  existingRole?: UserRole;
-  existingApprovalStatus?: string;
-}): UserRole {
-  const cleanEmail = email.toLowerCase().trim();
-  const isRoot = cleanEmail === "paulocauan39@gmail.com";
-  const verifiedRoleDetermination = determineInstitutionalRole(cleanEmail, emailVerified);
+describe("LOCALIZA+ v1.10.10 — Matriz Central de Identidade e Atribuição Administrativa", () => {
+  // 1. Root Admin Oficial
+  it("1. Root Admin Oficial (paulocauan39@gmail.com) é sempre ADMIN com status APROVADO", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "paulocauan39@gmail.com",
+      emailVerified: true,
+      userDocData: { role: "ALUNO", approvalStatus: "PENDENTE" },
+    });
+    expect(res.role).toBe("ADMIN");
+    expect(res.approvalStatus).toBe("APROVADO");
+    expect(res.isInstitutional).toBe(true);
+    expect(res.isDesignated).toBe(false);
+  });
 
-  return isRoot
-    ? "ADMIN"
-    : (verifiedRoleDetermination.role === "INTRUSO")
-    ? "INTRUSO"
-    : (existingRole === "ADMIN" && existingApprovalStatus === "APROVADO" && isRoot)
-    ? "ADMIN"
-    : (existingRole === "SERVIDOR" && existingApprovalStatus === "APROVADO" && verifiedRoleDetermination.role === "SERVIDOR")
-    ? "SERVIDOR"
-    : verifiedRoleDetermination.role;
-}
-
-describe("LOCALIZA+ v1.10.10 — Precedência de Identidade Institucional em verifyUserInFirestore", () => {
-  it("1. Gmail com documento antigo SERVIDOR/APROVADO -> INTRUSO", () => {
-    const role = resolveTargetRole({
+  // 2. Zero-Trust: Contas não verificadas
+  it("2. Contas externas ou institucionais com e-mail NÃO verificado são estritamente INTRUSO", () => {
+    const unverifiedExt = resolveEffectiveUserIdentity({
       email: "contato.pclabs@gmail.com",
-      emailVerified: true,
-      existingRole: "SERVIDOR",
-      existingApprovalStatus: "APROVADO",
+      emailVerified: false,
+      userDocData: { role: "SERVIDOR", approvalStatus: "APROVADO" },
     });
-    expect(role).toBe("INTRUSO");
+    expect(unverifiedExt.role).toBe("INTRUSO");
+
+    const unverifiedStaff = resolveEffectiveUserIdentity({
+      email: "professor@ifpr.edu.br",
+      emailVerified: false,
+    });
+    expect(unverifiedStaff.role).toBe("INTRUSO");
   });
 
-  it("2. Gmail com documento antigo ADMIN/APROVADO -> INTRUSO", () => {
-    const role = resolveTargetRole({
-      email: "falsroadmin@gmail.com",
-      emailVerified: true,
-      existingRole: "ADMIN",
-      existingApprovalStatus: "APROVADO",
-    });
-    expect(role).toBe("INTRUSO");
-  });
-
-  it("3. E-mail institucional de aluno -> ALUNO", () => {
-    const role = resolveTargetRole({
+  // 3. Classificação Automática Institucional: Estudante
+  it("3. E-mail institucional de estudante (@estudantes.ifpr.edu.br) verificado -> ALUNO / APROVADO", () => {
+    const res = resolveEffectiveUserIdentity({
       email: "aluno.teste@estudantes.ifpr.edu.br",
       emailVerified: true,
-      existingRole: "INTRUSO",
-      existingApprovalStatus: "PENDENTE",
+      userDocData: null,
     });
-    expect(role).toBe("ALUNO");
+    expect(res.role).toBe("ALUNO");
+    expect(res.approvalStatus).toBe("APROVADO");
+    expect(res.isInstitutional).toBe(true);
+    expect(res.isDesignated).toBe(false);
   });
 
-  it("4. E-mail institucional de servidor aprovado -> SERVIDOR", () => {
-    const role = resolveTargetRole({
-      email: "servidor.teste@ifpr.edu.br",
+  // 4. Classificação Automática Institucional: Servidor Aprovado
+  it("4. E-mail institucional de servidor (@ifpr.edu.br) com documento APROVADO -> SERVIDOR / APROVADO", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "servidor.aprovado@ifpr.edu.br",
       emailVerified: true,
-      existingRole: "SERVIDOR",
-      existingApprovalStatus: "APROVADO",
+      userDocData: { role: "SERVIDOR", approvalStatus: "APROVADO" },
     });
-    expect(role).toBe("SERVIDOR");
+    expect(res.role).toBe("SERVIDOR");
+    expect(res.approvalStatus).toBe("APROVADO");
+    expect(res.isInstitutional).toBe(true);
+    expect(res.isDesignated).toBe(false);
   });
 
-  it("5. E-mail institucional de servidor pendente -> SERVIDOR (papel determinado pelo domínio, com approvalStatus pendente gerenciado separadamente)", () => {
-    const role = resolveTargetRole({
+  // 5. Classificação Automática Institucional: Servidor Pendente
+  it("5. E-mail institucional de servidor (@ifpr.edu.br) com documento PENDENTE -> SERVIDOR / PENDENTE", () => {
+    const res = resolveEffectiveUserIdentity({
       email: "novo.servidor@ifpr.edu.br",
       emailVerified: true,
-      existingRole: "INTRUSO",
-      existingApprovalStatus: "PENDENTE",
+      userDocData: { role: "SERVIDOR", approvalStatus: "PENDENTE" },
     });
-    expect(role).toBe("SERVIDOR");
+    expect(res.role).toBe("SERVIDOR");
+    expect(res.approvalStatus).toBe("PENDENTE");
+    expect(res.isInstitutional).toBe(true);
+    expect(res.isDesignated).toBe(false);
   });
 
-  it("6. Root Admin oficial (paulocauan39@gmail.com) -> ADMIN", () => {
-    const role = resolveTargetRole({
-      email: "paulocauan39@gmail.com",
+  // 6. Conta Externa sem Atribuição Administrativa -> INTRUSO
+  it("6. Conta Gmail comum sem atribuição administrativa -> INTRUSO", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "usuario.comum@gmail.com",
       emailVerified: true,
-      existingRole: "ALUNO",
-      existingApprovalStatus: "APROVADO",
+      userDocData: null,
     });
-    expect(role).toBe("ADMIN");
+    expect(res.role).toBe("INTRUSO");
+    expect(res.isInstitutional).toBe(false);
+    expect(res.isDesignated).toBe(false);
   });
 
-  it("7. Conta externa com perfil antigo privilegiado -> INTRUSO", () => {
-    const role = resolveTargetRole({
-      email: "visitante.externo@yahoo.com.br",
-      emailVerified: true,
-      existingRole: "SERVIDOR",
-      existingApprovalStatus: "APROVADO",
-    });
-    expect(role).toBe("INTRUSO");
-  });
-
-  it("8. Migração por e-mail de conta externa não herda privilégios -> INTRUSO", () => {
-    const role = resolveTargetRole({
-      email: "externo.migracao@outlook.com",
-      emailVerified: true,
-      existingRole: "ADMIN",
-      existingApprovalStatus: "APROVADO",
-    });
-    expect(role).toBe("INTRUSO");
-  });
-
-  it("9. Alteração de estado local/cache (tentativa de injetar role privilegiada no objeto existente) não concede autorização -> INTRUSO", () => {
-    const role = resolveTargetRole({
-      email: "atacante@gmail.com",
-      emailVerified: true,
-      existingRole: "SERVIDOR",
-      existingApprovalStatus: "APROVADO",
-    });
-    expect(role).toBe("INTRUSO");
-  });
-
-  it("10. Falha na escrita para Gmail externo com legado SERVIDOR -> targetRole INTRUSO (sem fallback inseguro)", () => {
-    const role = resolveTargetRole({
+  // 7. Neutralização de Documentos Legados sem roleAssignedBy
+  it("7. Conta Gmail com documento legado SERVIDOR/APROVADO sem roleAssignedBy é neutralizada como INTRUSO", () => {
+    const res = resolveEffectiveUserIdentity({
       email: "contato.pclabs@gmail.com",
       emailVerified: true,
-      existingRole: "SERVIDOR",
-      existingApprovalStatus: "APROVADO",
+      userDocData: {
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        // Sem roleAssignedBy ou vazio
+      },
     });
-    expect(role).toBe("INTRUSO");
+    expect(res.role).toBe("INTRUSO");
+    expect(res.isInstitutional).toBe(false);
+    expect(res.isDesignated).toBe(false);
   });
 
-  it("11. Falha na escrita para Gmail externo com legado ADMIN -> targetRole INTRUSO", () => {
-    const role = resolveTargetRole({
-      email: "externo@gmail.com",
+  it("8. Conta Gmail com documento legado ADMIN/APROVADO sem roleAssignedBy é neutralizada como INTRUSO", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "falso.admin@gmail.com",
       emailVerified: true,
-      existingRole: "ADMIN",
-      existingApprovalStatus: "APROVADO",
+      userDocData: {
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        roleAssignedBy: "", // Espaço vazio não conta como atribuição válida
+        roleAssignedAt: "",
+      },
     });
-    expect(role).toBe("INTRUSO");
+    expect(res.role).toBe("INTRUSO");
+    expect(res.isInstitutional).toBe(false);
   });
 
-  it("12. Falha na escrita para Aluno institucional com legado SERVIDOR -> targetRole ALUNO", () => {
-    const role = resolveTargetRole({
+  // 9. Atribuição Administrativa Legítima: SERVIDOR Designado Aprovado via /role_assignments
+  it("9. Conta externa com atribuição legítima de SERVIDOR via RoleAssignment -> SERVIDOR / APROVADO", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "contato.pclabs@gmail.com",
+      emailVerified: true,
+      userDocData: { role: "INTRUSO", approvalStatus: "PENDENTE" },
+      roleAssignment: {
+        id: "uid_pclabs",
+        targetUserId: "uid_pclabs",
+        targetEmail: "contato.pclabs@gmail.com",
+        assignedRole: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        assignedByUid: "admin_uid_root",
+        assignedByEmail: "paulocauan39@gmail.com",
+        assignedByName: "Paulo Cauan",
+        assignedAt: "2026-11-04T12:00:00.000Z",
+        active: true,
+        updatedAt: "2026-11-04T12:00:00.000Z",
+      },
+    });
+    expect(res.role).toBe("SERVIDOR");
+    expect(res.approvalStatus).toBe("APROVADO");
+    expect(res.isInstitutional).toBe(true);
+    expect(res.isDesignated).toBe(true);
+    expect(res.label).toContain("Servidor Designado (Aprovado)");
+  });
+
+  // 10. Atribuição Administrativa: SERVIDOR Designado Pendente
+  it("10. Conta externa com atribuição de SERVIDOR com aprovação PENDENTE -> SERVIDOR / PENDENTE", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "parceiro.externo@gmail.com",
+      emailVerified: true,
+      userDocData: { role: "INTRUSO", approvalStatus: "PENDENTE" },
+      roleAssignment: {
+        id: "uid_parceiro",
+        targetUserId: "uid_parceiro",
+        targetEmail: "parceiro.externo@gmail.com",
+        assignedRole: "SERVIDOR",
+        approvalStatus: "PENDENTE",
+        assignedByUid: "admin_uid_root",
+        assignedByEmail: "paulocauan39@gmail.com",
+        assignedByName: "Paulo Cauan",
+        assignedAt: "2026-11-04T12:00:00.000Z",
+        active: true,
+        updatedAt: "2026-11-04T12:00:00.000Z",
+      },
+    });
+    expect(res.role).toBe("SERVIDOR");
+    expect(res.approvalStatus).toBe("PENDENTE");
+    expect(res.isInstitutional).toBe(true);
+    expect(res.isDesignated).toBe(true);
+  });
+
+  // 11. Atribuição Administrativa: ADMIN Designado
+  it("11. Conta externa com atribuição de ADMIN concedida pelo Root Admin -> ADMIN / APROVADO", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "admin.suporte@gmail.com",
+      emailVerified: true,
+      userDocData: { role: "INTRUSO", approvalStatus: "PENDENTE" },
+      roleAssignment: {
+        id: "uid_admin_sec",
+        targetUserId: "uid_admin_sec",
+        targetEmail: "admin.suporte@gmail.com",
+        assignedRole: "ADMIN",
+        approvalStatus: "APROVADO",
+        assignedByUid: "admin_uid_root",
+        assignedByEmail: "paulocauan39@gmail.com",
+        assignedByName: "Paulo Cauan",
+        assignedAt: "2026-11-04T12:00:00.000Z",
+        active: true,
+        updatedAt: "2026-11-04T12:00:00.000Z",
+      },
+    });
+    expect(res.role).toBe("ADMIN");
+    expect(res.approvalStatus).toBe("APROVADO");
+    expect(res.isInstitutional).toBe(true);
+    expect(res.isDesignated).toBe(true);
+  });
+
+  // 12. Atribuição Administrativa: ALUNO Designado
+  it("12. Conta externa com atribuição de ALUNO -> ALUNO / APROVADO", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "estudante.externo@hotmail.com",
+      emailVerified: true,
+      userDocData: { role: "INTRUSO", approvalStatus: "PENDENTE" },
+      roleAssignment: {
+        id: "uid_aluno_ext",
+        targetUserId: "uid_aluno_ext",
+        targetEmail: "estudante.externo@hotmail.com",
+        assignedRole: "ALUNO",
+        approvalStatus: "APROVADO",
+        assignedByUid: "admin_uid_root",
+        assignedByEmail: "paulocauan39@gmail.com",
+        assignedByName: "Paulo Cauan",
+        assignedAt: "2026-11-04T12:00:00.000Z",
+        active: true,
+        updatedAt: "2026-11-04T12:00:00.000Z",
+      },
+    });
+    expect(res.role).toBe("ALUNO");
+    expect(res.approvalStatus).toBe("APROVADO");
+    expect(res.isInstitutional).toBe(true);
+    expect(res.isDesignated).toBe(true);
+  });
+
+  // 13. Legado em /users com roleAssignedBy mas SEM /role_assignments -> Neutralizado como INTRUSO
+  it("13. Conta com metadados legados em /users mas SEM /role_assignments é neutralizada como INTRUSO", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "ex.servidor@gmail.com",
+      emailVerified: true,
+      userDocData: {
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        roleAssignedBy: "admin_uid_root",
+        roleAssignedByName: "Paulo Cauan",
+        roleAssignedAt: "2026-11-04T12:00:00.000Z",
+      },
+      // Sem roleAssignment document
+    });
+    expect(res.role).toBe("INTRUSO");
+    expect(res.isInstitutional).toBe(false);
+    expect(res.isDesignated).toBe(false);
+  });
+
+  // 14. Matriz de Autorização de Cadastro de Objeto (canRegisterItems logic)
+  it("14. Matriz de Cadastro de Objetos reflete precisamente as regras do sistema", () => {
+    const canRegisterItem = (identity: { role: string; approvalStatus: string }) => {
+      if (identity.role === "ADMIN") return true;
+      if (identity.role === "SERVIDOR" && identity.approvalStatus === "APROVADO") return true;
+      return false;
+    };
+
+    // Servidor institucional aprovado -> Pode cadastrar
+    const staffApproved = resolveEffectiveUserIdentity({
+      email: "prof@ifpr.edu.br",
+      emailVerified: true,
+      userDocData: { role: "SERVIDOR", approvalStatus: "APROVADO" },
+    });
+    expect(canRegisterItem(staffApproved)).toBe(true);
+
+    // Servidor institucional pendente -> NÃO pode cadastrar
+    const staffPending = resolveEffectiveUserIdentity({
+      email: "prof@ifpr.edu.br",
+      emailVerified: true,
+      userDocData: { role: "SERVIDOR", approvalStatus: "PENDENTE" },
+    });
+    expect(canRegisterItem(staffPending)).toBe(false);
+
+    // Servidor designado aprovado (ex: contato.pclabs@gmail.com com roleAssignment ativo) -> Pode cadastrar
+    const designatedStaffApproved = resolveEffectiveUserIdentity({
+      email: "contato.pclabs@gmail.com",
+      emailVerified: true,
+      userDocData: { role: "SERVIDOR", approvalStatus: "APROVADO" },
+      roleAssignment: {
+        id: "uid_pclabs",
+        targetUserId: "uid_pclabs",
+        targetEmail: "contato.pclabs@gmail.com",
+        assignedRole: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        assignedByUid: "admin_uid_root",
+        assignedByEmail: "paulocauan39@gmail.com",
+        assignedAt: "2026-11-04T12:00:00.000Z",
+        active: true,
+        updatedAt: "2026-11-04T12:00:00.000Z",
+      },
+    });
+    expect(canRegisterItem(designatedStaffApproved)).toBe(true);
+
+    // Servidor designado pendente -> NÃO pode cadastrar
+    const designatedStaffPending = resolveEffectiveUserIdentity({
+      email: "contato.pclabs@gmail.com",
+      emailVerified: true,
+      userDocData: { role: "SERVIDOR", approvalStatus: "PENDENTE" },
+      roleAssignment: {
+        id: "uid_pclabs",
+        targetUserId: "uid_pclabs",
+        targetEmail: "contato.pclabs@gmail.com",
+        assignedRole: "SERVIDOR",
+        approvalStatus: "PENDENTE",
+        assignedByUid: "admin_uid_root",
+        assignedByEmail: "paulocauan39@gmail.com",
+        assignedAt: "2026-11-04T12:00:00.000Z",
+        active: true,
+        updatedAt: "2026-11-04T12:00:00.000Z",
+      },
+    });
+    expect(canRegisterItem(designatedStaffPending)).toBe(false);
+
+    // Servidor legado sem atribuição administrativa -> INTRUSO -> NÃO pode cadastrar
+    const legacyStaff = resolveEffectiveUserIdentity({
+      email: "contato.pclabs@gmail.com",
+      emailVerified: true,
+      userDocData: { role: "SERVIDOR", approvalStatus: "APROVADO" },
+    });
+    expect(canRegisterItem(legacyStaff)).toBe(false);
+
+    // Aluno institucional ou designado -> NÃO pode cadastrar
+    const student = resolveEffectiveUserIdentity({
       email: "aluno@estudantes.ifpr.edu.br",
       emailVerified: true,
-      existingRole: "SERVIDOR",
-      existingApprovalStatus: "APROVADO",
+      userDocData: { role: "ALUNO", approvalStatus: "APROVADO" },
     });
-    expect(role).toBe("ALUNO");
-  });
+    expect(canRegisterItem(student)).toBe(false);
 
-  it("13. Falha na escrita para Servidor institucional -> targetRole SERVIDOR", () => {
-    const role = resolveTargetRole({
-      email: "servidor@ifpr.edu.br",
+    // Intruso -> NÃO pode cadastrar
+    const intruso = resolveEffectiveUserIdentity({
+      email: "invasor@gmail.com",
       emailVerified: true,
-      existingRole: "SERVIDOR",
-      existingApprovalStatus: "PENDENTE",
+      userDocData: null,
     });
-    expect(role).toBe("SERVIDOR");
-  });
+    expect(canRegisterItem(intruso)).toBe(false);
 
-  it("14. Falha na escrita para Root Admin oficial -> targetRole ADMIN", () => {
-    const role = resolveTargetRole({
+    // Admin designado -> Pode cadastrar
+    const designatedAdmin = resolveEffectiveUserIdentity({
+      email: "admin.externo@gmail.com",
+      emailVerified: true,
+      userDocData: {
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+      },
+      roleAssignment: {
+        id: "uid_admin_ext",
+        targetUserId: "uid_admin_ext",
+        targetEmail: "admin.externo@gmail.com",
+        assignedRole: "ADMIN",
+        approvalStatus: "APROVADO",
+        assignedByUid: "admin_uid_root",
+        assignedByEmail: "paulocauan39@gmail.com",
+        assignedAt: "2026-11-04T12:00:00.000Z",
+        active: true,
+        updatedAt: "2026-11-04T12:00:00.000Z",
+      },
+    });
+    expect(canRegisterItem(designatedAdmin)).toBe(true);
+
+    // Root Admin -> Pode cadastrar
+    const rootAdmin = resolveEffectiveUserIdentity({
       email: "paulocauan39@gmail.com",
       emailVerified: true,
-      existingRole: "ALUNO",
-      existingApprovalStatus: "APROVADO",
+      userDocData: null,
     });
-    expect(role).toBe("ADMIN");
+    expect(canRegisterItem(rootAdmin)).toBe(true);
+  });
+
+  // 15. Atribuição via Coleção Segura RoleAssignment (/role_assignments/{uid})
+  it("15. Atribuição via RoleAssignment ativo tem precedência e concede SERVIDOR / APROVADO", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "contato.pclabs@gmail.com",
+      emailVerified: true,
+      userDocData: { role: "INTRUSO", approvalStatus: "PENDENTE" },
+      roleAssignment: {
+        id: "uid_pclabs",
+        targetUserId: "uid_pclabs",
+        targetEmail: "contato.pclabs@gmail.com",
+        assignedRole: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        assignedByUid: "root_uid",
+        assignedByEmail: "paulocauan39@gmail.com",
+        assignedAt: "2026-11-04T12:00:00.000Z",
+        active: true,
+        updatedAt: "2026-11-04T12:00:00.000Z",
+      },
+    });
+    expect(res.role).toBe("SERVIDOR");
+    expect(res.approvalStatus).toBe("APROVADO");
+    expect(res.isInstitutional).toBe(true);
+    expect(res.isDesignated).toBe(true);
+  });
+
+  // 16. RoleAssignment inativo (revogado)
+  it("16. RoleAssignment inativo (active: false) não concede privilégios e classifica conta externa como INTRUSO", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "contato.pclabs@gmail.com",
+      emailVerified: true,
+      userDocData: { role: "INTRUSO" },
+      roleAssignment: {
+        id: "uid_pclabs",
+        targetUserId: "uid_pclabs",
+        targetEmail: "contato.pclabs@gmail.com",
+        assignedRole: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        assignedByUid: "root_uid",
+        assignedByEmail: "paulocauan39@gmail.com",
+        assignedAt: "2026-11-04T12:00:00.000Z",
+        active: false,
+        updatedAt: "2026-11-04T12:00:00.000Z",
+      },
+    });
+    expect(res.role).toBe("INTRUSO");
+    expect(res.isInstitutional).toBe(false);
   });
 });

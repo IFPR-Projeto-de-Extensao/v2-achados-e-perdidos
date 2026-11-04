@@ -140,7 +140,7 @@ describe("LOCALIZA+ v1.10.9 — Validação de Segurança dos Achados SEC-01 a S
     });
 
     it("SEC-02.2: firestore.rules NÃO possui desvio isolado de token.role == 'SERVIDOR' em isServidor()", () => {
-      expect(rulesContent).toMatch(/function isServidor\(\)\s*\{\s*return isSignedIn\(\)\s*&&\s*\(isAdmin\(\)\s*\|\|\s*\((?:isAccountActive\(\)\s*&&\s*)?isEmailVerified\(\)\s*&&\s*isDocServidor\(\)\)\);/);
+      expect(rulesContent).toMatch(/function isServidor\(\)\s*\{\s*return (?:isSignedIn\(\)\s*&&\s*\(isAdmin\(\)\s*\|\|\s*\((?:isAccountActive\(\)\s*&&\s*)?isEmailVerified\(\)\s*&&\s*isDocServidor\(\)\)\)|isAccountActive\(\)\s*&&\s*isDocServidor\(\));/);
       expect(rulesContent).not.toContain("request.auth.token.role == 'SERVIDOR'");
     });
 

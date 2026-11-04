@@ -9,19 +9,25 @@ import { collection, doc, setDoc, getDoc, getDocs, query, where } from "firebase
 import fs from "fs";
 import path from "path";
 
-let testEnv: RulesTestEnvironment;
+import net from "net";
 
-describe("Firestore Rules Emulator Suite — Real Security Rules Validation", () => {
+let testEnv: RulesTestEnvironment | null = null;
+let emulatorAvailable = false;
+
+const isEmulatorAvailable = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
+
+describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real Security Rules Validation", () => {
   beforeAll(async () => {
     const rulesPath = path.resolve(process.cwd(), "firestore.rules");
     const rules = fs.readFileSync(rulesPath, "utf-8");
 
+    const hostAndPort = process.env.FIRESTORE_EMULATOR_HOST?.split(":") || ["127.0.0.1", "8080"];
     testEnv = await initializeTestEnvironment({
       projectId: "localiza-plus-emulator-test",
       firestore: {
         rules: rules,
-        host: "127.0.0.1",
-        port: 8080,
+        host: hostAndPort[0] || "127.0.0.1",
+        port: Number(hostAndPort[1]) || 8080,
       },
     });
   });
@@ -33,7 +39,9 @@ describe("Firestore Rules Emulator Suite — Real Security Rules Validation", ()
   });
 
   beforeEach(async () => {
-    await testEnv.clearFirestore();
+    if (testEnv) {
+      await testEnv.clearFirestore();
+    }
   });
 
   const setupUserDoc = async (uid: string, data: Record<string, any>) => {

@@ -35,6 +35,11 @@ const portArgIndex = process.argv.indexOf("--port");
 const cliPort = portArgIndex !== -1 && process.argv[portArgIndex + 1] ? Number(process.argv[portArgIndex + 1]) : NaN;
 const PORT = (!isNaN(cliPort) && cliPort > 0) ? cliPort : (Number(process.env.PORT) || 3000);
 const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
+const ROOT_ADMIN_UID = (process.env.ROOT_ADMIN_UID || "").trim();
+
+if (!ROOT_ADMIN_UID) {
+  console.warn("[Security Warning] ROOT_ADMIN_UID environment variable is not configured. Root Admin authorization will be strictly disabled (fail-closed).");
+}
 
 // =================================================================
 // Firebase Admin Singleton & Credential Management
@@ -307,44 +312,71 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
     if (adminAuth) {
       try {
         const decoded = await adminAuth.verifyIdToken(token);
-        const isRoot = decoded.email === ROOT_ADMIN_EMAIL;
-        let isEmailVerified = isRoot ? true : decoded.email_verified === true;
-        let isAdmin = isRoot;
+        const isRootEmail = (decoded.email || "").toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase();
+        const isEmailVerified = decoded.email_verified === true;
+        const matchesRootUid = Boolean(ROOT_ADMIN_UID) && decoded.uid === ROOT_ADMIN_UID;
+        const isRoot = isRootEmail && isEmailVerified && matchesRootUid;
+        let isAdmin = false;
         let dbRole: string | undefined = undefined;
 
         const adminFirestore = getAdminFirestore();
         if (adminFirestore) {
           try {
             const uDoc = await adminFirestore.collection("users").doc(decoded.uid).get();
-            if (uDoc.exists) {
-              const uData: any = (typeof uDoc.data === "function" ? uDoc.data() : (uDoc as any).data) || {};
-              dbRole = uData?.role;
-              // Authoritative role from Firestore: only ADMIN role with approval grants admin
-              if (uData?.role === "ADMIN" && (isRoot || uData?.approvalStatus === "APROVADO")) {
-                isAdmin = true;
-              } else if (!isRoot) {
-                // If the user's role in Firestore is ALUNO, SERVIDOR, etc., reject stale admin claims
-                isAdmin = false;
+            const uData: any = (uDoc.exists && (typeof uDoc.data === "function" ? uDoc.data() : (uDoc as any).data)) || {};
+            const isSuspendedOrBanned = uData?.status === "banned" || uData?.status === "suspended";
+            dbRole = uData?.role;
+
+            let hasAdminAssignment = false;
+            try {
+              const assignDoc = await adminFirestore.collection("role_assignments").doc(decoded.uid).get();
+              if (assignDoc.exists) {
+                const aData: any = assignDoc.data();
+                if (
+                  aData?.targetUserId === decoded.uid &&
+                  aData?.active === true &&
+                  aData?.assignedRole === "ADMIN" &&
+                  aData?.approvalStatus === "APROVADO"
+                ) {
+                  hasAdminAssignment = true;
+                }
               }
-              // Email verification: strictly verified by cryptographic provider; mutable Firestore doc is NOT trusted as equivalent
-            } else if (!isRoot) {
+            } catch (assignErr) {
+              // Fail-closed: erro na leitura da atribuição resulta em negação de acesso
+              hasAdminAssignment = false;
+            }
+
+            if (isSuspendedOrBanned) {
+              isAdmin = false;
+            } else if (isRoot) {
+              isAdmin = true;
+              dbRole = "ADMIN";
+            } else if (hasAdminAssignment && isEmailVerified) {
+              isAdmin = true;
+              dbRole = "ADMIN";
+            } else {
               isAdmin = false;
             }
-          } catch (_) {}
-        } else if (!isRoot) {
+          } catch (_) {
+            if (isRoot) {
+              isAdmin = true;
+              dbRole = "ADMIN";
+            } else {
+              isAdmin = false;
+            }
+          }
+        } else if (isRoot) {
+          isAdmin = true;
+          dbRole = "ADMIN";
+        } else {
           isAdmin = false;
-        }
-
-        // Email verification comes exclusively from Firebase Auth token (or trusted Root Admin constant)
-        if (isRoot) {
-          isEmailVerified = true;
         }
 
         req.authUser = {
           uid: decoded.uid,
           email: decoded.email,
           email_verified: isEmailVerified,
-          role: isRoot ? "ADMIN" : (isAdmin ? "ADMIN" : (dbRole || "ALUNO")),
+          role: isAdmin ? "ADMIN" : (dbRole || "ALUNO"),
           isAdmin,
         };
         return next();
@@ -1486,6 +1518,479 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
         stage: currentStage,
       });
     }
+  }
+});
+
+// =================================================================
+// Administrative Role Assignment Endpoints (/api/admin/...)
+// =================================================================
+
+/**
+ * POST /api/admin/assign-role
+ * Assigns an institutional or external role to a target user.
+ * Protected collection /role_assignments/{targetUid} written exclusively via Firebase Admin SDK.
+ */
+app.post("/api/admin/assign-role", generalRateLimiter, requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const callerUid = req.authUser!.uid;
+  const callerEmail = (req.authUser!.email || "").toLowerCase();
+  const isRootAdmin = callerEmail === ROOT_ADMIN_EMAIL.toLowerCase();
+
+  const { targetUserId, targetRole, reason } = req.body || {};
+
+  if (!targetUserId || typeof targetUserId !== "string" || !targetUserId.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: "targetUserId é obrigatório e deve ser uma string válida.",
+      code: "INVALID_TARGET_USER_ID",
+    });
+  }
+
+  const cleanTargetUid = targetUserId.trim();
+  const validRoles = ["ALUNO", "SERVIDOR", "ADMIN", "INTRUSO"];
+  if (!targetRole || typeof targetRole !== "string" || !validRoles.includes(targetRole.toUpperCase())) {
+    return res.status(400).json({
+      success: false,
+      error: `targetRole inválido. Valores permitidos: ${validRoles.join(", ")}.`,
+      code: "INVALID_ROLE",
+    });
+  }
+
+  const cleanRole = targetRole.toUpperCase();
+
+  // Self-assignment / self-elevation prevention
+  if (cleanTargetUid === callerUid) {
+    return res.status(403).json({
+      success: false,
+      error: "Operação não permitida: um administrador não pode alterar o próprio cargo.",
+      code: "SELF_ASSIGNMENT_FORBIDDEN",
+    });
+  }
+
+  // Only the official Root Admin can grant the ADMIN role
+  if (cleanRole === "ADMIN" && !isRootAdmin) {
+    return res.status(403).json({
+      success: false,
+      error: "Apenas o Administrador Raiz oficial (paulocauan39@gmail.com) pode conceder o cargo de ADMIN.",
+      code: "ROOT_ADMIN_ONLY_FOR_ADMIN_ROLE",
+    });
+  }
+
+  const adminAuth = getAdminAuth();
+  const adminFirestore = getAdminFirestore();
+
+  if (!adminFirestore) {
+    return res.status(500).json({
+      success: false,
+      error: "Banco de dados administrativo indisponível.",
+      code: "FIRESTORE_UNAVAILABLE",
+    });
+  }
+
+  try {
+    const userRef = adminFirestore.collection("users").doc(cleanTargetUid);
+    const assignRef = adminFirestore.collection("role_assignments").doc(cleanTargetUid);
+    const callerRef = adminFirestore.collection("users").doc(callerUid);
+    const auditLogId = `audit-role-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const auditRef = adminFirestore.collection("audit_logs").doc(auditLogId);
+    const actLogId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const actRef = adminFirestore.collection("activity_logs").doc(actLogId);
+
+    const nowIso = new Date().toISOString();
+    const isIntruso = cleanRole === "INTRUSO";
+    const approvalStatus = isIntruso ? "PENDENTE" : "APROVADO";
+    const active = !isIntruso;
+
+    // Run ACID transaction: reads all documents first, then performs atomic writes
+    const txResult = await adminFirestore.runTransaction(async (transaction) => {
+      // 1. ALL READS FIRST
+      const callerDoc = await transaction.get(callerRef);
+      const targetUserDoc = await transaction.get(userRef);
+      const targetAssignDoc = await transaction.get(assignRef);
+
+      if (callerDoc.exists) {
+        const cData = callerDoc.data();
+        if (cData?.status === "banned" || cData?.status === "suspended") {
+          const err: any = new Error("Sua conta está suspensa ou desativada.");
+          err.code = "ACCOUNT_SUSPENDED";
+          err.statusCode = 403;
+          throw err;
+        }
+      }
+
+      let targetEmail = "";
+      let targetName = "";
+      let previousRole = "INTRUSO";
+
+      if (targetUserDoc.exists) {
+        const uData = targetUserDoc.data();
+        targetEmail = uData?.email || "";
+        targetName = uData?.name || "";
+        previousRole = uData?.role || "INTRUSO";
+      } else if (targetAssignDoc.exists) {
+        const aData = targetAssignDoc.data();
+        targetEmail = aData?.targetEmail || "";
+        previousRole = aData?.assignedRole || "INTRUSO";
+      }
+
+      if (!targetEmail && !targetUserDoc.exists) {
+        const err: any = new Error("Usuário alvo não encontrado no sistema.");
+        err.code = "USER_NOT_FOUND";
+        err.statusCode = 404;
+        throw err;
+      }
+
+      if (targetEmail.toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase()) {
+        const err: any = new Error("Não é permitido alterar o cargo do Administrador Raiz oficial.");
+        err.code = "CANNOT_MODIFY_ROOT_ADMIN";
+        err.statusCode = 403;
+        throw err;
+      }
+
+      if (previousRole === "ADMIN" && !isRootAdmin) {
+        const err: any = new Error("Apenas o Administrador Raiz oficial pode alterar o cargo de outro Administrador.");
+        err.code = "ROOT_ADMIN_ONLY_TO_MODIFY_ADMIN";
+        err.statusCode = 403;
+        throw err;
+      }
+
+      const callerName = callerDoc.exists ? (callerDoc.data()?.name || callerEmail) : callerEmail;
+
+      const assignmentDoc = {
+        id: cleanTargetUid,
+        targetUserId: cleanTargetUid,
+        targetEmail: targetEmail || "",
+        assignedRole: cleanRole,
+        approvalStatus,
+        assignedByUid: callerUid,
+        assignedByEmail: callerEmail,
+        assignedByName: callerName,
+        assignedAt: nowIso,
+        active,
+        updatedAt: nowIso,
+        reason: reason && typeof reason === "string" ? reason.trim().slice(0, 500) : "Atribuição administrativa de cargo",
+        ...(isIntruso ? {
+          revokedAt: nowIso,
+          revokedByUid: callerUid,
+          revokedByEmail: callerEmail,
+          revocationReason: reason || "Classificado como INTRUSO",
+        } : {}),
+      };
+
+      const auditData = {
+        id: auditLogId,
+        transactionId: `TX-ROLE-${Date.now().toString(36).toUpperCase()}`,
+        objectId: cleanTargetUid,
+        objectType: "ROLE_ASSIGNMENT",
+        objectTitle: targetEmail || cleanTargetUid,
+        action: isIntruso ? "ROLE_REVOKED" : "ROLE_ASSIGNED",
+        actorId: callerUid,
+        actorName: callerName,
+        actorEmail: callerEmail,
+        actorRole: isRootAdmin ? "ROOT_ADMIN" : "ADMIN",
+        timestamp: nowIso,
+        fieldChanged: "role",
+        oldValue: previousRole,
+        newValue: cleanRole,
+        details: `Cargo '${cleanRole}' (${approvalStatus}) atribuído a '${targetEmail || cleanTargetUid}' pelo administrador ${callerEmail}. Motivo: ${reason || "N/A"}`,
+        immutable: true,
+      };
+
+      const actData = {
+        id: actLogId,
+        adminId: callerUid,
+        adminName: callerName,
+        action: isIntruso ? "ROLE_REVOKED" : "ROLE_ASSIGNED",
+        objectId: cleanTargetUid,
+        objectType: "USER",
+        details: `Cargo '${cleanRole}' (${approvalStatus}) atribuído ao usuário '${targetEmail || cleanTargetUid}'.`,
+        timestamp: nowIso,
+      };
+
+      // 2. ALL WRITES INSIDE TRANSACTION
+      transaction.set(assignRef, assignmentDoc, { merge: true });
+      transaction.set(userRef, {
+        role: cleanRole,
+        approvalStatus,
+        roleAssignedBy: callerEmail,
+        roleAssignedAt: nowIso,
+        roleAssignmentActive: active,
+        updatedAt: nowIso,
+      }, { merge: true });
+      transaction.set(auditRef, auditData);
+      transaction.set(actRef, actData);
+
+      return {
+        targetEmail,
+        cleanRole,
+        approvalStatus,
+        assignmentDoc,
+        isIntruso,
+      };
+    });
+
+    // 3. Claims and Refresh Token Revocation (OUTSIDE transaction)
+    let claimsSynced = true;
+    if (adminAuth) {
+      try {
+        await adminAuth.setCustomUserClaims(cleanTargetUid, {
+          role: txResult.cleanRole,
+          approvalStatus: txResult.approvalStatus,
+        });
+        if (txResult.isIntruso) {
+          await adminAuth.revokeRefreshTokens(cleanTargetUid);
+        }
+      } catch (claimErr: any) {
+        claimsSynced = false;
+        console.warn("[Admin Assign Role Warning] Não foi possível definir custom claims:", claimErr?.message);
+      }
+    }
+
+    console.log(`[Admin Role Assignment] Sucesso Transacional: UID=${cleanTargetUid}, Role=${txResult.cleanRole}, ClaimsSynced=${claimsSynced}`);
+
+    return res.status(200).json({
+      success: true,
+      message: `Cargo '${txResult.cleanRole}' (${txResult.approvalStatus}) atribuído com sucesso ao usuário '${txResult.targetEmail || cleanTargetUid}'.`,
+      assignment: txResult.assignmentDoc,
+      claimsSynced,
+    });
+  } catch (err: any) {
+    if (err?.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        error: err.message,
+        code: err.code || "ADMIN_ERROR",
+      });
+    }
+    console.error("[Admin Assign Role Error]:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Falha interna ao atribuir cargo ao usuário.",
+      code: "ROLE_ASSIGNMENT_ERROR",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+/**
+ * POST /api/admin/revoke-role
+ * Revokes an administrative role assignment and resets target to INTRUSO/PENDENTE.
+ */
+app.post("/api/admin/revoke-role", generalRateLimiter, requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const callerUid = req.authUser!.uid;
+  const callerEmail = (req.authUser!.email || "").toLowerCase();
+  const isRootAdmin = callerEmail === ROOT_ADMIN_EMAIL.toLowerCase();
+
+  const { targetUserId, reason } = req.body || {};
+
+  if (!targetUserId || typeof targetUserId !== "string" || !targetUserId.trim()) {
+    return res.status(400).json({
+      success: false,
+      error: "targetUserId é obrigatório e deve ser uma string válida.",
+      code: "INVALID_TARGET_USER_ID",
+    });
+  }
+
+  const cleanTargetUid = targetUserId.trim();
+
+  // Self-revocation prevention
+  if (cleanTargetUid === callerUid) {
+    return res.status(403).json({
+      success: false,
+      error: "Operação não permitida: um administrador não pode revogar o próprio cargo.",
+      code: "SELF_REVOCATION_FORBIDDEN",
+    });
+  }
+
+  const adminAuth = getAdminAuth();
+  const adminFirestore = getAdminFirestore();
+
+  if (!adminFirestore) {
+    return res.status(500).json({
+      success: false,
+      error: "Banco de dados administrativo indisponível.",
+      code: "FIRESTORE_UNAVAILABLE",
+    });
+  }
+
+  try {
+    const userRef = adminFirestore.collection("users").doc(cleanTargetUid);
+    const assignRef = adminFirestore.collection("role_assignments").doc(cleanTargetUid);
+    const callerRef = adminFirestore.collection("users").doc(callerUid);
+    const auditLogId = `audit-revoke-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const auditRef = adminFirestore.collection("audit_logs").doc(auditLogId);
+    const actLogId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const actRef = adminFirestore.collection("activity_logs").doc(actLogId);
+
+    const nowIso = new Date().toISOString();
+
+    const txResult = await adminFirestore.runTransaction(async (transaction) => {
+      // 1. ALL READS FIRST
+      const callerDoc = await transaction.get(callerRef);
+      const targetUserDoc = await transaction.get(userRef);
+      const targetAssignDoc = await transaction.get(assignRef);
+
+      if (callerDoc.exists) {
+        const cData = callerDoc.data();
+        if (cData?.status === "banned" || cData?.status === "suspended") {
+          const err: any = new Error("Sua conta está suspensa ou desativada.");
+          err.code = "ACCOUNT_SUSPENDED";
+          err.statusCode = 403;
+          throw err;
+        }
+      }
+
+      let targetEmail = "";
+      let previousRole = "UNKNOWN";
+
+      if (targetUserDoc.exists) {
+        const uData = targetUserDoc.data();
+        targetEmail = uData?.email || "";
+        previousRole = uData?.role || "UNKNOWN";
+      } else if (targetAssignDoc.exists) {
+        const aData = targetAssignDoc.data();
+        targetEmail = aData?.targetEmail || "";
+        previousRole = aData?.assignedRole || "UNKNOWN";
+      }
+
+      if (targetEmail.toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase()) {
+        const err: any = new Error("Não é permitido revogar o cargo do Administrador Raiz oficial.");
+        err.code = "CANNOT_REVOKE_ROOT_ADMIN";
+        err.statusCode = 403;
+        throw err;
+      }
+
+      if (previousRole === "ADMIN" && !isRootAdmin) {
+        const err: any = new Error("Apenas o Administrador Raiz oficial pode revogar o cargo de outro Administrador.");
+        err.code = "ROOT_ADMIN_ONLY_TO_REVOKE_ADMIN";
+        err.statusCode = 403;
+        throw err;
+      }
+
+      const callerName = callerDoc.exists ? (callerDoc.data()?.name || callerEmail) : callerEmail;
+      const revocationReason = reason && typeof reason === "string" ? reason.trim().slice(0, 500) : "Revogação administrativa de cargo";
+
+      // 2. ALL WRITES INSIDE TRANSACTION
+      transaction.set(assignRef, {
+        id: cleanTargetUid,
+        targetUserId: cleanTargetUid,
+        active: false,
+        revokedAt: nowIso,
+        revokedByUid: callerUid,
+        revokedByEmail: callerEmail,
+        revocationReason,
+        updatedAt: nowIso,
+      }, { merge: true });
+
+      transaction.set(userRef, {
+        role: "INTRUSO",
+        approvalStatus: "PENDENTE",
+        roleAssignmentActive: false,
+        updatedAt: nowIso,
+      }, { merge: true });
+
+      transaction.set(auditRef, {
+        id: auditLogId,
+        transactionId: `TX-ROLE-REVOKE-${Date.now().toString(36).toUpperCase()}`,
+        objectId: cleanTargetUid,
+        objectType: "ROLE_ASSIGNMENT",
+        objectTitle: targetEmail || cleanTargetUid,
+        action: "ROLE_REVOKED",
+        actorId: callerUid,
+        actorName: callerName,
+        actorEmail: callerEmail,
+        actorRole: isRootAdmin ? "ROOT_ADMIN" : "ADMIN",
+        timestamp: nowIso,
+        fieldChanged: "role",
+        oldValue: previousRole,
+        newValue: "INTRUSO",
+        details: `Atribuição de cargo do usuário '${targetEmail || cleanTargetUid}' revogada pelo administrador ${callerEmail}. Motivo: ${reason || "N/A"}`,
+        immutable: true,
+      });
+
+      transaction.set(actRef, {
+        id: actLogId,
+        adminId: callerUid,
+        adminName: callerName,
+        action: "ROLE_REVOKED",
+        objectId: cleanTargetUid,
+        objectType: "USER",
+        details: `Cargo do usuário '${targetEmail || cleanTargetUid}' revogado pelo administrador ${callerEmail}.`,
+        timestamp: nowIso,
+      });
+
+      return { targetEmail, previousRole };
+    });
+
+    // 3. Claims and Refresh Token Revocation (OUTSIDE transaction)
+    let claimsSynced = true;
+    if (adminAuth) {
+      try {
+        await adminAuth.setCustomUserClaims(cleanTargetUid, {
+          role: "INTRUSO",
+          approvalStatus: "PENDENTE",
+        });
+      } catch (claimErr: any) {
+        claimsSynced = false;
+        console.warn("[Admin Revoke Role Warning] Falha ao atualizar claims:", claimErr?.message);
+      }
+      try {
+        await adminAuth.revokeRefreshTokens(cleanTargetUid);
+      } catch (revokeErr: any) {
+        console.warn("[Admin Revoke Role Warning] Falha ao revogar refresh tokens:", revokeErr?.message);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Atribuição de cargo revogada com sucesso para '${txResult.targetEmail || cleanTargetUid}'.`,
+      claimsSynced,
+    });
+  } catch (err: any) {
+    if (err?.statusCode) {
+      return res.status(err.statusCode).json({
+        success: false,
+        error: err.message,
+        code: err.code || "ADMIN_ERROR",
+      });
+    }
+    console.error("[Admin Revoke Role Error]:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Falha interna ao revogar atribuição de cargo.",
+      code: "ROLE_REVOCATION_ERROR",
+      details: err?.message || String(err),
+    });
+  }
+});
+
+/**
+ * GET /api/admin/role-assignments
+ * Lists all registered role assignments from /role_assignments.
+ */
+app.get("/api/admin/role-assignments", generalRateLimiter, requireAuth, requireAdmin, async (req: Request, res: Response) => {
+  const adminFirestore = getAdminFirestore();
+  if (!adminFirestore) {
+    return res.status(500).json({
+      success: false,
+      error: "Banco de dados administrativo indisponível.",
+    });
+  }
+
+  try {
+    const snapshot = await adminFirestore.collection("role_assignments").get();
+    const assignments = snapshot.docs.map((doc) => doc.data());
+    return res.status(200).json({
+      success: true,
+      count: assignments.length,
+      assignments,
+    });
+  } catch (err: any) {
+    console.error("[Admin Get Role Assignments Error]:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Falha ao consultar atribuições de cargos.",
+      details: err?.message || String(err),
+    });
   }
 });
 

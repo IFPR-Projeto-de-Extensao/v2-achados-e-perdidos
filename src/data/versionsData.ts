@@ -39,8 +39,57 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "GERAL",
         tag: "UI/UX & Design",
       },
+      {
+        id: "v11010-add-administrative-role-designation-system",
+        title: "Sistema Unificado de Identidade e Atribuição Administrativa de Cargos (ALUNO, SERVIDOR, ADMIN, INTRUSO)",
+        description: "Implementação da hierarquia oficial de identidade no Localiza+ que permite a contas externas (como @gmail.com) receberem legitimamente cargos institucionais ou administrativos por designação explícita de um administrador autenticado. Inclusão dos metadados de auditoria e rastreabilidade ('roleAssignedBy', 'roleAssignedByName', 'roleAssignedAt'), centralização na função pura 'resolveEffectiveUserIdentity()', preservação da integridade em tempo real no listener 'onSnapshot', endurecimento em 'AccountManagementView.tsx' e salvaguarda exclusiva do Root Admin ('paulocauan39@gmail.com') para concessão de perfil ADMIN.",
+        module: "AUTH",
+        tag: "RBAC & Identidade Institucional",
+      },
+      {
+        id: "v11010-add-secure-role-assignments-collection",
+        title: "Arquitetura Segura de Atribuições Administrativas (/role_assignments & Endpoints Backend)",
+        description: "Criação da coleção protegida '/role_assignments/{targetUid}' com bloqueio estrito contra escritas via Client SDK ('allow create, update, delete: if false'). Implementação dos endpoints server-authoritative 'POST /api/admin/assign-role', 'POST /api/admin/revoke-role' e 'GET /api/admin/role-assignments' operando exclusivamente via Firebase Admin SDK. Validação de regras de negócio: autoatribuição proibida, concessão de ADMIN restrita ao Root Admin ('paulocauan39@gmail.com'), rejeição de contas banidas/suspensas e e-mails não verificados, sincronização atômica com '/users/{uid}' e registro imutável em '/audit_logs'.",
+        module: "ADMIN",
+        tag: "Arquitetura de Segurança & Backend",
+      },
+      {
+        id: "v11010-add-role-assignments-audit-tool",
+        title: "Módulo de Auditoria e Reconciliação Segura de Cargos (roleAssignmentsAudit.ts)",
+        description: "Criação do módulo utilitário 'roleAssignmentsAudit.ts' para diagnóstico e classificação das contas do sistema (institucionais puras, contas externas com metadados legados para validação, anomalias privilegiadas sem metadados e intrusos), garantindo auditoria segura sem mutações destrutivas ou migrações cegas.",
+        module: "ADMIN",
+        tag: "Auditoria & Governança",
+      },
     ],
     bugFixes: [
+      {
+        id: "v11010-fix-root-admin-uid-pinning",
+        title: "Vinculação Estrita de UID (UID Pinning) para o Root Admin",
+        description: "Eliminação da vulnerabilidade de recriação de conta com o mesmo endereço de e-mail ao vincular a autoridade de Root Admin estritamente ao UID oficial informado ('hCG5mDgK1fRaTojULzlM7dXvb7n2') e ao e-mail verificado ('paulocauan39@gmail.com') tanto no backend ('server.ts') quanto nas regras de segurança do Firestore ('firestore.rules' via documento protegido '/system_config/root_admin').",
+        module: "ADMIN",
+        tag: "Segurança & UID Pinning",
+      },
+      {
+        id: "v11010-fix-legacy-fallbacks-and-transactional-revocation",
+        title: "Eliminação Total de Fallbacks Legados, Transações ACID e Blindagem contra Tokens e Claims Antigas",
+        description: "Remoção integral de concessões de privilégios baseadas em campos legados de '/users' ('role', 'roleAssignedBy', 'roleAssignedAt'): a autoridade exclusiva para contas externas é a existência de documento ativo e aprovado em '/role_assignments'; reformulação de 'authenticateToken()' no backend com fail-closed estrito e obrigatoriedade de 'email_verified == true' para o Root Admin ('paulocauan39@gmail.com'); eliminação de 'hasAdminClaim()' como atalho independente de autorização em 'firestore.rules' ('isAdmin', 'canRegisterItems', 'items', 'found_items', 'lost_items'); agrupamento atômico das operações de concessão e revogação em 'adminFirestore.runTransaction' integrando '/role_assignments', '/users' e '/audit_logs'; e revogação ativa de refresh tokens ('revokeRefreshTokens') para neutralização imediata de sessões revogadas.",
+        module: "ADMIN",
+        tag: "Segurança & Backend Transacional",
+      },
+      {
+        id: "v11010-fix-identity-precedence-and-onsnapshot-legacy-overwrite",
+        title: "Eliminação da Sobrescrita de Identidade por Documentos Legados no onSnapshot e Desbloqueio de Cadastro para Servidores Designados",
+        description: "Correção cirúrgica da causa raiz da divergência de perfil e bloqueio indevido no cadastro de objetos: atualização do listener 'onSnapshot' em 'AppContext.tsx' para filtrar documentos brutos através de 'resolveEffectiveUserIdentity()', impedindo que documentos legados sem 'roleAssignedBy' restaurem privilégios indevidos; neutralização de contas externas legadas como INTRUSO; ajuste em 'canRegisterItems()' e 'isDocServidorIdentity()' nas 'firestore.rules' para autorizar servidores designados com comprovação administrativa e aprovação válida ('approvalStatus == APROVADO'); bloqueio no frontend e backend contra auto-atribuição de 'roleAssignedBy'; e validação com bateria completa de testes de segurança.",
+        module: "FIRESTORE",
+        tag: "Segurança & Firestore Rules",
+      },
+      {
+        id: "v11010-fix-firestore-rules-tamper-proof-assignments",
+        title: "Blindagem de hasValidAssignment() contra Injeção de Atributos e Validação via /role_assignments",
+        description: "Eliminação da vulnerabilidade condicional que confiava em strings de texto livre em '/users/{userId}': 'hasValidAssignment(expectedRole)' agora consulta de forma protegida e atômica o documento em '/role_assignments/$(request.auth.uid)', com permissão de escrita bloqueada para clientes ('allow create, update, delete: if false'), exigindo que atribuições legítimas sejam emitidas exclusivamente pelo backend via Firebase Admin SDK.",
+        module: "FIRESTORE",
+        tag: "Segurança & Firestore Rules",
+      },
       {
         id: "v11010-fix-detail-modal-visual-hierarchy",
         title: "Eliminação de Poluição Visual e Correção de Responsividade dos Controles",
@@ -99,8 +148,8 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
       },
     ],
     stats: {
-      additionsCount: 1,
-      fixesCount: 8,
+      additionsCount: 2,
+      fixesCount: 9,
     },
   },
   {

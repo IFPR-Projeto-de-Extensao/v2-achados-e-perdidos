@@ -477,6 +477,6 @@ describe("SEC-05 & SEC-06: Bloqueio de Servidores Inativos e Impedimento de Auto
     expect(rulesContent).toMatch(/function isAdmin\(\)[\s\S]*?isAccountActive\(\)/);
 
     // users allow update exige que approvalStatus permaneça inalterado para não-admins
-    expect(rulesContent).toMatch(/allow update: if isAdmin\(\) \|\|\s*\([\s\S]*?\(incoming\(\)\.approvalStatus == existing\(\)\.approvalStatus\)/);
+    expect(rulesContent).toMatch(/match \/users\/\{userId\}[\s\S]*?allow update: if[\s\S]*?\(incoming\(\)\.approvalStatus == existing\(\)\.approvalStatus\)/);
   });
 });

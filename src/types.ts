@@ -47,6 +47,29 @@ export interface User {
   blockExpiresAt?: Timestamp | string | null;
   createdAt?: string;
   emailVerified?: boolean;
+  roleAssignedBy?: string;
+  roleAssignedByName?: string;
+  roleAssignedAt?: string;
+  roleAssignmentActive?: boolean;
+}
+
+export interface RoleAssignment {
+  id: string; // targetUserId
+  targetUserId: string;
+  targetEmail: string;
+  assignedRole: UserRole;
+  approvalStatus: ApprovalStatus;
+  assignedByUid: string;
+  assignedByEmail: string;
+  assignedByName?: string;
+  assignedAt: string;
+  active: boolean;
+  updatedAt: string;
+  reason?: string;
+  revokedAt?: string;
+  revokedByUid?: string;
+  revokedByEmail?: string;
+  revocationReason?: string;
 }
 
 export interface ItemHistoryLog {
