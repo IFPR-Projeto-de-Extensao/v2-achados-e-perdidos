@@ -77,7 +77,7 @@ describe("Firestore Rules Emulator Suite — Real Security Rules Validation", ()
       );
     });
 
-    it("2. SERVIDOR pendente com e-mail verificado consegue criar item (canRegisterItems)", async () => {
+    it("2. SERVIDOR pendente com e-mail verificado NÃO consegue criar item", async () => {
       const uid = "serv_pend_1";
       await setupUserDoc(uid, {
         id: uid,
@@ -93,7 +93,7 @@ describe("Firestore Rules Emulator Suite — Real Security Rules Validation", ()
       }).firestore();
 
       const docRef = doc(db, itemCollectionPath, "item_2");
-      await assertSucceeds(
+      await assertFails(
         setDoc(docRef, {
           id: "item_2",
           title: "Calculadora Científica",
@@ -102,6 +102,63 @@ describe("Firestore Rules Emulator Suite — Real Security Rules Validation", ()
           location: "Biblioteca",
           status: "NOVO",
           registeredByUserId: uid,
+          registeredByRole: "SERVIDOR",
+          createdAt: new Date().toISOString(),
+        })
+      );
+    });
+
+    it("2b. SERVIDOR rejeitado ou sem approvalStatus NÃO consegue criar item", async () => {
+      const uidRej = "serv_rej_1";
+      await setupUserDoc(uidRej, {
+        id: uidRej,
+        email: "servidor.rejeitado@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "REJEITADO",
+        status: "active",
+      });
+
+      const dbRej = testEnv.authenticatedContext(uidRej, {
+        email: "servidor.rejeitado@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      await assertFails(
+        setDoc(doc(dbRej, itemCollectionPath, "item_2b_rej"), {
+          id: "item_2b_rej",
+          title: "Item Rejeitado",
+          description: "Teste",
+          category: "Outros",
+          location: "Bloco B",
+          status: "NOVO",
+          registeredByUserId: uidRej,
+          registeredByRole: "SERVIDOR",
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      const uidNone = "serv_none_1";
+      await setupUserDoc(uidNone, {
+        id: uidNone,
+        email: "servidor.semstatus@ifpr.edu.br",
+        role: "SERVIDOR",
+        status: "active",
+      });
+
+      const dbNone = testEnv.authenticatedContext(uidNone, {
+        email: "servidor.semstatus@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      await assertFails(
+        setDoc(doc(dbNone, itemCollectionPath, "item_2b_none"), {
+          id: "item_2b_none",
+          title: "Item Sem Status",
+          description: "Teste",
+          category: "Outros",
+          location: "Bloco C",
+          status: "NOVO",
+          registeredByUserId: uidNone,
           registeredByRole: "SERVIDOR",
           createdAt: new Date().toISOString(),
         })
