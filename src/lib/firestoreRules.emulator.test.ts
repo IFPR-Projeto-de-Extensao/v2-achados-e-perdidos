@@ -560,9 +560,23 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
       expect(snapshot).toBeDefined();
     });
 
-    it("16. ADMIN mantém acesso pleno de consulta e governança em /claims (assertSucceeds)", async () => {
+    it("16. Root Admin com UID configurado no system_config mantém acesso pleno de consulta e governança em /claims (assertSucceeds)", async () => {
       const uid = "admin_root_claims";
       const email = "paulocauan39@gmail.com";
+
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await setDoc(doc(db, "system_config", "root_admin"), {
+          rootAdminUid: uid,
+        });
+        await setDoc(doc(db, "users", uid), {
+          id: uid,
+          email,
+          role: "ADMIN",
+          status: "active",
+          approvalStatus: "APROVADO",
+        });
+      });
 
       const db = testEnv.authenticatedContext(uid, {
         email,
