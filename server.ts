@@ -34,11 +34,79 @@ const app = express();
 const portArgIndex = process.argv.indexOf("--port");
 const cliPort = portArgIndex !== -1 && process.argv[portArgIndex + 1] ? Number(process.argv[portArgIndex + 1]) : NaN;
 const PORT = (!isNaN(cliPort) && cliPort > 0) ? cliPort : (Number(process.env.PORT) || 3000);
-const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
-const ROOT_ADMIN_UID = (process.env.ROOT_ADMIN_UID || "").trim();
+export const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
 
-if (!ROOT_ADMIN_UID) {
-  console.warn("[Security Warning] ROOT_ADMIN_UID environment variable is not configured. Root Admin authorization will be strictly disabled (fail-closed).");
+/**
+ * Safely retrieves the pinned Root Admin UID from the runtime environment.
+ * Trims whitespace and strips surrounding double or single quotes.
+ * Returns an empty string if not configured (strictly enforcing fail-closed security).
+ */
+export function getRootAdminUid(): string {
+  const raw = process.env.ROOT_ADMIN_UID || "";
+  let trimmed = raw.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+export interface RootAdminEvaluationResult {
+  isRoot: boolean;
+  rejectionReason?:
+    | "ROOT_ADMIN_UID_NOT_CONFIGURED"
+    | "EMAIL_NOT_ROOT_ADMIN"
+    | "EMAIL_NOT_VERIFIED"
+    | "UID_NOT_MATCHING_PINNED_ROOT";
+}
+
+/**
+ * Evaluates whether an authenticated user qualifies as the Root Admin.
+ * Strictly requires:
+ * 1. Root Admin candidate email (case-insensitive comparison with paulocauan39@gmail.com)
+ * 2. ROOT_ADMIN_UID configured in the server environment (fail-closed if missing)
+ * 3. Cryptographically verified email (email_verified === true)
+ * 4. Exact UID match against configured ROOT_ADMIN_UID
+ */
+export function evaluateRootAdminAuth(user: {
+  uid?: string | null;
+  email?: string | null;
+  email_verified?: boolean;
+}): RootAdminEvaluationResult {
+  const configuredRootUid = getRootAdminUid();
+  const userEmail = (user?.email || "").trim().toLowerCase();
+  const rootEmail = ROOT_ADMIN_EMAIL.toLowerCase();
+
+  if (userEmail !== rootEmail) {
+    return { isRoot: false, rejectionReason: "EMAIL_NOT_ROOT_ADMIN" };
+  }
+
+  if (!configuredRootUid) {
+    return { isRoot: false, rejectionReason: "ROOT_ADMIN_UID_NOT_CONFIGURED" };
+  }
+
+  if (user?.email_verified !== true) {
+    return { isRoot: false, rejectionReason: "EMAIL_NOT_VERIFIED" };
+  }
+
+  if (!user?.uid || user.uid !== configuredRootUid) {
+    return { isRoot: false, rejectionReason: "UID_NOT_MATCHING_PINNED_ROOT" };
+  }
+
+  return { isRoot: true };
+}
+
+const initialRootAdminUid = getRootAdminUid();
+if (!initialRootAdminUid) {
+  console.warn(
+    "[Security Warning] ROOT_ADMIN_UID environment variable is not configured. " +
+    "Root Admin authorization (paulocauan39@gmail.com) will be strictly disabled (fail-closed). " +
+    "To enable Root Admin operations, set ROOT_ADMIN_UID in the hosting environment (e.g., Cloud Secrets, Vercel, or server .env)."
+  );
+} else {
+  console.log(`[Security Config] ROOT_ADMIN_UID configured (pinned length: ${initialRootAdminUid.length}). Root Admin authorization active.`);
 }
 
 // =================================================================
@@ -312,10 +380,23 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
     if (adminAuth) {
       try {
         const decoded = await adminAuth.verifyIdToken(token);
-        const isRootEmail = (decoded.email || "").toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase();
         const isEmailVerified = decoded.email_verified === true;
-        const matchesRootUid = Boolean(ROOT_ADMIN_UID) && decoded.uid === ROOT_ADMIN_UID;
-        const isRoot = isRootEmail && isEmailVerified && matchesRootUid;
+        const rootAuthEval = evaluateRootAdminAuth({
+          uid: decoded.uid,
+          email: decoded.email,
+          email_verified: isEmailVerified,
+        });
+        const isRoot = rootAuthEval.isRoot;
+
+        if (!isRoot && (decoded.email || "").toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase()) {
+          if (rootAuthEval.rejectionReason === "ROOT_ADMIN_UID_NOT_CONFIGURED") {
+            console.warn(`[Security Alert] Root Admin candidate (${ROOT_ADMIN_EMAIL}) attempted authentication, but ROOT_ADMIN_UID is not configured on the server. Elevation denied (fail-closed).`);
+          } else if (rootAuthEval.rejectionReason === "UID_NOT_MATCHING_PINNED_ROOT") {
+            console.warn(`[Security Alert] Root Admin candidate (${ROOT_ADMIN_EMAIL}) UID mismatch. Expected pinned UID, received ${decoded.uid}. Access denied.`);
+          } else if (rootAuthEval.rejectionReason === "EMAIL_NOT_VERIFIED") {
+            console.warn(`[Security Alert] Root Admin candidate (${ROOT_ADMIN_EMAIL}) email is not verified by identity provider. Access denied.`);
+          }
+        }
         let isAdmin = false;
         let dbRole: string | undefined = undefined;
 
@@ -509,7 +590,7 @@ export async function validateStaffOrAdminAccess(
       };
     }
 
-    const isRootAdmin = authUser.email === ROOT_ADMIN_EMAIL;
+    const isRootAdmin = evaluateRootAdminAuth(authUser).isRoot;
 
     // 2. Cryptographic email verification check: only authUser.email_verified === true or trusted Root Admin
     // Persistent Firestore udata.emailVerified is NOT accepted as a substitute for cryptographic token verification
@@ -618,7 +699,7 @@ export async function validateDevolutionNotificationAccess(
 
     // 4. Author / Attendant Relationship Check:
     // Non-admins must be the attendant who registered the return
-    const isRootAdmin = authUser.email === ROOT_ADMIN_EMAIL;
+    const isRootAdmin = evaluateRootAdminAuth(authUser).isRoot;
     const isUserAdmin = isRootAdmin || (staffValidation.userData?.role === "ADMIN" && staffValidation.userData?.approvalStatus === "APROVADO");
     const callerUid = authUser.uid;
 
@@ -1533,7 +1614,7 @@ app.post(["/api/admin/delete-user", "/admin/delete-user"], requireAuth, requireA
 app.post("/api/admin/assign-role", generalRateLimiter, requireAuth, requireAdmin, async (req: Request, res: Response) => {
   const callerUid = req.authUser!.uid;
   const callerEmail = (req.authUser!.email || "").toLowerCase();
-  const isRootAdmin = callerEmail === ROOT_ADMIN_EMAIL.toLowerCase();
+  const isRootAdmin = evaluateRootAdminAuth(req.authUser!).isRoot;
 
   const { targetUserId, targetRole, reason } = req.body || {};
 
@@ -1778,7 +1859,7 @@ app.post("/api/admin/assign-role", generalRateLimiter, requireAuth, requireAdmin
 app.post("/api/admin/revoke-role", generalRateLimiter, requireAuth, requireAdmin, async (req: Request, res: Response) => {
   const callerUid = req.authUser!.uid;
   const callerEmail = (req.authUser!.email || "").toLowerCase();
-  const isRootAdmin = callerEmail === ROOT_ADMIN_EMAIL.toLowerCase();
+  const isRootAdmin = evaluateRootAdminAuth(req.authUser!).isRoot;
 
   const { targetUserId, reason } = req.body || {};
 

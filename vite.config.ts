@@ -160,18 +160,6 @@ export default defineConfig(({ mode }) => ({
               },
             },
           },
-          {
-            urlPattern: /^https:\/\/firestore\.googleapis\.com\/.*/i,
-            handler: 'NetworkOnly',
-          },
-          {
-            urlPattern: /^https:\/\/identitytoolkit\.googleapis\.com\/.*/i,
-            handler: 'NetworkOnly',
-          },
-          {
-            urlPattern: /^https:\/\/securetoken\.googleapis\.com\/.*/i,
-            handler: 'NetworkOnly',
-          },
         ],
       },
       devOptions: {

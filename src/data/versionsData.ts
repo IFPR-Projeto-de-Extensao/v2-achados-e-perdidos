@@ -76,10 +76,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "FIRESTORE",
         tag: "Otimização CEL & Governança",
       },
+      {
+        id: "v11011-fix-root-admin-uid-fail-closed-parsing",
+        title: "Blindagem e Parsing Seguro de ROOT_ADMIN_UID no Backend",
+        description: "Implementação da função 'getRootAdminUid()' com higienização de aspas envolventes (' e \") e espaços em branco, centralização da validação criptográfica em 'evaluateRootAdminAuth()', preservação absoluta do princípio fail-closed em caso de ausência da variável no ambiente, diagnóstico detalhado sem vazamento de segredos e prevenção de notificações duplicadas no gerenciamento de contas.",
+        module: "ADMIN",
+        tag: "Segurança & Backend RBAC",
+      },
     ],
     stats: {
       additionsCount: 3,
-      fixesCount: 3,
+      fixesCount: 4,
     },
   },
   {

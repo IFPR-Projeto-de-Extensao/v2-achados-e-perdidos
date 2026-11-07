@@ -289,7 +289,6 @@ export const AccountManagementView: React.FC = () => {
                                   addToast(`Função de ${u.name} atualizada para ${newRole === "INTRUSO" ? "Usuário externo" : newRole}.`, "success");
                                 } catch (err) {
                                   console.error("Erro ao alterar função:", err);
-                                  addToast("Erro ao alterar função do usuário.", "error");
                                 } finally {
                                   setIsUpdatingRoleId(null);
                                 }
