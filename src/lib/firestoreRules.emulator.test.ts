@@ -5,7 +5,7 @@ import {
   assertSucceeds,
   assertFails,
 } from "@firebase/rules-unit-testing";
-import { collection, doc, setDoc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, setDoc, getDoc, getDocs, updateDoc, query, where } from "firebase/firestore";
 import fs from "fs";
 import path from "path";
 
@@ -560,7 +560,10 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
       expect(snapshot).toBeDefined();
     });
 
-    it("16. Root Admin com UID configurado no system_config mantém acesso pleno de consulta e governança em /claims (assertSucceeds)", async () => {
+    it("16. Administrador com perfil ADMIN aprovado no Firestore mantém acesso de consulta em /claims via isDocAdmin (assertSucceeds)", async () => {
+      // NOTA DE AUDITORIA v1.10.11: Este teste exercita o acesso de um ADMIN aprovado via perfil Firestore (isDocAdmin).
+      // O UID 'admin_root_claims' é um identificador de fixture que NÃO possui privilégios de Root Admin (isRootAdmin),
+      // pois o Root Admin exige estritamente UID Pinning ('hCG5mDgK1fRaTojULzlM7dXvb7n2').
       const uid = "admin_root_claims";
       const email = "paulocauan39@gmail.com";
 
@@ -862,6 +865,154 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
           },
           { merge: true }
         )
+      );
+    });
+  });
+
+  describe("Root Admin vs Administrador Comum — Validação Real de Privilégios no Emulator", () => {
+    const targetUserId = "servidor_para_promocao";
+
+    beforeEach(async () => {
+      // Semeia usuário SERVIDOR ativo e aprovado para testes de promoção
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await setDoc(doc(db, "users", targetUserId), {
+          id: targetUserId,
+          email: "servidor.candidato@ifpr.edu.br",
+          name: "Servidor Candidato",
+          role: "SERVIDOR",
+          approvalStatus: "APROVADO",
+          status: "active",
+        });
+      });
+    });
+
+    it("26. Root Admin legítimo (UID hCG5mDgK1fRaTojULzlM7dXvb7n2, e-mail paulocauan39@gmail.com, email_verified) executa operação exclusiva de promover usuário para ADMIN (assertSucceeds)", async () => {
+      const rootAdminUid = "hCG5mDgK1fRaTojULzlM7dXvb7n2";
+      const rootAdminEmail = "paulocauan39@gmail.com";
+
+      const db = testEnv.authenticatedContext(rootAdminUid, {
+        email: rootAdminEmail,
+        email_verified: true,
+      }).firestore();
+
+      const targetDocRef = doc(db, "users", targetUserId);
+      await assertSucceeds(
+        updateDoc(targetDocRef, {
+          role: "ADMIN",
+        })
+      );
+    });
+
+    it("27. Atacante com mesmo e-mail de Root Admin mas UID divergente NÃO consegue promover usuário para ADMIN (assertFails)", async () => {
+      const spoofUid = "outro_uid_atacante_qualquer";
+      const rootAdminEmail = "paulocauan39@gmail.com";
+
+      const db = testEnv.authenticatedContext(spoofUid, {
+        email: rootAdminEmail,
+        email_verified: true,
+      }).firestore();
+
+      const targetDocRef = doc(db, "users", targetUserId);
+      await assertFails(
+        updateDoc(targetDocRef, {
+          role: "ADMIN",
+        })
+      );
+    });
+
+    it("28. Usuário com UID oficial de Root Admin mas e-mail diferente NÃO consegue promover usuário para ADMIN (assertFails)", async () => {
+      const rootAdminUid = "hCG5mDgK1fRaTojULzlM7dXvb7n2";
+      const wrongEmail = "atacante.externo@gmail.com";
+
+      const db = testEnv.authenticatedContext(rootAdminUid, {
+        email: wrongEmail,
+        email_verified: true,
+      }).firestore();
+
+      const targetDocRef = doc(db, "users", targetUserId);
+      await assertFails(
+        updateDoc(targetDocRef, {
+          role: "ADMIN",
+        })
+      );
+    });
+
+    it("29. Root Admin com UID e e-mail corretos mas e-mail NÃO verificado NÃO consegue promover usuário para ADMIN (assertFails)", async () => {
+      const rootAdminUid = "hCG5mDgK1fRaTojULzlM7dXvb7n2";
+      const rootAdminEmail = "paulocauan39@gmail.com";
+
+      const db = testEnv.authenticatedContext(rootAdminUid, {
+        email: rootAdminEmail,
+        email_verified: false,
+      }).firestore();
+
+      const targetDocRef = doc(db, "users", targetUserId);
+      await assertFails(
+        updateDoc(targetDocRef, {
+          role: "ADMIN",
+        })
+      );
+    });
+
+    it("30. Fixture de teste admin_root_claims com perfil ADMIN aprovado NÃO obtém privilégios exclusivos de Root Admin para promover a ADMIN (assertFails)", async () => {
+      const fixtureUid = "admin_root_claims";
+      const rootAdminEmail = "paulocauan39@gmail.com";
+
+      // Concede perfil ADMIN aprovado para a fixture
+      await setupUserDoc(fixtureUid, {
+        id: fixtureUid,
+        email: rootAdminEmail,
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+
+      const db = testEnv.authenticatedContext(fixtureUid, {
+        email: rootAdminEmail,
+        email_verified: true,
+      }).firestore();
+
+      const targetDocRef = doc(db, "users", targetUserId);
+      // Tentativa de promover usuário SERVIDOR para ADMIN deve falhar por falta de isRootAdmin()
+      await assertFails(
+        updateDoc(targetDocRef, {
+          role: "ADMIN",
+        })
+      );
+    });
+
+    it("31. Administrador comum aprovado executa operações administrativas normais mas é negado em promoção a ADMIN (assertSucceeds em operação comum, assertFails em promoção a ADMIN)", async () => {
+      const regularAdminUid = "admin_comum_institucional";
+      const regularAdminEmail = "admin.comum@ifpr.edu.br";
+
+      await setupUserDoc(regularAdminUid, {
+        id: regularAdminUid,
+        email: regularAdminEmail,
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+
+      const db = testEnv.authenticatedContext(regularAdminUid, {
+        email: regularAdminEmail,
+        email_verified: true,
+      }).firestore();
+
+      const targetDocRef = doc(db, "users", targetUserId);
+
+      // Operação administrativa comum permitida (ex: alterar status para suspenso ou atualizar campos não-críticos)
+      await assertSucceeds(
+        updateDoc(targetDocRef, {
+          department: "DIPEX",
+        })
+      );
+
+      // Operação exclusiva de Root Admin negada: promover para ADMIN
+      await assertFails(
+        updateDoc(targetDocRef, {
+          role: "ADMIN",
+        })
       );
     });
   });

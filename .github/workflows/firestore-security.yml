@@ -30,4 +30,4 @@ jobs:
         run: npm ci
 
       - name: Run Firestore Security Rules Tests in Emulator
-        run: npx firebase emulators:exec --only firestore --project localiza-plus-emulator-test "npx vitest run src/lib/firestoreRules.emulator.test.ts src/lib/institutionalIdentityAndClaimsSecurity.test.ts"
+        run: npx firebase emulators:exec --only firestore --project localiza-plus-emulator-test "npx vitest run src/lib/firestoreRules.emulator.test.ts src/lib/institutionalIdentityAndClaimsSecurity.test.ts src/lib/claimsRulesTokenAndSecurity.test.ts"

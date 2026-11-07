@@ -123,6 +123,10 @@ describe("Version History Route & Access Control (/versoes)", () => {
       const currentEntry = APP_VERSIONS_DATA.find((v) => v.version === "v1.10.10");
       expect(currentEntry).toBeDefined();
       expect(currentEntry?.isCurrent).toBe(true);
+
+      const stagedEntry = APP_VERSIONS_DATA.find((v) => v.version === "v1.10.11");
+      expect(stagedEntry).toBeDefined();
+      expect(stagedEntry?.isCurrent).toBe(false);
     });
   });
 });

@@ -219,8 +219,8 @@ describe("LOCALIZA+ v1.10.10 — Matriz Central de Identidade e Atribuição Adm
     expect(res.isDesignated).toBe(true);
   });
 
-  // 13. Legado em /users com roleAssignedBy mas SEM /role_assignments -> Neutralizado como INTRUSO
-  it("13. Conta com metadados legados em /users mas SEM /role_assignments é neutralizada como INTRUSO", () => {
+  // 13. Legado em /users com roleAssignedBy confiável e SEM /role_assignments -> Preserva cargo SERVIDOR/APROVADO
+  it("13. Conta com metadados confiáveis em /users e SEM /role_assignments preserva o cargo SERVIDOR / APROVADO", () => {
     const res = resolveEffectiveUserIdentity({
       email: "ex.servidor@gmail.com",
       emailVerified: true,
@@ -231,11 +231,12 @@ describe("LOCALIZA+ v1.10.10 — Matriz Central de Identidade e Atribuição Adm
         roleAssignedByName: "Paulo Cauan",
         roleAssignedAt: "2026-11-04T12:00:00.000Z",
       },
-      // Sem roleAssignment document
+      // Sem roleAssignment document (ausência NÃO significa revogação)
     });
-    expect(res.role).toBe("INTRUSO");
-    expect(res.isInstitutional).toBe(false);
-    expect(res.isDesignated).toBe(false);
+    expect(res.role).toBe("SERVIDOR");
+    expect(res.approvalStatus).toBe("APROVADO");
+    expect(res.isInstitutional).toBe(true);
+    expect(res.isDesignated).toBe(true);
   });
 
   // 14. Matriz de Autorização de Cadastro de Objeto (canRegisterItems logic)
@@ -401,6 +402,91 @@ describe("LOCALIZA+ v1.10.10 — Matriz Central de Identidade e Atribuição Adm
         active: false,
         updatedAt: "2026-11-04T12:00:00.000Z",
       },
+    });
+    expect(res.role).toBe("INTRUSO");
+    expect(res.isInstitutional).toBe(false);
+  });
+
+  // 17. Revogação explícita (active: false) prevalece sobre metadados legados em /users
+  it("17. Revogação explícita (active: false) em role_assignments prevalece sobre metadados legados de perfil", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "contato.pclabs@gmail.com",
+      emailVerified: true,
+      userDocData: {
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        roleAssignedBy: "paulocauan39@gmail.com",
+        roleAssignedByName: "Paulo Cauan",
+        roleAssignedAt: "2026-11-04T12:00:00.000Z",
+      },
+      roleAssignment: {
+        id: "uid_pclabs",
+        targetUserId: "uid_pclabs",
+        targetEmail: "contato.pclabs@gmail.com",
+        assignedRole: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        assignedByUid: "root_uid",
+        assignedByEmail: "paulocauan39@gmail.com",
+        assignedAt: "2026-11-04T12:00:00.000Z",
+        active: false, // Revogado formalmente
+        updatedAt: "2026-11-05T00:00:00.000Z",
+      },
+    });
+    expect(res.role).toBe("INTRUSO");
+    expect(res.isInstitutional).toBe(false);
+  });
+
+  // 18. Gmail com ADMIN atribuído formalmente pelo Root Admin sem role_assignments preserva ADMIN
+  it("18. Gmail com ADMIN e atribuição administrativa confiável do Root Admin sem role_assignments é preservado", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "admin.suporte@gmail.com",
+      emailVerified: true,
+      userDocData: {
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        roleAssignedBy: "paulocauan39@gmail.com",
+        roleAssignedByName: "Paulo Cauan (Root)",
+        roleAssignedAt: "2026-11-04T12:00:00.000Z",
+      },
+      roleAssignment: null,
+    });
+    expect(res.role).toBe("ADMIN");
+    expect(res.approvalStatus).toBe("APROVADO");
+    expect(res.isInstitutional).toBe(true);
+    expect(res.isDesignated).toBe(true);
+  });
+
+  // 19. Gmail com ALUNO e atribuição administrativa confiável sem role_assignments preserva ALUNO
+  it("19. Gmail com ALUNO e atribuição administrativa confiável sem role_assignments é preservado", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "estudante.comunitario@gmail.com",
+      emailVerified: true,
+      userDocData: {
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+        roleAssignedBy: "servidor_admin_uid",
+        roleAssignedByName: "Servidor Atendente",
+        roleAssignedAt: "2026-11-04T12:00:00.000Z",
+      },
+      roleAssignment: null,
+    });
+    expect(res.role).toBe("ALUNO");
+    expect(res.approvalStatus).toBe("APROVADO");
+    expect(res.isInstitutional).toBe(true);
+    expect(res.isDesignated).toBe(true);
+  });
+
+  // 20. Usuário com documento adulterado (sem roleAssignedBy ou com espaço vazio) é neutralizado como INTRUSO
+  it("20. Usuário com documento adulterado (sem procedência confiável de roleAssignedBy) é neutralizado como INTRUSO", () => {
+    const res = resolveEffectiveUserIdentity({
+      email: "invasor@gmail.com",
+      emailVerified: true,
+      userDocData: {
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        roleAssignedBy: "   ", // Espaço vazio inválido
+      },
+      roleAssignment: null,
     });
     expect(res.role).toBe("INTRUSO");
     expect(res.isInstitutional).toBe(false);

@@ -24,6 +24,65 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.10.11",
+    codename: "Integração Controlada das Firestore Rules e Autoridade Efetiva de Perfil",
+    releaseDate: "07/11/2026",
+    releaseDateTime: "07 de Novembro de 2026 • 12:30 BRT",
+    type: "PATCH",
+    isCurrent: false,
+    summary: "LOCALIZA+ v1.10.11 — Integração controlada e auditada das regras de segurança Firestore (firestore.rules): consolidação da autoridade do documento de perfil (/users/{uid}) para cargos legitimamente atribuídos (ALUNO, SERVIDOR, ADMIN), neutralização de claims obsoletas de 'INTRUSO' em tokens de sessão, validação de contas externas com perfil SERVIDOR aprovado para cadastro de objetos (/items, /found_items, /lost_items), preservação integral da proteção contra escalada de privilégios para ALUNO e intrusos, e manutenção irrestrita das coleções protegidas /role_assignments e /system_config com governança reservada ao Root Admin.",
+    additions: [
+      {
+        id: "v11011-add-profile-doc-authority-in-rules",
+        title: "Autoridade do Perfil Firestore para Cargos Atribuídos",
+        description: "Revisão e consolidação das regras de segurança em 'firestore.rules' para tratar o documento '/users/{uid}' como autoritativo para identidades atribuídas (SERVIDOR, ALUNO, ADMIN), garantindo que contas externas verificadas aprovadas por administradores não sejam rejeitadas por claims transitórias ou atrasos de refresh do token Firebase Auth.",
+        module: "FIRESTORE",
+        tag: "Segurança & Firestore Rules",
+      },
+      {
+        id: "v11011-add-external-servidor-item-registration",
+        title: "Desbloqueio de Cadastro de Objetos para Servidores Externos Designados",
+        description: "Atualização de 'canRegisterItems()' e 'isDocServidorIdentity()' autorizando expressamente contas com papel 'SERVIDOR' e status 'APROVADO' a cadastrar ocorrências em '/items', '/found_items' e '/lost_items', mesmo quando não utilizam o domínio institucional '@ifpr.edu.br', respeitando o sistema de designações administrativas e integridade de campos.",
+        module: "FIRESTORE",
+        tag: "RBAC & Cadastro de Itens",
+      },
+      {
+        id: "v11011-add-protected-governance-preservation",
+        title: "Preservação das Coleções Protegidas /role_assignments e /system_config",
+        description: "Manutenção estrita das proteções nas coleções '/role_assignments/{targetUserId}' (leitura pelo titular e admin, escritas exclusivas do backend) e '/system_config/{configId}' (leitura autenticada e bloqueio de escrita cliente), garantindo conformidade com a auditoria de segurança e prevenção de ataques de enumeração.",
+        module: "ADMIN",
+        tag: "Governança & Segurança",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v11011-fix-stale-intruso-token-claims-override",
+        title: "Neutralização de Claims Obsoletas de INTRUSO em Contas Ativas",
+        description: "Remoção de 'request.auth.token.role != INTRUSO' nas funções 'isAccountActive()', 'isDocServidorIdentity()', 'isDocAluno()' e 'isDocAdmin()', eliminando a vulnerabilidade operacional em que um usuário promovido a SERVIDOR por um administrador continuava bloqueado até o vencimento do token de 60 minutos.",
+        module: "FIRESTORE",
+        tag: "Segurança & Auth Token",
+      },
+      {
+        id: "v11011-fix-has-admin-claim-profile-validation",
+        title: "Validação Cruzada de hasAdminClaim() com Documento de Perfil",
+        description: "Endurecimento da função 'hasAdminClaim()' para exigir correspondência estrita com o perfil no Firestore ('role == ADMIN' e 'approvalStatus == APROVADO') quando o documento existir, impedindo que custom claims não revogadas ou antigas concedam privilégios se o perfil foi rebaixado no banco.",
+        module: "FIRESTORE",
+        tag: "RBAC & Defesa em Profundidade",
+      },
+      {
+        id: "v11011-fix-root-admin-constant-time-evaluation",
+        title: "Otimização de Avaliação de isRootAdmin() e Prevenção de Estouro de Expressões",
+        description: "Refatoração de 'isRootAdmin()' em tempo constante verificando o e-mail verificado ('paulocauan39@gmail.com') em minúsculas diretamente no token de autenticação, prevenindo chamadas 'get()' desnecessárias durante avaliações em lote ('list') na coleção '/claims' e eliminando estouro do limite de 1000 expressões CEL.",
+        module: "FIRESTORE",
+        tag: "Otimização CEL & Governança",
+      },
+    ],
+    stats: {
+      additionsCount: 3,
+      fixesCount: 3,
+    },
+  },
+  {
     version: "v1.10.10",
     codename: "Modernização Minimalista da Tela de Detalhes do Objeto",
     releaseDate: "30/10/2026",
@@ -146,10 +205,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "FIRESTORE",
         tag: "Claims & Sincronização de Perfil",
       },
+      {
+        id: "v11010-fix-identity-precedence-and-anti-downgrade-guard",
+        title: "Correção Definitiva da Precedência de Identidade e Salvaguarda contra Sobrescrita Destrutiva de Perfis",
+        description: "Resolução cirúrgica da regressão de rebaixamento indevido de contas institucionais externas para INTRUSO: atualização de 'resolveEffectiveUserIdentity()' em 'AppContext.tsx' para reconhecer atribuições administrativas confiáveis existentes no perfil ('roleAssignedBy' válido e 'approvalStatus: APROVADO') quando não houver documento em '/role_assignments/{uid}'; garantia de que a ausência de documento em '/role_assignments' NÃO significa revogação; respeito estrito à revogação explícita ('active: false') prevalecendo sobre atribuições anteriores; implementação de salvaguarda anti-downgrade em 'verifyUserInFirestore()' impedindo a sobrescrita destrutiva de cargos no Firestore; e escuta coordenada em tempo real no listener 'onSnapshot' de 'users/{uid}' e 'role_assignments/{uid}'.",
+        module: "AUTH",
+        tag: "RBAC & Integridade de Identidade",
+      },
     ],
     stats: {
       additionsCount: 2,
-      fixesCount: 9,
+      fixesCount: 10,
     },
   },
   {

@@ -270,38 +270,120 @@ export function resolveEffectiveUserIdentity({
   }
 
   // 3. Verificação de Atribuição Administrativa Segura (/role_assignments)
-  const hasActiveAssignmentDoc = Boolean(
-    roleAssignment &&
-    roleAssignment.active === true &&
-    roleAssignment.assignedRole &&
-    ["ALUNO", "SERVIDOR", "ADMIN", "INTRUSO"].includes(roleAssignment.assignedRole)
+  // Se existir documento explícito em /role_assignments:
+  if (roleAssignment) {
+    // 3a. Se a atribuição estiver explicitamente revogada (active === false),
+    // a revogação prevalece sobre qualquer metadado anterior do documento do usuário.
+    if (roleAssignment.active === false) {
+      return {
+        role: "INTRUSO",
+        approvalStatus: "APROVADO",
+        isInstitutional: false,
+        isDesignated: false,
+        label: "Acesso Revogado Administrativamente",
+      };
+    }
+
+    // 3b. Atribuição ativa em /role_assignments
+    if (
+      roleAssignment.active === true &&
+      roleAssignment.assignedRole &&
+      ["ALUNO", "SERVIDOR", "ADMIN", "INTRUSO"].includes(roleAssignment.assignedRole)
+    ) {
+      const assignedRole = roleAssignment.assignedRole;
+      if (assignedRole === "ADMIN") {
+        const assignedApproval: ApprovalStatus = roleAssignment.approvalStatus === "APROVADO" ? "APROVADO" : "PENDENTE";
+        return {
+          role: "ADMIN",
+          approvalStatus: assignedApproval,
+          isInstitutional: true,
+          isDesignated: true,
+          label: "Administrador Designado",
+        };
+      }
+
+      if (assignedRole === "SERVIDOR") {
+        const assignedApproval: ApprovalStatus = roleAssignment.approvalStatus === "APROVADO" ? "APROVADO" : "PENDENTE";
+        return {
+          role: "SERVIDOR",
+          approvalStatus: assignedApproval,
+          isInstitutional: true,
+          isDesignated: true,
+          label: assignedApproval === "APROVADO" ? "Servidor Designado (Aprovado)" : "Servidor Designado (Pendente)",
+        };
+      }
+
+      if (assignedRole === "ALUNO") {
+        return {
+          role: "ALUNO",
+          approvalStatus: "APROVADO",
+          isInstitutional: true,
+          isDesignated: true,
+          label: "Estudante Designado",
+        };
+      }
+
+      if (assignedRole === "INTRUSO") {
+        return {
+          role: "INTRUSO",
+          approvalStatus: "APROVADO",
+          isInstitutional: false,
+          isDesignated: true,
+          label: "Usuário Externo",
+        };
+      }
+    }
+  }
+
+  // 4. Verificação de Atribuição Administrativa Confiável Registrada no Perfil (/users/{uid})
+  // Quando não houver documento em /role_assignments (ausência NÃO significa revogação):
+  // Uma conta cuja atribuição administrativa foi aprovada por autoridade institucional (roleAssignedBy válido)
+  // mantém legitimamente seu cargo SERVIDOR ou ALUNO.
+  // Para ADMIN secundário, por salvaguarda estrita, exige-se procedência do Root Admin oficial ou documento ativo.
+  const hasTrustedProfileAssignment = Boolean(
+    userDocData &&
+    userDocData.approvalStatus === "APROVADO" &&
+    userDocData.role &&
+    ["ALUNO", "SERVIDOR", "ADMIN"].includes(userDocData.role) &&
+    typeof userDocData.roleAssignedBy === "string" &&
+    userDocData.roleAssignedBy.trim().length > 0 &&
+    userDocData.roleAssignmentActive !== false
   );
 
-  if (hasActiveAssignmentDoc) {
-    const assignedRole = roleAssignment!.assignedRole;
-    if (assignedRole === "ADMIN") {
-      const assignedApproval: ApprovalStatus = roleAssignment!.approvalStatus === "APROVADO" ? "APROVADO" : "PENDENTE";
+  if (hasTrustedProfileAssignment) {
+    const trustedRole = userDocData!.role!;
+    if (trustedRole === "ADMIN") {
+      const isAssignedByRoot =
+        userDocData!.roleAssignedBy?.toLowerCase() === "paulocauan39@gmail.com" ||
+        userDocData!.roleAssignedBy === "hCG5mDgK1fRaTojULzlM7dXvb7n2";
+      if (isAssignedByRoot) {
+        return {
+          role: "ADMIN",
+          approvalStatus: "APROVADO",
+          isInstitutional: true,
+          isDesignated: true,
+          label: "Administrador Designado (Legado Validado)",
+        };
+      }
+      // Se não foi atribuído pelo Root Admin oficial, neutraliza ADMIN legado como INTRUSO
       return {
-        role: "ADMIN",
-        approvalStatus: assignedApproval,
-        isInstitutional: true,
-        isDesignated: true,
-        label: "Administrador Designado",
+        role: "INTRUSO",
+        approvalStatus: "APROVADO",
+        isInstitutional: false,
+        isDesignated: false,
+        label: "Usuário externo (Atribuição ADMIN sem procedência Root)",
       };
     }
-
-    if (assignedRole === "SERVIDOR") {
-      const assignedApproval: ApprovalStatus = roleAssignment!.approvalStatus === "APROVADO" ? "APROVADO" : "PENDENTE";
+    if (trustedRole === "SERVIDOR") {
       return {
         role: "SERVIDOR",
-        approvalStatus: assignedApproval,
+        approvalStatus: "APROVADO",
         isInstitutional: true,
         isDesignated: true,
-        label: assignedApproval === "APROVADO" ? "Servidor Designado (Aprovado)" : "Servidor Designado (Pendente)",
+        label: "Servidor Designado (Aprovado)",
       };
     }
-
-    if (assignedRole === "ALUNO") {
+    if (trustedRole === "ALUNO") {
       return {
         role: "ALUNO",
         approvalStatus: "APROVADO",
@@ -310,19 +392,9 @@ export function resolveEffectiveUserIdentity({
         label: "Estudante Designado",
       };
     }
-
-    if (assignedRole === "INTRUSO") {
-      return {
-        role: "INTRUSO",
-        approvalStatus: "APROVADO",
-        isInstitutional: false,
-        isDesignated: true,
-        label: "Usuário Externo",
-      };
-    }
   }
 
-  // 4. Se NÃO houver atribuição administrativa ativa em /role_assignments:
+  // 5. Se NÃO houver atribuição administrativa confiável:
   // Aplicar classificação institucional automática baseada no domínio do e-mail:
   const autoDomain = previewInstitutionalRole(cleanEmail);
 
@@ -347,8 +419,8 @@ export function resolveEffectiveUserIdentity({
     };
   }
 
-  // 5. Contas externas sem atribuição administrativa ativa em /role_assignments:
-  // Metadados legados em /users (roleAssignedBy, role: SERVIDOR, etc.) são ignorados para concessão de privilégios
+  // 6. Contas externas sem atribuição administrativa confiável nem domínio institucional:
+  // Classificadas estritamente como INTRUSO (sem privilégios operacionais)
   return {
     role: "INTRUSO",
     approvalStatus: "APROVADO",
@@ -2279,18 +2351,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const resolvedRegistration = pendingData?.registrationNumber || existingData.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
         const isVerified = Boolean(fbUser.emailVerified);
 
+        // Salvaguarda contra sobrescrita destrutiva:
+        // Nunca permitir que verifyUserInFirestore rebaixe um cargo administrativo legítimo (SERVIDOR/ADMIN/ALUNO)
+        // para INTRUSO simplesmente por ausência de documento em role_assignments.
+        // O rebaixamento só é permitido se houver revogação explícita (roleAssignmentDoc?.active === false).
+        const isAttemptingDowngradeToIntruso =
+          existingData.role &&
+          ["SERVIDOR", "ADMIN", "ALUNO"].includes(existingData.role) &&
+          existingData.approvalStatus === "APROVADO" &&
+          targetRole === "INTRUSO" &&
+          (!roleAssignmentDoc || roleAssignmentDoc.active !== false);
+
+        if (isAttemptingDowngradeToIntruso) {
+          console.warn(`[Anti-Downgrade Guard] Impedida a sobrescrita destrutiva do cargo ${existingData.role} para INTRUSO para o usuário ${fbUser.uid} (${userEmail}). Preservando cargo existente.`);
+        }
+
+        const safePersistRole = isAttemptingDowngradeToIntruso ? existingData.role : targetRole;
+        const safeApprovalStatus = isAttemptingDowngradeToIntruso ? existingData.approvalStatus : resolvedApprovalStatus;
+
         const updatedUser: User = sanitizeFirestoreData({
           ...existingData,
           id: fbUser.uid,
           email: userEmail || existingData.email || "",
           name: resolvedName,
-          role: targetRole,
+          role: safePersistRole,
           status: existingData.status || "active",
           avatarUrl: resolvedAvatar,
           courseOrDept: resolvedCourse,
           registrationNumber: resolvedRegistration,
           phone: resolvedPhone,
-          approvalStatus: resolvedApprovalStatus,
+          approvalStatus: safeApprovalStatus,
           createdAt: existingData.createdAt || (fbUser.metadata?.creationTime ? new Date(fbUser.metadata.creationTime).toISOString() : new Date().toISOString()),
           emailVerified: isVerified,
           roleAssignedBy: existingData.roleAssignedBy,
@@ -2303,11 +2393,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           resolvedAvatar.trim() !== (existingData.avatarUrl || "").trim()
         );
 
-        // Persist if role changed (e.g. upgraded from INTRUSO to ALUNO/SERVIDOR upon email verification), missing critical fields, or avatar sync
+        // Persist if role legitimately changed, missing critical fields, or avatar sync
+        const roleLegitimatelyChanged = existingData.role !== safePersistRole;
+
         if (
           !existingData.id ||
           existingData.id !== fbUser.uid ||
-          existingData.role !== targetRole ||
+          roleLegitimatelyChanged ||
           !existingData.status ||
           !existingData.email ||
           existingData.emailVerified !== isVerified ||
@@ -2320,11 +2412,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           } catch (writeErr: any) {
             console.error("[SYNC_PROFILE_ERROR] Falha na persistência da atualização/promoção institucional do perfil:", {
               userId: fbUser.uid,
-              attemptedRole: targetRole,
+              attemptedRole: safePersistRole,
               currentDbRole: existingData.role,
               error: writeErr?.message || writeErr,
             });
-            if (existingData.role !== targetRole) {
+            if (existingData.role !== safePersistRole) {
               addToast("Aviso: Não foi possível sincronizar sua identidade institucional no banco de dados. Operando com papel validado localmente.", "warning");
               return updatedUser;
             }
@@ -2537,40 +2629,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         const userRef = doc(db, "users", fbUser.uid);
-        unsubscribeProfileSnapshot = onSnapshot(
+        const roleAssignmentRef = doc(db, "role_assignments", fbUser.uid);
+
+        let latestRawUser: User | null = null;
+        let latestRoleAssignment: RoleAssignment | null = null;
+        let roleAssignmentLoaded = false;
+
+        const updateEffectiveUserState = () => {
+          if (!latestRawUser) return;
+          const identity = resolveEffectiveUserIdentity({
+            email: fbUser.email,
+            emailVerified: fbUser.emailVerified,
+            userDocData: latestRawUser,
+            roleAssignment: latestRoleAssignment,
+          });
+          const googlePhoto = getGoogleProviderPhoto(fbUser);
+          const safeAvatar = isCustomUploadedAvatar(latestRawUser.avatarUrl)
+            ? latestRawUser.avatarUrl.trim()
+            : googlePhoto
+            ? googlePhoto
+            : (!isGenericAvatar(latestRawUser.avatarUrl) && latestRawUser.avatarUrl.trim().length > 0)
+            ? latestRawUser.avatarUrl.trim()
+            : getSafeAvatarUrl(undefined, latestRawUser.name);
+
+          const userData: User = {
+            id: fbUser.uid,
+            ...latestRawUser,
+            role: identity.role,
+            approvalStatus: identity.approvalStatus,
+            avatarUrl: safeAvatar,
+          };
+          setCurrentUser(userData);
+        };
+
+        // Escuta em tempo real do documento de atribuição administrativa (/role_assignments/{uid})
+        let unsubscribeRoleAssignmentSnapshot: (() => void) | null = null;
+        try {
+          unsubscribeRoleAssignmentSnapshot = onSnapshot(
+            roleAssignmentRef,
+            (assignSnap) => {
+              latestRoleAssignment = assignSnap.exists() ? (assignSnap.data() as RoleAssignment) : null;
+              roleAssignmentLoaded = true;
+              updateEffectiveUserState();
+            },
+            (assignErr) => {
+              console.warn("Aviso ao escutar role_assignments no Firestore (mantendo atribuição de perfil):", assignErr);
+              roleAssignmentLoaded = true;
+              updateEffectiveUserState();
+            }
+          );
+        } catch (_) {
+          roleAssignmentLoaded = true;
+        }
+
+        // Escuta em tempo real do documento de perfil (/users/{uid})
+        const unsubscribeUserSnapshot = onSnapshot(
           userRef,
           (userSnap) => {
             if (userSnap.exists()) {
-              const rawData = userSnap.data() as User;
-              const identity = resolveEffectiveUserIdentity({
-                email: fbUser.email,
-                emailVerified: fbUser.emailVerified,
-                userDocData: rawData,
-              });
-              const googlePhoto = getGoogleProviderPhoto(fbUser);
-              // Preserva avatar válido, priorizando foto customizada enviada pelo usuário, foto do Google OAuth, foto persistida no Firestore ou fallback
-              const safeAvatar = isCustomUploadedAvatar(rawData.avatarUrl)
-                ? rawData.avatarUrl.trim()
-                : googlePhoto
-                ? googlePhoto
-                : (!isGenericAvatar(rawData.avatarUrl) && rawData.avatarUrl.trim().length > 0)
-                ? rawData.avatarUrl.trim()
-                : getSafeAvatarUrl(undefined, rawData.name);
-
-              const userData: User = {
-                id: userSnap.id,
-                ...rawData,
-                role: identity.role,
-                approvalStatus: identity.approvalStatus,
-                avatarUrl: safeAvatar,
-              };
-              setCurrentUser(userData);
+              latestRawUser = userSnap.data() as User;
+              updateEffectiveUserState();
             }
           },
           (e) => {
             console.warn("Aviso ao escutar perfil no Firestore:", e);
           }
         );
+
+        unsubscribeProfileSnapshot = () => {
+          if (unsubscribeRoleAssignmentSnapshot) unsubscribeRoleAssignmentSnapshot();
+          unsubscribeUserSnapshot();
+        };
 
         // Disparo seguro da sincronização offline após a restauração e confirmação da sessão/perfil
         if (typeof navigator !== "undefined" && navigator.onLine) {

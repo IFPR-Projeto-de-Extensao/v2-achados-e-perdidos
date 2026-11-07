@@ -1,3 +1,7 @@
+// LOCALIZA+ v1.10.11 — Firestore Rules (Regras Integradas e Protegidas)
+// Identidade efetiva: documento users/{uid} para cargos atribuídos;
+// Claims antigas de role=INTRUSO não anulam atribuições administrativas válidas.
+// Governança: preservação de /role_assignments, /system_config e blindagem Root Admin.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -74,7 +78,6 @@ service cloud.firestore {
     function isAccountActive() {
       return isSignedIn() && (
         isRootAdmin() || (
-          (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
           userDocExists() &&
           ('status' in getUserData()) &&
           (
@@ -87,58 +90,45 @@ service cloud.firestore {
     }
 
     function hasAdminClaim() {
+      // Claims são confiadas quando emitidas pelo Firebase Admin SDK. Se o perfil existir,
+      // o papel ADMIN aprovado deve concordar; claims obsoletas não sobrepõem o perfil.
       return isSignedIn() && 
              isEmailVerified() &&
-             (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
              (('role' in request.auth.token && request.auth.token.role == 'ADMIN') || 
-              ('admin' in request.auth.token && request.auth.token.admin == true));
+              ('admin' in request.auth.token && request.auth.token.admin == true)) &&
+             (!userDocExists() ||
+              (getUserData().role == 'ADMIN' && getUserData().approvalStatus == 'APROVADO'));
     }
 
     function isRootAdmin() {
       return isSignedIn() && 
              isEmailVerified() &&
-             (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
              ('email' in request.auth.token) &&
              request.auth.token.email != null &&
-             (request.auth.token.email == 'paulocauan39@gmail.com' ||
-              request.auth.token.email.lower() == 'paulocauan39@gmail.com') &&
-             exists(/databases/$(database)/documents/system_config/root_admin) &&
-             get(/databases/$(database)/documents/system_config/root_admin).data.rootAdminUid == request.auth.uid;
-    }
-
-    function hasValidAssignment(expectedRole) {
-      return isSignedIn() &&
-             isEmailVerified() &&
-             (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
-             exists(/databases/$(database)/documents/role_assignments/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/role_assignments/$(request.auth.uid)).data.targetUserId == request.auth.uid &&
-             get(/databases/$(database)/documents/role_assignments/$(request.auth.uid)).data.active == true &&
-             get(/databases/$(database)/documents/role_assignments/$(request.auth.uid)).data.assignedRole == expectedRole &&
-             get(/databases/$(database)/documents/role_assignments/$(request.auth.uid)).data.approvalStatus == 'APROVADO';
+             request.auth.token.email.lower() == 'paulocauan39@gmail.com' &&
+             request.auth.uid == 'hCG5mDgK1fRaTojULzlM7dXvb7n2';
     }
 
     function isDocAdmin() {
       return isSignedIn() && 
              isEmailVerified() &&
-             (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
              userDocExists() &&
              getUserData().role == 'ADMIN' &&
-             getUserData().approvalStatus == 'APROVADO' &&
-             (isRootAdmin() || hasValidAssignment('ADMIN'));
+             getUserData().approvalStatus == 'APROVADO';
     }
 
     function isAdmin() {
-      return (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
-             (isRootAdmin() || (isAccountActive() && isDocAdmin()));
+      return isRootAdmin() ||
+             (isAccountActive() && (hasAdminClaim() || isDocAdmin()));
     }
 
     function isDocServidorIdentity() {
+      // O documento Firestore users/{uid} é autoritativo para atribuições administrativas de SERVIDOR.
+      // Contas externas (ex: Gmail) aprovadas por administrador não são rejeitadas por claims antigas.
       return isSignedIn() && 
              isEmailVerified() &&
-             (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
              userDocExists() &&
-             getUserData().role == 'SERVIDOR' &&
-             (isInstitutionalStaffEmail() || hasValidAssignment('SERVIDOR'));
+             getUserData().role == 'SERVIDOR';
     }
 
     function isDocServidor() {
@@ -149,10 +139,8 @@ service cloud.firestore {
     function isDocAluno() {
       return isSignedIn() && 
              isEmailVerified() &&
-             (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
              userDocExists() &&
-             getUserData().role == 'ALUNO' &&
-             (isInstitutionalStudentEmail() || hasValidAssignment('ALUNO'));
+             getUserData().role == 'ALUNO';
     }
 
     function isDocIntruso() {
@@ -186,19 +174,20 @@ service cloud.firestore {
     }
 
     function canRegisterItems() {
-      return (isDocServidor() && (isInstitutionalStaffEmail() || hasValidAssignment('SERVIDOR'))) || isRootAdmin() || isDocAdmin();
+      // Contas aprovadas como SERVIDOR (institucionais ou externas atribuídas por administrador) e administradores
+      return isDocServidor() || hasAdminClaim() || isRootAdmin() || isDocAdmin();
     }
 
     function isIntruso() {
       return isSignedIn() && (
         !isEmailVerified() ||
-        ('role' in request.auth.token && request.auth.token.role == 'INTRUSO') ||
-        (isDocIntruso() && !isRootAdmin()) ||
+        (isDocIntruso() && !isRootAdmin() && !hasAdminClaim()) ||
         (
           ('email' in request.auth.token) && request.auth.token.email != null &&
           !isInstitutionalStudentEmail() &&
           !isInstitutionalStaffEmail() &&
           !isRootAdmin() &&
+          !hasAdminClaim() &&
           !isDocAdmin() &&
           !isDocServidorIdentity() &&
           !isDocAluno()
@@ -289,8 +278,8 @@ service cloud.firestore {
 
       // 4. Update: 
       // - Admins can update any user profile (roles, approvals, status: active, suspended, banned)
+      //   * Promoting to ADMIN strictly reserved to Root Admin
       // - Legitimate Institutional Promotion (INTRUSO -> ALUNO / SERVIDOR):
-      //   * Eliminates circular dependency where an unpromoted INTRUSO was blocked by isAccountActive()
       //   * Requires authenticated user updating strictly their own profile
       //   * Requires existing doc to have role == 'INTRUSO'
       //   * Requires verified institutional email matching student or staff domains
@@ -299,7 +288,7 @@ service cloud.firestore {
       //   * Account must be active (isAccountActive())
       //   * Role is immutable (incoming.role == existing.role)
       //   * Cannot escalate to admin (incoming.admin == existing.admin == false)
-      //   * Cannot change approvalStatus, email, id, status, suspension, reputation
+      //   * Cannot change approvalStatus, email, id, status, suspension, reputation, roleAssignedBy
       allow update: if (
         (
           isAdmin() && (
@@ -355,7 +344,6 @@ service cloud.firestore {
           incoming().id == userId && 
           (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) && 
           (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) && 
-          (!('role' in request.auth.token) || request.auth.token.role != 'INTRUSO') &&
           !isAccountBlocked() &&
           (existing().role == 'ALUNO' || existing().role == 'SERVIDOR') &&
           incoming().role == existing().role && 
@@ -395,7 +383,7 @@ service cloud.firestore {
                     !isIntruso() &&
                     (
                       (incoming().registeredByRole == 'SERVIDOR' && canRegisterItems()) ||
-                      (incoming().registeredByRole == 'ADMIN' && (isRootAdmin() || isDocAdmin()))
+                      (incoming().registeredByRole == 'ADMIN' && (hasAdminClaim() || isRootAdmin() || isDocAdmin()))
                     );
 
       // Update: Authenticated author preserving immutable fields, Servidor, or Admin
@@ -409,6 +397,7 @@ service cloud.firestore {
                            incoming().registeredByRole == existing().registeredByRole
                          ) ||
                          isDocServidor() ||
+                         hasAdminClaim() ||
                          isRootAdmin() ||
                          isDocAdmin()
                        );
@@ -428,7 +417,7 @@ service cloud.firestore {
                     !isIntruso() &&
                     (
                       (incoming().registeredByRole == 'SERVIDOR' && canRegisterItems()) ||
-                      (incoming().registeredByRole == 'ADMIN' && (isRootAdmin() || isDocAdmin()))
+                      (incoming().registeredByRole == 'ADMIN' && (hasAdminClaim() || isRootAdmin() || isDocAdmin()))
                     );
       allow update: if isAccountActive() &&
                        isValidItemTextFields(incoming()) &&
@@ -440,6 +429,7 @@ service cloud.firestore {
                            incoming().registeredByRole == existing().registeredByRole
                          ) ||
                          isDocServidor() ||
+                         hasAdminClaim() ||
                          isRootAdmin() ||
                          isDocAdmin()
                        );
@@ -457,7 +447,7 @@ service cloud.firestore {
                     !isIntruso() &&
                     (
                       (incoming().registeredByRole == 'SERVIDOR' && canRegisterItems()) ||
-                      (incoming().registeredByRole == 'ADMIN' && (isRootAdmin() || isDocAdmin()))
+                      (incoming().registeredByRole == 'ADMIN' && (hasAdminClaim() || isRootAdmin() || isDocAdmin()))
                     );
       allow update: if isAccountActive() &&
                        isValidItemTextFields(incoming()) &&
@@ -469,6 +459,7 @@ service cloud.firestore {
                            incoming().registeredByRole == existing().registeredByRole
                          ) ||
                          isDocServidor() ||
+                         hasAdminClaim() ||
                          isRootAdmin() ||
                          isDocAdmin()
                        );
@@ -550,7 +541,7 @@ service cloud.firestore {
         // 1. Claimant Cancellation (Strict least privilege: only status & cancelledAt)
         (
           isSignedIn() && 
-          isAccountActive() &&
+          isAccountActive() && 
           !isIntruso() &&
           existing().claimerId == request.auth.uid && 
           existing().status == 'PENDENTE' &&
@@ -615,7 +606,7 @@ service cloud.firestore {
           existing().userId == request.auth.uid || 
           existing().userId == 'all' || 
           existing().userId == 'todos_alunos' || 
-          existing().userId == 'todos' ||
+          existing().userId == 'todos' || 
           existing().isGlobal == true
         )) ||
         isAdmin()

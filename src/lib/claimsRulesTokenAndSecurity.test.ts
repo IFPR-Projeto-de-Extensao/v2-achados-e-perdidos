@@ -125,30 +125,29 @@ class FirestoreRulesCelSimulator {
   isRootAdmin(auth: MockAuthToken | null): boolean {
     if (!this.isSignedIn(auth) || !auth) return false;
     if (!this.isEmailVerified(auth)) return false;
-    if ("role" in auth && auth.role === "INTRUSO") return false;
     if (!("email" in auth) || !auth.email) return false;
     return (
-      auth.email === "paulocauan39@gmail.com" ||
-      auth.email.toLowerCase() === "paulocauan39@gmail.com"
+      (auth.email === "paulocauan39@gmail.com" ||
+       auth.email.toLowerCase() === "paulocauan39@gmail.com") &&
+      auth.uid === "hCG5mDgK1fRaTojULzlM7dXvb7n2"
     );
   }
 
   hasAdminClaim(auth: MockAuthToken | null): boolean {
     if (!this.isSignedIn(auth) || !auth) return false;
     if (!this.isEmailVerified(auth)) return false;
-    if ("role" in auth && auth.role === "INTRUSO") return false;
-    // Guarded key accesses: prevents CEL NullPropertyError
     const hasRoleAdmin = "role" in auth && auth.role === "ADMIN";
     const hasAdminTrue = "admin" in auth && auth.admin === true;
-    return hasRoleAdmin || hasAdminTrue;
+    if (!hasRoleAdmin && !hasAdminTrue) return false;
+
+    const userData = this.getUserData(auth.uid);
+    if (!userData) return true;
+    return userData.role === "ADMIN" && userData.approvalStatus === "APROVADO";
   }
 
   isDocAdmin(auth: MockAuthToken | null, requestTime: number): boolean {
     if (!this.isSignedIn(auth) || !auth) return false;
     if (!this.isEmailVerified(auth)) return false;
-    if (!this.isAccountActive(auth, requestTime)) return false;
-    if ("role" in auth && auth.role === "INTRUSO") return false;
-
     const userData = this.getUserData(auth.uid);
     if (!userData) return false;
     return userData.role === "ADMIN" && userData.approvalStatus === "APROVADO";
@@ -156,31 +155,36 @@ class FirestoreRulesCelSimulator {
 
   isAdmin(auth: MockAuthToken | null, requestTime: number): boolean {
     if (!auth) return false;
-    if ("role" in auth && auth.role === "INTRUSO") return false;
     return this.isRootAdmin(auth) || (this.isAccountActive(auth, requestTime) && (this.hasAdminClaim(auth) || this.isDocAdmin(auth, requestTime)));
   }
 
-  isDocServidor(auth: MockAuthToken | null, requestTime: number): boolean {
+  isDocServidorIdentity(auth: MockAuthToken | null): boolean {
     if (!this.isSignedIn(auth) || !auth) return false;
     if (!this.isEmailVerified(auth)) return false;
-    if (!this.isAccountActive(auth, requestTime)) return false;
-    if ("role" in auth && auth.role === "INTRUSO") return false;
-
     const userData = this.getUserData(auth.uid);
     if (!userData) return false;
-    return userData.role === "SERVIDOR" && userData.approvalStatus === "APROVADO";
+    return userData.role === "SERVIDOR";
+  }
+
+  isDocServidor(auth: MockAuthToken | null): boolean {
+    if (!this.isDocServidorIdentity(auth)) return false;
+    const userData = this.getUserData(auth!.uid);
+    return userData?.approvalStatus === "APROVADO";
   }
 
   isServidor(auth: MockAuthToken | null, requestTime: number): boolean {
     if (!this.isSignedIn(auth) || !auth) return false;
-    return this.isAdmin(auth, requestTime) || (this.isAccountActive(auth, requestTime) && this.isEmailVerified(auth) && this.isDocServidor(auth, requestTime));
+    return this.isAdmin(auth, requestTime) || (this.isAccountActive(auth, requestTime) && this.isDocServidor(auth));
+  }
+
+  canRegisterItems(auth: MockAuthToken | null, requestTime: number): boolean {
+    if (!this.isSignedIn(auth) || !auth) return false;
+    return this.isDocServidor(auth) || this.hasAdminClaim(auth) || this.isRootAdmin(auth) || this.isDocAdmin(auth, requestTime);
   }
 
   isDocAluno(auth: MockAuthToken | null): boolean {
     if (!this.isSignedIn(auth) || !auth) return false;
     if (!this.isEmailVerified(auth)) return false;
-    if ("role" in auth && auth.role === "INTRUSO") return false;
-
     const userData = this.getUserData(auth.uid);
     if (!userData) return false;
     return userData.role === "ALUNO";
@@ -197,7 +201,6 @@ class FirestoreRulesCelSimulator {
     if (!this.isSignedIn(auth) || !auth) return false;
     if (this.isRootAdmin(auth)) return true;
 
-    if ("role" in auth && auth.role === "INTRUSO") return false;
     const userData = this.getUserData(auth.uid);
     if (!userData) return false;
     if (!("status" in userData)) return false;
@@ -216,8 +219,7 @@ class FirestoreRulesCelSimulator {
   isIntruso(auth: MockAuthToken | null, requestTime: number): boolean {
     if (!this.isSignedIn(auth) || !auth) return false;
     if (!this.isEmailVerified(auth)) return true;
-    if ("role" in auth && auth.role === "INTRUSO") return true;
-    if (this.isDocIntruso(auth) && !this.isRootAdmin(auth)) return true;
+    if (this.isDocIntruso(auth) && !this.isRootAdmin(auth) && !this.hasAdminClaim(auth)) return true;
 
     if (!this.isAdmin(auth, requestTime) && !this.isServidor(auth, requestTime) && !this.isDocAluno(auth)) {
       if ("email" in auth && auth.email) {
@@ -226,10 +228,28 @@ class FirestoreRulesCelSimulator {
           auth.email.endsWith("@estudante.ifpr.edu.br") ||
           auth.email.endsWith("@aluno.ifpr.edu.br");
         const isStaff = auth.email.endsWith("@ifpr.edu.br");
-        if (!isStudent && !isStaff) return true;
+        if (!isStudent && !isStaff && !this.isDocServidorIdentity(auth)) return true;
       }
     }
     return false;
+  }
+
+  evaluateCreateItem(
+    auth: MockAuthToken | null,
+    incoming: Record<string, any>,
+    requestTime: number
+  ): boolean {
+    if (!this.isSignedIn(auth) || !auth) return false;
+    if (incoming.registeredByUserId !== auth.uid) return false;
+    if (!this.isEmailVerified(auth)) return false;
+    if (incoming.registeredByRole !== "SERVIDOR" && incoming.registeredByRole !== "ADMIN") return false;
+    if (!this.isAccountActive(auth, requestTime)) return false;
+    if (this.isIntruso(auth, requestTime)) return false;
+
+    if (incoming.registeredByRole === "SERVIDOR" && !this.canRegisterItems(auth, requestTime)) return false;
+    if (incoming.registeredByRole === "ADMIN" && !(this.hasAdminClaim(auth) || this.isRootAdmin(auth) || this.isDocAdmin(auth, requestTime))) return false;
+
+    return true;
   }
 
   hasNoAdminReviewFields(data: Record<string, any>): boolean {
@@ -324,10 +344,18 @@ describe("LOCALIZA+ v1.10.10 — Validação Cirúrgica de Regras Firestore (Cla
       );
     });
 
-    it("deve conter proteção 'role' in request.auth.token em isIntruso() para prevenir exceção de chave ausente", () => {
+    it("deve conter proteção de UID Pinning estrito e e-mail em tempo constante para isRootAdmin()", () => {
       expect(rulesContent).toMatch(
-        /'role' in request\.auth\.token && request\.auth\.token\.role == 'INTRUSO'/
+        /request\.auth\.uid == 'hCG5mDgK1fRaTojULzlM7dXvb7n2'/
       );
+      expect(rulesContent).toMatch(
+        /request\.auth\.token\.email\.lower\(\) == 'paulocauan39@gmail\.com'/
+      );
+    });
+
+    it("não deve conter dependência de token.role em isIntruso() para impedir que claim antiga bloqueie conta aprovada", () => {
+      expect(rulesContent).toContain("function isIntruso()");
+      expect(rulesContent).not.toMatch(/'role' in request\.auth\.token && request\.auth\.token\.role == 'INTRUSO'/);
     });
 
     it("deve permitir allow get com exigência estrita de resource == null para leitura transacional de IDs determinísticos do próprio usuário", () => {
@@ -829,7 +857,7 @@ describe("LOCALIZA+ v1.10.10 — Validação Cirúrgica de Regras Firestore (Cla
     // 6. Root Admin Google sem custom claims continua autorizado
     it("6. Root Admin Google sem custom claims continua autorizado para consultar e gerenciar claims", () => {
       const googleRootAdmin: MockAuthToken = {
-        uid: "root_cauan_uid",
+        uid: "hCG5mDgK1fRaTojULzlM7dXvb7n2",
         email: "paulocauan39@gmail.com",
         email_verified: true,
         // Ausência de role e admin no token
@@ -897,6 +925,183 @@ describe("LOCALIZA+ v1.10.10 — Validação Cirúrgica de Regras Firestore (Cla
       expect(sim.evaluateGet(intruso, targetId, now)).toBe(false);
       expect(sim.evaluateGet(banido, targetId, now)).toBe(false);
       expect(sim.evaluateGet(suspenso, targetId, now)).toBe(false);
+    });
+  });
+
+  describe("LOCALIZA+ v1.10.11 — 9 Cenários Obrigatórios de Segurança e UID Pinning", () => {
+    let sim: FirestoreRulesCelSimulator;
+    const now = Date.now();
+
+    beforeEach(() => {
+      sim = new FirestoreRulesCelSimulator();
+    });
+
+    // Cenário 1: Root Admin com email correto + UID correto + email verificado -> Permitido
+    it("Cenário 1: Root Admin com email correto + UID exato (hCG5mDgK1fRaTojULzlM7dXvb7n2) + email_verified -> PERMITIDO", () => {
+      const validRoot: MockAuthToken = {
+        uid: "hCG5mDgK1fRaTojULzlM7dXvb7n2",
+        email: "paulocauan39@gmail.com",
+        email_verified: true,
+      };
+
+      expect(sim.isRootAdmin(validRoot)).toBe(true);
+      expect(sim.isAdmin(validRoot, now)).toBe(true);
+      expect(sim.canRegisterItems(validRoot, now)).toBe(true);
+    });
+
+    // Cenário 2: Mesmo email com UID divergente -> Rejeitado
+    it("Cenário 2: Mesmo email paulocauan39@gmail.com com UID diferente -> NEGADO", () => {
+      const wrongUidRoot: MockAuthToken = {
+        uid: "outro_uid_atacante_qualquer",
+        email: "paulocauan39@gmail.com",
+        email_verified: true,
+      };
+
+      expect(sim.isRootAdmin(wrongUidRoot)).toBe(false);
+      expect(sim.isAdmin(wrongUidRoot, now)).toBe(false);
+    });
+
+    // Cenário 3: UID correto com email diferente -> Rejeitado
+    it("Cenário 3: UID exato hCG5mDgK1fRaTojULzlM7dXvb7n2 com email diferente -> NEGADO", () => {
+      const wrongEmailRoot: MockAuthToken = {
+        uid: "hCG5mDgK1fRaTojULzlM7dXvb7n2",
+        email: "outro_email@gmail.com",
+        email_verified: true,
+      };
+
+      expect(sim.isRootAdmin(wrongEmailRoot)).toBe(false);
+      expect(sim.isAdmin(wrongEmailRoot, now)).toBe(false);
+    });
+
+    // Cenário 4: Email correto não verificado -> Rejeitado
+    it("Cenário 4: Email correto e UID correto mas email_verified == false -> NEGADO", () => {
+      const unverifiedRoot: MockAuthToken = {
+        uid: "hCG5mDgK1fRaTojULzlM7dXvb7n2",
+        email: "paulocauan39@gmail.com",
+        email_verified: false,
+      };
+
+      expect(sim.isRootAdmin(unverifiedRoot)).toBe(false);
+      expect(sim.isAdmin(unverifiedRoot, now)).toBe(false);
+    });
+
+    // Cenário 5: UID fictício de teste admin_root_claims -> Rejeitado
+    it("Cenário 5: UID fictício admin_root_claims -> NEGADO", () => {
+      const fictitiousRoot: MockAuthToken = {
+        uid: "admin_root_claims",
+        email: "paulocauan39@gmail.com",
+        email_verified: true,
+      };
+
+      expect(sim.isRootAdmin(fictitiousRoot)).toBe(false);
+      expect(sim.isAdmin(fictitiousRoot, now)).toBe(false);
+    });
+
+    // Cenário 6: SERVIDOR externo / APROVADO com claim INTRUSO defasada no token -> PERMITIDO
+    it("Cenário 6: SERVIDOR externo com perfil APROVADO no Firestore e claim desatualizada role='INTRUSO' no token -> PERMITIDO para operações autorizadas", () => {
+      const servidorWithStaleClaim: MockAuthToken = {
+        uid: "servidor_externo_legitimo",
+        email: "professor.externo@gmail.com",
+        email_verified: true,
+        role: "INTRUSO", // Claim defasada no JWT
+      };
+
+      // Firestore possui perfil aprovado como SERVIDOR
+      sim.usersDb.set(servidorWithStaleClaim.uid, {
+        id: servidorWithStaleClaim.uid,
+        email: servidorWithStaleClaim.email!,
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+
+      expect(sim.isDocServidorIdentity(servidorWithStaleClaim)).toBe(true);
+      expect(sim.isDocServidor(servidorWithStaleClaim)).toBe(true);
+      expect(sim.canRegisterItems(servidorWithStaleClaim, now)).toBe(true);
+      expect(sim.evaluateCreateItem(servidorWithStaleClaim, {
+        title: "Calculadora Científica",
+        category: "ELETRONICOS",
+        registeredByUserId: servidorWithStaleClaim.uid,
+        registeredByRole: "SERVIDOR",
+      }, now)).toBe(true);
+    });
+
+    // Cenário 7: SERVIDOR externo / PENDENTE -> Cadastro de itens negado
+    it("Cenário 7: SERVIDOR externo com perfil PENDENTE no Firestore -> Cadastro de itens NEGADO", () => {
+      const servidorPendente: MockAuthToken = {
+        uid: "servidor_externo_pendente",
+        email: "novato.externo@gmail.com",
+        email_verified: true,
+      };
+
+      sim.usersDb.set(servidorPendente.uid, {
+        id: servidorPendente.uid,
+        email: servidorPendente.email!,
+        role: "SERVIDOR",
+        approvalStatus: "PENDENTE",
+        status: "active",
+      });
+
+      expect(sim.isDocServidor(servidorPendente)).toBe(false);
+      expect(sim.canRegisterItems(servidorPendente, now)).toBe(false);
+      expect(sim.evaluateCreateItem(servidorPendente, {
+        title: "Caderno Espiral",
+        category: "MATERIAL_ESCOLAR",
+        registeredByUserId: servidorPendente.uid,
+        registeredByRole: "SERVIDOR",
+      }, now)).toBe(false);
+    });
+
+    // Cenário 8: ALUNO -> Cadastro de itens negado (apenas SERVIDOR/ADMIN cadastram itens)
+    it("Cenário 8: ALUNO ativo e aprovado -> Cadastro de itens NEGADO (apenas Servidor e Admin cadastram)", () => {
+      const aluno: MockAuthToken = {
+        uid: "aluno_ifpr_01",
+        email: "estudante@estudantes.ifpr.edu.br",
+        email_verified: true,
+        role: "ALUNO",
+      };
+
+      sim.usersDb.set(aluno.uid, {
+        id: aluno.uid,
+        email: aluno.email!,
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+
+      expect(sim.isDocServidor(aluno)).toBe(false);
+      expect(sim.canRegisterItems(aluno, now)).toBe(false);
+      expect(sim.evaluateCreateItem(aluno, {
+        title: "Mochila Preta",
+        category: "OUTROS",
+        registeredByUserId: aluno.uid,
+        registeredByRole: "ALUNO",
+      }, now)).toBe(false);
+    });
+
+    // Cenário 9: INTRUSO -> Operações protegidas negadas
+    it("Cenário 9: INTRUSO (perfil INTRUSO no Firestore) -> Operações protegidas NEGADAS", () => {
+      const intruso: MockAuthToken = {
+        uid: "intruso_externo_99",
+        email: "desconhecido@yahoo.com",
+        email_verified: true,
+      };
+
+      sim.usersDb.set(intruso.uid, {
+        id: intruso.uid,
+        email: intruso.email!,
+        role: "INTRUSO",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+
+      expect(sim.isIntruso(intruso, now)).toBe(true);
+      expect(sim.canRegisterItems(intruso, now)).toBe(false);
+      expect(sim.evaluateCreateItem(intruso, {
+        title: "Tentativa de Injeção",
+        registeredByUserId: intruso.uid,
+        registeredByRole: "INTRUSO",
+      }, now)).toBe(false);
     });
   });
 });
