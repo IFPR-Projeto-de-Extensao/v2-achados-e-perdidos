@@ -163,7 +163,7 @@ export const Navbar: React.FC = () => {
               <button
                 onClick={() => {
                   vibrateClick();
-                  syncOfflineQueue();
+                  syncOfflineQueue(true);
                 }}
                 title="Sincronizar dados pendentes do IndexedDB com o Firestore"
                 className="hidden md:flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-[#00843D]/10 hover:bg-[#00843D]/20 border border-[#00843D]/30 text-[#00843D] dark:text-emerald-400 text-[10px] font-extrabold transition-colors animate-pulse shrink-0 cursor-pointer"

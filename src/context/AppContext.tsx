@@ -585,7 +585,7 @@ interface AppContextType {
   isOnline: boolean;
   isSyncing: boolean;
   pendingSyncCount: number;
-  syncOfflineQueue: () => Promise<void>;
+  syncOfflineQueue: (forceManual?: boolean) => Promise<void>;
   triggerManualSync: () => Promise<void>;
   lastHeartbeatTimestamp: string | null;
   indexedDbLoaded: boolean;
@@ -693,7 +693,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const triggerManualSync = async () => {
     console.log("[Manual Sync Trigger] Sincronização manual solicitada pelo usuário.");
-    await syncOfflineQueue();
+    await syncOfflineQueue(true);
   };
 
   const retryUploadTask = async (taskId: string) => {
@@ -762,7 +762,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Synchronize pending offline registration queue with Firestore (Idempotent)
-  const syncOfflineQueue = async () => {
+  const syncOfflineQueue = async (forceManual = false) => {
     if (isSyncingRef.current) {
       console.log("[Offline Sync Notice] Sincronização já em execução. Evitando execução concorrente.");
       return;
@@ -772,13 +772,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsSyncing(true);
 
     try {
-      const queue = await getPendingSyncQueue();
+      let queue = await getPendingSyncQueue();
       const count = queue ? queue.length : 0;
-      console.log(`[Offline Sync Pipeline] Iniciando verificação de fila: ${count} item(ns) encontrado(s).`);
+      console.log(`[Offline Sync Pipeline] Iniciando verificação de fila: ${count} item(ns) encontrado(s). (Manual: ${forceManual})`);
 
       if (!queue || queue.length === 0) {
         setPendingSyncCount(0);
         return;
+      }
+
+      // Se for execução manual explícita ("Sincronizar Agora"), resetar erros de autorização/permanentes para PENDENTE (exceto tamanho/limite)
+      if (forceManual) {
+        for (const entry of queue) {
+          if (entry.status === "ERRO_PERMANENTE" || entry.errorType === "AUTHORIZATION" || entry.errorType === "PERMANENT") {
+            const isSizeOrFieldLimitExceeded =
+              typeof entry.error === "string" &&
+              (entry.error.includes("PAYLOAD_SIZE") || entry.error.includes("FIELD_LIMIT"));
+            
+            if (!isSizeOrFieldLimitExceeded) {
+              console.log(`[Offline Sync Manual Reset] Resetando item #${entry.id} para PENDENTE para tentativa manual.`);
+              await updateSyncQueueEntry(entry.id, {
+                status: "PENDENTE",
+                error: undefined,
+                errorType: undefined,
+              });
+            }
+          }
+        }
+        queue = await getPendingSyncQueue();
       }
 
       let syncedCount = 0;

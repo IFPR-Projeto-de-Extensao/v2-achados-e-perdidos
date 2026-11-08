@@ -295,7 +295,7 @@ export const SettingsView: React.FC = () => {
               <button
                 onClick={() => {
                   vibrateClick();
-                  syncOfflineQueue();
+                  syncOfflineQueue(true);
                 }}
                 className="w-full py-2.5 rounded-xl bg-[#00843D] text-white text-xs font-bold hover:bg-[#006e33] flex items-center justify-center space-x-2"
               >
