@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useMemo } from "react";
 import * as d3 from "d3";
 import { LostFoundItem } from "../types";
 import { safeParseDate } from "../lib/utils";
+import { normalizeCategory, isCategoryMatch, getCategoryDisplay } from "../lib/categoryUtils";
 import {
   BarChart3,
   Calendar,
@@ -56,11 +57,11 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("TODAS");
   const [viewMode, setViewMode] = useState<"FLOW_BARS" | "CATEGORY_MATRIX" | "RADIAL_FLOW">("FLOW_BARS");
 
-  // Get distinct categories from items
+  // Get distinct categories from items (normalized to prevent duplicates like Outros vs OUTROS)
   const categoriesList = useMemo(() => {
     const set = new Set<string>();
     (items || []).forEach((it) => {
-      if (it?.category) set.add(it.category);
+      if (it?.category) set.add(normalizeCategory(it.category));
     });
     return Array.from(set);
   }, [items]);
@@ -84,7 +85,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
       if (selectedTypeFilter === "ENCONTRADO" && item.type !== "ENCONTRADO") return;
 
       // Filter by category if active
-      if (selectedCategoryFilter !== "TODAS" && item.category !== selectedCategoryFilter) return;
+      if (selectedCategoryFilter !== "TODAS" && !isCategoryMatch(item.category, selectedCategoryFilter)) return;
 
       const itemDate = safeParseDate(item.date || item.createdAt);
       if (!itemDate) return;
@@ -98,7 +99,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
       if (item.type === "ENCONTRADO") targetDay.encontrados += 1;
       if (item.status === "DEVOLVIDO") targetDay.devolvidos += 1;
 
-      const cat = item.category || "Outros";
+      const cat = normalizeCategory(item.category);
       targetDay.byCategory[cat] = (targetDay.byCategory[cat] || 0) + 1;
     });
 
@@ -118,7 +119,8 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
     const catTotals: Record<string, number> = {};
     (items || []).forEach((it) => {
       if (it?.category) {
-        catTotals[it.category] = (catTotals[it.category] || 0) + 1;
+        const cat = normalizeCategory(it.category);
+        catTotals[cat] = (catTotals[cat] || 0) + 1;
       }
     });
     let top = "N/A";

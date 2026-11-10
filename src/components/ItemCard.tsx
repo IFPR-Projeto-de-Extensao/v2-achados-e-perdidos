@@ -2,6 +2,7 @@ import React from "react";
 import { LostFoundItem } from "../types";
 import { formatDate, isItemNew } from "../lib/utils";
 import { getItemPublicUrl } from "../lib/qrCodeUtils";
+import { getCategoryDisplay } from "../lib/categoryUtils";
 import { MapPin, Calendar, Tag, ArrowRight, ShieldCheck, QrCode, CheckSquare, Square, Printer, Sparkles, CameraOff } from "lucide-react";
 import { motion } from "motion/react";
 
@@ -107,7 +108,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
             <table class="info-table">
               <tr><td class="label">ID da Ocorrência:</td><td><strong>${item.id}</strong></td></tr>
               <tr><td class="label">Título do Item:</td><td><strong>${item.title}</strong></td></tr>
-              <tr><td class="label">Categoria / Tipo:</td><td>${item.category} (${item.type})</td></tr>
+              <tr><td class="label">Categoria / Tipo:</td><td>${getCategoryDisplay(item.category)} (${item.type})</td></tr>
               <tr><td class="label">Local Encontrado:</td><td>${item.location}</td></tr>
               <tr><td class="label">Data de Entrada:</td><td>${formatDate(item.date)}</td></tr>
               <tr><td class="label">Cor / Marca:</td><td>${item.color || 'N/I'} • ${item.brand || 'N/I'}</td></tr>
@@ -189,7 +190,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
                 Sem foto anexada
               </span>
               <span className="text-[10px] text-neutral-400 dark:text-neutral-500 mt-0.5">
-                {item.category}
+                {getCategoryDisplay(item.category)}
               </span>
             </div>
           )}
@@ -254,7 +255,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
           {/* Metadata Row: Category • Date • Color */}
           <div className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400 truncate">
             <span className="font-bold text-[#00843D] dark:text-green-400">
-              {item.category}
+              {getCategoryDisplay(item.category)}
             </span>
             <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
             <span>{formatDate(item.date)}</span>

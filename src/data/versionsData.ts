@@ -83,10 +83,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "ADMIN",
         tag: "Segurança & Backend RBAC",
       },
+      {
+        id: "v11011-fix-category-outros-canonicalization",
+        title: "Normalização Canônica da Categoria 'Outros' e Consistência entre Cadastro e Edição",
+        description: "Eliminação da discrepância de armazenamento entre cadastro ('Outros') e edição ('OUTROS') de objetos. Centralização da normalização no módulo src/lib/categoryUtils.ts com compatibilidade retroativa resiliente para registros legados ('OUTROS', 'outros', 'OUTRO'), garantia de preservação canônica ('Outros') no salvamento e atualização via AppContext, e agrupamento unificado sem fragmentação nos filtros de busca, inventário e relatórios PDF.",
+        module: "GERAL",
+        tag: "Inventário & Integridade de Dados",
+      },
     ],
     stats: {
       additionsCount: 3,
-      fixesCount: 4,
+      fixesCount: 5,
     },
   },
   {

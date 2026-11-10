@@ -1,6 +1,7 @@
 import { LostFoundItem } from "../types";
 import { SemanticSearchResult } from "./apiHelper";
 import { safeIncludes, sanitizeQuery, safeToLower } from "./utils";
+import { isCategoryMatch, getCategoryDisplay } from "./categoryUtils";
 
 export interface FilterHomeItemsOptions {
   items: LostFoundItem[] | null | undefined;
@@ -32,7 +33,7 @@ export function filterHomeItems(options: FilterHomeItemsOptions): LostFoundItem[
 
   const cleanSearch = sanitizeQuery(searchTerm);
   const cleanCategory = sanitizeQuery(selectedCategory);
-  const isCategoryAll = !cleanCategory || cleanCategory === "TODAS";
+  const isCategoryAll = !cleanCategory || cleanCategory === "TODAS" || cleanCategory === "TODOS";
 
   // If semantic mode has positive results and search query has at least 3 characters
   if (
@@ -45,7 +46,7 @@ export function filterHomeItems(options: FilterHomeItemsOptions): LostFoundItem[
 
     const matchedItems = items
       .filter((item) => item && semanticItemMap.has(item.id))
-      .filter((item) => isCategoryAll || item.category === cleanCategory);
+      .filter((item) => isCategoryAll || isCategoryMatch(item.category, cleanCategory));
 
     // Sort by AI relevance score descending
     matchedItems.sort((a, b) => {
@@ -61,10 +62,12 @@ export function filterHomeItems(options: FilterHomeItemsOptions): LostFoundItem[
   const filtered = items.filter((item) => {
     if (!item) return false;
 
-    const matchesCategory = isCategoryAll || item.category === cleanCategory;
+    const matchesCategory = isCategoryAll || isCategoryMatch(item.category, cleanCategory);
     if (!matchesCategory) return false;
 
     if (!cleanSearch) return true;
+
+    const displayCategory = getCategoryDisplay(item.category);
 
     return (
       safeIncludes(item.title, cleanSearch) ||
@@ -74,9 +77,27 @@ export function filterHomeItems(options: FilterHomeItemsOptions): LostFoundItem[
       safeIncludes(item.color, cleanSearch) ||
       safeIncludes(item.qrCodeId, cleanSearch) ||
       safeIncludes(item.id, cleanSearch) ||
-      safeToLower(item.category) === safeToLower(cleanSearch)
+      safeToLower(item.category) === safeToLower(cleanSearch) ||
+      safeToLower(displayCategory) === safeToLower(cleanSearch)
     );
   });
 
   return typeof limit === "number" && limit > 0 ? filtered.slice(0, limit) : filtered;
 }
+
+/**
+ * Universal search & category filter utility for components and tests
+ */
+export function searchItems(
+  items: LostFoundItem[] | null | undefined,
+  searchTerm: string = "",
+  selectedCategory: string = "TODAS"
+): LostFoundItem[] {
+  return filterHomeItems({
+    items,
+    searchTerm,
+    selectedCategory,
+    limit: 0,
+  });
+}
+

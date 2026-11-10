@@ -6,6 +6,7 @@ import { ExportFoundItemsReportModal } from "./ExportFoundItemsReportModal";
 import { VoiceSearchModal } from "./VoiceSearchModal";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
+import { isCategoryMatch, getCategoryDisplay, normalizeCategory } from "../lib/categoryUtils";
 import { formatDate, vibrateClick, vibrateSuccess, safeToLower, safeIncludes, sanitizeQuery, isItemNew, safeParseDate } from "../lib/utils";
 import {
   Search,
@@ -247,7 +248,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { TODAS: activeItemsPool.length };
     categoriesList.forEach((c) => {
-      counts[c.name] = activeItemsPool.filter((i) => i.category === c.name).length;
+      counts[c.name] = activeItemsPool.filter((i) => isCategoryMatch(i.category, c.name)).length;
     });
     return counts;
   }, [activeItemsPool]);
@@ -279,8 +280,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
         if (filterType === "ENCONTRADO" && item.type !== "ENCONTRADO") return false;
         if (filterType === "DEVOLVIDO" && item.status !== "DEVOLVIDO") return false;
 
-        // Category filter
-        if (cleanCategory && cleanCategory !== "TODAS" && item.category !== cleanCategory) return false;
+        // Category filter (normalized matching supporting Outros / OUTROS seamlessly)
+        if (cleanCategory && !isCategoryMatch(item.category, cleanCategory)) return false;
 
         // Campus Block filter
         if (cleanBlock && cleanBlock !== "TODOS") {
@@ -1166,7 +1167,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                           </div>
                         </td>
                         <td className="p-4 font-semibold text-neutral-700 dark:text-neutral-300">
-                          {item.category}
+                          {getCategoryDisplay(item.category)}
                         </td>
                         <td className="p-4">
                           <div className="flex items-center space-x-2">
@@ -1290,7 +1291,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                           )}
                         </div>
                         <p className="text-[11px] text-neutral-500">
-                          {item.category} • {item.location}
+                          {getCategoryDisplay(item.category)} • {item.location}
                         </p>
                       </div>
                     </div>

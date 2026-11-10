@@ -16,6 +16,7 @@ import {
   Layers,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { CANONICAL_ITEM_CATEGORIES, isCategoryMatch, getCategoryDisplay } from "../lib/categoryUtils";
 import { ItemCategory, LostFoundItem } from "../types";
 import { downloadFoundItemsReportPdf, generateFoundItemsReportPdf } from "../lib/foundItemsReportPdfGenerator";
 import { safeParseDate, vibrateClick, vibrateSuccess } from "../lib/utils";
@@ -49,7 +50,7 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
       const isFound = i.type === "ENCONTRADO" || (i.status === "DEVOLVIDO" && i.type !== "PERDIDO");
       if (!isFound) return false;
 
-      if (categoryFilter !== "TODAS" && i.category !== categoryFilter) return false;
+      if (categoryFilter !== "TODAS" && !isCategoryMatch(i.category, categoryFilter)) return false;
       if (locationFilter !== "TODOS" && i.location !== locationFilter) return false;
       if (statusFilter !== "TODOS" && i.status !== statusFilter) return false;
 
@@ -298,14 +299,11 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
                 className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-xs"
               >
                 <option value="TODAS">Todas as Categorias</option>
-                <option value="Eletrônicos">Eletrônicos</option>
-                <option value="Documentos">Documentos / Carteirinhas</option>
-                <option value="Vestuário">Vestuário / Casacos</option>
-                <option value="Material Escolar">Material Escolar</option>
-                <option value="Chaves">Chaves</option>
-                <option value="Garrafas e Copos">Garrafas / Copos</option>
-                <option value="Acessórios">Acessórios</option>
-                <option value="Outros">Outros</option>
+                {CANONICAL_ITEM_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
               </select>
             </div>
 

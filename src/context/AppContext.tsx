@@ -117,6 +117,7 @@ import {
   ItemUnavailableError,
   ClaimStateNotResubmittableError,
 } from "../lib/claimErrors";
+import { normalizeCategory } from "../lib/categoryUtils";
 
 export interface InstitutionalRoleDetermination {
   role: UserRole;
@@ -4177,6 +4178,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const newItem: LostFoundItem = {
       ...itemData,
+      category: normalizeCategory(itemData.category),
       imageUrl: processedImageUrl,
       id: newItemId,
       createdAt: new Date().toISOString(),
@@ -4643,6 +4645,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const safeUpdates = { ...updatedFields };
+    if (updatedFields.category !== undefined) {
+      safeUpdates.category = normalizeCategory(updatedFields.category);
+    }
     delete (safeUpdates as any).id;
     delete (safeUpdates as any).registeredByUserId;
     delete (safeUpdates as any).registeredByRole;

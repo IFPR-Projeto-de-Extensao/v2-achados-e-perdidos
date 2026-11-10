@@ -9,6 +9,7 @@ import { getItemPublicUrl, getItemQrValue } from "../lib/qrCodeUtils";
 import { QRCodeSVG } from "qrcode.react";
 import { RestrictedQRViewModal } from "./RestrictedQRViewModal";
 import { AccessibleVoiceReader } from "./AccessibleVoiceReader";
+import { normalizeCategory, getCategoryDisplay, CANONICAL_ITEM_CATEGORIES } from "../lib/categoryUtils";
 
 /**
  * Utilitário 'formatSafeDate' para validação e formatação segura de datas (Timestamp, string, number ou Date).
@@ -137,7 +138,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const [editItemModalOpen, setEditItemModalOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(currentItem?.title || "");
   const [editDescription, setEditDescription] = useState(currentItem?.description || "");
-  const [editCategory, setEditCategory] = useState<string>(currentItem?.category || "OUTROS");
+  const [editCategory, setEditCategory] = useState<string>(normalizeCategory(currentItem?.category));
   const [editLocation, setEditLocation] = useState(currentItem?.location || "");
   const [editDate, setEditDate] = useState(currentItem?.date || getTodayDateString());
   const [editColor, setEditColor] = useState(currentItem?.color || "");
@@ -148,7 +149,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   useEffect(() => {
     setEditTitle(currentItem?.title || "");
     setEditDescription(currentItem?.description || "");
-    setEditCategory(currentItem?.category || "OUTROS");
+    setEditCategory(normalizeCategory(currentItem?.category));
     setEditLocation(currentItem?.location || "");
     setEditDate(currentItem?.date || getTodayDateString());
     setEditColor(currentItem?.color || "");
@@ -467,7 +468,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       // 3. Section 1 Table: Dados Cadastrais do Objeto
       const generalDataRows = [
         ["ID da Ocorrência:", item.id, "Tipo do Registro:", item.type === "PERDIDO" ? "Perdido (Procura-se)" : "Encontrado (No Acervo)"],
-        ["Título / Denominação:", safeTitle, "Categoria:", item.category || "Outros"],
+        ["Título / Denominação:", safeTitle, "Categoria:", getCategoryDisplay(item.category)],
         ["Local da Ocorrência:", item.location || "Campus IFPR", "Data do Registro / Entrada:", formatDate(item.date)],
         ["Cor Predominante:", item.color || "Não especificada", "Marca / Fabricante:", item.brand || "Não identificada"],
         ["Cadastrado por:", `${item.registeredByName || "Usuário IFPR"} (${item.registeredByRole || "IFPR"})`, "Validação de Posse (RNF04):", item.secretVerificationKey || item.secretVerificationHint ? "Chave Secreta Configurada (Ativa)" : "Verificação Convencional"],
@@ -810,7 +811,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             <table class="data-grid">
               <tr><td class="label">ID da Ocorrência:</td><td class="value">#${item.id}</td></tr>
               <tr><td class="label">Título / Descrição:</td><td class="value">${item.title}</td></tr>
-              <tr><td class="label">Categoria / Tipo:</td><td class="value">${item.category} (${item.type})</td></tr>
+              <tr><td class="label">Categoria / Tipo:</td><td class="value">${getCategoryDisplay(item.category)} (${item.type})</td></tr>
               <tr><td class="label">Local onde foi Encontrado:</td><td class="value">${item.location}</td></tr>
               <tr><td class="label">Cor / Marca:</td><td class="value">${item.color || 'N/I'} • ${item.brand || 'N/I'}</td></tr>
               <tr><td class="label">Código de Rastreamento QR:</td><td class="value" style="font-family: monospace; color: #00843D;">${item.qrCodeId || item.id}</td></tr>
@@ -949,7 +950,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           // Category & Type Badge Info
           ctx.font = "14px sans-serif";
           ctx.fillStyle = "#64748B";
-          ctx.fillText(`Categoria: ${item.category} (${item.type})`, canvas.width / 2, 600);
+          ctx.fillText(`Categoria: ${getCategoryDisplay(item.category)} (${item.type})`, canvas.width / 2, 600);
 
           // Footer Guidance
           ctx.fillStyle = "#F8FAFC";
@@ -983,7 +984,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     vibrateClick();
     const typeLabel = item.type === "PERDIDO" ? "Objeto Perdido" : "Objeto Encontrado";
     const shareTitle = `[IFPR Achados e Perdidos] ${typeLabel}: ${item.title}`;
-    const shareText = `Campus Ivaiporã • ${typeLabel}: "${item.title}" (${item.category})\nLocal: ${item.location}\nData: ${formatDate(item.date)}\nStatus: ${String(item.status).replace("_", " ")}\n\nConsulte o item no Localiza+ IFPR:`;
+    const shareText = `Campus Ivaiporã • ${typeLabel}: "${item.title}" (${getCategoryDisplay(item.category)})\nLocal: ${item.location}\nData: ${formatDate(item.date)}\nStatus: ${String(item.status).replace("_", " ")}\n\nConsulte o item no Localiza+ IFPR:`;
     const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/?tab=${item.type === "PERDIDO" ? "lost" : "found"}&itemId=${encodeURIComponent(item.id)}` : "";
 
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
@@ -1225,7 +1226,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             <table class="info-table">
               <tr><td class="label">ID da Ocorrência:</td><td><strong>${item.id}</strong></td></tr>
               <tr><td class="label">Título do Item:</td><td><strong>${item.title}</strong></td></tr>
-              <tr><td class="label">Categoria / Tipo:</td><td>${item.category} (${item.type})</td></tr>
+              <tr><td class="label">Categoria / Tipo:</td><td>${getCategoryDisplay(item.category)} (${item.type})</td></tr>
               <tr><td class="label">Local Encontrado:</td><td>${item.location}</td></tr>
               <tr><td class="label">Data de Entrada:</td><td>${formatDate(item.date)}</td></tr>
               <tr><td class="label">Cor / Marca:</td><td>${item.color || 'N/I'} • ${item.brand || 'N/I'}</td></tr>
@@ -1342,7 +1343,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       await updateItemData(currentItem.id, {
         title: editTitle.trim(),
         description: editDescription.trim(),
-        category: editCategory as any,
+        category: normalizeCategory(editCategory),
         location: editLocation.trim(),
         date: editDate.trim(),
         color: editColor.trim(),
@@ -1727,7 +1728,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             <div>
               <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400 mb-1">
                 <Tag className="w-3.5 h-3.5" />
-                <span>{item.category}</span>
+                <span>{getCategoryDisplay(item.category)}</span>
                 <span>•</span>
                 <span>{item.type}</span>
               </div>
@@ -2048,7 +2049,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     onClick={() => {
                       setEditTitle(item.title);
                       setEditDescription(item.description);
-                      setEditCategory(item.category);
+                      setEditCategory(normalizeCategory(item.category));
                       setEditLocation(item.location);
                       setEditDate(item.date || getTodayDateString());
                       setEditColor(item.color || "");
@@ -2801,16 +2802,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   </label>
                   <select
                     value={editCategory}
-                    onChange={(e) => setEditCategory(e.target.value)}
+                    onChange={(e) => setEditCategory(normalizeCategory(e.target.value))}
                     className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-[#00843D]"
                   >
-                    <option value="ELETRONICOS" className="bg-[#0b0f17] text-white">Eletrônicos</option>
-                    <option value="DOCUMENTOS" className="bg-[#0b0f17] text-white">Documentos</option>
-                    <option value="VESTUARIO" className="bg-[#0b0f17] text-white">Vestuário / Roupas</option>
-                    <option value="MATERIAL_ESCOLAR" className="bg-[#0b0f17] text-white">Material Escolar</option>
-                    <option value="CHAVES" className="bg-[#0b0f17] text-white">Chaves</option>
-                    <option value="ACESSORIOS" className="bg-[#0b0f17] text-white">Acessórios / Objetos Pessoais</option>
-                    <option value="OUTROS" className="bg-[#0b0f17] text-white">Outros</option>
+                    {CANONICAL_ITEM_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat} className="bg-[#0b0f17] text-white">
+                        {cat}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

@@ -4,6 +4,7 @@ import { useRouter } from "../context/RouterContext";
 import { useRequireAuth } from "../hooks/useRequireAuth";
 import { IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem, RegistrationStatus } from "../types";
+import { normalizeCategory, CANONICAL_ITEM_CATEGORIES } from "../lib/categoryUtils";
 import { getUploadTaskId } from "../lib/indexedDB";
 import { auth } from "../lib/firebase";
 import { isAccountBlocked, resolveAccountStatus } from "../lib/accountStatusUtils";
@@ -78,17 +79,7 @@ export interface SanitizedRegisterDraft {
   savedAt?: string;
 }
 
-export const CATEGORIES_LIST: ItemCategory[] = [
-  "Eletrônicos",
-  "Documentos & Cartões",
-  "Roupas & Calçados",
-  "Chaves",
-  "Material Escolar & Livros",
-  "Acessórios & Bijuterias",
-  "Garrafas & Marmitas",
-  "Guarda-chuvas",
-  "Outros",
-];
+export const CATEGORIES_LIST: ItemCategory[] = [...CANONICAL_ITEM_CATEGORIES];
 
 export function validateAndSanitizeDraft(
   draft: any,
@@ -117,8 +108,9 @@ export function validateAndSanitizeDraft(
   const validType: "PERDIDO" | "ENCONTRADO" =
     draft.type === "PERDIDO" || draft.type === "ENCONTRADO" ? draft.type : "ENCONTRADO";
 
-  const validCategory: ItemCategory = CATEGORIES_LIST.includes(draft.category)
-    ? draft.category
+  const normalizedDraftCat = normalizeCategory(draft.category);
+  const validCategory: ItemCategory = CATEGORIES_LIST.includes(normalizedDraftCat)
+    ? normalizedDraftCat
     : CATEGORIES_LIST[0];
 
   const validTitle = typeof draft.title === "string" ? draft.title.slice(0, ITEM_FIELD_LIMITS.TITLE) : "";
@@ -854,7 +846,7 @@ export const RegisterItemView: React.FC = () => {
 
       const res = await addItem({
         title: title.trim(),
-        category,
+        category: normalizeCategory(category),
         type,
         status: type === "PERDIDO" ? "PERDIDO" : "ENCONTRADO",
         description: description.trim(),
@@ -1402,7 +1394,7 @@ export const RegisterItemView: React.FC = () => {
               <select
                 id="category-input"
                 value={category}
-                onChange={(e) => setCategory(e.target.value as ItemCategory)}
+                onChange={(e) => setCategory(normalizeCategory(e.target.value))}
                 className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all cursor-pointer"
               >
                 {CATEGORIES_LIST.map((cat) => (
