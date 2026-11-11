@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { useRouter } from "../context/RouterContext";
 import { useRequireAuth } from "../hooks/useRequireAuth";
-import { IFPR_LOCATIONS } from "../data/mockData";
+import { IFPR_LOCATIONS, IFPR_LOCATION_GROUPS, LEGACY_IFPR_LOCATIONS } from "../data/mockData";
 import { ItemCategory, LostFoundItem, RegistrationStatus } from "../types";
 import { normalizeCategory, CANONICAL_ITEM_CATEGORIES } from "../lib/categoryUtils";
 import { getUploadTaskId } from "../lib/indexedDB";
@@ -120,7 +120,7 @@ export function validateAndSanitizeDraft(
   const validBrand = typeof draft.brand === "string" ? draft.brand.slice(0, ITEM_FIELD_LIMITS.BRAND) : "";
 
   const validLoc =
-    typeof draft.location === "string" && IFPR_LOCATIONS.includes(draft.location)
+    typeof draft.location === "string" && (IFPR_LOCATIONS.includes(draft.location) || LEGACY_IFPR_LOCATIONS.includes(draft.location))
       ? draft.location
       : IFPR_LOCATIONS[0];
 
@@ -1672,11 +1672,18 @@ export const RegisterItemView: React.FC = () => {
                   onChange={(e) => setLocation(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all cursor-pointer"
                 >
-                  {IFPR_LOCATIONS.map((loc) => (
-                    <option key={loc} value={loc}>
-                      {loc}
-                    </option>
+                  {IFPR_LOCATION_GROUPS.map((group) => (
+                    <optgroup key={group.group} label={group.group}>
+                      {group.locations.map((loc) => (
+                        <option key={loc} value={loc}>
+                          {loc}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
+                  {location && !IFPR_LOCATIONS.includes(location) && (
+                    <option value={location}>{location} (Legado)</option>
+                  )}
                 </select>
               </div>
             </div>

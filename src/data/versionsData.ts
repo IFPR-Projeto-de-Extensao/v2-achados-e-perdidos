@@ -24,6 +24,44 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.10.12",
+    codename: "Atualização da Estrutura Geográfica e Espacial de Localizações do IFPR Campus Ivaiporã",
+    releaseDate: "10/11/2026",
+    releaseDateTime: "10 de Novembro de 2026 • 15:45 BRT",
+    type: "MINOR",
+    isCurrent: true,
+    summary: "LOCALIZA+ v1.10.12 — Atualização completa da estrutura de localizações físicas do IFPR Campus Ivaiporã com base no referencial oficial (Mapa-Site.pdf): organização em 4 grupos estruturados (Blocos 1 a 5, Setores Administrativos, Espaços Acadêmicos e Áreas Comuns, incluindo Refeitório independente), atualização dos filtros de blocos (Blocos 1 a 5), reorganização dos selects de cadastro, edição, relatórios e filtros por local, com garantia absoluta de retrocompatibilidade e preservação de registros legados armazenados no Firestore.",
+    additions: [
+      {
+        id: "v11012-add-grouped-campus-locations",
+        title: "Estrutura Geográfica Padronizada em 4 Grupos Oficiais",
+        description: "Implementação da nova taxonomia de localizações do IFPR Campus Ivaiporã dividida em Blocos (1 a 5), Setores Administrativos (SEPAE, Portaria, Direção e Coordenação, Secretaria, Sala dos Professores), Espaços Acadêmicos (Laboratório, Laboratório de Informática, Sala de Aula, Biblioteca, Sala de RPG) e Áreas Comuns (Estacionamento, Cantina, Cozinha, Refeitório, Quadra).",
+        module: "GERAL",
+        tag: "Estrutura Física & Campus",
+      },
+      {
+        id: "v11012-add-optgroup-selection-components",
+        title: "Seleção Hierárquica por <optgroup> em Cadastro, Edição e Filtros",
+        description: "Atualização dos componentes RegisterItemView, ItemDetailModal, ObjectsView e ExportFoundItemsReportModal para renderizar as localizações agrupadas por categorias com agrupadores visuais, facilitando a usabilidade e precisão do registro.",
+        module: "GERAL",
+        tag: "Interface & Usabilidade",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v11012-fix-legacy-location-backward-compatibility",
+        title: "Preservação e Exibição Transparente de Registros Legados",
+        description: "Garantia de que ocorrências antigas cadastradas com localizações anteriores continuem sendo exibidas corretamente em listagens, modais e relatórios, e sejam mantidas sem migração destrutiva de dados no Firestore.",
+        module: "FIRESTORE",
+        tag: "Retrocompatibilidade & Integridade",
+      },
+    ],
+    stats: {
+      additionsCount: 2,
+      fixesCount: 1,
+    },
+  },
+  {
     version: "v1.10.11",
     codename: "Integração Controlada das Firestore Rules e Autoridade Efetiva de Perfil",
     releaseDate: "07/11/2026",

@@ -10,6 +10,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { RestrictedQRViewModal } from "./RestrictedQRViewModal";
 import { AccessibleVoiceReader } from "./AccessibleVoiceReader";
 import { normalizeCategory, getCategoryDisplay, CANONICAL_ITEM_CATEGORIES } from "../lib/categoryUtils";
+import { IFPR_LOCATIONS, IFPR_LOCATION_GROUPS } from "../data/mockData";
 
 /**
  * Utilitário 'formatSafeDate' para validação e formatação segura de datas (Timestamp, string, number ou Date).
@@ -2822,13 +2823,26 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                       Máx. {ITEM_FIELD_LIMITS.LOCATION} carac.
                     </span>
                   </div>
-                  <input
-                    type="text"
-                    maxLength={ITEM_FIELD_LIMITS.LOCATION}
+                  <select
                     value={editLocation}
                     onChange={(e) => setEditLocation(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
-                  />
+                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-[#00843D]"
+                  >
+                    {IFPR_LOCATION_GROUPS.map((group) => (
+                      <optgroup key={group.group} label={group.group} className="bg-[#0b0f17] text-slate-300">
+                        {group.locations.map((loc) => (
+                          <option key={loc} value={loc} className="bg-[#0b0f17] text-white">
+                            {loc}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    {editLocation && !IFPR_LOCATIONS.includes(editLocation) && (
+                      <option value={editLocation} className="bg-[#0b0f17] text-white">
+                        {editLocation} (Legado)
+                      </option>
+                    )}
+                  </select>
                 </div>
               </div>
 

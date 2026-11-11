@@ -4,7 +4,7 @@ import { useApp } from "../context/AppContext";
 import { ItemCard } from "./ItemCard";
 import { ExportFoundItemsReportModal } from "./ExportFoundItemsReportModal";
 import { VoiceSearchModal } from "./VoiceSearchModal";
-import { IFPR_LOCATIONS } from "../data/mockData";
+import { IFPR_LOCATIONS, IFPR_LOCATION_GROUPS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
 import { isCategoryMatch, getCategoryDisplay, normalizeCategory } from "../lib/categoryUtils";
 import { formatDate, vibrateClick, vibrateSuccess, safeToLower, safeIncludes, sanitizeQuery, isItemNew, safeParseDate } from "../lib/utils";
@@ -56,16 +56,11 @@ interface ObjectsViewProps {
 
 const CAMPUS_BLOCKS = [
   { id: "TODOS", label: "Todos os Blocos", shortLabel: "Todos", icon: Building2 },
-  { id: "Bloco Didático", label: "Bloco Didático (Salas 01 a 12)", shortLabel: "Bloco Didático", icon: Building2 },
-  { id: "Laboratórios de Informática", label: "Laboratórios de Informática (Lab 01 e 02)", shortLabel: "Labs Informática", icon: Laptop },
-  { id: "Biblioteca", label: "Biblioteca Campus Ivaiporã", shortLabel: "Biblioteca", icon: BookOpen },
-  { id: "Refeitório", label: "Refeitório / Cantina Estudantil", shortLabel: "Refeitório", icon: Coffee },
-  { id: "Ginásio", label: "Ginásio Poliesportivo & Quadra", shortLabel: "Ginásio / Quadra", icon: Layers },
-  { id: "Secretaria", label: "Secretaria Acadêmica (SEBAC / Bloco ADM)", shortLabel: "Secretaria / ADM", icon: FileText },
-  { id: "Estacionamento", label: "Estacionamento Principal & Guarita", shortLabel: "Guarita / Estac.", icon: MapPin },
-  { id: "Auditório", label: "Auditório do Campus Ivaiporã", shortLabel: "Auditório", icon: Building2 },
-  { id: "Laboratórios de Física", label: "Laboratórios de Ciências (Fís/Quím/Bio)", shortLabel: "Labs Ciências", icon: Sparkles },
-  { id: "Área Verde", label: "Área Verde & Pátio Central", shortLabel: "Pátio Central", icon: MapPin },
+  { id: "Bloco 1", label: "Bloco 1", shortLabel: "Bloco 1", icon: Building2 },
+  { id: "Bloco 2", label: "Bloco 2", shortLabel: "Bloco 2", icon: Building2 },
+  { id: "Bloco 3", label: "Bloco 3", shortLabel: "Bloco 3", icon: Building2 },
+  { id: "Bloco 4", label: "Bloco 4", shortLabel: "Bloco 4", icon: Building2 },
+  { id: "Bloco 5", label: "Bloco 5", shortLabel: "Bloco 5", icon: Building2 },
 ];
 
 const TIME_PRESETS = [
@@ -860,11 +855,18 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({ initialFilterType = "T
                     className="w-full py-2 px-3 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-xs focus:ring-2 focus:ring-[#00843D] outline-none"
                   >
                     <option value="TODOS">Todos os Locais Detalhados</option>
-                    {IFPR_LOCATIONS.map((loc) => (
-                      <option key={loc} value={loc}>
-                        {loc}
-                      </option>
+                    {IFPR_LOCATION_GROUPS.map((group) => (
+                      <optgroup key={group.group} label={group.group}>
+                        {group.locations.map((loc) => (
+                          <option key={loc} value={loc}>
+                            {loc}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
+                    {selectedLocation && selectedLocation !== "TODOS" && !IFPR_LOCATIONS.includes(selectedLocation) && (
+                      <option value={selectedLocation}>{selectedLocation} (Legado)</option>
+                    )}
                   </select>
                 </div>
 

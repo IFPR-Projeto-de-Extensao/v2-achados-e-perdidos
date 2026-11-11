@@ -20,7 +20,7 @@ import { CANONICAL_ITEM_CATEGORIES, isCategoryMatch, getCategoryDisplay } from "
 import { ItemCategory, LostFoundItem } from "../types";
 import { downloadFoundItemsReportPdf, generateFoundItemsReportPdf } from "../lib/foundItemsReportPdfGenerator";
 import { safeParseDate, vibrateClick, vibrateSuccess } from "../lib/utils";
-import { IFPR_LOCATIONS } from "../data/mockData";
+import { IFPR_LOCATIONS, IFPR_LOCATION_GROUPS } from "../data/mockData";
 
 interface ExportFoundItemsReportModalProps {
   isOpen: boolean;
@@ -318,10 +318,14 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
                 className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-xs"
               >
                 <option value="TODOS">Todos os Locais</option>
-                {IFPR_LOCATIONS.map((loc) => (
-                  <option key={loc} value={loc}>
-                    {loc}
-                  </option>
+                {IFPR_LOCATION_GROUPS.map((group) => (
+                  <optgroup key={group.group} label={group.group}>
+                    {group.locations.map((loc) => (
+                      <option key={loc} value={loc}>
+                        {loc}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>
