@@ -1026,6 +1026,13 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
     };
 
     const seedActors = async () => {
+      await setupUserDoc("aluno_1", {
+        id: "aluno_1",
+        email: "aluno1@ifpr.edu.br",
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
       await setupUserDoc("aluno_autor", {
         id: "aluno_autor",
         email: "aluno.autor@ifpr.edu.br",

@@ -83,10 +83,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "FIRESTORE",
         tag: "Privacidade LGPD & Criptografia",
       },
+      {
+        id: "v11013-fix-ui-design-system-barrel-and-firestore-rules-expression-budget",
+        title: "Resolução de Módulos UI na Build Vercel e Otimização de Orçamento de Expressões nas Firestore Rules",
+        description: "Consolidação dos módulos do Design System exportados por src/components/ui/index.ts (BrandLogo, Card, Badge, PageHeader, StatCard e EmptyState) com compatibilidade case-sensitive Linux/Vercel; otimização estrutural das funções auxiliares de firestore.rules (isAccountActive, isAccountBlocked, isIntruso, canRegisterItems, hasNoReturnOrSignatureFields, isStaffOrAdminNonReturnItemUpdate e isAuthorSafeMetadataEdit) com variáveis locais let e curto-circuito para manter todas as avaliações abaixo do limite de 1.000 expressões do Firestore Emulator no CI/CD.",
+        module: "VERCEL",
+        tag: "CI/CD, Build & Firestore Rules",
+      },
     ],
     stats: {
       additionsCount: 2,
-      fixesCount: 5,
+      fixesCount: 6,
     },
   },
   {

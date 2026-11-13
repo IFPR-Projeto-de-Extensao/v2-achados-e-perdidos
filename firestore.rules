@@ -53,41 +53,62 @@ service cloud.firestore {
       return !isTemporaryBlockActive(userData) &&
         (
           ('blockExpiresAt' in userData && (
-            (userData.blockExpiresAt is timestamp && request.time >= userData.blockExpiresAt) ||
-            (userData.blockExpiresAt is number && request.time >= timestamp.value(userData.blockExpiresAt))
+            userData.blockExpiresAt is timestamp ||
+            userData.blockExpiresAt is number
           )) ||
           ('suspendedUntil' in userData && (
-            (userData.suspendedUntil is timestamp && request.time >= userData.suspendedUntil) ||
-            (userData.suspendedUntil is number && request.time >= timestamp.value(userData.suspendedUntil))
+            userData.suspendedUntil is timestamp ||
+            userData.suspendedUntil is number
           ))
         );
+    }
+
+    function isUserDocBlocked() {
+      let u = getUserData();
+      let blockActive = isTemporaryBlockActive(u);
+      return (
+        ('status' in u && (
+          u.status == 'banned' ||
+          (u.status == 'suspended' && blockActive)
+        )) ||
+        blockActive
+      );
     }
 
     function isAccountBlocked() {
       return isSignedIn() && 
              userDocExists() &&
+             isUserDocBlocked();
+    }
+
+    function isUserDocActive() {
+      let u = getUserData();
+      let blockActive = isTemporaryBlockActive(u);
+      return ('status' in u) &&
+             (!('active' in u) || u.active != false) &&
              (
-                ('status' in getUserData() && (
-                  getUserData().status == 'banned' ||
-                  (getUserData().status == 'suspended' && isTemporaryBlockActive(getUserData()))
-                )) ||
-                isTemporaryBlockActive(getUserData())
-             );
+               (u.status == 'active' && !blockActive) ||
+               (u.status == 'suspended' && !blockActive && (
+                 ('blockExpiresAt' in u && (u.blockExpiresAt is timestamp || u.blockExpiresAt is number)) ||
+                 ('suspendedUntil' in u && (u.suspendedUntil is timestamp || u.suspendedUntil is number))
+               ))
+             ) &&
+             (!('role' in u) || u.role != 'INTRUSO');
     }
 
     function isAccountActive() {
+      // (!('active' in getUserData()) || getUserData().active != false)
       return isSignedIn() && (
         isRootAdmin() || (
           userDocExists() &&
-          ('status' in getUserData()) &&
-          (!('active' in getUserData()) || getUserData().active != false) &&
-          (
-            (getUserData().status == 'active' && !isTemporaryBlockActive(getUserData())) ||
-            (getUserData().status == 'suspended' && isTemporaryBlockExpired(getUserData()))
-          ) &&
-          (!('role' in getUserData()) || getUserData().role != 'INTRUSO')
+          isUserDocActive()
         )
       );
+    }
+
+    function isAdminUserDoc() {
+      let u = getUserData();
+      return u.role == 'ADMIN' && u.approvalStatus == 'APROVADO';
     }
 
     function hasAdminClaim() {
@@ -97,25 +118,23 @@ service cloud.firestore {
              isEmailVerified() &&
              (('role' in request.auth.token && request.auth.token.role == 'ADMIN') || 
               ('admin' in request.auth.token && request.auth.token.admin == true)) &&
-             (!userDocExists() ||
-              (getUserData().role == 'ADMIN' && getUserData().approvalStatus == 'APROVADO'));
+             (!userDocExists() || isAdminUserDoc());
     }
 
     function isRootAdmin() {
       return isSignedIn() && 
              isEmailVerified() &&
+             request.auth.uid == 'hCG5mDgK1fRaTojULzlM7dXvb7n2' &&
              ('email' in request.auth.token) &&
              request.auth.token.email != null &&
-             request.auth.token.email.lower() == 'paulocauan39@gmail.com' &&
-             request.auth.uid == 'hCG5mDgK1fRaTojULzlM7dXvb7n2';
+             request.auth.token.email.lower() == 'paulocauan39@gmail.com';
     }
 
     function isDocAdmin() {
       return isSignedIn() && 
              isEmailVerified() &&
              userDocExists() &&
-             getUserData().role == 'ADMIN' &&
-             getUserData().approvalStatus == 'APROVADO';
+             isAdminUserDoc();
     }
 
     function isAdmin() {
@@ -133,8 +152,15 @@ service cloud.firestore {
     }
 
     function isDocServidor() {
-      return isDocServidorIdentity() && 
-             getUserData().approvalStatus == 'APROVADO';
+      return isSignedIn() &&
+             isEmailVerified() &&
+             userDocExists() &&
+             isApprovedServidorDoc();
+    }
+
+    function isApprovedServidorDoc() {
+      let u = getUserData();
+      return u.role == 'SERVIDOR' && u.approvalStatus == 'APROVADO';
     }
 
     function isDocAluno() {
@@ -174,24 +200,40 @@ service cloud.firestore {
       return isAccountActive() && isDocServidor();
     }
 
+    function isApprovedStaffOrAdminDoc() {
+      let u = getUserData();
+      return (u.role == 'SERVIDOR' || u.role == 'ADMIN') && u.approvalStatus == 'APROVADO';
+    }
+
     function canRegisterItems() {
       // Contas aprovadas como SERVIDOR (institucionais ou externas atribuídas por administrador) e administradores
-      return isDocServidor() || hasAdminClaim() || isRootAdmin() || isDocAdmin();
+      return isSignedIn() &&
+             isEmailVerified() &&
+             ((userDocExists() && isApprovedStaffOrAdminDoc()) || hasAdminClaim() || isRootAdmin());
+    }
+
+    function isRecognizedUserDocRole() {
+      let u = getUserData();
+      return u.role == 'ALUNO' ||
+             u.role == 'SERVIDOR' ||
+             (u.role == 'ADMIN' && u.approvalStatus == 'APROVADO');
     }
 
     function isIntruso() {
       return isSignedIn() && (
         !isEmailVerified() ||
-        (isDocIntruso() && !isRootAdmin() && !hasAdminClaim()) ||
         (
-          ('email' in request.auth.token) && request.auth.token.email != null &&
-          !isInstitutionalStudentEmail() &&
-          !isInstitutionalStaffEmail() &&
+          !(userDocExists() && isRecognizedUserDocRole()) &&
           !isRootAdmin() &&
           !hasAdminClaim() &&
-          !isDocAdmin() &&
-          !isDocServidorIdentity() &&
-          !isDocAluno()
+          (
+            isDocIntruso() ||
+            (
+              ('email' in request.auth.token) && request.auth.token.email != null &&
+              !isInstitutionalStudentEmail() &&
+              !isInstitutionalStaffEmail()
+            )
+          )
         )
       );
     }
@@ -220,45 +262,47 @@ service cloud.firestore {
     // These fields can ONLY be written by trusted server-side Firebase Admin SDK transactions into /item_return_records,
     // and can NEVER be injected into or exposed publicly from /items, /found_items, or /lost_items.
     function hasNoReturnOrSignatureFields(data) {
-      return !('returnedByUserId' in data) &&
-             !('returnedByName' in data) &&
-             !('returnedByRole' in data) &&
-             !('returnDate' in data) &&
-             !('returnTime' in data) &&
-             !('recipientName' in data) &&
-             !('recipientEmail' in data) &&
-             !('recipientBond' in data) &&
-             !('recipientDocument' in data) &&
-             !('recipientUid' in data) &&
-             !('returnObservations' in data) &&
-             !('receiptValidationCode' in data) &&
-             !('recipientSignatureUrl' in data) &&
-             !('recipientSignatureType' in data) &&
-             !('recipientSignatureMethod' in data) &&
-             !('recipientSignatureStatus' in data) &&
-             !('recipientSignatureEmail' in data) &&
-             !('recipientSignatureName' in data) &&
-             !('recipientSignatureBond' in data) &&
-             !('recipientSignatureDate' in data) &&
-             !('staffSignatureStatus' in data) &&
-             !('staffSignatureUrl' in data) &&
-             !('staffSignatureMethod' in data) &&
-             !('staffSignedAt' in data) &&
-             !('staffSignerUid' in data) &&
-             !('staffSignerName' in data) &&
-             !('staffSignerEmail' in data) &&
-             !('signatureToken' in data) &&
-             !('signatureTokenExpiresAt' in data) &&
-             !('signatureTokenUsed' in data) &&
-             !('signedAt' in data) &&
-             !('signatureIpOrDevice' in data) &&
-             !('secretVerificationKey' in data) &&
-             !('requiresAdminClaimReview' in data) &&
-             !('devolutionNotified' in data) &&
-             !('returnEmailNotified' in data) &&
-             !('devolutionNotificationStatus' in data) &&
-             !('devolutionNotifiedAt' in data) &&
-             !('devolutionNotifiedBy' in data);
+      return !data.keys().hasAny([
+        'returnedByUserId',
+        'returnedByName',
+        'returnedByRole',
+        'returnDate',
+        'returnTime',
+        'recipientName',
+        'recipientEmail',
+        'recipientBond',
+        'recipientDocument',
+        'recipientUid',
+        'returnObservations',
+        'receiptValidationCode',
+        'recipientSignatureUrl',
+        'recipientSignatureType',
+        'recipientSignatureMethod',
+        'recipientSignatureStatus',
+        'recipientSignatureEmail',
+        'recipientSignatureName',
+        'recipientSignatureBond',
+        'recipientSignatureDate',
+        'staffSignatureStatus',
+        'staffSignatureUrl',
+        'staffSignatureMethod',
+        'staffSignedAt',
+        'staffSignerUid',
+        'staffSignerName',
+        'staffSignerEmail',
+        'signatureToken',
+        'signatureTokenExpiresAt',
+        'signatureTokenUsed',
+        'signedAt',
+        'signatureIpOrDevice',
+        'secretVerificationKey',
+        'requiresAdminClaimReview',
+        'devolutionNotified',
+        'returnEmailNotified',
+        'devolutionNotificationStatus',
+        'devolutionNotifiedAt',
+        'devolutionNotifiedBy'
+      ]);
     }
 
     function hasNoProtectedReturnOrSignatureMutation() {
@@ -314,14 +358,11 @@ service cloud.firestore {
     }
 
     function isAuthorSafeMetadataEdit() {
-      return isEmailVerified() &&
-             !isIntruso() &&
+      return (!('status' in existing()) ? !('status' in incoming()) : incoming().status == existing().status) &&
              ('registeredByUserId' in existing()) &&
              existing().registeredByUserId == request.auth.uid &&
-             areItemCoreImmutableFieldsPreserved() &&
-             hasNoProtectedReturnOrSignatureMutation() &&
-             (!('status' in existing()) || (existing().status != 'DEVOLVIDO' && existing().status != 'ENCERRADO')) &&
-             (!('status' in existing()) ? !('status' in incoming()) : incoming().status == existing().status) &&
+             isEmailVerified() &&
+             !isIntruso() &&
              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                'title',
                'description',
@@ -344,11 +385,8 @@ service cloud.firestore {
     }
 
     function isStaffOrAdminNonReturnItemUpdate() {
-      return (isDocServidor() || hasAdminClaim() || isRootAdmin() || isDocAdmin()) &&
-             areItemCoreImmutableFieldsPreserved() &&
-             hasNoProtectedReturnOrSignatureMutation() &&
-             (!('status' in existing()) || (existing().status != 'DEVOLVIDO' && existing().status != 'ENCERRADO')) &&
-             (!('status' in incoming()) || incoming().status != 'DEVOLVIDO') &&
+      return (!('status' in incoming()) || incoming().status != 'DEVOLVIDO') &&
+             canRegisterItems() &&
              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                'title',
                'description',
@@ -565,9 +603,12 @@ service cloud.firestore {
       // Approved/Active Staff & Admins can edit metadata, apply non-return statuses, or register ENCERRADO destination.
       allow update: if isAccountActive() &&
                        isValidItemTextFields(incoming()) &&
+                       (!('status' in existing()) || (existing().status != 'DEVOLVIDO' && existing().status != 'ENCERRADO')) &&
+                       areItemCoreImmutableFieldsPreserved() &&
+                       hasNoProtectedReturnOrSignatureMutation() &&
                        (
-                         isAuthorSafeMetadataEdit() ||
-                         isStaffOrAdminNonReturnItemUpdate()
+                         isStaffOrAdminNonReturnItemUpdate() ||
+                         isAuthorSafeMetadataEdit()
                        );
 
       // Delete: Items already marked DEVOLVIDO cannot be deleted via Client SDK (must reopen via Admin backend first).
@@ -602,9 +643,12 @@ service cloud.firestore {
                     );
       allow update: if isAccountActive() &&
                        isValidItemTextFields(incoming()) &&
+                       (!('status' in existing()) || (existing().status != 'DEVOLVIDO' && existing().status != 'ENCERRADO')) &&
+                       areItemCoreImmutableFieldsPreserved() &&
+                       hasNoProtectedReturnOrSignatureMutation() &&
                        (
-                         isAuthorSafeMetadataEdit() ||
-                         isStaffOrAdminNonReturnItemUpdate()
+                         isStaffOrAdminNonReturnItemUpdate() ||
+                         isAuthorSafeMetadataEdit()
                        );
       allow delete: if (!('status' in existing()) || existing().status != 'DEVOLVIDO') &&
                        (
@@ -636,9 +680,12 @@ service cloud.firestore {
                     );
       allow update: if isAccountActive() &&
                        isValidItemTextFields(incoming()) &&
+                       (!('status' in existing()) || (existing().status != 'DEVOLVIDO' && existing().status != 'ENCERRADO')) &&
+                       areItemCoreImmutableFieldsPreserved() &&
+                       hasNoProtectedReturnOrSignatureMutation() &&
                        (
-                         isAuthorSafeMetadataEdit() ||
-                         isStaffOrAdminNonReturnItemUpdate()
+                         isStaffOrAdminNonReturnItemUpdate() ||
+                         isAuthorSafeMetadataEdit()
                        );
       allow delete: if (!('status' in existing()) || existing().status != 'DEVOLVIDO') &&
                        (
@@ -759,41 +806,41 @@ service cloud.firestore {
         // 1. Claimant Cancellation (Strict least privilege: only status & cancelledAt)
         (
           isSignedIn() && 
-          isAccountActive() && 
-          !isIntruso() &&
           existing().claimerId == request.auth.uid && 
           existing().status == 'PENDENTE' &&
           incoming().status == 'CANCELADO' &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt'])
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt']) &&
+          isAccountActive() && 
+          !isIntruso()
         ) ||
         // 2. Claimant Resubmission (If previous claim was CANCELADO or REJEITADO)
         (
           isSignedIn() && 
-          isAccountActive() && 
-          !isIntruso() &&
           existing().claimerId == request.auth.uid &&
           existing().status in ['CANCELADO', 'REJEITADO'] &&
+          incoming().status == 'PENDENTE' &&
           incoming().id == existing().id &&
           incoming().claimerId == request.auth.uid &&
           incoming().itemId == existing().itemId &&
           incoming().createdAt == existing().createdAt &&
-          incoming().status == 'PENDENTE' &&
           incoming().distinctiveFeatures is string &&
           incoming().distinctiveFeatures.size() > 0 &&
           incoming().distinctiveFeatures.size() <= 1000 &&
           (!('additionalInfo' in incoming()) || incoming().additionalInfo == null || (incoming().additionalInfo is string && incoming().additionalInfo.size() <= 1000)) &&
           hasNoAdminReviewFields(incoming()) &&
+          isAccountActive() && 
+          !isIntruso() &&
           exists(/databases/$(database)/documents/items/$(incoming().itemId)) &&
           get(/databases/$(database)/documents/items/$(incoming().itemId)).data.status != 'DEVOLVIDO' &&
           get(/databases/$(database)/documents/items/$(incoming().itemId)).data.status != 'ENCERRADO'
         ) ||
         // 3. Staff / Admin Review & Lifecycle Transitions
         (
-          (isAdmin() || (isServidor() && isAccountActive())) &&
           areImmutableFieldsPreserved() &&
           // Settled terminal states cannot be altered
           existing().status != 'CONCLUIDO' &&
           existing().status != 'CANCELADO' &&
+          (isAdmin() || (isServidor() && isAccountActive())) &&
           (
             // PENDENTE -> APROVADO, REJEITADO, CANCELADO
             (existing().status == 'PENDENTE' && incoming().status in ['APROVADO', 'REJEITADO', 'CANCELADO']) ||

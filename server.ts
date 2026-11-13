@@ -785,6 +785,7 @@ export const PRIVATE_RETURN_ITEM_FIELDS = [
   "signedAt",
   "signatureIpOrDevice",
   "secretVerificationKey",
+  "secretVerificationHint",
   "requiresAdminClaimReview",
   "devolutionNotified",
   "returnEmailNotified",
@@ -796,7 +797,7 @@ export const PRIVATE_RETURN_ITEM_FIELDS = [
 export function buildPublicFieldDeletionMap(deleteMarker: any): Record<string, any> {
   const map: Record<string, any> = {};
   for (const field of PRIVATE_RETURN_ITEM_FIELDS) {
-    if (field === "secretVerificationKey") continue;
+    if (field === "secretVerificationKey" || field === "secretVerificationHint") continue;
     map[field] = deleteMarker;
   }
   return map;
@@ -6243,34 +6244,36 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
       const expMs = existingExpiresAt ? Date.parse(String(existingExpiresAt)) : NaN;
       const isExpired = !existingExpiresAt || Number.isNaN(expMs) || expMs < Date.now();
 
-      if (!isExpired && sigData?.tokenHash) {
-        // Recover active non-expired token without invalidating previously sent links
-        const decryptedMeta = sigData?.encryptedToken ? decryptSignatureTokenWithMetadata(sigData.encryptedToken) : null;
-        if (decryptedMeta && crypto.createHash("sha256").update(decryptedMeta.token).digest("hex") === sigData.tokenHash) {
-          resolvedRawToken = decryptedMeta.token;
-          resolvedExpiresAt = String(existingExpiresAt);
-          reissuedExpiredToken = false;
+      const decryptedMeta =
+        !isExpired && sigData?.tokenHash && sigData?.encryptedToken
+          ? decryptSignatureTokenWithMetadata(sigData.encryptedToken)
+          : null;
 
-          // Transparent key rotation migration: if decrypted using a previous key from the keyring,
-          // re-encrypt under the current active keyId while preserving the exact same rawToken and tokenHash!
-          if (decryptedMeta.usedPreviousKey) {
-            const { activeKey } = getSignatureEncryptionKeyring();
-            transaction.set(
-              sigReqRef,
-              {
-                encryptedToken: encryptSignatureToken(resolvedRawToken),
-                encryptionKeyId: activeKey.keyId,
-                keyRotatedAt: timestamp,
-              },
-              { merge: true }
-            );
-          }
-        } else {
-          // Cannot decrypt legacy/unencrypted active token and MUST NOT overwrite unexpired token
-          throw new Error("ACTIVE_TOKEN_NOT_EXPIRED");
+      if (
+        decryptedMeta &&
+        crypto.createHash("sha256").update(decryptedMeta.token).digest("hex") === sigData.tokenHash
+      ) {
+        // Recover active non-expired token without invalidating previously sent links
+        resolvedRawToken = decryptedMeta.token;
+        resolvedExpiresAt = String(existingExpiresAt);
+        reissuedExpiredToken = false;
+
+        // Transparent key rotation migration: if decrypted using a previous key from the keyring,
+        // re-encrypt under the current active keyId while preserving the exact same rawToken and tokenHash!
+        if (decryptedMeta.usedPreviousKey) {
+          const { activeKey } = getSignatureEncryptionKeyring();
+          transaction.set(
+            sigReqRef,
+            {
+              encryptedToken: encryptSignatureToken(resolvedRawToken),
+              encryptionKeyId: activeKey.keyId,
+              keyRotatedAt: timestamp,
+            },
+            { merge: true }
+          );
         }
       } else {
-        // Previous request is expired (or missing tokenHash on eligible PENDING_REMOTE item): issue new CSPRNG token
+        // Previous request is expired (or legacy record lacks encryptedToken / tokenHash): issue new CSPRNG token
         resolvedRawToken = `sig_${crypto.randomBytes(24).toString("hex")}`;
         resolvedExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
         reissuedExpiredToken = true;
@@ -7728,11 +7731,38 @@ app.get(["/api/items/private-return-records", "/items/private-return-records"], 
     }
     const snap = await adminDb.collection("item_return_records").get();
     const docs = snap?.docs || [];
-    const records = docs.map((d: any) => {
-      const raw = (typeof d.data === "function" ? d.data() : d.data) || {};
-      return { ...raw, itemId: raw.itemId || d.id };
-    });
-    return res.json({ success: true, records });
+    const recordsMap = new Map<string, Record<string, any>>();
+    for (const d of docs) {
+      const raw: Record<string, any> = (typeof d.data === "function" ? d.data() : (d as any).data) || {};
+      const itemId = raw.itemId || d.id;
+      recordsMap.set(itemId, { ...raw, itemId });
+    }
+
+    // Non-destructive fallback for pre-Etapa-15 returned items whose return metadata still resides on /items
+    const itemsSnap = await adminDb.collection("items").get();
+    const itemDocs = itemsSnap?.docs || [];
+    for (const itemDoc of itemDocs) {
+      const itemId = itemDoc.id;
+      if (recordsMap.has(itemId)) continue;
+      const rawItem: Record<string, any> = (typeof itemDoc.data === "function" ? itemDoc.data() : (itemDoc as any).data) || {};
+      if (rawItem.status === "DEVOLVIDO") {
+        const legacyRecord: Record<string, any> = { itemId, status: "DEVOLVIDO" };
+        let hasPrivateField = false;
+        for (const field of PRIVATE_RETURN_ITEM_FIELDS) {
+          if (rawItem[field] !== undefined) {
+            legacyRecord[field] = rawItem[field];
+            hasPrivateField = true;
+          }
+        }
+        if (hasPrivateField) {
+          if (Array.isArray(rawItem.history)) legacyRecord.privateHistory = rawItem.history;
+          if (Array.isArray(rawItem.historyLogs)) legacyRecord.privateHistoryLogs = rawItem.historyLogs;
+          recordsMap.set(itemId, legacyRecord);
+        }
+      }
+    }
+
+    return res.json({ success: true, records: Array.from(recordsMap.values()) });
   } catch (err: any) {
     console.error("Erro ao carregar registros privados de devolução:", err?.message || err);
     return res.status(500).json({ success: false, error: "Erro ao consultar registros privados de devolução." });
