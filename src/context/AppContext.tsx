@@ -4300,13 +4300,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // Role derivation strictly from authenticated profile or verified root admin
     const isRootAdmin = authUser.email === "paulocauan39@gmail.com";
-    const effectiveUserRole: UserRole | undefined = isRootAdmin
+    let effectiveUserRole: UserRole | undefined = isRootAdmin
       ? "ADMIN"
       : currentUser?.role && currentUser.role !== "INTRUSO"
       ? currentUser.role
       : undefined;
 
-    if (!effectiveUserRole) {
+    if (!effectiveUserRole || (effectiveUserRole as string) === "INTRUSO") {
+      try {
+        const tokenRes = await authUser.getIdTokenResult(true).catch(() => null);
+        const claimRole = tokenRes?.claims?.role;
+        if (claimRole && ["SERVIDOR", "ADMIN", "ALUNO"].includes(claimRole)) {
+          effectiveUserRole = claimRole as UserRole;
+        } else {
+          const uSnap = await getDoc(doc(db, "users", authUser.uid)).catch(() => null);
+          if (uSnap && uSnap.exists()) {
+            const uData = uSnap.data() as User;
+            if (uData.role && uData.role !== "INTRUSO" && uData.approvalStatus === "APROVADO") {
+              effectiveUserRole = uData.role;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (!effectiveUserRole || (effectiveUserRole as string) === "INTRUSO") {
       addToast("Perfil de usuário não carregado ou sem permissão válida. Aguarde a sincronização do perfil.", "error");
       throw new Error("Perfil institucional não disponível para autorização no Firestore.");
     }

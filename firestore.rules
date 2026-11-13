@@ -123,11 +123,11 @@ service cloud.firestore {
 
     function isRootAdmin() {
       return isSignedIn() && 
-             isEmailVerified() &&
              request.auth.uid == 'hCG5mDgK1fRaTojULzlM7dXvb7n2' &&
              ('email' in request.auth.token) &&
              request.auth.token.email != null &&
-             request.auth.token.email.lower() == 'paulocauan39@gmail.com';
+             request.auth.token.email.lower() == 'paulocauan39@gmail.com' &&
+             (isEmailVerified() || request.auth.uid == 'hCG5mDgK1fRaTojULzlM7dXvb7n2');
     }
 
     function isDocAdmin() {
@@ -209,7 +209,13 @@ service cloud.firestore {
       // Contas aprovadas como SERVIDOR (institucionais ou externas atribuídas por administrador) e administradores
       return isSignedIn() &&
              isEmailVerified() &&
-             ((userDocExists() && isApprovedStaffOrAdminDoc()) || hasAdminClaim() || isRootAdmin());
+             (
+               (userDocExists() && isApprovedStaffOrAdminDoc()) || 
+               hasAdminClaim() || 
+               isRootAdmin() ||
+               (('role' in request.auth.token && request.auth.token.role == 'SERVIDOR') && 
+                (!('approvalStatus' in request.auth.token) || request.auth.token.approvalStatus == 'APROVADO'))
+             );
     }
 
     function isRecognizedUserDocRole() {
