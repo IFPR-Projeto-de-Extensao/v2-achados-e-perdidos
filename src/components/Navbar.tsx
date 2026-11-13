@@ -95,10 +95,10 @@ export const Navbar: React.FC = () => {
       role="banner"
       className="navbar-main-container sticky top-0 z-40 w-full border-b border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-md"
     >
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-14 sm:h-15 gap-3">
+      <div className="max-w-6xl mx-auto px-2.5 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-14 sm:h-15 gap-1.5 sm:gap-3">
           {/* Brand Lockup + Sync Status */}
-          <div className="flex items-center gap-2.5 shrink-0 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 min-w-0">
             <Link
               to="/"
               className="flex items-center cursor-pointer select-none group focus-visible:outline-none rounded-lg"
@@ -378,13 +378,14 @@ export const Navbar: React.FC = () => {
               <UIButton
                 variant="primary"
                 size="sm"
+                className="!px-2.5 sm:!px-3"
                 onClick={() => {
                   vibrateClick();
                   setAuthModalOpen(true);
                 }}
                 aria-label="Entrar ou cadastrar conta"
               >
-                <LogIn className="w-3.5 h-3.5" />
+                <LogIn className="w-3.5 h-3.5 hidden min-[380px]:inline-block" />
                 <span>Entrar</span>
               </UIButton>
             ) : (
@@ -435,7 +436,7 @@ export const Navbar: React.FC = () => {
               type="button"
               aria-label={mobileMenuOpen ? "Fechar menu móvel" : "Abrir menu móvel"}
               aria-expanded={mobileMenuOpen}
-              className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0 cursor-pointer"
+              className="lg:hidden p-1.5 sm:p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0 cursor-pointer"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -448,7 +449,7 @@ export const Navbar: React.FC = () => {
         <>
           {/* Backdrop */}
           <div
-            className="fixed inset-0 top-16 bg-[#172B2A]/40 dark:bg-black/60 backdrop-blur-xs z-30 lg:hidden animate-in fade-in duration-150"
+            className="fixed inset-0 top-14 sm:top-15 bg-[#172B2A]/40 dark:bg-black/60 backdrop-blur-xs z-30 lg:hidden animate-in fade-in duration-150"
             onClick={() => setMobileMenuOpen(false)}
             aria-hidden="true"
           />
@@ -456,7 +457,7 @@ export const Navbar: React.FC = () => {
           <div
             role="navigation"
             aria-label="Menu Móvel de Navegação"
-            className="lg:hidden fixed top-16 right-0 left-0 max-h-[calc(100vh-4rem)] overflow-y-auto bg-white dark:bg-[#111827] border-b border-slate-200 dark:border-slate-800 z-40 shadow-xl animate-in slide-in-from-top-2 duration-200 p-4 space-y-4"
+            className="lg:hidden fixed top-14 sm:top-15 right-0 left-0 max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain bg-white dark:bg-[#111827] border-b border-slate-200 dark:border-slate-800 z-40 shadow-xl animate-in slide-in-from-top-2 duration-200 p-4 pb-20 space-y-4"
           >
             {/* User Session Row */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">

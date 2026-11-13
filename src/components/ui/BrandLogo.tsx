@@ -32,7 +32,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
       : "text-lg sm:text-xl";
 
   return (
-    <div className={`inline-flex items-center gap-2.5 select-none ${className}`}>
+    <div className={`inline-flex items-center gap-2 sm:gap-2.5 select-none ${className}`}>
       <div
         className={`relative flex items-center justify-center ${iconBoxSize} bg-[#16845B] text-white shadow-xs shrink-0`}
         aria-hidden="true"
@@ -51,7 +51,7 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
             Localiza<span className="text-[#16845B] dark:text-emerald-400">+</span>
           </span>
           {showIfprBadge && (
-            <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-[#EBF5F0] dark:bg-emerald-950/60 text-[#064E3B] dark:text-emerald-300 border border-[#16845B]/20">
+            <span className="hidden min-[360px]:inline-block px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-md bg-[#EBF5F0] dark:bg-emerald-950/60 text-[#064E3B] dark:text-emerald-300 border border-[#16845B]/20">
               IFPR
             </span>
           )}

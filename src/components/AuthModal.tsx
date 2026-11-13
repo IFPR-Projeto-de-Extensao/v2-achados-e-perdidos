@@ -286,9 +286,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           onClose();
         }
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 dark:bg-black/70 backdrop-blur-sm transition-all duration-200 animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 dark:bg-black/70 backdrop-blur-sm overflow-y-auto overscroll-contain transition-all duration-200 animate-fade-in"
     >
-      <div className="relative w-full max-w-md bg-white dark:bg-[#111827] text-[#172B2A] dark:text-slate-100 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-[0_20px_60px_rgba(6,78,59,0.16)] dark:shadow-[0_24px_64px_rgba(0,0,0,0.65)] overflow-hidden my-auto max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-md bg-white dark:bg-[#111827] text-[#172B2A] dark:text-slate-100 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-[0_20px_60px_rgba(6,78,59,0.16)] dark:shadow-[0_24px_64px_rgba(0,0,0,0.65)] overflow-hidden my-auto max-h-[92dvh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
         {/* Top Header / Brand Identity */}
         <div className="px-6 pt-6 pb-4 bg-gradient-to-b from-[#EBF5F0]/70 to-transparent dark:from-emerald-950/30 dark:to-transparent border-b border-slate-100 dark:border-slate-800/80 shrink-0">
           <div className="flex items-start justify-between gap-3">
@@ -363,7 +363,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         </div>
 
         {/* Scrollable Content Body */}
-        <div className="p-6 overflow-y-auto space-y-4">
+        <div className="p-6 overflow-y-auto min-h-0 flex-1 overscroll-contain space-y-4">
           {pendingPostLoginAction?.action === "REGISTER_ITEM" && (
             <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-3">
               <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />

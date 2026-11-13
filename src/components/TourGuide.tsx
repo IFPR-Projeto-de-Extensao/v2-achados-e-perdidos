@@ -198,7 +198,7 @@ export const TourGuide: React.FC<TourGuideProps> = ({ isOpen, onClose }) => {
             handleSkip();
           }
         }}
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs overflow-y-auto overscroll-contain"
       >
         {/* Modal Card */}
         <motion.div
@@ -206,7 +206,7 @@ export const TourGuide: React.FC<TourGuideProps> = ({ isOpen, onClose }) => {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.92, y: 15 }}
           transition={{ type: "spring", damping: 25, stiffness: 300 }}
-          className="relative w-full max-w-xl bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden"
+          className="relative w-full max-w-xl my-auto max-h-[90dvh] flex flex-col bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden"
         >
           {/* Top Banner Accent */}
           <div className={`h-2.5 w-full bg-gradient-to-r ${currentStep.accentColor}`} />
@@ -227,7 +227,7 @@ export const TourGuide: React.FC<TourGuideProps> = ({ isOpen, onClose }) => {
           </div>
 
           {/* Content Area */}
-          <div className="px-6 py-4 space-y-5">
+          <div className="px-6 py-4 space-y-5 overflow-y-auto min-h-0 flex-1 overscroll-contain">
             {/* Step Icon & Titles */}
             <div className="flex items-start space-x-4">
               <div

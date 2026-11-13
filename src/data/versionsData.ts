@@ -90,10 +90,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "VERCEL",
         tag: "CI/CD, Build & Firestore Rules",
       },
+      {
+        id: "v11013-fix-global-vertical-scroll-and-mobile-header-overflow",
+        title: "Correção Crítica da Rolagem Vertical Global (Mobile Android/PWA, Modais e Cabeçalho 320px+)",
+        description: "Substituição de overflow-x: hidden + body { overscroll-behavior-y: none } em src/index.css por overflow-x: clip em html/body e overscroll-behavior-y: contain apenas em html, eliminando o bloqueio de rolagem por gesto touch e roda do mouse causado pelo aninhamento implícito de scroll container (overflow-y: auto) no body; adição de overflow-x-clip e min-w-0 no layout raiz (App.tsx); contenção de rolagem interna (overscroll-contain, min-h-0 flex-1, max-h-*dvh) nos modais e drawer móvel (ModalShell, TourGuide, AuthModal, ItemDetailModal, InstallInstructionsModal, KeyboardShortcutsModal e Navbar); ajuste responsivo do Navbar e BrandLogo para evitar recorte do botão de menu móvel em telas de 320px e 360px.",
+        module: "PWA",
+        tag: "Mobile First, Rolagem & PWA",
+      },
     ],
     stats: {
       additionsCount: 2,
-      fixesCount: 6,
+      fixesCount: 7,
     },
   },
   {

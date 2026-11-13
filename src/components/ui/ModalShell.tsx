@@ -32,7 +32,7 @@ export const ModalShell: React.FC<ModalShellProps> = ({
           onClose();
         }
       }}
-      className={`fixed inset-0 ${zIndexClass} flex items-center justify-center p-3 sm:p-4 bg-[#172B2A]/45 dark:bg-black/75 modal-backdrop-smooth animate-in fade-in duration-150 overflow-y-auto`}
+      className={`fixed inset-0 ${zIndexClass} flex items-center justify-center p-3 sm:p-4 bg-[#172B2A]/45 dark:bg-black/75 modal-backdrop-smooth animate-in fade-in duration-150 overflow-y-auto overscroll-contain`}
     >
       <div
         className={`relative w-full ${maxWidthClass} bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 shadow-[0_20px_60px_rgba(6,78,59,0.16)] dark:shadow-[0_24px_64px_rgba(0,0,0,0.65)] overflow-hidden text-[#172B2A] dark:text-slate-100 my-auto`}

@@ -1515,7 +1515,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       role="dialog"
       aria-modal="true"
       aria-labelledby="item-modal-title"
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50 dark:bg-black/75 transition-opacity duration-150"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/50 dark:bg-black/75 overscroll-contain transition-opacity duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           vibrateClick();
@@ -1624,7 +1624,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
         </div>
 
         {/* Modal Main Body */}
-        <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-8 overflow-y-auto pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+        <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-8 overflow-y-auto min-h-0 flex-1 overscroll-contain pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
           {/* Left Column: Image Gallery, Tramitation Journey & QR Code */}
           <div className="space-y-4">
             {/* Object Image Presentation */}

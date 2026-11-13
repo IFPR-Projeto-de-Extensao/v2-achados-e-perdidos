@@ -364,7 +364,7 @@ const MainContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-dvh bg-white sm:bg-[#F8FAFC] dark:bg-[#0B0F17] text-[#172B2A] dark:text-slate-100 flex flex-col font-sans selection:bg-[#16845B] selection:text-white relative">
+    <div className="min-h-dvh overflow-x-clip bg-white sm:bg-[#F8FAFC] dark:bg-[#0B0F17] text-[#172B2A] dark:text-slate-100 flex flex-col font-sans selection:bg-[#16845B] selection:text-white relative">
       {/* Toast Notifications */}
       <ToastContainer />
 
@@ -429,7 +429,7 @@ const MainContent: React.FC = () => {
       <AccountStatusBanner user={currentUser} />
 
       {/* Main View Container (Mobile-First PWA layout) */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-3 sm:pt-5 pb-24 lg:pb-12">
+      <main className="flex-1 min-w-0 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-3 sm:pt-5 pb-24 lg:pb-12">
         <Breadcrumbs />
 
         <div key={pathname} className="w-full">
