@@ -5,7 +5,7 @@ import {
   assertSucceeds,
   assertFails,
 } from "@firebase/rules-unit-testing";
-import { collection, doc, setDoc, getDoc, getDocs, updateDoc, query, where } from "firebase/firestore";
+import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where } from "firebase/firestore";
 import fs from "fs";
 import path from "path";
 
@@ -1514,6 +1514,116 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
       await assertFails(
         setDoc(doc(adminDb, "item_return_records", "item_ret_1"), {
           recipientName: "Adulterado",
+        })
+      );
+    });
+
+    it("44. Coleções /audit_logs e /activity_logs permitem criação legítima por ADMIN/SERVIDOR ativos com identidade real e bloqueiam update/delete", async () => {
+      const servDb = testEnv!.authenticatedContext("servidor_apr", {
+        email: "servidor.apr@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      const adminDb = testEnv!.authenticatedContext("admin_apr", {
+        email: "admin.apr@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      await assertSucceeds(
+        setDoc(doc(servDb, "audit_logs", "audit_legit_serv_1"), {
+          id: "audit_legit_serv_1",
+          objectId: "item_1",
+          objectType: "ITEM",
+          action: "EDIT_OCORRENCIA",
+          actorId: "servidor_apr",
+          actorEmail: "servidor.apr@ifpr.edu.br",
+          actorRole: "SERVIDOR",
+          details: "Edição legítima de ocorrência por servidor.",
+          timestamp: new Date().toISOString(),
+        })
+      );
+
+      await assertSucceeds(
+        setDoc(doc(adminDb, "activity_logs", "act_legit_admin_1"), {
+          id: "act_legit_admin_1",
+          adminId: "admin_apr",
+          actorId: "admin_apr",
+          actorEmail: "admin.apr@ifpr.edu.br",
+          actorRole: "ADMIN",
+          action: "CONFIGURACAO_SISTEMA",
+          details: "Alteração legítima de texto institucional.",
+          timestamp: new Date().toISOString(),
+        })
+      );
+
+      // Immutability check
+      await assertFails(
+        updateDoc(doc(adminDb, "audit_logs", "audit_legit_serv_1"), {
+          details: "Adulterado",
+        })
+      );
+      await assertFails(deleteDoc(doc(adminDb, "activity_logs", "act_legit_admin_1")));
+    });
+
+    it("45. Client SDK (mesmo ADMIN ou SERVIDOR) NÃO pode forjar /audit_logs ou /activity_logs com ações exclusivas de backend", async () => {
+      const servDb = testEnv!.authenticatedContext("servidor_apr", {
+        email: "servidor.apr@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      const adminDb = testEnv!.authenticatedContext("admin_apr", {
+        email: "admin.apr@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      const backendOnlyActions = [
+        "REGISTRO_DEVOLUCAO",
+        "REABERTURA_DEVOLUCAO",
+        "CONFIRMACAO_NOTIFICACAO_ASSINATURA",
+        "ROLE_ASSIGNED",
+        "ROLE_REVOKED",
+        "ACCOUNT_DELETED",
+        "UPDATE_SYSTEM_CONFIG",
+      ];
+
+      for (const action of backendOnlyActions) {
+        await assertFails(
+          setDoc(doc(adminDb, "audit_logs", `forged_audit_${action}`), {
+            id: `forged_audit_${action}`,
+            objectId: "item_1",
+            objectType: "RETURN",
+            action,
+            actorId: "admin_apr",
+            actorEmail: "admin.apr@ifpr.edu.br",
+            actorRole: "ADMIN",
+            details: "Tentativa de forjar log de backend via Client SDK.",
+            timestamp: new Date().toISOString(),
+          })
+        );
+
+        await assertFails(
+          setDoc(doc(servDb, "activity_logs", `forged_act_${action}`), {
+            id: `forged_act_${action}`,
+            adminId: "servidor_apr",
+            actorId: "servidor_apr",
+            actorEmail: "servidor.apr@ifpr.edu.br",
+            actorRole: "SERVIDOR",
+            action,
+            details: "Tentativa de forjar atividade de backend via Client SDK.",
+            timestamp: new Date().toISOString(),
+          })
+        );
+      }
+
+      // Empty/missing action must also fail
+      await assertFails(
+        setDoc(doc(adminDb, "activity_logs", "forged_act_empty"), {
+          id: "forged_act_empty",
+          adminId: "admin_apr",
+          actorId: "admin_apr",
+          actorEmail: "admin.apr@ifpr.edu.br",
+          actorRole: "ADMIN",
+          action: "",
+          details: "Tentativa sem ação válida.",
+          timestamp: new Date().toISOString(),
         })
       );
     });

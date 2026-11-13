@@ -93,18 +93,18 @@ export const Navbar: React.FC = () => {
   return (
     <header
       role="banner"
-      className="navbar-main-container sticky top-0 z-40 w-full border-b border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-md transition-colors duration-200 shadow-[0_1px_2px_rgba(23,43,42,0.03)]"
+      className="navbar-main-container sticky top-0 z-40 w-full border-b border-slate-200/80 dark:border-slate-800 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-md"
     >
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-2 sm:gap-4">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-14 sm:h-15 gap-3">
           {/* Brand Lockup + Sync Status */}
           <div className="flex items-center gap-2.5 shrink-0 min-w-0">
             <Link
               to="/"
-              className="flex items-center cursor-pointer select-none group focus-visible:outline-none rounded-xl"
+              className="flex items-center cursor-pointer select-none group focus-visible:outline-none rounded-lg"
               title="Ir para a página inicial do Localiza+ IFPR"
             >
-              <BrandLogo size="md" showSubtitle showIfprBadge />
+              <BrandLogo size="sm" showSubtitle={false} showIfprBadge />
             </Link>
 
             {/* Offline Sync Status Badge */}
@@ -117,18 +117,12 @@ export const Navbar: React.FC = () => {
                     ? `Modo Offline ativado. ${pendingSyncCount} ocorrência(s) salva(s) aguardando sincronização.`
                     : "Modo Offline: Registros salvos localmente com segurança."
                 }
-                className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/70 text-amber-800 dark:text-amber-300 text-[11px] font-semibold shrink-0"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/70 text-amber-800 dark:text-amber-300 text-[11px] font-medium shrink-0"
               >
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-                </span>
                 <WifiOff className="w-3 h-3" />
-                <span>Offline</span>
+                <span className="hidden xs:inline">Offline</span>
                 {pendingSyncCount > 0 && (
-                  <span className="px-1.5 rounded-full bg-amber-500 text-white text-[10px] font-bold">
-                    {pendingSyncCount}
-                  </span>
+                  <span className="font-bold tabular-nums">({pendingSyncCount})</span>
                 )}
               </div>
             ) : pendingSyncCount > 0 ? (
@@ -138,135 +132,119 @@ export const Navbar: React.FC = () => {
                   syncOfflineQueue(true);
                 }}
                 title="Sincronizar dados pendentes do IndexedDB com o Firestore"
-                className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EBF5F0] hover:bg-[#16845B]/15 border border-[#16845B]/25 text-[#16845B] dark:bg-emerald-950/50 dark:text-emerald-300 text-[11px] font-semibold transition-colors shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#EBF5F0] hover:bg-[#16845B]/15 text-[#16845B] dark:bg-emerald-950/50 dark:text-emerald-300 text-[11px] font-medium transition-colors shrink-0 cursor-pointer"
               >
                 <RefreshCw className="w-3 h-3" />
-                <span>Sincronizar ({pendingSyncCount})</span>
+                <span className="tabular-nums">Sincronizar ({pendingSyncCount})</span>
               </button>
             ) : null}
           </div>
 
-          {/* Clean Minimal Desktop Navigation */}
+          {/* Extreme Minimal Desktop Navigation (Clean Typography Links) */}
           <nav
             role="navigation"
             aria-label="Navegação Principal do Sistema"
-            className="hidden lg:flex items-center p-1 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70 shrink-0 gap-0.5"
+            className="hidden lg:flex items-center gap-6 shrink-0"
           >
             <Link
               to="/"
               aria-current={routeKey === "home" ? "page" : undefined}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+              className={`py-1 text-xs font-medium whitespace-nowrap transition-colors border-b-2 ${
                 routeKey === "home"
-                  ? "bg-white dark:bg-slate-900 text-[#16845B] dark:text-emerald-400 shadow-2xs"
-                  : "text-slate-600 dark:text-slate-300 hover:text-[#172B2A] dark:hover:text-white"
+                  ? "border-[#16845B] text-[#172B2A] dark:text-white font-semibold"
+                  : "border-transparent text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
-              <Home className="w-3.5 h-3.5" />
-              <span>Início</span>
+              Início
             </Link>
 
             <Link
-              to="/buscar"
-              aria-current={routeKey === "search" && pathname === "/buscar" ? "page" : undefined}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                routeKey === "search" && pathname === "/buscar"
-                  ? "bg-white dark:bg-slate-900 text-[#16845B] dark:text-emerald-400 shadow-2xs"
-                  : "text-slate-600 dark:text-slate-300 hover:text-[#172B2A] dark:hover:text-white"
+              to="/objetos"
+              aria-current={routeKey === "search" && (pathname === "/buscar" || pathname === "/objetos") ? "page" : undefined}
+              className={`py-1 text-xs font-medium whitespace-nowrap transition-colors border-b-2 ${
+                routeKey === "search" && (pathname === "/buscar" || pathname === "/objetos")
+                  ? "border-[#16845B] text-[#172B2A] dark:text-white font-semibold"
+                  : "border-transparent text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
-              <Search className="w-3.5 h-3.5" />
-              <span>Catálogo</span>
-            </Link>
-
-            <Link
-              to="/perdidos"
-              aria-current={pathname === "/perdidos" ? "page" : undefined}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                pathname === "/perdidos"
-                  ? "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 shadow-2xs"
-                  : "text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400"
-              }`}
-            >
-              <PackageSearch className="w-3.5 h-3.5 text-rose-500" />
-              <span>Perdidos</span>
+              Objetos
             </Link>
 
             <Link
               to="/encontrados"
               aria-current={pathname === "/encontrados" ? "page" : undefined}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+              className={`py-1 text-xs font-medium whitespace-nowrap transition-colors border-b-2 ${
                 pathname === "/encontrados"
-                  ? "bg-[#EBF5F0] dark:bg-emerald-950/60 text-[#064E3B] dark:text-emerald-300 shadow-2xs"
-                  : "text-slate-600 dark:text-slate-300 hover:text-[#16845B] dark:hover:text-emerald-400"
+                  ? "border-[#16845B] text-[#16845B] dark:text-emerald-400 font-semibold"
+                  : "border-transparent text-slate-600 dark:text-slate-400 hover:text-[#16845B] dark:hover:text-emerald-400"
               }`}
             >
-              <CheckCircle2 className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
-              <span>Achados</span>
+              Encontrados
+            </Link>
+
+            <Link
+              to="/perdidos"
+              aria-current={pathname === "/perdidos" ? "page" : undefined}
+              className={`py-1 text-xs font-medium whitespace-nowrap transition-colors border-b-2 ${
+                pathname === "/perdidos"
+                  ? "border-rose-600 text-rose-700 dark:text-rose-400 font-semibold"
+                  : "border-transparent text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
+              }`}
+            >
+              Perdidos
             </Link>
 
             {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && (
               <Link
                 to="/admin"
                 aria-current={routeKey === "admin" ? "page" : undefined}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                className={`py-1 text-xs font-medium whitespace-nowrap transition-colors border-b-2 ${
                   routeKey === "admin"
-                    ? "bg-[#16845B] text-white shadow-2xs"
-                    : "text-[#16845B] dark:text-emerald-400 hover:bg-[#EBF5F0] dark:hover:bg-emerald-950/50"
+                    ? "border-[#16845B] text-[#16845B] dark:text-emerald-400 font-semibold"
+                    : "border-transparent text-slate-600 dark:text-slate-400 hover:text-[#16845B] dark:hover:text-emerald-400"
                 }`}
               >
-                {currentUser.role === "ADMIN" ? (
-                  <>
-                    <LayoutDashboard className="w-3.5 h-3.5" />
-                    <span>Admin</span>
-                  </>
-                ) : (
-                  <>
-                    <Building2 className="w-3.5 h-3.5" />
-                    <span>Painel do Servidor</span>
-                  </>
-                )}
+                {currentUser.role === "ADMIN" ? "Admin" : "Painel do Servidor"}
               </Link>
             )}
           </nav>
 
           {/* Right Action Cluster */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {/* Primary Action CTA: Novo Registro (Restricted to Approved SERVIDOR or ADMIN) */}
             {canRegister && (
               <Link
                 to="/cadastrar"
                 title="Cadastrar Novo Objeto Perdido ou Encontrado"
-                className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-semibold shadow-2xs transition-all cursor-pointer active:scale-[0.98]"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-medium transition-colors cursor-pointer"
               >
-                <PlusCircle className="w-4 h-4" />
-                <span className="hidden md:inline">Registrar Item</span>
-                <span className="md:hidden">Registrar</span>
+                <span>Registrar</span>
               </Link>
             )}
 
-            {/* Quick Action Icons Group (Suporte, QR Code, Notificações, Tema) */}
-            <div className="navbar-icons-group flex items-center gap-1 shrink-0">
+            {/* Quick Action Icons Group */}
+            <div className="navbar-icons-group flex items-center gap-0.5 shrink-0">
               {/* Quick Support Link to /suporte - Desktop only */}
               <Link
                 to="/suporte"
                 id="navbar-quick-support-btn"
                 title="Central de Suporte & Dúvidas"
-                className={`hidden sm:inline-flex w-8 h-8 items-center justify-center rounded-xl transition-colors shrink-0 ${
+                className={`hidden sm:inline-flex w-9 h-9 items-center justify-center rounded-lg transition-colors shrink-0 ${
                   routeKey === "support" || routeKey === "support_feedback" || routeKey === "support_bug"
-                    ? "bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/50 dark:text-emerald-400"
-                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    ? "text-[#16845B] dark:text-emerald-400 bg-[#EBF5F0] dark:bg-emerald-950/50"
+                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                 }`}
               >
                 <LifeBuoy className="w-4 h-4" />
               </Link>
 
-              {/* Quick QR Code Scanner Shortcut - Desktop only */}
+              {/* Quick QR Code Scanner Shortcut */}
               <button
                 onClick={handleQrScannerClick}
                 type="button"
                 aria-label="Abrir Scanner de QR Code de Devolução"
-                title="Escanear QR Code de Devolução"
-                className="hidden sm:inline-flex w-8 h-8 items-center justify-center rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
+                title="Escanear QR Code"
+                className="hidden sm:inline-flex w-9 h-9 items-center justify-center rounded-lg text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
               >
                 <QrCode className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
               </button>

@@ -33,7 +33,7 @@ import { initSecondaryServices } from "./lib/secondaryServices";
 import { trackPageView } from "./lib/analytics";
 import { traceFirebasePerformance } from "./lib/firebase";
 import { savePerformanceMetricLog } from "./lib/offlineDb";
-import { parseQrCodeOrUrl, findItemInList, fetchItemFromFirestore } from "./lib/qrCodeUtils";
+import { parseQrCodeOrUrl, findItemInList, fetchItemFromFirestore, classifyQrLookupError } from "./lib/qrCodeUtils";
 import { DEFAULT_MAINTENANCE_MESSAGE } from "./lib/shared-constants";
 import { Breadcrumbs } from "./components/Breadcrumbs";
 import { AccountStatusBanner } from "./components/AccountStatusBanner";
@@ -65,6 +65,7 @@ const MainContent: React.FC = () => {
     isAuthenticated,
     isGuest,
     darkMode,
+    addToast,
   } = useApp();
 
   const { routeKey, pathname, searchParams, navigate } = useRouter();
@@ -178,6 +179,8 @@ const MainContent: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [navigate, requestAuthForRegistration, setQrScannerOpen]);
 
+  const lastDeepLinkErrorKeyRef = useRef<string | null>(null);
+
   // Handle URL deep-linking for QR codes and direct item links (e.g. ?itemId=..., ?qr=..., /item/:id)
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -195,23 +198,31 @@ const MainContent: React.FC = () => {
       // 1. Try finding in loaded items state first
       let matchedItem = findItemInList(parsed, items);
 
-      // 2. If not found in state, fetch directly from Firestore
+      // 2. If not found in state, fetch directly from Firestore with explicit error propagation
       if (!matchedItem) {
         try {
-          matchedItem = await fetchItemFromFirestore(parsed);
+          matchedItem = await fetchItemFromFirestore(parsed, { throwOnError: true });
         } catch (err) {
           console.warn("[App] Erro ao carregar item via deep-link:", err);
+          const classified = classifyQrLookupError(err);
+          const errKey = `${targetIdentifier}:${classified.kind}`;
+          if (lastDeepLinkErrorKeyRef.current !== errKey) {
+            lastDeepLinkErrorKeyRef.current = errKey;
+            addToast(classified.userMessage, "error");
+          }
+          return;
         }
       }
 
       if (matchedItem) {
+        lastDeepLinkErrorKeyRef.current = null;
         lastResolvedItemIdRef.current = matchedItem.id;
         setSelectedItemForDetail(matchedItem);
       }
     };
 
     resolveItemFromUrl();
-  }, [items, setSelectedItemForDetail]);
+  }, [items, setSelectedItemForDetail, addToast]);
 
   // Secondary non-blocking services (Analytics, Performance, PWA Uptime)
   useEffect(() => {
@@ -353,12 +364,7 @@ const MainContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B0F17] text-[#172B2A] dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 selection:bg-[#16845B] selection:text-white relative">
-      {/* Ambient Institutional Lighting Mesh */}
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden="true">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[320px] bg-gradient-to-b from-[#16845B]/5 via-[#16845B]/1 to-transparent dark:from-emerald-500/8 dark:via-emerald-500/2 dark:to-transparent blur-3xl opacity-75" />
-      </div>
-
+    <div className="min-h-dvh bg-white sm:bg-[#F8FAFC] dark:bg-[#0B0F17] text-[#172B2A] dark:text-slate-100 flex flex-col font-sans selection:bg-[#16845B] selection:text-white relative">
       {/* Toast Notifications */}
       <ToastContainer />
 
@@ -367,37 +373,37 @@ const MainContent: React.FC = () => {
 
       {/* Mandatory Email Verification Alert Banner */}
       {isEmailVerificationRequired && (
-        <div className="bg-amber-600 dark:bg-amber-700 text-white px-4 py-2.5 text-xs font-semibold text-center flex flex-wrap items-center justify-center gap-2 shadow-2xs border-b border-amber-500">
-          <span>⚠️ Seu e-mail ainda não foi verificado. Confirme o endereço para liberar o acesso ao sistema.</span>
+        <div className="bg-amber-600 dark:bg-amber-700 text-white px-4 py-2 text-xs font-medium text-center flex flex-wrap items-center justify-center gap-2 border-b border-amber-500">
+          <span>Confirme seu endereço de e-mail para liberar o acesso completo.</span>
           <button
             onClick={() => navigate("/verificar-email")}
-            className="underline hover:text-amber-100 font-bold ml-1 uppercase text-[11px] cursor-pointer"
+            className="underline hover:text-amber-100 font-semibold ml-1 text-xs cursor-pointer"
           >
-            Verificar Agora →
+            Verificar agora
           </button>
         </div>
       )}
 
       {/* Pending User Approval Banner for Academic Users */}
       {currentUser.approvalStatus === "PENDENTE" && (
-        <div className="bg-sky-600 dark:bg-sky-700 text-white px-4 py-2 text-xs font-semibold text-center flex items-center justify-center space-x-2 shadow-2xs border-b border-sky-500">
-          <span>ℹ️ SUA CONTA ACADÊMICA ESTÁ AGUARDANDO APROVAÇÃO PELA SECRETARIA DO IFPR CAMPUS IVAIPORÃ (Algumas ações de criação podem ser restritas).</span>
+        <div className="bg-sky-600 dark:bg-sky-700 text-white px-4 py-2 text-xs font-medium text-center flex items-center justify-center border-b border-sky-500">
+          <span>Conta institucional aguardando homologação pela Secretaria do IFPR Campus Ivaiporã.</span>
         </div>
       )}
 
       {/* Global Maintenance Mode Overlay for Standard Users */}
       {maintenanceMode && currentUser.role !== "ADMIN" && (
         <ModalShell isOpen={true} maxWidthClass="max-w-md" ariaLabel="Sistema em Manutenção Programada">
-          <div className="p-6 sm:p-8 space-y-6 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60 flex items-center justify-center mx-auto">
-              <Wrench className="w-7 h-7" />
+          <div className="p-6 sm:p-8 space-y-5 text-center">
+            <div className="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60 flex items-center justify-center mx-auto">
+              <Wrench className="w-6 h-6" />
             </div>
             <div className="space-y-2">
-              <UIBadge tone="amber">Manutenção Programada • IFPR Campus Ivaiporã</UIBadge>
-              <h2 className="text-xl font-bold text-[#172B2A] dark:text-white pt-1">
+              <UIBadge tone="amber">Manutenção Programada • IFPR</UIBadge>
+              <h2 className="text-lg font-bold text-[#172B2A] dark:text-white pt-1">
                 Sistema em Atualização Técnica
               </h2>
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-[#F8FAFC] dark:bg-slate-800/70 p-4 rounded-xl border border-slate-200 dark:border-slate-700 font-medium">
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-[#F8FAFC] dark:bg-slate-800/70 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700">
                 {maintenanceCustomMessage || DEFAULT_MAINTENANCE_MESSAGE}
               </p>
             </div>
@@ -409,7 +415,7 @@ const MainContent: React.FC = () => {
                 fullWidth
                 onClick={() => setAuthModalOpen(true)}
               >
-                <span>Sou Administrador TI (Entrar no Painel)</span>
+                <span>Acesso Administrador TI</span>
               </UIButton>
             </div>
           </div>
@@ -422,23 +428,13 @@ const MainContent: React.FC = () => {
       {/* Account Status Alert Banner (Suspended / Banned Accounts) */}
       <AccountStatusBanner user={currentUser} />
 
-      {/* Main View Container with dynamic Breadcrumbs and route hierarchy transitions */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-3 xs:px-4 sm:px-6 lg:px-8 pt-3 xs:pt-4 sm:pt-6 pb-32 sm:pb-28 lg:pb-14">
-        {/* Dynamic Structural Breadcrumbs Navigation */}
+      {/* Main View Container (Mobile-First PWA layout) */}
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-3 sm:pt-5 pb-24 lg:pb-12">
         <Breadcrumbs />
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={pathname}
-            initial={animationVariants.initial}
-            animate={animationVariants.animate}
-            exit={animationVariants.exit}
-            transition={animationVariants.transition}
-            className="w-full"
-          >
-            {renderCurrentView()}
-          </motion.div>
-        </AnimatePresence>
+        <div key={pathname} className="w-full">
+          {renderCurrentView()}
+        </div>
       </main>
 
       {/* Item Details Modal */}

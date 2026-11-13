@@ -25,19 +25,19 @@ export interface AppVersion {
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
     version: "v1.10.13",
-    codename: "Redesign Visual Oficial e Modernização da Identidade Clean Minimal",
-    releaseDate: "12/11/2026",
-    releaseDateTime: "12 de Novembro de 2026 • 20:50 BRT",
+    codename: "Redesign Visual Oficial — Extreme Minimalism & PWA Mobile First",
+    releaseDate: "13/11/2026",
+    releaseDateTime: "13 de Novembro de 2026 • 14:15 BRT",
     type: "MINOR",
     isCurrent: true,
-    summary: "LOCALIZA+ v1.10.13 — Reformulação visual completa e obrigatória (Clean Minimal + Modern Dashboard) na Página Inicial, Painel Administrativo, Painel do Servidor e Catálogo de Objetos, com Modo Claro padrão, eliminação de truncamentos e navegação lateral SaaS. Blindagem de ponta a ponta do fluxo de devolução formal, separação arquitetural de dados pessoais em /item_return_records com projeção pública limpa, autenticação em /api/signature/notify-signed, keyring AES-256-GCM versionado e otimização das Firestore Rules.",
+    summary: "LOCALIZA+ v1.10.13 — Evolução da diretriz visual para Extreme Minimalism + Mobile First + PWA Native-Like Experience em todo o sistema: navegação inferior nativa para smartphones com áreas seguras (safe-area-inset-bottom) e alvos de toque >= 44px, Home ultraobjetiva com busca prioritária e resumo estatístico compacto, Catálogo Mobile-First com linhas horizontais rápidas no celular e filtros sob demanda, Painéis do Servidor e Administrativo com faixa operacional compacta e listas empilhadas no mobile, e modais em formato bottom-sheet. Preservação integral da segurança de devoluções formais, privacidade (/item_return_records), keyring AES-256-GCM e Firestore Rules.",
     additions: [
       {
         id: "v11013-add-official-clean-minimal-visual-identity",
-        title: "Design System Global Clean Minimal + Modern Dashboard (Página Inicial, Catálogo, Painel do Servidor e Painel Admin)",
-        description: "Reformulação visual integral de todo o sistema com Modo Claro padrão (#F8FAFC / #FFFFFF), destaque verde institucional (#16845B / #064E3B), eliminação de cartões redundantes e textos truncados na HomeView e StatCard, catálogo ObjectsView com segmentação por status e paginação progressiva, e DashboardView com navegação lateral dedicada para Servidor (Atendimento, Custódia, Reivindicações, Assinaturas, Prazos +90d e Relatórios) e Administrador.",
-        module: "GERAL",
-        tag: "Design System & UI/UX",
+        title: "Design System Extreme Minimalism + PWA Mobile First (Home, Catálogo, Navegação Inferior, Painéis Servidor/Admin e Modais)",
+        description: "Evolução visual Mobile-First e nativa para PWA em smartphones (a partir de 320px) com expansão fluida para tablets e desktops: barra inferior MobileBottomNav compacta com indicador ativo e suporte a safe-area; HomeView enxuta focada em busca rápida, leitura de QR Code e faixa estatística discreta; ObjectsView e ItemCard com visualização em lista horizontal compacta no mobile e filtros recolhíveis; DashboardView (Servidor e Admin) com faixa de indicadores sem cartões pesados, navegação horizontal rápida no celular e listas empilhadas para custódia; ItemDetailModal adaptado como bottom-sheet mobile.",
+        module: "PWA",
+        tag: "Extreme Minimalism & Mobile First",
       },
       {
         id: "v11013-add-d3-digital-returns-chart-engine",
@@ -57,8 +57,8 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
       },
       {
         id: "v11013-fix-devolution-flow-security-hardening",
-        title: "Blindagem do Fluxo Formal de Devolução, Leitor QR e Firestore Rules",
-        description: "Remoção do atalho direto de baixa para DEVOLVIDO no QRCodeScannerModal, no override do DashboardView e nas ações em lote do ObjectsView; remoção da permissão de autoria para alterar status de itens; criação dos endpoints autoritativos /api/items/register-return e /api/items/reopen-return com transação atômica Admin SDK, conclusão de reivindicações aprovadas e auditoria imutável; proteção das coleções /items, /found_items, /lost_items e /signature_requests em firestore.rules.",
+        title: "Blindagem do Fluxo Formal de Devolução, Leitor QR, Notificações e Firestore Rules",
+        description: "Remoção do atalho direto de baixa para DEVOLVIDO no QRCodeScannerModal (com tratamento explícito try/catch/finally e classificação de erros de permissão/rede sem falsos toasts via classifyQrLookupError), no override do DashboardView e nas ações em lote do ObjectsView; bloqueio de transições diretas para DEVOLVIDO/ENCERRADO em updateItemStatus, bulkUpdateItemStatus, updateItemData e updateDocDirectly no AppContext; criação dos endpoints autoritativos /api/items/register-return e /api/items/reopen-return com transação atômica Admin SDK, conclusão de reivindicações aprovadas e auditoria imutável; sincronização de validateDevolutionNotificationAccess e /api/automation/notify-item-returned com /item_return_records e vínculo estrito do atendente emissor; proteção das coleções /items, /found_items, /lost_items e /signature_requests em firestore.rules.",
         module: "FIRESTORE",
         tag: "Segurança & Fluxo Formal",
       },
@@ -213,7 +213,7 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
     releaseDate: "30/10/2026",
     releaseDateTime: "30 de Outubro de 2026 • 19:35 BRT",
     type: "PATCH",
-    isCurrent: true,
+    isCurrent: false,
     summary: "LOCALIZA+ v1.10.10 — Modernização minimalista da tela de detalhes do objeto (ItemDetailModal.tsx) e correção cirúrgica das regras de segurança Firestore (firestore.rules): blindagem do acesso aos atributos do token contra exceções de chave ausente em autenticação Google, suporte a leitura transacional (allow get) em IDs determinísticos de reivindicações inexistentes na coleção /claims, preservação estrita do bloqueio contra intrusos e garantia de integridade RBAC de ponta a ponta.",
     additions: [
       {
@@ -1008,7 +1008,7 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
     releaseDate: "20/10/2026",
     releaseDateTime: "20 de Outubro de 2026 • 22:45 BRT",
     type: "MINOR",
-    isCurrent: true,
+    isCurrent: false,
     summary: "Reconstrução visual ampla e perceptível de toda a aplicação Localiza+, estabelecendo uma identidade digital contemporânea, elegante e institucional com base no verde oficial do IFPR: 1) Redesenho arquitetural do Hero da tela inicial (HomeView) com profundidade, microinterações, hierarquia nítida de ações e integração com busca e IA; 2) Modernização dos cartões de itens (ItemCard) com proporção 16:10 de imagem, badges flutuantes em vidro fosco, metadados desencaixotados e microinterações de hover elevadas; 3) Reestruturação do painel de busca e filtros rápidos (HomeView e ObjectsView) com visual limpo e moderno; 4) Refinamento da barra de navegação (Navbar e MobileBottomNav) com estética institucional limpa e contraste refinado; 5) Preservação integral de todas as rotas, regras de Firestore, integrações de IA, RBAC, formulário de cadastro de objetos e dados reais.",
     additions: [
       {

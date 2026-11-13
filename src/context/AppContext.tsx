@@ -31,6 +31,11 @@ import { DEFAULT_PROJECT_SETTINGS } from "../lib/projectSettingsConstants";
 import { sortUsersByCreationDesc, isAccountBlocked } from "../lib/accountStatusUtils";
 import { canOperateFormalReturn, canReopenFormalReturn } from "../lib/devolutionAuth";
 import { sanitizePublicItemProjection, mergeItemWithPrivateRecord } from "../lib/itemPrivacyUtils";
+import {
+  assertClientItemDataUpdateAllowed,
+  assertDirectDocUpdateAllowed,
+  classifyFirestoreWriteError,
+} from "../lib/clientItemSecurityGuards";
 import { INITIAL_ITEMS, MOCK_NOTIFICATIONS, MOCK_CLAIMS, MOCK_COMMENTS, MOCK_ACTIVITY_LOGS } from "../data/mockData";
 import { safeFetchJson, clientMatchSimilarity, sendMatchEmailAlert } from "../lib/apiHelper";
 import { compressImage } from "../lib/imageCompression";
@@ -1882,6 +1887,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast("Baixa em lote para DEVOLVIDO é proibida. Utilize o procedimento formal com assinatura em cada objeto.", "error");
       throw new Error("Ação bloqueada: DEVOLVIDO exige procedimento formal individual.");
     }
+    if (status === "ENCERRADO") {
+      addToast("Encerramento em lote direto é proibido. Registre a destinação institucional formal de cada objeto.", "error");
+      throw new Error("Ação bloqueada: ENCERRADO exige registro formal de destinação.");
+    }
     if (!canOperateFormalReturn(currentUser, auth.currentUser, isGuest)) {
       addToast("Apenas servidores ou administradores ativos e aprovados podem alterar status em lote.", "error");
       throw new Error("Permissão negada para atualização de status em lote.");
@@ -2019,8 +2028,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const resetSystemData = async () => {
+    if (isGuest || !auth.currentUser || currentUser?.role !== "ADMIN") {
+      const msg = "Apenas Administradores autenticados podem executar a limpeza do sistema.";
+      addToast(msg, "error");
+      throw new Error(msg);
+    }
+
     try {
       for (const it of items) {
+        if (it?.status === "DEVOLVIDO") {
+          throw new Error(`Item #${it.id} está DEVOLVIDO e deve ser reaberto administrativamente antes de ser removido.`);
+        }
         await deleteDoc(doc(db, "items", it.id));
       }
       for (const c of claims) {
@@ -2036,15 +2054,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setClaims([]);
       setComments([]);
       setNotifications([]);
-      saveItemsToIndexedDB([]).catch(() => {});
+      await saveItemsToIndexedDB([]).catch(() => {});
       addToast("Banco de dados do sistema limpo com sucesso! Pronto para inserção de dados reais do IFPR.", "success");
-    } catch (e) {
-      setItems([]);
-      setClaims([]);
-      setComments([]);
-      setNotifications([]);
-      saveItemsToIndexedDB([]).catch(() => {});
-      addToast("Dados locais limpos com sucesso.", "success");
+    } catch (e: any) {
+      const classified = classifyFirestoreWriteError(
+        e,
+        e?.message || "Falha ao limpar registros no Firestore. Nenhuma alteração local falsa foi aplicada."
+      );
+      addToast(classified.userMessage, "error");
+      handleFirestoreError(e, OperationType.DELETE, "system_reset");
+      throw e;
     }
   };
 
@@ -3130,25 +3149,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [firebaseUser]);
 
   const addCommentToItem = async (itemId: string, text: string) => {
-    if (!text.trim()) return;
+    const cleanText = text.trim();
+    if (!cleanText) return;
+
+    if (isGuest || !auth.currentUser || currentUser?.id === DEFAULT_GUEST_USER.id) {
+      setAuthModalOpen(true);
+      addToast("Faça login para publicar comentários.", "warning");
+      throw new Error("Autenticação necessária para comentar.");
+    }
+
     const newComment: ItemComment = {
       id: `comment-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       itemId,
-      userId: currentUser.id,
-      userName: currentUser.name,
+      userId: auth.currentUser.uid,
+      userName: currentUser.name || auth.currentUser.displayName || "Usuário IFPR",
       userRole: currentUser.role,
       userAvatar: currentUser.avatarUrl,
-      text: text.trim(),
+      text: cleanText,
       createdAt: new Date().toISOString(),
     };
 
     try {
       await setDoc(doc(db, "comments", newComment.id), newComment);
+      setComments((prev) =>
+        prev.some((c) => c.id === newComment.id) ? prev : [...prev, newComment]
+      );
       addToast("Comentário publicado com sucesso!", "success");
     } catch (err) {
-      console.warn("Aviso ao publicar comentário no Firestore:", err);
-      setComments((prev) => [...prev, newComment]);
-      addToast("Comentário publicado com sucesso!", "success");
+      console.error("Erro ao publicar comentário no Firestore:", err);
+      const classified = classifyFirestoreWriteError(
+        err,
+        "Não foi possível publicar o comentário no banco de dados. Tente novamente."
+      );
+      addToast(classified.userMessage, "error");
+      throw err;
     }
   };
 
@@ -4574,6 +4608,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast("A devolução oficial exige identificação do receptor e assinatura digital pelo fluxo formal.", "error");
       throw new Error("Transição direta para DEVOLVIDO bloqueada: utilize o fluxo formal de devolução (registerItemReturn).");
     }
+    if (status === "ENCERRADO") {
+      addToast("O encerramento institucional exige justificativa e tipo de destinação formal.", "error");
+      throw new Error("Transição direta para ENCERRADO bloqueada: utilize o registro formal de destinação (registerItemDestination).");
+    }
 
     // 🔒 Security Guard 2: Only authenticated, verified, active & approved Staff/Admin can change status
     if (isGuest || !auth.currentUser) {
@@ -4604,7 +4642,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       currentUser?.role === "ADMIN" || auth.currentUser?.email === "paulocauan39@gmail.com" ? "ADMIN" : "SERVIDOR";
 
     const existingHistory = existing?.history || existing?.historyLogs || [];
-    const isResolved = status === "ENCERRADO";
 
     const newHistLog: ItemHistoryLog = {
       id: `hist-${Date.now()}`,
@@ -4621,7 +4658,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const updates: Record<string, any> = sanitizeFirestoreData({
       status,
-      resolutionDate: isResolved ? new Date().toISOString() : deleteField(),
+      resolutionDate: deleteField(),
       history: [...existingHistory, newHistLog],
       historyLogs: [...existingHistory, newHistLog],
     });
@@ -4632,7 +4669,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setItems((prev) =>
         prev.map((it) =>
           it.id === id
-            ? { ...it, status, resolutionDate: isResolved ? new Date().toISOString() : undefined, history: [...existingHistory, newHistLog] }
+            ? { ...it, status, resolutionDate: undefined, history: [...existingHistory, newHistLog] }
             : it
         )
       );
@@ -4656,12 +4693,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       addToast(`Status do objeto atualizado para: ${String(status || "").replace("_", " ")}`, "info");
     } catch (e) {
+      addToast("Falha ao persistir a alteração de status no Firestore.", "error");
       handleFirestoreError(e, OperationType.UPDATE, `items/${id}`);
       throw e;
     }
   };
 
   const updateItemData = async (id: string, updatedFields: Partial<LostFoundItem>) => {
+    try {
+      assertClientItemDataUpdateAllowed(updatedFields);
+    } catch (guardErr: any) {
+      const msg =
+        updatedFields?.status === "ENCERRADO"
+          ? "O encerramento por destinação deve ser registrado pelo fluxo dedicado de destinação (registerItemDestination)."
+          : "A devolução oficial exige identificação do receptor e assinatura digital pelo fluxo formal.";
+      addToast(msg, "error");
+      throw guardErr;
+    }
+
     // 🔒 Security Guard: Only authenticated users can update items
     if (isGuest || !auth.currentUser) {
       setAuthModalOpen(true);
@@ -4675,19 +4724,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error("Objeto não encontrado.");
     }
 
-    // 🔒 Authorization Check: Only creator or Staff/Admin can edit item
+    if (existing.status === "DEVOLVIDO" || existing.status === "ENCERRADO") {
+      addToast("Objetos já devolvidos ou encerrados não podem ser editados diretamente.", "error");
+      throw new Error("Item já finalizado não permite edição direta.");
+    }
+
+    // 🔒 Authorization Check: Only creator or active/approved Staff/Admin can edit item
     const isOwner = Boolean(
       (auth.currentUser && existing.registeredByUserId === auth.currentUser.uid) ||
       (currentUser && currentUser.id !== DEFAULT_GUEST_USER.id && existing.registeredByUserId === currentUser.id)
     );
-    const isStaffOrAdmin =
-      currentUser?.role === "ADMIN" ||
-      currentUser?.role === "SERVIDOR" ||
-      auth.currentUser?.email === "paulocauan39@gmail.com";
+    const isStaffOrAdmin = canOperateFormalReturn(currentUser, auth.currentUser, isGuest);
 
     if (!isOwner && !isStaffOrAdmin) {
       addToast("Você não possui permissão para editar os dados deste pertence.", "error");
-      throw new Error("Permissão negada: apenas o autor ou servidores/administradores podem editar este item.");
+      throw new Error("Permissão negada: apenas o autor ou servidores/administradores aprovados podem editar este item.");
     }
 
     // Strict text field length validation (Defense in Depth)
@@ -4785,6 +4836,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       addToast("Ocorrência atualizada com sucesso!", "success");
     } catch (e) {
+      const classified = classifyFirestoreWriteError(e, "Erro ao gravar alterações da ocorrência no Firestore.");
+      addToast(classified.userMessage, "error");
       handleFirestoreError(e, OperationType.UPDATE, `items/${id}`);
       throw e;
     }
@@ -4902,9 +4955,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateDocDirectly = async (collectionName: string, docId: string, data: Record<string, any>) => {
+    const existingItem = items.find((i) => i.id === docId);
+    try {
+      assertDirectDocUpdateAllowed(collectionName, data, existingItem?.status);
+    } catch (guardErr: any) {
+      addToast(guardErr?.message || "Operação direta bloqueada por segurança.", "error");
+      throw guardErr;
+    }
     try {
       await updateDoc(doc(db, collectionName, docId), sanitizeFirestoreData(data));
     } catch (e) {
+      const classified = classifyFirestoreWriteError(e, `Erro ao atualizar documento em ${collectionName}.`);
+      addToast(classified.userMessage, "error");
       handleFirestoreError(e, OperationType.UPDATE, `${collectionName}/${docId}`);
       throw e;
     }

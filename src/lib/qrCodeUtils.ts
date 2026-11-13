@@ -216,12 +216,62 @@ export function findItemInList(
   return null;
 }
 
+export type QrLookupErrorKind = "PERMISSION_DENIED" | "NETWORK_ERROR" | "UNKNOWN_ERROR";
+
+export function classifyQrLookupError(err: unknown): {
+  kind: QrLookupErrorKind;
+  userMessage: string;
+} {
+  const code = String((err as any)?.code || "").toLowerCase();
+  const message = String((err as any)?.message || err || "").toLowerCase();
+
+  if (
+    code.includes("permission-denied") ||
+    code.includes("unauthenticated") ||
+    message.includes("missing or insufficient permissions") ||
+    message.includes("permission-denied") ||
+    message.includes("permission denied")
+  ) {
+    return {
+      kind: "PERMISSION_DENIED",
+      userMessage: "Permissão insuficiente para consultar este objeto no acervo.",
+    };
+  }
+
+  if (
+    code.includes("unavailable") ||
+    code.includes("deadline-exceeded") ||
+    message.includes("network") ||
+    message.includes("failed to fetch") ||
+    message.includes("offline") ||
+    message.includes("client is offline") ||
+    message.includes("load failed")
+  ) {
+    return {
+      kind: "NETWORK_ERROR",
+      userMessage: "Erro de conexão ao consultar o acervo. Verifique sua rede e tente novamente.",
+    };
+  }
+
+  return {
+    kind: "UNKNOWN_ERROR",
+    userMessage: "Erro ao consultar o código QR no acervo.",
+  };
+}
+
 /**
  * Asynchronously fetches an item from Firestore by its unique document ID or qrCodeId.
  * Guarantees that deep-linked QR code scans work even before in-memory state finishes syncing.
  */
 export async function fetchItemFromFirestore(
-  parsedOrId: ParsedQrResult | string
+  parsedOrId: ParsedQrResult | string,
+  options?: {
+    throwOnError?: boolean;
+    firestoreMocks?: {
+      getById?: (id: string) => Promise<LostFoundItem | null>;
+      getByQrCodeId?: (qrCodeId: string) => Promise<LostFoundItem | null>;
+    };
+  }
 ): Promise<LostFoundItem | null> {
   const parsed = typeof parsedOrId === "string" ? parseQrCodeOrUrl(parsedOrId) : parsedOrId;
   const searchId = parsed.itemId || null;
@@ -240,13 +290,21 @@ export async function fetchItemFromFirestore(
 
     if (isValidDocId) {
       try {
-        const docRef = doc(db, "items", cleanId);
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          return { id: snap.id, ...snap.data() } as LostFoundItem;
+        if (options?.firestoreMocks?.getById) {
+          const mocked = await options.firestoreMocks.getById(cleanId);
+          if (mocked) return mocked;
+        } else {
+          const docRef = doc(db, "items", cleanId);
+          const snap = await getDoc(docRef);
+          if (snap.exists()) {
+            return { id: snap.id, ...snap.data() } as LostFoundItem;
+          }
         }
       } catch (err) {
         console.warn("[qrCodeUtils] Erro ao buscar item por ID no Firestore:", err);
+        if (options?.throwOnError) {
+          throw err;
+        }
       }
     }
   }
@@ -254,17 +312,26 @@ export async function fetchItemFromFirestore(
   // 2. Query by qrCodeId field in Firestore
   if (searchQr) {
     try {
-      const itemsCol = collection(db, "items");
-      const q = query(itemsCol, where("qrCodeId", "==", searchQr));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const firstDoc = snap.docs[0];
-        return { id: firstDoc.id, ...firstDoc.data() } as LostFoundItem;
+      if (options?.firestoreMocks?.getByQrCodeId) {
+        const mocked = await options.firestoreMocks.getByQrCodeId(searchQr);
+        if (mocked) return mocked;
+      } else {
+        const itemsCol = collection(db, "items");
+        const q = query(itemsCol, where("qrCodeId", "==", searchQr));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const firstDoc = snap.docs[0];
+          return { id: firstDoc.id, ...firstDoc.data() } as LostFoundItem;
+        }
       }
     } catch (err) {
       console.warn("[qrCodeUtils] Erro ao buscar item por qrCodeId no Firestore:", err);
+      if (options?.throwOnError) {
+        throw err;
+      }
     }
   }
 
   return null;
 }
+

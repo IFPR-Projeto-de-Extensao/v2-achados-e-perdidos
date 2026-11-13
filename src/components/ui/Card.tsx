@@ -14,9 +14,9 @@ export interface SubtlePanelProps extends React.HTMLAttributes<HTMLDivElement> {
 
 const paddingMap: Record<CardPadding, string> = {
   none: "p-0",
-  sm: "p-3.5 sm:p-4",
+  sm: "p-3 sm:p-4",
   md: "p-4 sm:p-5",
-  lg: "p-5 sm:p-6",
+  lg: "p-4 sm:p-6",
 };
 
 export const SurfaceCard = React.forwardRef<HTMLDivElement, SurfaceCardProps>(
@@ -25,9 +25,9 @@ export const SurfaceCard = React.forwardRef<HTMLDivElement, SurfaceCardProps>(
     return (
       <div
         ref={ref}
-        className={`bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-[0_1px_3px_rgba(23,43,42,0.04)] ${
+        className={`bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800 rounded-xl ${
           isInteractive
-            ? "transition-all duration-150 hover:border-[#16845B]/40 hover:shadow-[0_6px_20px_rgba(22,132,91,0.08)]"
+            ? "transition-colors duration-150 hover:border-[#16845B]/50"
             : ""
         } ${paddingMap[padding]} ${className}`}
         {...props}
@@ -44,7 +44,7 @@ export const SubtlePanel = React.forwardRef<HTMLDivElement, SubtlePanelProps>(
     return (
       <div
         ref={ref}
-        className={`bg-[#F8FAFC] dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 rounded-xl ${paddingMap[padding]} ${className}`}
+        className={`bg-[#F8FAFC] dark:bg-slate-900/50 border border-slate-200/70 dark:border-slate-800/80 rounded-xl ${paddingMap[padding]} ${className}`}
         {...props}
       >
         {children}

@@ -220,19 +220,18 @@ export const Breadcrumbs: React.FC = () => {
   return (
     <nav
       aria-label="Navegação estrutural e trilha de localização (Breadcrumbs)"
-      className="mb-4 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 bg-white dark:bg-[#111827] px-3.5 py-2.5 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-[0_1px_2px_rgba(23,43,42,0.03)]"
+      className="mb-3 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 py-1"
     >
       {/* Breadcrumb List */}
       <ol className="flex items-center flex-wrap gap-1.5 min-w-0" role="list">
         {breadcrumbItems.map((item, index) => {
           const isLast = index === breadcrumbItems.length - 1 || item.isCurrent;
-          const Icon = item.icon;
 
           return (
             <li key={`${item.path}-${index}`} className="flex items-center gap-1.5 min-w-0">
               {index > 0 && (
                 <ChevronRight
-                  className="w-3.5 h-3.5 text-slate-400 dark:text-slate-600 shrink-0"
+                  className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 shrink-0"
                   aria-hidden="true"
                 />
               )}
@@ -240,26 +239,16 @@ export const Breadcrumbs: React.FC = () => {
               {isLast ? (
                 <span
                   aria-current="page"
-                  className="flex items-center gap-1.5 font-semibold text-[#172B2A] dark:text-white min-w-0"
+                  className="font-semibold text-[#172B2A] dark:text-white truncate max-w-[200px] sm:max-w-md"
                 >
-                  {Icon && (
-                    <Icon className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400 shrink-0" />
-                  )}
-                  <span className="truncate max-w-[220px] sm:max-w-md">{item.label}</span>
-
-                  {item.badge && (
-                    <UIBadge tone={mapBadgeTone(item.badgeColor)} className="hidden xs:inline-flex">
-                      {item.badge}
-                    </UIBadge>
-                  )}
+                  {item.label}
                 </span>
               ) : (
                 <Link
                   to={item.path}
-                  className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 hover:text-[#16845B] dark:hover:text-emerald-400 transition-colors font-medium hover:underline underline-offset-2 shrink-0"
+                  className="text-slate-500 dark:text-slate-400 hover:text-[#16845B] dark:hover:text-emerald-400 transition-colors shrink-0"
                 >
-                  {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
-                  <span>{item.label}</span>
+                  {item.label}
                 </Link>
               )}
             </li>
@@ -273,10 +262,10 @@ export const Breadcrumbs: React.FC = () => {
         onClick={handleBack}
         aria-label="Voltar para a seção anterior"
         title={`Voltar para ${previousItem?.label || "Início"}`}
-        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-[#172B2A] dark:hover:text-white hover:bg-[#F8FAFC] dark:hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
+        className="min-h-[36px] inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-[#172B2A] dark:hover:text-white transition-colors shrink-0 cursor-pointer"
       >
         <ArrowLeft className="w-3.5 h-3.5" />
-        <span className="hidden xs:inline">Voltar</span>
+        <span>Voltar</span>
       </button>
     </nav>
   );

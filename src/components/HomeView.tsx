@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { useRouter } from "../context/RouterContext";
 import { ItemCard } from "./ItemCard";
-import { CANONICAL_ITEM_CATEGORIES } from "../lib/categoryUtils";
 import {
   vibrateClick,
   safeIncludes,
@@ -11,28 +10,17 @@ import {
 } from "../lib/utils";
 import {
   Search,
-  PlusCircle,
   QrCode,
-  ShieldCheck,
-  CheckCircle2,
-  Clock,
-  HelpCircle,
-  PackageSearch,
+  Plus,
   Mic,
   MicOff,
-  History,
   X,
   ArrowRight,
   RotateCcw,
-  Building2,
+  PackageSearch,
 } from "lucide-react";
-import {
-  SurfaceCard,
-  UIButton,
-  UIBadge,
-  StatCard,
-  EmptyState,
-} from "./ui";
+import { EmptyState } from "./ui";
+import { computeHomeItemStats } from "../lib/homeStatsUtils";
 
 const SEARCH_HISTORY_KEY = "ifpr_search_history";
 
@@ -48,7 +36,6 @@ export const HomeView: React.FC = () => {
   const { navigate } = useRouter();
 
   const [quickSearch, setQuickSearch] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("Todas");
   const [activeTypeFilter, setActiveTypeFilter] = useState<
     "TODOS" | "PERDIDO" | "ENCONTRADO"
   >("TODOS");
@@ -59,7 +46,7 @@ export const HomeView: React.FC = () => {
       const saved = localStorage.getItem(SEARCH_HISTORY_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.slice(0, 8);
+        if (Array.isArray(parsed)) return parsed.slice(0, 6);
       }
     } catch {}
     return [];
@@ -73,7 +60,7 @@ export const HomeView: React.FC = () => {
       const next = [
         cleaned,
         ...prev.filter((item) => item.toLowerCase() !== cleaned.toLowerCase()),
-      ].slice(0, 8);
+      ].slice(0, 6);
       try {
         localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(next));
       } catch {}
@@ -109,7 +96,7 @@ export const HomeView: React.FC = () => {
 
     if (!SpeechRecognition) {
       addToast(
-        "Seu navegador não suporta busca por voz nativa. Tente no Chrome ou Edge.",
+        "Busca por voz não disponível neste navegador.",
         "info"
       );
       return;
@@ -131,16 +118,11 @@ export const HomeView: React.FC = () => {
       if (cleaned) {
         setQuickSearch(cleaned);
         addSearchQueryToHistory(cleaned);
-        addToast(`Busca por voz: "${cleaned}"`, "success");
       }
     };
 
     recognition.onerror = () => {
       setIsListeningVoice(false);
-      addToast(
-        "Não foi possível capturar o áudio. Verifique a permissão do microfone.",
-        "error"
-      );
     };
 
     recognition.onend = () => {
@@ -154,9 +136,6 @@ export const HomeView: React.FC = () => {
     }
   };
 
-  const categories = ["Todas", ...CANONICAL_ITEM_CATEGORIES];
-
-  // Filter recent items for the showcase (up to 6 items)
   const filteredItems = (items || [])
     .filter((item) => {
       if (!item) return false;
@@ -166,11 +145,9 @@ export const HomeView: React.FC = () => {
         safeIncludes(item.description, quickSearch) ||
         safeIncludes(item.location, quickSearch) ||
         safeIncludes(item.qrCodeId, quickSearch);
-      const matchesCat =
-        selectedCategory === "Todas" || item.category === selectedCategory;
       const matchesType =
         activeTypeFilter === "TODOS" || item.type === activeTypeFilter;
-      return matchesSearch && matchesCat && matchesType;
+      return matchesSearch && matchesType;
     })
     .sort(
       (a, b) =>
@@ -179,383 +156,315 @@ export const HomeView: React.FC = () => {
     )
     .slice(0, 6);
 
-  const stats = {
-    totalItems: (items || []).length,
-    foundItems: (items || []).filter(
-      (i) => i && i.type === "ENCONTRADO" && i.status === "DISPONIVEL"
-    ).length,
-    lostItems: (items || []).filter(
-      (i) => i && i.type === "PERDIDO" && i.status === "DISPONIVEL"
-    ).length,
-    returnedItems: (items || []).filter((i) => i && i.status === "DEVOLVIDO")
-      .length,
-  };
-
-  const returnRate =
-    stats.totalItems > 0
-      ? Math.round((stats.returnedItems / stats.totalItems) * 100)
-      : 0;
+  const stats = computeHomeItemStats(items);
 
   return (
-    <div className="space-y-8 pb-12">
-      {/* 1. APRESENTAÇÃO INSTITUCIONAL, BUSCA RÁPIDA E AÇÕES PRINCIPAIS (Sem duplicar a marca do cabeçalho) */}
-      <section className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] p-6 sm:p-8 lg:p-10">
-        <div className="max-w-4xl space-y-6">
-          {/* Eyebrow institucional */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            <UIBadge tone="emerald">
-              <Building2 className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
-              <span>IFPR Campus Ivaiporã • Central Oficial de Achados e Perdidos</span>
-            </UIBadge>
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400 shrink-0" />
-              <span>Atendimento presencial: Portaria Principal e SEPAE (Segunda a Sexta, das 07h às 22h)</span>
-            </span>
-          </div>
+    <div className="space-y-6 pb-6">
+      {/* 1. CABEÇALHO DIRETO, BUSCA E AÇÕES PRINCIPAIS (Mobile-First, Sem Cartões Desnecessários) */}
+      <section className="pt-1 sm:pt-3 space-y-4">
+        <div className="space-y-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight">
+            Central de Achados e Perdidos
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+            IFPR Campus Ivaiporã · Atendimento presencial na Portaria Principal e SEPAE (Seg a Sex, 07h às 22h)
+          </p>
+        </div>
 
-          {/* Título principal e descrição institucional */}
-          <div className="space-y-3">
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#172B2A] dark:text-white tracking-tight leading-[1.18]">
-              Consulte e recupere pertences perdidos ou encontrados no campus com{" "}
-              <span className="text-[#16845B] dark:text-emerald-400">
-                rastreabilidade e segurança
-              </span>
-              .
-            </h1>
-            <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 leading-relaxed max-w-3xl">
-              Todos os objetos entregues na Portaria Principal, Biblioteca, Ginásio ou Secretaria Acadêmica (SEPAE/SEBAC) são catalogados com etiqueta QR Code e devolvidos mediante conferência documental e recibo digital.
-            </p>
-          </div>
-
-          {/* Barra de Busca Direta */}
-          <div ref={searchContainerRef} className="relative max-w-3xl">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-1.5 rounded-xl bg-[#F8FAFC] dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700 focus-within:border-[#16845B] focus-within:ring-2 focus-within:ring-[#16845B]/15 transition-all">
-              <div className="flex items-center flex-1 pl-3 pr-2 py-1.5">
-                <Search className="w-4 h-4 text-slate-400 mr-2.5 shrink-0" />
-                <input
-                  id="home-search-input"
-                  type="text"
-                  value={quickSearch}
-                  onFocus={() => setShowHistoryDropdown(true)}
-                  onChange={(e) => setQuickSearch(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && quickSearch.trim()) {
+        {/* Barra de Pesquisa Rápida + QR Code */}
+        <div ref={searchContainerRef} className="relative">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-center min-h-[48px] px-3.5 rounded-xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 focus-within:border-[#16845B] transition-colors">
+              <Search className="w-4 h-4 text-slate-400 mr-2.5 shrink-0" />
+              <input
+                id="home-search-input"
+                type="text"
+                value={quickSearch}
+                onFocus={() => setShowHistoryDropdown(true)}
+                onChange={(e) => setQuickSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    if (quickSearch.trim()) {
                       addSearchQueryToHistory(quickSearch.trim());
-                      setShowHistoryDropdown(false);
                     }
-                  }}
-                  placeholder="Buscar por nome do objeto, cor, bloco, sala ou código QR..."
-                  className="w-full bg-transparent text-[#172B2A] dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm focus:outline-none"
-                />
+                    setShowHistoryDropdown(false);
+                  }
+                }}
+                placeholder="Buscar objeto, cor, local ou código QR..."
+                className="w-full bg-transparent text-[#172B2A] dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm focus:outline-none"
+              />
 
-                {quickSearch && (
-                  <button
-                    type="button"
-                    onClick={() => setQuickSearch("")}
-                    className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                    title="Limpar busca"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-
+              {quickSearch && (
                 <button
                   type="button"
-                  onClick={handleVoiceSearch}
-                  title="Pesquisar por voz"
-                  aria-label="Pesquisar por voz"
-                  className={`ml-1 p-1.5 rounded-lg transition-all cursor-pointer ${
-                    isListeningVoice
-                      ? "bg-rose-600 text-white animate-pulse"
-                      : "text-slate-400 hover:text-[#16845B] dark:hover:text-emerald-400 hover:bg-white dark:hover:bg-slate-800"
-                  }`}
+                  onClick={() => setQuickSearch("")}
+                  className="min-w-[36px] min-h-[36px] flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  title="Limpar busca"
+                  aria-label="Limpar busca"
                 >
-                  {isListeningVoice ? (
-                    <MicOff className="w-4 h-4" />
-                  ) : (
-                    <Mic className="w-4 h-4" />
-                  )}
+                  <X className="w-4 h-4" />
                 </button>
-              </div>
+              )}
 
-              <UIButton
+              <button
                 type="button"
-                variant="primary"
-                size="md"
-                onClick={() => {
-                  vibrateClick();
-                  if (quickSearch.trim()) {
-                    addSearchQueryToHistory(quickSearch.trim());
-                  }
-                  setShowHistoryDropdown(false);
-                  navigate("/objetos");
-                }}
-                className="sm:w-auto w-full"
+                onClick={handleVoiceSearch}
+                title="Pesquisar por voz"
+                aria-label="Pesquisar por voz"
+                className={`min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
+                  isListeningVoice
+                    ? "bg-rose-600 text-white"
+                    : "text-slate-400 hover:text-[#16845B] dark:hover:text-emerald-400"
+                }`}
               >
-                <Search className="w-4 h-4" />
-                <span>Consultar Objetos</span>
-              </UIButton>
+                {isListeningVoice ? (
+                  <MicOff className="w-4 h-4" />
+                ) : (
+                  <Mic className="w-4 h-4" />
+                )}
+              </button>
             </div>
 
-            {/* Histórico de buscas recentes */}
-            {showHistoryDropdown && searchHistory.length > 0 && (
-              <div className="absolute left-0 right-0 top-full mt-2 bg-white dark:bg-[#111827] rounded-xl shadow-lg border border-slate-200 dark:border-slate-800 p-3 z-30">
-                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
-                  <span className="flex items-center gap-1.5 font-semibold text-[#172B2A] dark:text-slate-200">
-                    <History className="w-3.5 h-3.5 text-[#16845B]" />
-                    <span>Buscas Recentes</span>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => clearSearchHistory()}
-                    className="text-rose-600 hover:underline font-medium cursor-pointer"
-                  >
-                    Limpar histórico
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {searchHistory.map((h, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => {
-                        setQuickSearch(h);
-                        setShowHistoryDropdown(false);
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-[#F8FAFC] dark:bg-slate-800 hover:bg-[#EBF5F0] dark:hover:bg-emerald-950/50 text-slate-700 dark:text-slate-300 hover:text-[#16845B] dark:hover:text-emerald-400 text-xs font-medium transition-colors border border-slate-200/70 dark:border-slate-700 cursor-pointer"
-                    >
-                      {h}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Ações Principais */}
-          <div className="flex flex-wrap items-center gap-3 pt-1">
-            <UIButton
+            <button
               type="button"
-              variant="primary"
-              size="lg"
-              onClick={() => {
-                vibrateClick();
-                navigate("/objetos");
-              }}
-            >
-              <PackageSearch className="w-4 h-4" />
-              <span>Ver Catálogo Completo</span>
-            </UIButton>
-
-            {currentUser?.role !== "ALUNO" && (
-              <UIButton
-                type="button"
-                variant="secondary"
-                size="lg"
-                onClick={() => {
-                  vibrateClick();
-                  requestAuthForRegistration();
-                  navigate("/cadastrar");
-                }}
-              >
-                <PlusCircle className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
-                <span>Registrar Item</span>
-              </UIButton>
-            )}
-
-            <UIButton
-              type="button"
-              variant="outline"
-              size="lg"
               onClick={() => {
                 vibrateClick();
                 setQrScannerOpen(true);
               }}
+              title="Ler etiqueta QR Code"
+              aria-label="Ler etiqueta QR Code"
+              className="min-h-[48px] min-w-[48px] px-3.5 rounded-xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 hover:border-[#16845B] text-[#172B2A] dark:text-white flex items-center justify-center gap-2 text-xs font-semibold transition-colors shrink-0 cursor-pointer"
             >
-              <QrCode className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
-              <span>Ler Etiqueta QR Code</span>
-            </UIButton>
+              <QrCode className="w-4.5 h-4.5 text-[#16845B] dark:text-emerald-400" />
+              <span className="hidden sm:inline">Ler QR Code</span>
+            </button>
           </div>
-        </div>
-      </section>
 
-      {/* 2. INDICADORES ESTATÍSTICOS (Títulos completos, números legíveis, zero truncamento) */}
-      <section aria-label="Indicadores estatísticos do acervo">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            label="Objetos Registrados"
-            value={stats.totalItems}
-            subtitle="Total de ocorrências catalogadas no campus"
-            icon={<PackageSearch className="w-5 h-5" />}
-            iconTone="slate"
+          {/* Histórico de buscas */}
+          {showHistoryDropdown && searchHistory.length > 0 && (
+            <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-[#111827] rounded-xl border border-slate-200 dark:border-slate-800 p-3 z-30 shadow-sm">
+              <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
+                <span className="font-medium">Buscas recentes</span>
+                <button
+                  type="button"
+                  onClick={() => clearSearchHistory()}
+                  className="text-rose-600 hover:underline font-medium cursor-pointer"
+                >
+                  Limpar
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {searchHistory.map((h, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => {
+                      setQuickSearch(h);
+                      setShowHistoryDropdown(false);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-[#16845B] text-xs transition-colors border border-slate-200/70 dark:border-slate-700 cursor-pointer"
+                  >
+                    {h}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Botões Principais de Ação (Mobile-First Touch Targets >= 46px) */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
             onClick={() => {
               vibrateClick();
               navigate("/objetos");
             }}
-          />
-          <StatCard
-            label="Objetos Encontrados"
-            value={stats.foundItems}
-            subtitle="Disponíveis para conferência e retirada"
-            icon={<CheckCircle2 className="w-5 h-5" />}
-            iconTone="emerald"
-            onClick={() => {
-              vibrateClick();
-              navigate("/encontrados");
-            }}
-          />
-          <StatCard
-            label="Objetos Perdidos"
-            value={stats.lostItems}
-            subtitle="Relatos ativos aguardando localização"
-            icon={<HelpCircle className="w-5 h-5" />}
-            iconTone="rose"
-            onClick={() => {
-              vibrateClick();
-              navigate("/perdidos");
-            }}
-          />
-          <StatCard
-            label="Objetos Devolvidos"
-            value={stats.returnedItems}
-            subtitle={`Restituídos aos proprietários (${returnRate}% de restituição)`}
-            icon={<ShieldCheck className="w-5 h-5" />}
-            iconTone="blue"
-            onClick={() => {
-              vibrateClick();
-              navigate("/devolvidos");
-            }}
-          />
+            className="flex-1 sm:flex-none min-h-[46px] px-5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+          >
+            <span>Consultar Objetos</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+
+          {currentUser?.role !== "ALUNO" && (
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                requestAuthForRegistration();
+                navigate("/cadastrar");
+              }}
+              className="flex-1 sm:flex-none min-h-[46px] px-4 rounded-xl bg-white dark:bg-[#111827] hover:bg-[#F8FAFC] dark:hover:bg-slate-800 text-[#172B2A] dark:text-slate-200 border border-slate-200 dark:border-slate-800 text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
+              <span>Registrar Objeto</span>
+            </button>
+          )}
         </div>
       </section>
 
-      {/* 3. VITRINE DE REGISTROS RECENTES */}
-      <section className="space-y-5">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-slate-800">
-          <div>
-            <h2 className="text-xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-              Registros Recentes no Campus
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-              Últimos objetos cadastrados na central de atendimento do IFPR Campus Ivaiporã
-            </p>
-          </div>
+      {/* 2. RESUMO ESTATÍSTICO COMPACTO (Sem cartões volumosos, não compete com a consulta) */}
+      <section
+        aria-label="Resumo do acervo"
+        className="grid grid-cols-4 divide-x divide-slate-200/80 dark:divide-slate-800 border-y border-slate-200/80 dark:border-slate-800 py-3"
+      >
+        <button
+          type="button"
+          onClick={() => {
+            vibrateClick();
+            navigate("/objetos");
+          }}
+          className="px-2 sm:px-4 text-left hover:opacity-80 transition-opacity cursor-pointer"
+        >
+          <p className="text-base sm:text-xl font-bold text-[#172B2A] dark:text-white tabular-nums leading-tight">
+            {stats.totalItems}
+          </p>
+          <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Registrados
+          </p>
+        </button>
 
-          {/* Controles enxutos de filtro da vitrine */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="inline-flex items-center bg-white dark:bg-[#111827] p-1 rounded-xl border border-slate-200/90 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => {
-                  vibrateClick();
-                  setActiveTypeFilter("TODOS");
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeTypeFilter === "TODOS"
-                    ? "bg-[#16845B] text-white"
-                    : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
-                }`}
-              >
-                Todos
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  vibrateClick();
-                  setActiveTypeFilter("ENCONTRADO");
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeTypeFilter === "ENCONTRADO"
-                    ? "bg-[#16845B] text-white"
-                    : "text-slate-600 dark:text-slate-400 hover:text-[#16845B]"
-                }`}
-              >
-                Encontrados
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  vibrateClick();
-                  setActiveTypeFilter("PERDIDO");
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  activeTypeFilter === "PERDIDO"
-                    ? "bg-rose-600 text-white"
-                    : "text-slate-600 dark:text-slate-400 hover:text-rose-600"
-                }`}
-              >
-                Perdidos
-              </button>
-            </div>
+        <button
+          type="button"
+          onClick={() => {
+            vibrateClick();
+            navigate("/encontrados");
+          }}
+          className="px-2 sm:px-4 text-left hover:opacity-80 transition-opacity cursor-pointer"
+        >
+          <p className="text-base sm:text-xl font-bold text-[#16845B] dark:text-emerald-400 tabular-nums leading-tight">
+            {stats.foundItems}
+          </p>
+          <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Encontrados
+          </p>
+        </button>
 
-            <select
-              aria-label="Filtrar por categoria"
-              value={selectedCategory}
-              onChange={(e) => {
-                vibrateClick();
-                setSelectedCategory(e.target.value);
-              }}
-              className="px-3 py-2 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 text-xs font-semibold text-[#172B2A] dark:text-slate-200 outline-none focus:border-[#16845B] cursor-pointer"
-            >
-              {categories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat === "Todas" ? "Todas as Categorias" : cat}
-                </option>
-              ))}
-            </select>
+        <button
+          type="button"
+          onClick={() => {
+            vibrateClick();
+            navigate("/perdidos");
+          }}
+          className="px-2 sm:px-4 text-left hover:opacity-80 transition-opacity cursor-pointer"
+        >
+          <p className="text-base sm:text-xl font-bold text-rose-600 dark:text-rose-400 tabular-nums leading-tight">
+            {stats.lostItems}
+          </p>
+          <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Perdidos
+          </p>
+        </button>
 
-            <UIButton
+        <button
+          type="button"
+          onClick={() => {
+            vibrateClick();
+            navigate("/devolvidos");
+          }}
+          className="px-2 sm:px-4 text-left hover:opacity-80 transition-opacity cursor-pointer"
+        >
+          <p className="text-base sm:text-xl font-bold text-[#172B2A] dark:text-white tabular-nums leading-tight">
+            {stats.returnedItems}
+          </p>
+          <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Devolvidos
+          </p>
+        </button>
+      </section>
+
+      {/* 3. OBJETOS RECENTES */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800">
+            <button
               type="button"
-              variant="ghost"
-              size="sm"
               onClick={() => {
                 vibrateClick();
-                navigate("/objetos");
+                setActiveTypeFilter("TODOS");
               }}
-              className="text-[#16845B] dark:text-emerald-400 font-semibold"
+              className={`min-h-[34px] px-3 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                activeTypeFilter === "TODOS"
+                  ? "bg-white dark:bg-slate-800 text-[#172B2A] dark:text-white font-semibold"
+                  : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
+              }`}
             >
-              <span>Ver todos ({items.length})</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </UIButton>
+              Recentes
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                setActiveTypeFilter("ENCONTRADO");
+              }}
+              className={`min-h-[34px] px-3 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                activeTypeFilter === "ENCONTRADO"
+                  ? "bg-white dark:bg-slate-800 text-[#16845B] dark:text-emerald-400 font-semibold"
+                  : "text-slate-600 dark:text-slate-400 hover:text-[#16845B]"
+              }`}
+            >
+              Encontrados
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                setActiveTypeFilter("PERDIDO");
+              }}
+              className={`min-h-[34px] px-3 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
+                activeTypeFilter === "PERDIDO"
+                  ? "bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 font-semibold"
+                  : "text-slate-600 dark:text-slate-400 hover:text-rose-600"
+              }`}
+            >
+              Perdidos
+            </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              vibrateClick();
+              navigate("/objetos");
+            }}
+            className="min-h-[36px] px-2 text-xs font-semibold text-[#16845B] dark:text-emerald-400 hover:underline inline-flex items-center gap-1 cursor-pointer shrink-0"
+          >
+            <span>Ver todos</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         </div>
 
-        {/* Grade de Cartões */}
         {filteredItems.length === 0 ? (
           <EmptyState
-            icon={<PackageSearch className="w-6 h-6" />}
+            icon={<PackageSearch className="w-5 h-5" />}
             title={
               items.length === 0
                 ? "Nenhum objeto registrado no momento"
-                : "Nenhum objeto corresponde aos filtros selecionados"
+                : "Nenhum objeto encontrado para esta busca"
             }
             description={
               items.length === 0
-                ? "Assim que novos itens forem entregues na Portaria ou SEPAE, eles aparecerão aqui."
-                : "Limpe os filtros ou consulte o catálogo completo para ampliar sua pesquisa."
+                ? "Os itens entregues na Portaria ou SEPAE aparecerão aqui."
+                : "Tente limpar o filtro ou consultar o catálogo completo."
             }
             action={
-              (quickSearch ||
-                selectedCategory !== "Todas" ||
-                activeTypeFilter !== "TODOS") && (
-                <UIButton
+              (quickSearch || activeTypeFilter !== "TODOS") && (
+                <button
                   type="button"
-                  variant="primary"
-                  size="md"
                   onClick={() => {
                     setQuickSearch("");
-                    setSelectedCategory("Todas");
                     setActiveTypeFilter("TODOS");
                   }}
+                  className="min-h-[40px] px-4 rounded-lg bg-[#16845B] text-white text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer"
                 >
-                  <RotateCcw className="w-4 h-4" />
-                  <span>Limpar Filtros</span>
-                </UIButton>
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Limpar filtro</span>
+                </button>
               )
             }
           />
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="divide-y divide-slate-200/80 dark:divide-slate-800 sm:divide-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-3 sm:gap-4">
             {filteredItems.map((item, index) => (
               <ItemCard
                 key={item.id}
@@ -567,91 +476,6 @@ export const HomeView: React.FC = () => {
           </div>
         )}
       </section>
-
-      {/* 4. ORIENTAÇÕES DE USO E PROCEDIMENTO INSTITUCIONAL */}
-      <SurfaceCard padding="lg" className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-[#16845B] dark:text-emerald-400">
-              Fluxo Institucional de Restituição
-            </p>
-            <h2 className="text-lg sm:text-xl font-bold text-[#172B2A] dark:text-white tracking-tight mt-0.5">
-              Como funciona o atendimento de Achados e Perdidos
-            </h2>
-          </div>
-
-          <UIButton
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => {
-              vibrateClick();
-              navigate("/suporte");
-            }}
-          >
-            <span>Central de Dúvidas e Suporte</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </UIButton>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-[#EBF5F0] dark:bg-emerald-950/60 text-[#16845B] dark:text-emerald-400 flex items-center justify-center font-bold text-xs border border-[#16845B]/15">
-                01
-              </div>
-              <h3 className="font-bold text-sm text-[#172B2A] dark:text-white">
-                Consulte o Acervo
-              </h3>
-            </div>
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Pesquise por categoria, local ou data no catálogo público para verificar se o seu pertence já foi entregue na recepção.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-[#EBF5F0] dark:bg-emerald-950/60 text-[#16845B] dark:text-emerald-400 flex items-center justify-center font-bold text-xs border border-[#16845B]/15">
-                02
-              </div>
-              <h3 className="font-bold text-sm text-[#172B2A] dark:text-white">
-                Reivindique o Objeto
-              </h3>
-            </div>
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Ao localizar seu item, abra a ficha de detalhes e informe sinais distintivos que comprovem a titularidade do pertence.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-[#EBF5F0] dark:bg-emerald-950/60 text-[#16845B] dark:text-emerald-400 flex items-center justify-center font-bold text-xs border border-[#16845B]/15">
-                03
-              </div>
-              <h3 className="font-bold text-sm text-[#172B2A] dark:text-white">
-                Conferência na Recepção
-              </h3>
-            </div>
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              Compareça à Portaria Principal ou SEPAE com documento oficial com foto ou crachá estudantil para validação presencial.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-[#EBF5F0] dark:bg-emerald-950/60 text-[#16845B] dark:text-emerald-400 flex items-center justify-center font-bold text-xs border border-[#16845B]/15">
-                04
-              </div>
-              <h3 className="font-bold text-sm text-[#172B2A] dark:text-white">
-                Termo Digital de Entrega
-              </h3>
-            </div>
-            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-              A restituição é formalizada com assinatura digital do recebedor e do servidor atendente, gerando comprovante oficial em PDF.
-            </p>
-          </div>
-        </div>
-      </SurfaceCard>
     </div>
   );
 };

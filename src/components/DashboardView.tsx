@@ -907,64 +907,41 @@ export const DashboardView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 pb-12 animate-in fade-in duration-300">
-      {/* CABEÇALHO PRINCIPAL DO PAINEL (ADMINISTRATIVO / SERVIDOR / DISCENTE) */}
-      <SurfaceCard padding="lg" className="space-y-5">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="flex items-start gap-3.5 min-w-0">
-            <div className="p-2.5 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/15 shrink-0 mt-0.5">
-              {activeDashboardRole === "SERVIDOR" ? (
-                <Building2 className="w-5 h-5" />
-              ) : activeDashboardRole === "ADMIN" ? (
-                <ShieldCheck className="w-5 h-5" />
-              ) : (
-                <GraduationCap className="w-5 h-5" />
-              )}
-            </div>
-            <div className="space-y-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-[#16845B] dark:text-emerald-400">
-                <span>
-                  {activeDashboardRole === "SERVIDOR"
-                    ? "Atendimento Operacional & Portaria"
-                    : activeDashboardRole === "ADMIN"
-                    ? "Administração Institucional & TI"
-                    : "Acompanhamento Discente"}
-                </span>
-                <span>•</span>
-                <span>IFPR Campus Ivaiporã</span>
-              </div>
-              <h1 className="text-xl sm:text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-                {activeDashboardRole === "SERVIDOR"
-                  ? "Painel do Servidor — Atendimento, Custódia e Devoluções"
-                  : activeDashboardRole === "ADMIN"
-                  ? "Painel Administrativo — Gestão Institucional Localiza+"
-                  : "Painel do Discente — Minhas Ocorrências e Solicitações"}
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-3xl">
-                {activeDashboardRole === "SERVIDOR"
-                  ? "Visão geral das pendências prioritárias, solicitações de recuperação, confirmações de entrega, objetos sob custódia na Guarita/SEPAE e relatórios."
-                  : activeDashboardRole === "ADMIN"
-                  ? "Gerenciamento centralizado de usuários, permissões, aprovações institucionais, objetos, reivindicações, auditoria, backups, saúde do sistema e configurações."
-                  : "Acompanhe seus relatos registrados, solicitações de recuperação enviadas e pontuação de cidadania no campus."}
-              </p>
-            </div>
+    <div className="space-y-5 pb-12">
+      {/* CABEÇALHO PRINCIPAL DO PAINEL (MINIMALISTA E MOBILE-FIRST) */}
+      <header className="pb-4 border-b border-slate-200/80 dark:border-slate-800 space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div className="space-y-1 min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#16845B] dark:text-emerald-400">
+              {activeDashboardRole === "SERVIDOR"
+                ? "Atendimento & Portaria • IFPR Campus Ivaiporã"
+                : activeDashboardRole === "ADMIN"
+                ? "Administração Institucional • IFPR Campus Ivaiporã"
+                : "Acompanhamento Discente • IFPR Campus Ivaiporã"}
+            </p>
+            <h1 className="text-lg sm:text-xl font-bold text-[#0F172A] dark:text-white tracking-tight">
+              {activeDashboardRole === "SERVIDOR"
+                ? "Painel do Servidor"
+                : activeDashboardRole === "ADMIN"
+                ? "Painel Administrativo"
+                : "Painel do Discente"}
+            </h1>
           </div>
 
           {/* Controles Superiores: Alternador de Visão (Admin) e Ações Rápidas */}
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             {currentUser.role === "ADMIN" ? (
-              <div className="bg-[#F8FAFC] dark:bg-slate-800/90 p-1 rounded-xl flex items-center border border-slate-200 dark:border-slate-700">
+              <div className="bg-slate-100 dark:bg-slate-800/90 p-0.5 rounded-lg flex items-center border border-slate-200/80 dark:border-slate-700">
                 <button
                   type="button"
                   onClick={() => setActiveDashboardRole("ALUNO")}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`min-h-[34px] px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                     activeDashboardRole === "ALUNO"
-                      ? "bg-white dark:bg-slate-900 text-[#16845B] dark:text-emerald-400 shadow-2xs font-bold"
-                      : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
+                      ? "bg-white dark:bg-slate-900 text-[#16845B] dark:text-emerald-400 font-semibold"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                   }`}
                 >
-                  <GraduationCap className="w-3.5 h-3.5" />
-                  <span>Aluno</span>
+                  Aluno
                 </button>
 
                 <button
@@ -973,14 +950,13 @@ export const DashboardView: React.FC = () => {
                     setActiveDashboardRole("SERVIDOR");
                     setAdminSubTab("server_overview");
                   }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`min-h-[34px] px-2.5 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                     activeDashboardRole === "SERVIDOR"
-                      ? "bg-white dark:bg-slate-900 text-[#16845B] dark:text-emerald-400 shadow-2xs font-bold"
-                      : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
+                      ? "bg-white dark:bg-slate-900 text-[#16845B] dark:text-emerald-400 font-semibold"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                   }`}
                 >
-                  <Building2 className="w-3.5 h-3.5" />
-                  <span>Painel Servidor</span>
+                  Servidor
                 </button>
 
                 <button
@@ -991,177 +967,179 @@ export const DashboardView: React.FC = () => {
                       setAdminSubTab("users");
                     }
                   }}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  className={`min-h-[34px] px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
                     activeDashboardRole === "ADMIN"
-                      ? "bg-[#16845B] text-white shadow-2xs"
-                      : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
+                      ? "bg-[#16845B] text-white"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                   }`}
                 >
-                  <Shield className="w-3.5 h-3.5" />
-                  <span>Painel Admin</span>
+                  Admin
                 </button>
               </div>
             ) : (
-              <UIBadge tone="emerald">
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                 {currentUser.role === "SERVIDOR"
                   ? "Servidor Autorizado • Portaria / SEPAE"
                   : `Perfil: ${currentUser.role}`}
-              </UIBadge>
+              </span>
             )}
 
             {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && (
               <>
-                <UIButton
+                <button
                   type="button"
-                  variant="primary"
-                  size="sm"
                   onClick={() => setQrScannerOpen(true)}
+                  className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#16845B] hover:bg-[#126B49] text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <QrCode className="w-3.5 h-3.5" />
-                  <span>Ler QR Code</span>
-                </UIButton>
+                  <span>QR Code</span>
+                </button>
 
-                <UIButton
+                <button
                   type="button"
-                  variant="secondary"
-                  size="sm"
                   onClick={handleExportItemsCSV}
                   aria-label="Exportar relatório completo de itens em CSV"
                   title="Download do Relatório Completo de Achados & Perdidos (CSV)"
+                  className="min-h-[36px] px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-[#16845B]" />
-                  <span>Exportar CSV</span>
-                </UIButton>
+                  <span>CSV</span>
+                </button>
               </>
             )}
           </div>
         </div>
 
-        {/* INDICADORES PRINCIPAIS (Títulos completos, números legíveis, zero truncamento) */}
+        {/* FAIXA COMPACTA DE INDICADORES OPERACIONAIS (Sem cartões pesados) */}
         {(activeDashboardRole === "ADMIN" || activeDashboardRole === "SERVIDOR") && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <div className="bg-[#F8FAFC] dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-1.5">
-              <div className="flex items-start justify-between gap-2">
-                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 leading-snug">
-                  Total de Objetos no Acervo
-                </span>
-                <PackageSearch className="w-4 h-4 text-[#16845B] shrink-0" />
-              </div>
-              <p className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight tabular-nums">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 pt-3 border-t border-slate-100 dark:border-slate-800/80">
+            <div className="space-y-0.5">
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
+                Objetos no Acervo
+              </span>
+              <p className="text-xl sm:text-2xl font-bold text-[#0F172A] dark:text-white tracking-tight tabular-nums">
                 {totalItems}
               </p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed tabular-nums">
-                {foundCount} encontrados • {lostCount} perdidos
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                {foundCount} encontrados · {lostCount} perdidos
               </p>
             </div>
 
-            <div className="bg-[#F8FAFC] dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-1.5">
-              <div className="flex items-start justify-between gap-2">
-                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 leading-snug">
-                  Em Análise / Sob Custódia
-                </span>
-                <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-              </div>
-              <p className="text-2xl sm:text-3xl font-bold text-amber-600 dark:text-amber-400 tracking-tight tabular-nums">
+            <div className="space-y-0.5">
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
+                Em Custódia / Análise
+              </span>
+              <p className="text-xl sm:text-2xl font-bold text-amber-600 dark:text-amber-400 tracking-tight tabular-nums">
                 {inAnalysisCount}
               </p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed tabular-nums">
-                {pendingClaimsCount} solicitações de recuperação pendentes
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                {pendingClaimsCount} solicitações pendentes
               </p>
             </div>
 
-            <div className="bg-[#F8FAFC] dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-1.5">
-              <div className="flex items-start justify-between gap-2">
-                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 leading-snug">
-                  Devoluções Concluídas (Receptor)
-                </span>
-                <FileCheck2 className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
-              </div>
-              <p className="text-2xl sm:text-3xl font-bold text-sky-600 dark:text-sky-400 tracking-tight tabular-nums">
+            <div className="space-y-0.5">
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
+                Devoluções Concluídas
+              </span>
+              <p className="text-xl sm:text-2xl font-bold text-sky-600 dark:text-sky-400 tracking-tight tabular-nums">
                 {returnedCount}
               </p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed tabular-nums">
-                {registeredReturnsCount} registradas • {pendingRemoteSignaturesCount} pend. remota • {dualSignedReturnsCount} dupla assin.
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                {registeredReturnsCount} reg. · {pendingRemoteSignaturesCount} pend. remota · {dualSignedReturnsCount} dupla
               </p>
             </div>
 
-            <div className="bg-[#F8FAFC] dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-1.5">
-              <div className="flex items-start justify-between gap-2">
-                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 leading-snug">
-                  Taxa de Restituição (Concluídas)
-                </span>
-                <CheckCircle2 className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0" />
-              </div>
-              <p className="text-2xl sm:text-3xl font-bold text-[#16845B] dark:text-emerald-400 tracking-tight tabular-nums">
+            <div className="space-y-0.5">
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
+                Taxa de Restituição
+              </span>
+              <p className="text-xl sm:text-2xl font-bold text-[#16845B] dark:text-emerald-400 tracking-tight tabular-nums">
                 {successRate}%
               </p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed tabular-nums">
-                {pendingStaffAttestationCount} aguardando atestação do servidor
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
+                {pendingStaffAttestationCount} aguardando servidor
               </p>
             </div>
           </div>
         )}
-      </SurfaceCard>
+      </header>
 
       {/* ========================================================================= */}
       {/* 1. MÓDULO ALUNO (Discente) */}
       {/* ========================================================================= */}
       {activeDashboardRole === "ALUNO" && (
-        <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-0">
-            <SurfaceCard padding="md" className="space-y-2">
-              <div className="flex items-center justify-between text-slate-500">
-                <span className="text-xs font-bold uppercase tracking-wider">Minhas Ocorrências</span>
-                <PackageSearch className="w-5 h-5 text-[#16845B]" />
-              </div>
-              <p className="text-3xl font-bold text-[#172B2A] dark:text-white tabular-nums">
+        <div className="space-y-6">
+          <div className="grid grid-cols-3 gap-3 py-3 border-b border-slate-200/80 dark:border-slate-800">
+            <div>
+              <p className="text-xl sm:text-2xl font-bold text-[#0F172A] dark:text-white tabular-nums">
                 {items.filter((i) => i.registeredByUserId === currentUser.id).length}
               </p>
-              <p className="text-xs text-slate-500">Itens cadastrados por você</p>
-            </SurfaceCard>
+              <p className="text-[11px] text-slate-500">Minhas ocorrências</p>
+            </div>
 
-            <SurfaceCard padding="md" className="space-y-2">
-              <div className="flex items-center justify-between text-slate-500">
-                <span className="text-xs font-bold uppercase tracking-wider">Solicitações Enviadas</span>
-                <Clock className="w-5 h-5 text-amber-500" />
-              </div>
-              <p className="text-3xl font-bold text-[#172B2A] dark:text-white tabular-nums">
+            <div>
+              <p className="text-xl sm:text-2xl font-bold text-[#0F172A] dark:text-white tabular-nums">
                 {claims.filter((c) => c.claimerId === currentUser.id).length}
               </p>
-              <p className="text-xs text-slate-500">Reivindicações de titularidade</p>
-            </SurfaceCard>
+              <p className="text-[11px] text-slate-500">Solicitações</p>
+            </div>
 
-            <SurfaceCard padding="md" className="space-y-2">
-              <div className="flex items-center justify-between text-slate-500">
-                <span className="text-xs font-bold uppercase tracking-wider">Selo de Cidadania</span>
-                <CheckCircle2 className="w-5 h-5 text-[#16845B]" />
-              </div>
-              <p className="text-3xl font-bold text-[#16845B] tabular-nums">
+            <div>
+              <p className="text-xl sm:text-2xl font-bold text-[#16845B] tabular-nums">
                 {currentUser.reputationScore || 10} pts
               </p>
-              <p className="text-xs text-slate-500">Nível: Aluno Cidadão Exemplar</p>
-            </SurfaceCard>
+              <p className="text-[11px] text-slate-500">Cidadania</p>
+            </div>
           </div>
 
-          <SurfaceCard padding="lg" className="space-y-4">
+          <div className="space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <h2 className="text-base font-bold text-[#172B2A] dark:text-white">
+              <h2 className="text-sm font-bold text-[#0F172A] dark:text-white">
                 Seus Objetos e Ocorrências Vinculadas
               </h2>
               {((currentUser.role === "SERVIDOR" && currentUser.approvalStatus === "APROVADO") ||
-                currentUser.role === "ADMIN") ? (
+                currentUser.role === "ADMIN") && (
                 <button
                   onClick={() => requestAuthForRegistration()}
-                  className="px-4 py-2 rounded-xl bg-[#16845B] text-white text-xs font-bold hover:bg-[#064E3B] transition-colors cursor-pointer"
+                  className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-[#16845B] text-white text-xs font-semibold hover:bg-[#126B49] transition-colors cursor-pointer"
                 >
-                  + Registrar Novo Item
+                  + Registrar Objeto
                 </button>
-              ) : (
-                <UIBadge tone="emerald">Acompanhamento Discente</UIBadge>
               )}
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+            {/* Mobile Stacked List for Student Items */}
+            <div className="md:hidden divide-y divide-slate-200/80 dark:divide-slate-800 border-y border-slate-200/80 dark:border-slate-800">
+              {items.filter((i) => i.registeredByUserId === currentUser.id).length === 0 ? (
+                <p className="py-8 text-center text-xs text-slate-500">
+                  Você ainda não cadastrou nenhum objeto.
+                </p>
+              ) : (
+                items
+                  .filter((i) => i.registeredByUserId === currentUser.id)
+                  .map((item) => (
+                    <div key={item.id} className="py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-[#0F172A] dark:text-white truncate">
+                          {item.title}
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          {item.type} · {item.status} · {formatDate(item.date)}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => setSelectedItemForDetail(item)}
+                        className="min-h-[36px] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 shrink-0 cursor-pointer"
+                      >
+                        Detalhes
+                      </button>
+                    </div>
+                  ))
+              )}
+            </div>
+
+            {/* Desktop Table for Student Items */}
+            <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#F8FAFC] dark:bg-slate-800 text-slate-500 uppercase font-bold text-[10px] border-b border-slate-200 dark:border-slate-800">
                   <tr>
@@ -1208,22 +1186,20 @@ export const DashboardView: React.FC = () => {
                 </tbody>
               </table>
             </div>
-          </SurfaceCard>
+          </div>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 2 & 3. WORKSPACE UNIFICADO COM SIDEBAR: PAINEL DO SERVIDOR & PAINEL ADMIN */}
+      {/* 2 & 3. WORKSPACE UNIFICADO: PAINEL DO SERVIDOR & PAINEL ADMIN */}
       {/* ========================================================================= */}
       {(activeDashboardRole === "ADMIN" || activeDashboardRole === "SERVIDOR") && (
-        <div className="animate-in fade-in duration-200">
+        <div>
           {currentUser.role !== "ADMIN" && currentUser.role !== "SERVIDOR" ? (
-            <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-8 text-center space-y-4">
-              <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-500 flex items-center justify-center mx-auto">
-                <Lock className="w-6 h-6" />
-              </div>
+            <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-6 text-center space-y-3">
+              <Lock className="w-5 h-5 text-rose-500 mx-auto" />
               <div className="space-y-1">
-                <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
+                <h3 className="text-sm font-bold text-[#0F172A] dark:text-white">
                   Acesso Restrito
                 </h3>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
@@ -1232,256 +1208,186 @@ export const DashboardView: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col lg:flex-row gap-6 items-start">
-              {/* NAVEGAÇÃO LATERAL (SIDEBAR DESKTOP + BARRA MOBILE ADAPTADA) */}
+            <div className="flex flex-col lg:flex-row gap-5 items-start">
+              {/* NAVEGAÇÃO DISCRETA (FAIXA HORIZONTAL NO MOBILE + LISTA LATERAL NO DESKTOP) */}
               <aside
                 aria-label={
                   activeDashboardRole === "SERVIDOR"
                     ? "Navegação do Painel do Servidor"
                     : "Navegação do Painel Administrativo"
                 }
-                className="w-full lg:w-64 shrink-0 lg:sticky lg:top-20 space-y-4"
+                className="w-full lg:w-56 shrink-0 lg:sticky lg:top-18 lg:pr-4 lg:border-r border-slate-200/80 dark:border-slate-800"
               >
-                <SurfaceCard padding="sm" className="space-y-4">
-                  {activeDashboardRole === "SERVIDOR" ? (
-                    /* MENU DO PAINEL DO SERVIDOR (Operacional, rápido e claro) */
-                    <div className="space-y-3">
-                      <div className="px-2.5 pt-1 flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                          Módulos do Servidor
-                        </span>
-                        <UIBadge tone="emerald">Portaria / SEPAE</UIBadge>
-                      </div>
-
-                      <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
-                        {[
-                          {
-                            id: "server_overview",
-                            label: "Visão Geral & Custódia",
-                            icon: PackageCheck,
-                            badge: inAnalysisCount,
-                          },
-                          {
-                            id: "claims",
-                            label: "Solicitações de Recuperação",
-                            icon: ShieldCheck,
-                            badge: pendingClaimsCount,
-                          },
-                          {
-                            id: "pending_signatures",
-                            label: "Confirmações de Entrega",
-                            icon: FileSignature,
-                            badge: pendingSignaturesCount,
-                          },
-                          {
-                            id: "custody_reminders",
-                            label: "Prazos de Guarda (+90d)",
-                            icon: Clock,
-                            badge: itemsOver90DaysCount,
-                          },
-                          {
-                            id: "digital_returns",
-                            label: "Devoluções Digitais (D3)",
-                            icon: FileCheck2,
-                            badge: digitalReturnedItemsCount,
-                          },
-                          {
-                            id: "server_analytics",
-                            label: "Relatórios & Estatísticas",
-                            icon: TrendingUp,
-                            badge: 0,
-                          },
-                        ].map((item) => {
-                          const Icon = item.icon;
-                          const isActive = adminSubTab === item.id;
-                          return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              onClick={() => {
-                                vibrateClick();
-                                setAdminSubTab(item.id as any);
-                              }}
-                              className={`px-3 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-between gap-2 cursor-pointer whitespace-nowrap lg:whitespace-normal text-left ${
-                                isActive
-                                  ? "bg-[#16845B] text-white shadow-2xs font-bold"
-                                  : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-[#F8FAFC] dark:hover:bg-slate-800/70"
-                              }`}
-                            >
-                              <span className="flex items-center gap-2.5 min-w-0">
-                                <Icon className="w-4 h-4 shrink-0" />
-                                <span className="leading-snug">{item.label}</span>
-                              </span>
-                              {item.badge > 0 && (
-                                <span
-                                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold tabular-nums shrink-0 ${
-                                    isActive
-                                      ? "bg-white/20 text-white"
-                                      : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
-                                  }`}
-                                >
-                                  {item.badge}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </nav>
-
-                      {/* Ações Rápidas de Atendimento na Sidebar do Servidor */}
-                      <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2 hidden lg:block">
-                        <span className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                          Atendimento Rápido
-                        </span>
-                        <UIButton
-                          type="button"
-                          variant="primary"
-                          size="sm"
-                          onClick={() => setQrScannerOpen(true)}
-                          className="w-full justify-start"
-                        >
-                          <QrCode className="w-3.5 h-3.5" />
-                          <span>Escanear Etiqueta QR</span>
-                        </UIButton>
-                        <UIButton
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => requestAuthForRegistration()}
-                          className="w-full justify-start"
-                        >
-                          <PackageSearch className="w-3.5 h-3.5 text-[#16845B]" />
-                          <span>Registrar Novo Item</span>
-                        </UIButton>
-                      </div>
-                    </div>
-                  ) : (
-                    /* MENU DO PAINEL ADMINISTRATIVO (Agrupado com hierarquia clara) */
-                    <div className="space-y-4">
+                {activeDashboardRole === "SERVIDOR" ? (
+                  /* MENU DO PAINEL DO SERVIDOR */
+                  <div className="space-y-3">
+                    <nav className="flex lg:flex-col gap-1 overflow-x-auto no-scrollbar pb-1 lg:pb-0 border-b lg:border-b-0 border-slate-200/80 dark:border-slate-800">
                       {[
                         {
-                          groupTitle: "Usuários & Acesso",
+                          id: "server_overview",
+                          label: "Custódia & Atendimento",
+                          badge: inAnalysisCount,
+                        },
+                        {
+                          id: "claims",
+                          label: "Solicitações",
+                          badge: pendingClaimsCount,
+                        },
+                        {
+                          id: "pending_signatures",
+                          label: "Assinaturas",
+                          badge: pendingSignaturesCount,
+                        },
+                        {
+                          id: "custody_reminders",
+                          label: "Prazos (+90d)",
+                          badge: itemsOver90DaysCount,
+                        },
+                        {
+                          id: "digital_returns",
+                          label: "Devoluções (D3)",
+                          badge: digitalReturnedItemsCount,
+                        },
+                        {
+                          id: "server_analytics",
+                          label: "Relatórios",
+                          badge: 0,
+                        },
+                      ].map((item) => {
+                        const isActive = adminSubTab === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              vibrateClick();
+                              setAdminSubTab(item.id as any);
+                            }}
+                            className={`min-h-[38px] px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-between gap-2 cursor-pointer whitespace-nowrap lg:whitespace-normal text-left ${
+                              isActive
+                                ? "bg-[#16845B] text-white font-semibold"
+                                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/70"
+                            }`}
+                          >
+                            <span>{item.label}</span>
+                            {item.badge > 0 && (
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tabular-nums shrink-0 ${
+                                  isActive
+                                    ? "bg-white/20 text-white"
+                                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                                }`}
+                              >
+                                {item.badge}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </nav>
+                  </div>
+                ) : (
+                  /* MENU DO PAINEL ADMINISTRATIVO */
+                  <div className="space-y-3">
+                    {/* Mobile Single Horizontal Strip for Admin Tabs */}
+                    <nav className="flex lg:hidden gap-1 overflow-x-auto no-scrollbar pb-2 border-b border-slate-200/80 dark:border-slate-800">
+                      {[
+                        { id: "users", label: "Usuários & Objetos", badge: allUsers.length },
+                        { id: "accounts", label: "Contas", badge: 0 },
+                        {
+                          id: "approvals",
+                          label: "Aprovações",
+                          badge: (allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length,
+                        },
+                        { id: "claims", label: "Solicitações", badge: pendingClaimsCount },
+                        { id: "pending_signatures", label: "Assinaturas", badge: pendingSignaturesCount },
+                        { id: "custody_reminders", label: "Prazos +90d", badge: itemsOver90DaysCount },
+                        { id: "digital_returns", label: "Devoluções D3", badge: digitalReturnedItemsCount },
+                        { id: "server_overview", label: "Guarita", badge: inAnalysisCount },
+                        { id: "audit", label: "Auditoria", badge: 0 },
+                        { id: "health", label: "Saúde", badge: 0 },
+                        { id: "backups", label: "Backups", badge: 0 },
+                        { id: "server_analytics", label: "Relatórios", badge: 0 },
+                        { id: "documents", label: "PDFs", badge: 0 },
+                        { id: "project_settings", label: "Configurações", badge: 0 },
+                        { id: "test_batteries", label: "QA", badge: 0 },
+                        { id: "test_distribution", label: "Distribuição QA", badge: 0 },
+                        { id: "versions", label: "Versões", badge: 0 },
+                      ].map((navItem) => {
+                        const isActive = adminSubTab === navItem.id;
+                        return (
+                          <button
+                            key={navItem.id}
+                            type="button"
+                            onClick={() => {
+                              vibrateClick();
+                              setAdminSubTab(navItem.id as any);
+                            }}
+                            className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap flex items-center gap-1.5 transition-colors cursor-pointer ${
+                              isActive
+                                ? "bg-[#16845B] text-white font-semibold"
+                                : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400"
+                            }`}
+                          >
+                            <span>{navItem.label}</span>
+                            {navItem.badge > 0 && (
+                              <span
+                                className={`px-1.5 py-0.2 rounded text-[10px] font-semibold tabular-nums ${
+                                  isActive
+                                    ? "bg-white/20 text-white"
+                                    : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300"
+                                }`}
+                              >
+                                {navItem.badge}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </nav>
+
+                    {/* Desktop Grouped Sidebar Navigation */}
+                    <div className="hidden lg:block space-y-3">
+                      {[
+                        {
+                          groupTitle: "Acesso",
                           items: [
-                            {
-                              id: "users",
-                              label: "Usuários, Permissões & Objetos",
-                              icon: Users,
-                              badge: allUsers.length,
-                            },
-                            {
-                              id: "accounts",
-                              label: "Status de Contas",
-                              icon: ShieldAlert,
-                              badge: 0,
-                            },
+                            { id: "users", label: "Usuários & Objetos", badge: allUsers.length },
+                            { id: "accounts", label: "Status de Contas", badge: 0 },
                             {
                               id: "approvals",
                               label: "Aprovações (@ifpr)",
-                              icon: GraduationCap,
-                              badge: (allUsers || []).filter(
-                                (u) => u && u.approvalStatus === "PENDENTE"
-                              ).length,
+                              badge: (allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length,
                             },
                           ],
                         },
                         {
-                          groupTitle: "Custódia & Devoluções",
+                          groupTitle: "Custódia",
                           items: [
-                            {
-                              id: "claims",
-                              label: "Solicitações de Devolução",
-                              icon: ShieldCheck,
-                              badge: pendingClaimsCount,
-                            },
-                            {
-                              id: "pending_signatures",
-                              label: "Assinaturas Pendentes",
-                              icon: FileSignature,
-                              badge: pendingSignaturesCount,
-                            },
-                            {
-                              id: "custody_reminders",
-                              label: "Lembretes (+90 Dias)",
-                              icon: AlertTriangle,
-                              badge: itemsOver90DaysCount,
-                            },
-                            {
-                              id: "digital_returns",
-                              label: "Devoluções Digitais (D3)",
-                              icon: FileCheck2,
-                              badge: digitalReturnedItemsCount,
-                            },
-                            {
-                              id: "server_overview",
-                              label: "Recepção & Guarita",
-                              icon: PackageCheck,
-                              badge: inAnalysisCount,
-                            },
+                            { id: "claims", label: "Solicitações", badge: pendingClaimsCount },
+                            { id: "pending_signatures", label: "Assinaturas Pendentes", badge: pendingSignaturesCount },
+                            { id: "custody_reminders", label: "Prazos (+90 Dias)", badge: itemsOver90DaysCount },
+                            { id: "digital_returns", label: "Devoluções Digitais", badge: digitalReturnedItemsCount },
+                            { id: "server_overview", label: "Recepção & Guarita", badge: inAnalysisCount },
                           ],
                         },
                         {
-                          groupTitle: "Auditoria, Saúde & Backups",
+                          groupTitle: "Sistema",
                           items: [
-                            {
-                              id: "audit",
-                              label: "Logs de Auditoria",
-                              icon: History,
-                              badge: 0,
-                            },
-                            {
-                              id: "health",
-                              label: "Saúde do Sistema",
-                              icon: Activity,
-                              badge: 0,
-                            },
-                            {
-                              id: "backups",
-                              label: "Backups & Segurança",
-                              icon: HardDrive,
-                              badge: 0,
-                            },
-                          ],
-                        },
-                        {
-                          groupTitle: "Relatórios, Config & QA",
-                          items: [
-                            {
-                              id: "server_analytics",
-                              label: "Relatórios & Estatísticas",
-                              icon: TrendingUp,
-                              badge: 0,
-                            },
-                            {
-                              id: "documents",
-                              label: "Documentos PDF",
-                              icon: FileText,
-                              badge: 0,
-                            },
-                            {
-                              id: "project_settings",
-                              label: "Configurações do Sistema",
-                              icon: Settings,
-                              badge: 0,
-                            },
-                            {
-                              id: "test_batteries",
-                              label: "Bateria de Testes QA",
-                              icon: ShieldCheck,
-                              badge: 0,
-                            },
+                            { id: "audit", label: "Logs de Auditoria", badge: 0 },
+                            { id: "health", label: "Saúde do Sistema", badge: 0 },
+                            { id: "backups", label: "Backups & Segurança", badge: 0 },
+                            { id: "server_analytics", label: "Relatórios", badge: 0 },
+                            { id: "documents", label: "Documentos PDF", badge: 0 },
+                            { id: "project_settings", label: "Configurações", badge: 0 },
+                            { id: "test_batteries", label: "Bateria de Testes QA", badge: 0 },
                             {
                               id: "test_distribution",
                               domId: "btn-tab-test-distribution",
                               label: "Distribuição de Testes",
-                              icon: Shuffle,
                               badge: 0,
                             },
-                            {
-                              id: "versions",
-                              label: "Versões & Changelog",
-                              icon: GitBranch,
-                              badge: 0,
-                            },
+                            { id: "versions", label: "Versões & Changelog", badge: 0 },
                           ],
                         },
                       ].map((group) => (
@@ -1489,9 +1395,8 @@ export const DashboardView: React.FC = () => {
                           <span className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
                             {group.groupTitle}
                           </span>
-                          <div className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
+                          <div className="flex flex-col gap-0.5">
                             {group.items.map((navItem) => {
-                              const Icon = navItem.icon;
                               const isActive = adminSubTab === navItem.id;
                               return (
                                 <button
@@ -1502,22 +1407,19 @@ export const DashboardView: React.FC = () => {
                                     vibrateClick();
                                     setAdminSubTab(navItem.id as any);
                                   }}
-                                  className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-between gap-2 cursor-pointer whitespace-nowrap lg:whitespace-normal text-left ${
+                                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center justify-between gap-2 cursor-pointer text-left ${
                                     isActive
-                                      ? "bg-[#16845B] text-white shadow-2xs font-bold"
-                                      : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-[#F8FAFC] dark:hover:bg-slate-800/70"
+                                      ? "bg-[#16845B] text-white font-semibold"
+                                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/70"
                                   }`}
                                 >
-                                  <span className="flex items-center gap-2 min-w-0">
-                                    <Icon className="w-3.5 h-3.5 shrink-0" />
-                                    <span className="leading-snug">{navItem.label}</span>
-                                  </span>
+                                  <span className="truncate">{navItem.label}</span>
                                   {navItem.badge > 0 && (
                                     <span
-                                      className={`px-1.5 py-0.2 rounded-md text-[10px] font-bold tabular-nums shrink-0 ${
+                                      className={`px-1.5 py-0.2 rounded text-[10px] font-semibold tabular-nums shrink-0 ${
                                         isActive
                                           ? "bg-white/20 text-white"
-                                          : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                                          : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
                                       }`}
                                     >
                                       {navItem.badge}
@@ -1529,294 +1431,306 @@ export const DashboardView: React.FC = () => {
                           </div>
                         </div>
                       ))}
+                    </div>
 
-                      {/* Ações Administrativas Rápidas na Sidebar */}
-                      <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
-                        <span className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                          Ações Administrativas
-                        </span>
-                        <div className="flex flex-wrap lg:flex-col gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setIsAddingUserOpen(true)}
-                            className="px-3 py-2 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer"
-                          >
-                            <UserCheck className="w-3.5 h-3.5" />
-                            <span>+ Cadastrar Usuário</span>
-                          </button>
+                    {/* Ações Administrativas Rápidas */}
+                    <div className="pt-2 lg:pt-3 border-t border-slate-200/80 dark:border-slate-800">
+                      <div className="flex flex-wrap lg:flex-col gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingUserOpen(true)}
+                          className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#16845B] hover:bg-[#126B49] text-white text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <span>+ Cadastrar Usuário</span>
+                        </button>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              vibrateClick();
-                              const firstStudent =
-                                (allUsers || []).find((u) => u && u.role === "ALUNO") ||
-                                allUsers[0];
-                              setNotifyModalUser(firstStudent || null);
-                              setIsBroadcastNotification(false);
-                              setNotifyTitle("Aviso Institucional - Achados e Perdidos");
-                              setNotifyMessage(
-                                "Olá! Informamos que há uma atualização referente aos seus registros no sistema do IFPR."
-                              );
-                              setNotifyRelatedItemId("");
-                            }}
-                            className="px-3 py-2 rounded-xl bg-[#F8FAFC] dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-[#172B2A] dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer"
-                          >
-                            <Send className="w-3.5 h-3.5 text-[#16845B]" />
-                            <span>Notificar Alunos</span>
-                          </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            vibrateClick();
+                            const firstStudent =
+                              (allUsers || []).find((u) => u && u.role === "ALUNO") ||
+                              allUsers[0];
+                            setNotifyModalUser(firstStudent || null);
+                            setIsBroadcastNotification(false);
+                            setNotifyTitle("Aviso Institucional - Achados e Perdidos");
+                            setNotifyMessage(
+                              "Olá! Informamos que há uma atualização referente aos seus registros no sistema do IFPR."
+                            );
+                            setNotifyRelatedItemId("");
+                          }}
+                          className="min-h-[36px] px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <span>Notificar Alunos</span>
+                        </button>
 
-                          <button
-                            type="button"
-                            onClick={toggleMaintenanceMode}
-                            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer border ${
-                              maintenanceMode
-                                ? "bg-amber-500 text-black border-amber-600 font-bold"
-                                : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
-                            }`}
-                          >
-                            <ShieldAlert className="w-3.5 h-3.5" />
-                            <span>
-                              {maintenanceMode
-                                ? "Manutenção Ativa"
-                                : "Modo Manutenção"}
-                            </span>
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={toggleMaintenanceMode}
+                          className={`min-h-[36px] px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer border ${
+                            maintenanceMode
+                              ? "bg-amber-500 text-black border-amber-600 font-semibold"
+                              : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50"
+                          }`}
+                        >
+                          <span>
+                            {maintenanceMode ? "Manutenção Ativa" : "Modo Manutenção"}
+                          </span>
+                        </button>
                       </div>
                     </div>
-                  )}
-                </SurfaceCard>
+                  </div>
+                )}
               </aside>
 
               {/* ÁREA PRINCIPAL DE CONTEÚDO DO PAINEL */}
               <div className="flex-1 min-w-0 w-full space-y-6">
                 {/* SEÇÃO: PAINEL DO SERVIDOR — VISÃO GERAL, PENDÊNCIAS PRIORITÁRIAS E OBJETOS SOB CUSTÓDIA */}
                 {adminSubTab === "server_overview" && (
-                  <div className="space-y-6 animate-in fade-in duration-200">
-                    {/* 1. Pendências Prioritárias & Ferramentas Rápidas de Atendimento */}
+                  <div className="space-y-6">
+                    {/* 1. Pendências Prioritárias & Ações Rápidas */}
                     <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
                       {/* Pendências Prioritárias */}
-                      <SurfaceCard padding="md" className="xl:col-span-7 space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                          <div>
-                            <h2 className="text-base font-bold text-[#172B2A] dark:text-white">
-                              Pendências Prioritárias do Atendimento
-                            </h2>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">
-                              Tarefas operacionais que aguardam conferência ou assinatura da equipe
-                            </p>
-                          </div>
-                          <UIBadge tone="emerald">Tempo Real</UIBadge>
+                      <div className="xl:col-span-7 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 bg-white dark:bg-slate-900 space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                          <h2 className="text-sm font-bold text-[#0F172A] dark:text-white">
+                            Pendências do Atendimento
+                          </h2>
+                          <span className="text-[11px] font-medium text-[#16845B] dark:text-emerald-400">
+                            Tempo Real
+                          </span>
                         </div>
 
                         <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                          <div className="py-3 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/70 dark:border-amber-800/50 shrink-0">
-                                <ShieldCheck className="w-4 h-4" />
-                              </div>
-                              <div>
-                                <p className="font-bold text-[#172B2A] dark:text-white">
-                                  Solicitações de Recuperação Pendentes ({pendingClaimsCount})
-                                </p>
-                                <p className="text-[11px] text-slate-500">
-                                  Reivindicações aguardando análise documental de titularidade
-                                </p>
-                              </div>
+                          <div className="py-2.5 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-[#0F172A] dark:text-white">
+                                Solicitações de Recuperação ({pendingClaimsCount})
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                Aguardando análise documental de titularidade
+                              </p>
                             </div>
-                            <UIButton
+                            <button
                               type="button"
-                              variant="secondary"
-                              size="sm"
                               onClick={() => setAdminSubTab("claims")}
+                              className="min-h-[36px] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0 cursor-pointer"
                             >
-                              <span>Analisar</span>
-                            </UIButton>
+                              Analisar
+                            </button>
                           </div>
 
-                          <div className="py-3 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="p-2 rounded-lg bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/20 shrink-0">
-                                <FileSignature className="w-4 h-4" />
-                              </div>
-                              <div>
-                                <p className="font-bold text-[#172B2A] dark:text-white">
-                                  Confirmações de Entrega / Assinatura ({pendingSignaturesCount})
-                                </p>
-                                <p className="text-[11px] text-slate-500">
-                                  Termos assinados pelo recebedor que aguardam atestação do servidor
-                                </p>
-                              </div>
+                          <div className="py-2.5 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-[#0F172A] dark:text-white">
+                                Confirmações de Entrega ({pendingSignaturesCount})
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                Termos que aguardam atestação do servidor
+                              </p>
                             </div>
-                            <UIButton
+                            <button
                               type="button"
-                              variant="secondary"
-                              size="sm"
                               onClick={() => setAdminSubTab("pending_signatures")}
+                              className="min-h-[36px] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0 cursor-pointer"
                             >
-                              <span>Atestar</span>
-                            </UIButton>
+                              Atestar
+                            </button>
                           </div>
 
-                          <div className="py-3 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="p-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200/70 dark:border-rose-800/50 shrink-0">
-                                <Clock className="w-4 h-4" />
-                              </div>
-                              <div>
-                                <p className="font-bold text-[#172B2A] dark:text-white">
-                                  Alertas de Prazo de Armazenamento ({deadlineAlertItems.length})
-                                </p>
-                                <p className="text-[11px] text-slate-500">
-                                  {expiredItems.length} vencidos (+90 dias) • {nearExpirationItems.length} próximos do vencimento
-                                </p>
-                              </div>
+                          <div className="py-2.5 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-[#0F172A] dark:text-white">
+                                Prazos de Guarda +90d ({deadlineAlertItems.length})
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                {expiredItems.length} vencidos · {nearExpirationItems.length} próximos
+                              </p>
                             </div>
-                            <UIButton
+                            <button
                               type="button"
-                              variant="secondary"
-                              size="sm"
                               onClick={() => setAdminSubTab("custody_reminders")}
+                              className="min-h-[36px] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0 cursor-pointer"
                             >
-                              <span>Ver Prazos</span>
-                            </UIButton>
+                              Ver Prazos
+                            </button>
                           </div>
                         </div>
-                      </SurfaceCard>
+                      </div>
 
                       {/* Ferramentas Rápidas de Atendimento */}
-                      <SurfaceCard padding="md" className="xl:col-span-5 space-y-4">
-                        <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
-                          <h2 className="text-base font-bold text-[#172B2A] dark:text-white">
-                            Ferramentas Rápidas de Atendimento
+                      <div className="xl:col-span-5 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 bg-white dark:bg-slate-900 space-y-3">
+                        <div className="border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                          <h2 className="text-sm font-bold text-[#0F172A] dark:text-white">
+                            Ações Rápidas de Balcão
                           </h2>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            Ações diretas para balcão da Portaria Principal e SEPAE/SEBAC
-                          </p>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                          <UIButton
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
                             type="button"
-                            variant="primary"
-                            size="md"
                             onClick={() => setQrScannerOpen(true)}
-                            className="justify-start"
+                            className="min-h-[42px] px-3 py-2 rounded-lg bg-[#16845B] hover:bg-[#126B49] text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                           >
                             <QrCode className="w-4 h-4 shrink-0" />
-                            <span>Ler Etiqueta QR</span>
-                          </UIButton>
+                            <span>Ler QR Code</span>
+                          </button>
 
-                          <UIButton
+                          <button
                             type="button"
-                            variant="secondary"
-                            size="md"
                             onClick={() => requestAuthForRegistration()}
-                            className="justify-start"
+                            className="min-h-[42px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                           >
-                            <PackageSearch className="w-4 h-4 text-[#16845B] shrink-0" />
-                            <span>Registrar Objeto</span>
-                          </UIButton>
+                            <span>+ Registrar Objeto</span>
+                          </button>
 
-                          <UIButton
+                          <button
                             type="button"
-                            variant="secondary"
-                            size="md"
                             onClick={() => {
                               vibrateClick();
                               setIsExportFoundModalOpen(true);
                             }}
                             aria-label="Abrir modal para emitir Relatório de Prestação de Contas de Itens Encontrados em PDF"
-                            className="justify-start"
+                            className="min-h-[40px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium inline-flex items-center justify-center gap-1.5 cursor-pointer"
                           >
-                            <FileText className="w-4 h-4 text-[#16845B] shrink-0" />
                             <span>Relatório SEBAC (PDF)</span>
-                          </UIButton>
+                          </button>
 
-                          <UIButton
+                          <button
                             type="button"
-                            variant="secondary"
-                            size="md"
                             onClick={handleExportPendingItemsPDF}
                             aria-label="Exportar Relatório em PDF contendo a listagem de objetos pendentes"
-                            className="justify-start"
+                            className="min-h-[40px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium inline-flex items-center justify-center gap-1.5 cursor-pointer"
                           >
-                            <Download className="w-4 h-4 text-[#16845B] shrink-0" />
                             <span>Pendentes (PDF)</span>
-                          </UIButton>
+                          </button>
 
-                          <UIButton
+                          <button
                             type="button"
-                            variant="outline"
-                            size="md"
                             onClick={handleExportItemsCSV}
                             aria-label="Exportar todos os dados em formato CSV para a Secretaria"
-                            className="sm:col-span-2 justify-center"
+                            className="col-span-2 min-h-[40px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium inline-flex items-center justify-center gap-1.5 cursor-pointer"
                           >
-                            <FileSpreadsheet className="w-4 h-4 text-[#16845B] shrink-0" />
-                            <span>Exportar Base Completa para Secretaria (CSV)</span>
-                          </UIButton>
+                            <span>Exportar Base Completa (CSV)</span>
+                          </button>
                         </div>
-                      </SurfaceCard>
+                      </div>
                     </div>
 
                     {/* 2. Objetos sob Responsabilidade — Recepção e Custódia na Guarita / Secretaria */}
-                    <SurfaceCard padding="lg" className="space-y-5">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2.5 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/15">
-                            <PackageCheck className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <h3 className="text-base font-bold text-[#172B2A] dark:text-white flex items-center gap-2">
-                              <span>Objetos sob Responsabilidade (Guarita / Secretaria)</span>
-                              <UIBadge tone="blue">{items.length} Registros</UIBadge>
-                            </h3>
-                            <p className="text-xs text-slate-500">
-                              Confirmação presencial de chegada, guarda física, custódia e formalização de devoluções no campus.
-                            </p>
-                          </div>
+                    <div className="space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 dark:border-slate-800 pb-3">
+                        <div>
+                          <h3 className="text-sm sm:text-base font-bold text-[#0F172A] dark:text-white">
+                            Objetos sob Custódia ({items.length})
+                          </h3>
+                          <p className="text-xs text-slate-500">
+                            Confirmação presencial de chegada, guarda física e formalização de devoluções.
+                          </p>
                         </div>
                       </div>
 
                       {/* Filtros e Busca Rápida */}
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
                           {["TODOS", "PERDIDO", "ENCONTRADO", "EM_ANALISE", "DEVOLVIDO"].map((st) => (
                             <button
                               key={st}
                               type="button"
                               onClick={() => setServerFilterStatus(st)}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
+                              className={`min-h-[34px] px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
                                 serverFilterStatus === st
-                                  ? "bg-[#16845B] text-white border-[#16845B] shadow-2xs"
-                                  : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
+                                  ? "bg-[#16845B] text-white font-semibold"
+                                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200/70"
                               }`}
                             >
                               {st === "TODOS"
-                                ? "Todos os Objetos"
+                                ? "Todos"
                                 : st === "EM_ANALISE"
-                                ? "Em Análise / Custódia"
+                                ? "Em Custódia"
                                 : st}
                             </button>
                           ))}
                         </div>
 
-                        <div className="relative min-w-[240px]">
+                        <div className="relative w-full sm:w-64">
                           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                           <input
                             type="text"
                             value={tableSearch}
                             onChange={(e) => setTableSearch(e.target.value)}
-                            placeholder="Buscar objeto, categoria ou local..."
-                            className="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:ring-2 focus:ring-[#16845B]"
+                            placeholder="Buscar objeto ou local..."
+                            className="w-full h-9 pl-9 pr-3 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-[#0F172A] dark:text-white outline-none focus:border-[#16845B]"
                           />
                         </div>
                       </div>
 
-                      {/* Tabela Limpa de Objetos */}
-                      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                      {/* Lista Mobile Empilhada (Evita tabelas largas no celular) */}
+                      <div className="md:hidden divide-y divide-slate-200/80 dark:divide-slate-800 border-y border-slate-200/80 dark:border-slate-800">
+                        {items
+                          .filter((it) => {
+                            if (serverFilterStatus !== "TODOS" && it.status !== serverFilterStatus)
+                              return false;
+                            if (tableSearch) {
+                              const s = tableSearch.toLowerCase();
+                              return (
+                                (it.title || "").toLowerCase().includes(s) ||
+                                (it.location || "").toLowerCase().includes(s) ||
+                                (it.category || "").toLowerCase().includes(s)
+                              );
+                            }
+                            return true;
+                          })
+                          .slice(0, 15)
+                          .map((it) => (
+                            <div key={it.id} className="py-3 space-y-2.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="text-xs font-semibold text-[#0F172A] dark:text-white truncate">
+                                    {it.title}
+                                  </p>
+                                  <p className="text-[11px] text-slate-500 truncate">
+                                    {it.status} · {it.location || "Campus IFPR"} · {formatDate(it.createdAt)}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                                  #{String(it.id).slice(0, 6)}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {it.status !== "EM_ANALISE" && it.status !== "DEVOLVIDO" && it.status !== "ENCERRADO" && (
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      try {
+                                        await updateItemStatus(it.id, "EM_ANALISE");
+                                        addToast(
+                                          `Chegada do objeto "${it.title}" confirmada sob custódia na Guarita!`,
+                                          "success"
+                                        );
+                                      } catch (err) {
+                                        console.error("[DashboardView] Falha ao confirmar chegada do objeto:", err);
+                                      }
+                                    }}
+                                    className="flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 text-xs font-semibold cursor-pointer"
+                                  >
+                                    Confirmar Chegada
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedItemForDetail(it)}
+                                  className="flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-[#16845B] text-white text-xs font-semibold cursor-pointer"
+                                >
+                                  Ver / Devolver
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+
+                      {/* Tabela Desktop Limpa de Objetos */}
+                      <div className="hidden md:block overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
                         <table className="w-full text-left text-xs">
                           <thead className="bg-[#F8FAFC] dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 uppercase text-[10px] font-bold">
                             <tr>
@@ -1897,7 +1811,7 @@ export const DashboardView: React.FC = () => {
                                   </td>
                                   <td className="py-3 px-4 text-right">
                                     <div className="flex items-center justify-end gap-1.5">
-                                      {it.status !== "EM_ANALISE" && it.status !== "DEVOLVIDO" && (
+                                      {it.status !== "EM_ANALISE" && it.status !== "DEVOLVIDO" && it.status !== "ENCERRADO" && (
                                         <button
                                           type="button"
                                           onClick={async () => {
@@ -1907,7 +1821,9 @@ export const DashboardView: React.FC = () => {
                                                 `Chegada do objeto "${it.title}" confirmada sob custódia na Guarita!`,
                                                 "success"
                                               );
-                                            } catch (_) {}
+                                            } catch (err) {
+                                              console.error("[DashboardView] Falha ao confirmar chegada do objeto:", err);
+                                            }
                                           }}
                                           className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-600 text-amber-800 hover:text-white dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap"
                                           title="Confirmar que o objeto foi recebido fisicamente na guarita / secretaria"
@@ -1929,7 +1845,7 @@ export const DashboardView: React.FC = () => {
                           </tbody>
                         </table>
                       </div>
-                    </SurfaceCard>
+                    </div>
 
                     {/* 3. Controle de Prazo de Armazenamento (Portaria IFPR 90 Dias) */}
                     <SurfaceCard padding="lg" className="space-y-4">
@@ -2644,13 +2560,12 @@ export const DashboardView: React.FC = () => {
                                     value={item.status}
                                     onChange={async (e) => {
                                       const newStat = e.target.value as any;
+                                      if (newStat === item.status) return;
                                       try {
                                         await updateItemStatus(item.id, newStat);
-                                        await logAdminAction(
-                                          "STATUS_OVERRIDE",
-                                          `Alterou o status do objeto '${item.title}' (${item.id}) para ${newStat}.`
-                                        );
-                                      } catch (_) {}
+                                      } catch (err) {
+                                        console.error("[DashboardView] Falha ao atualizar status via override:", err);
+                                      }
                                     }}
                                     className={`py-1.5 px-2.5 rounded-xl text-xs font-bold border outline-none cursor-pointer ${
                                       item.status === "ENCONTRADO"
@@ -4173,9 +4088,13 @@ export const DashboardView: React.FC = () => {
               <button
                 type="button"
                 onClick={async () => {
-                  await resetSystemData();
-                  await logAdminAction("RESET_SISTEMA", "Efetuou o reset total do banco de dados do sistema.");
-                  setIsResetConfirmOpen(false);
+                  try {
+                    await resetSystemData();
+                    await logAdminAction("RESET_SISTEMA", "Efetuou o reset total do banco de dados do sistema.");
+                    setIsResetConfirmOpen(false);
+                  } catch {
+                    // Erro real já reportado pelo resetSystemData; não registrar RESET_SISTEMA falso
+                  }
                 }}
                 className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm cursor-pointer"
               >

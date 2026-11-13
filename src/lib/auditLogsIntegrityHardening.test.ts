@@ -29,6 +29,30 @@ describe("Audit Logs & Activity Logs Strict Identity Integrity & Anti-Spoofing",
       return { allowed: false, reason: "ACCOUNT_INACTIVE" };
     }
 
+    const BACKEND_ONLY_ACTIONS = [
+      "REGISTRO_DEVOLUCAO",
+      "REABERTURA_DEVOLUCAO",
+      "CONFIRMACAO_NOTIFICACAO_ASSINATURA",
+      "REEMISSAO_LINK_ASSINATURA",
+      "REENVIO_SOLICITACAO_ASSINATURA",
+      "RECUPERACAO_LINK_ASSINATURA",
+      "ROLE_ASSIGNED",
+      "ROLE_REVOKED",
+      "ACCOUNT_DELETED",
+      "ACCOUNT_DELETION_INCONSISTENCY",
+      "MASTER_WIPE_EXECUTED",
+      "UPDATE_SYSTEM_CONFIG",
+      "UNAUTHORIZED_AI_ATTEMPT",
+    ];
+
+    if (
+      typeof logData.action !== "string" ||
+      !logData.action.trim() ||
+      BACKEND_ONLY_ACTIONS.includes(logData.action)
+    ) {
+      return { allowed: false, reason: "BACKEND_ONLY_ACTION_FORBIDDEN" };
+    }
+
     const tokenEmail = auth.token?.email || auth.email;
 
     if (collectionType === "audit_logs") {
@@ -285,5 +309,61 @@ describe("Audit Logs & Activity Logs Strict Identity Integrity & Anti-Spoofing",
     expect(systemConfigModule).toContain("performedBy: adminUid");
     expect(systemConfigModule).toContain("performedByEmail: adminEmail");
     expect(systemConfigModule).toContain("action: \"UPDATE_SYSTEM_CONFIG\"");
+  });
+
+  // Test I: Bloqueio de Ações Backend-Only via Client SDK (Etapa 11)
+  it("I. Client SDK não pode criar logs com ações exclusivas do servidor (REGISTRO_DEVOLUCAO, REABERTURA_DEVOLUCAO, ROLE_ASSIGNED, etc.)", () => {
+    expect(rulesContent).toContain("isAllowedClientAuditAction");
+    expect(rulesContent).toContain("'REGISTRO_DEVOLUCAO'");
+    expect(rulesContent).toContain("'REABERTURA_DEVOLUCAO'");
+    expect(rulesContent).toContain("'CONFIRMACAO_NOTIFICACAO_ASSINATURA'");
+    expect(rulesContent).toContain("'ROLE_ASSIGNED'");
+    expect(rulesContent).toContain("'ROLE_REVOKED'");
+
+    const authAdmin = {
+      uid: "admin-uid-999",
+      email: "admin@ifpr.edu.br",
+      role: "ADMIN",
+      approvalStatus: "APROVADO",
+      token: { email: "admin@ifpr.edu.br", role: "ADMIN" },
+    };
+
+    for (const sensitiveAction of [
+      "REGISTRO_DEVOLUCAO",
+      "REABERTURA_DEVOLUCAO",
+      "CONFIRMACAO_NOTIFICACAO_ASSINATURA",
+      "ROLE_ASSIGNED",
+      "ROLE_REVOKED",
+      "ACCOUNT_DELETED",
+      "UPDATE_SYSTEM_CONFIG",
+    ]) {
+      const forgedAudit = simulateCreateAuditLog(
+        authAdmin,
+        {
+          actorId: "admin-uid-999",
+          actorEmail: "admin@ifpr.edu.br",
+          actorRole: "ADMIN",
+          objectType: "RETURN",
+          action: sensitiveAction,
+        },
+        "audit_logs"
+      );
+      expect(forgedAudit.allowed).toBe(false);
+      expect(forgedAudit.reason).toBe("BACKEND_ONLY_ACTION_FORBIDDEN");
+
+      const forgedActivity = simulateCreateAuditLog(
+        authAdmin,
+        {
+          actorId: "admin-uid-999",
+          adminId: "admin-uid-999",
+          actorEmail: "admin@ifpr.edu.br",
+          actorRole: "ADMIN",
+          action: sensitiveAction,
+        },
+        "activity_logs"
+      );
+      expect(forgedActivity.allowed).toBe(false);
+      expect(forgedActivity.reason).toBe("BACKEND_ONLY_ACTION_FORBIDDEN");
+    }
   });
 });

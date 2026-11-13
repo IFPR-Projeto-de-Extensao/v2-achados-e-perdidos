@@ -999,7 +999,7 @@ export async function validateDevolutionNotificationAccess(
     };
   }
 
-  // 2. Fetch Item from Firestore (Do NOT trust client-supplied data)
+  // 2. Fetch Item and Private Return Record from Firestore (Do NOT trust client-supplied data)
   try {
     const itemSnap = await adminDb.collection("items").doc(itemId).get();
     if (!itemSnap || !itemSnap.exists) {
@@ -1010,7 +1010,19 @@ export async function validateDevolutionNotificationAccess(
       };
     }
 
-    const itemData = (typeof itemSnap.data === "function" ? itemSnap.data() : itemSnap.data) || {};
+    const rawItemData = (typeof itemSnap.data === "function" ? itemSnap.data() : itemSnap.data) || {};
+    let privData: Record<string, any> | null = null;
+    try {
+      const privCol = adminDb.collection("item_return_records");
+      if (privCol && typeof privCol.doc === "function") {
+        const privSnap = await privCol.doc(itemId).get();
+        if (privSnap && privSnap.exists) {
+          privData = (typeof privSnap.data === "function" ? privSnap.data() : privSnap.data) || null;
+        }
+      }
+    } catch (_) {}
+
+    const itemData = mergePublicAndPrivateItemData(rawItemData, privData);
 
     // 3. Status Verification: Must have been legally returned
     if (itemData.status !== "DEVOLVIDO") {
@@ -1022,15 +1034,15 @@ export async function validateDevolutionNotificationAccess(
     }
 
     // 4. Author / Attendant Relationship Check:
-    // Non-admins must be the attendant who registered the return
+    // Non-admins must strictly be the attendant who registered the return
     const isRootAdmin = evaluateRootAdminAuth(authUser).isRoot;
     const isUserAdmin = isRootAdmin || (staffValidation.userData?.role === "ADMIN" && staffValidation.userData?.approvalStatus === "APROVADO");
     const callerUid = authUser.uid;
 
     if (!isUserAdmin) {
       const issuerUid = itemData.returnedByUserId;
-      if (issuerUid && issuerUid !== callerUid) {
-        console.warn(`[Devolution Notification Blocked] Servidor ${callerUid} tentou disparar notificação de devolução realizada por outro servidor (${issuerUid}).`);
+      if (!issuerUid || issuerUid !== callerUid) {
+        console.warn(`[Devolution Notification Blocked] Servidor ${callerUid} tentou disparar notificação de devolução realizada por outro servidor (${issuerUid || "AUSENTE"}).`);
         return {
           authorized: false,
           statusCode: 403,
@@ -4882,11 +4894,15 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
     if (adminDb && typeof adminDb.runTransaction === "function") {
       claimResult = await adminDb.runTransaction(async (transaction: any) => {
         const itemRef = adminDb.collection("items").doc(itemId);
+        const privRef = adminDb.collection("item_return_records").doc(itemId);
         const itemDoc = await transaction.get(itemRef);
+        const privDoc = await transaction.get(privRef);
         if (!itemDoc || !itemDoc.exists) {
           throw new Error("ITEM_NOT_FOUND");
         }
-        const fresh = (typeof itemDoc.data === "function" ? itemDoc.data() : itemDoc.data) || {};
+        const rawFresh = (typeof itemDoc.data === "function" ? itemDoc.data() : itemDoc.data) || {};
+        const privFresh = privDoc?.exists ? ((typeof privDoc.data === "function" ? privDoc.data() : privDoc.data) || {}) : null;
+        const fresh = mergePublicAndPrivateItemData(rawFresh, privFresh);
 
         if (
           fresh.devolutionNotified === true ||
@@ -4904,7 +4920,8 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
           return { status: "IN_PROGRESS", freshData: fresh };
         }
 
-        transaction.set(itemRef, {
+        transaction.set(privRef, {
+          itemId,
           devolutionNotificationStatus: "PROCESSING",
           devolutionNotificationClaimId: claimId,
           devolutionNotificationClaimedAt: new Date().toISOString(),
@@ -4942,12 +4959,12 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
       if (adminDb) {
         try {
           await adminDb.runTransaction(async (transaction: any) => {
-            const itemRef = adminDb.collection("items").doc(itemId);
-            const itemDoc = await transaction.get(itemRef);
-            if (itemDoc.exists) {
-              const fresh = itemDoc.data() || {};
+            const privRef = adminDb.collection("item_return_records").doc(itemId);
+            const privDoc = await transaction.get(privRef);
+            if (privDoc.exists) {
+              const fresh = privDoc.data() || {};
               if (fresh.devolutionNotificationClaimId === claimId) {
-                transaction.set(itemRef, {
+                transaction.set(privRef, {
                   devolutionNotificationStatus: "FAILED",
                   devolutionNotificationLastError: "Nenhum e-mail de destinatário confiável registrado na ocorrência.",
                   devolutionNotificationFailedAt: new Date().toISOString(),
@@ -4994,12 +5011,12 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
       if (adminDb) {
         try {
           await adminDb.runTransaction(async (transaction: any) => {
-            const itemRef = adminDb.collection("items").doc(itemId);
-            const itemDoc = await transaction.get(itemRef);
-            if (itemDoc.exists) {
-              const fresh = itemDoc.data() || {};
+            const privRef = adminDb.collection("item_return_records").doc(itemId);
+            const privDoc = await transaction.get(privRef);
+            if (privDoc.exists) {
+              const fresh = privDoc.data() || {};
               if (fresh.devolutionNotificationClaimId === claimId) {
-                transaction.set(itemRef, {
+                transaction.set(privRef, {
                   devolutionNotificationStatus: "FAILED",
                   devolutionNotificationLastError: "Serviço SMTP não configurado no ambiente do servidor.",
                   devolutionNotificationFailedAt: new Date().toISOString(),
@@ -5032,12 +5049,12 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
       if (adminDb) {
         try {
           await adminDb.runTransaction(async (transaction: any) => {
-            const itemRef = adminDb.collection("items").doc(itemId);
-            const itemDoc = await transaction.get(itemRef);
-            if (itemDoc.exists) {
-              const fresh = itemDoc.data() || {};
+            const privRef = adminDb.collection("item_return_records").doc(itemId);
+            const privDoc = await transaction.get(privRef);
+            if (privDoc.exists) {
+              const fresh = privDoc.data() || {};
               if (fresh.devolutionNotificationClaimId === claimId) {
-                transaction.set(itemRef, {
+                transaction.set(privRef, {
                   devolutionNotificationStatus: "FAILED",
                   devolutionNotificationLastError: smtpErr?.message || String(smtpErr),
                   devolutionNotificationFailedAt: new Date().toISOString(),
@@ -5058,7 +5075,11 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
 
     if (adminDb) {
       try {
-        const notifDocId = `email_auto_${itemId}_ITEM_RETURNED`;
+        const currentCycle = Number(itemData?.returnCycle || 1);
+        const currentCycleId = itemData?.returnCycleId || null;
+        const notifDocId = currentCycle <= 1
+          ? `email_auto_${itemId}_ITEM_RETURNED`
+          : `email_auto_${itemId}_ITEM_RETURNED_c${currentCycle}`;
         await adminDb.collection("email_notifications").doc(notifDocId).set({
           id: notifDocId,
           itemId,
@@ -5069,6 +5090,8 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
           body: emailBody,
           type: "ITEM_RETURNED_AUTOMATION",
           status: "SENT",
+          returnCycle: currentCycle,
+          returnCycleId: currentCycleId,
           messageId: mailInfo?.messageId || null,
           sentAt: timestamp,
           createdAt: timestamp,
@@ -5078,12 +5101,12 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
         let completedSuccessfully = false;
         if (typeof adminDb.runTransaction === "function") {
           await adminDb.runTransaction(async (transaction: any) => {
-            const itemRef = adminDb.collection("items").doc(itemId);
-            const itemDoc = await transaction.get(itemRef);
-            if (itemDoc.exists) {
-              const fresh = itemDoc.data() || {};
+            const privRef = adminDb.collection("item_return_records").doc(itemId);
+            const privDoc = await transaction.get(privRef);
+            if (privDoc.exists) {
+              const fresh = privDoc.data() || {};
               if (fresh.devolutionNotificationClaimId === claimId) {
-                transaction.set(itemRef, {
+                transaction.set(privRef, {
                   devolutionNotified: true,
                   returnEmailNotified: true,
                   devolutionNotificationStatus: "COMPLETED",
@@ -5095,7 +5118,7 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
             }
           });
         } else {
-          await adminDb.collection("items").doc(itemId).set({
+          await adminDb.collection("item_return_records").doc(itemId).set({
             devolutionNotified: true,
             returnEmailNotified: true,
             devolutionNotificationStatus: "COMPLETED",
@@ -5113,12 +5136,12 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
         try {
           if (typeof adminDb.runTransaction === "function") {
             await adminDb.runTransaction(async (transaction: any) => {
-              const itemRef = adminDb.collection("items").doc(itemId);
-              const itemDoc = await transaction.get(itemRef);
-              if (itemDoc.exists) {
-                const fresh = itemDoc.data() || {};
+              const privRef = adminDb.collection("item_return_records").doc(itemId);
+              const privDoc = await transaction.get(privRef);
+              if (privDoc.exists) {
+                const fresh = privDoc.data() || {};
                 if (fresh.devolutionNotificationClaimId === claimId) {
-                  transaction.set(itemRef, {
+                  transaction.set(privRef, {
                     devolutionNotificationStatus: "FAILED",
                     devolutionNotificationLastError: dbErr?.message || String(dbErr),
                     devolutionNotificationFailedAt: new Date().toISOString(),
@@ -5252,8 +5275,14 @@ app.post(["/api/signature/verify-token", "/signature/verify-token"], generalRate
       });
     }
 
-    // 1. Check invalidated token first (e.g. after administrative reopen)
-    if (sigReqExists && sigData?.invalidated === true) {
+    // 1. Check invalidated token or mismatched cycle first (e.g. after administrative reopen)
+    const sigCycleMismatch = Boolean(
+      sigReqExists &&
+        sigData?.returnCycleId &&
+        itemData?.returnCycleId &&
+        sigData.returnCycleId !== itemData.returnCycleId
+    );
+    if (sigReqExists && (sigData?.invalidated === true || sigCycleMismatch)) {
       return res.status(410).json({
         success: false,
         valid: false,
@@ -5501,8 +5530,14 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
       capturedItemData = itemData;
       itemTitle = itemData.title || cleanItemId;
 
-      // 1. Invalidation check (e.g. after administrative reopen)
-      if (sigReqSnap?.exists && sigData?.invalidated === true) {
+      // 1. Invalidation / cycle mismatch check (e.g. after administrative reopen)
+      const sigCycleMismatch = Boolean(
+        sigReqSnap?.exists &&
+          sigData?.returnCycleId &&
+          privData?.returnCycleId &&
+          sigData.returnCycleId !== privData.returnCycleId
+      );
+      if (sigReqSnap?.exists && (sigData?.invalidated === true || sigCycleMismatch)) {
         throw new Error("TOKEN_INVALIDATED");
       }
 
@@ -5607,12 +5642,17 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
         historyLogs: [...existingPublicHistory, publicHistoryLog],
       });
 
+      const activeReturnCycle = Number(sigData?.returnCycle || privData?.returnCycle || 1);
+      const activeReturnCycleId = sigData?.returnCycleId || privData?.returnCycleId || null;
+
       // 2. Private return record (/item_return_records/{cleanItemId}): store all PII, signature URL, and validation code
       transaction.set(
         privRef,
         {
           itemId: cleanItemId,
           status: "DEVOLVIDO",
+          returnCycle: activeReturnCycle,
+          ...(activeReturnCycleId ? { returnCycleId: activeReturnCycleId } : {}),
           recipientSignatureUrl: signatureDataUrl,
           recipientSignatureType: "REMOTE_EMAIL",
           recipientSignatureMethod: signatureMethod || (signatureDataUrl.includes("type") ? "TYPED_NAME" : "DRAWN"),
@@ -5644,6 +5684,8 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
         sigReqRef,
         {
           itemId: cleanItemId,
+          returnCycle: activeReturnCycle,
+          ...(activeReturnCycleId ? { returnCycleId: activeReturnCycleId } : {}),
           tokenHash,
           encryptedToken: deleteMarker,
           used: true,
@@ -6633,23 +6675,23 @@ app.post(["/api/signature/notify-signed", "/signature/notify-signed"], generalRa
     }
 
     const nowIso = new Date().toISOString();
-    const notifDocId = `sig_done_${cleanItemId}`;
     const itemRef = adminDb.collection("items").doc(cleanItemId);
     const privRef = adminDb.collection("item_return_records").doc(cleanItemId);
     const sigReqRef = adminDb.collection("signature_requests").doc(cleanItemId);
-    const notifRef = adminDb.collection("email_notifications").doc(notifDocId);
 
+    let notifDocId = `sig_done_${cleanItemId}`;
+    let activeCycle = 1;
+    let activeCycleId = "";
     let effectiveTitle = cleanItemId;
     let effectiveSigner = "";
     let effectiveEmail = "";
     let effectiveSignedAt = "";
 
     await adminDb.runTransaction(async (transaction: any) => {
-      const [itemSnap, privSnap, sigReqSnap, notifSnap] = await Promise.all([
+      const [itemSnap, privSnap, sigReqSnap] = await Promise.all([
         transaction.get(itemRef),
         transaction.get(privRef),
         transaction.get(sigReqRef),
-        transaction.get(notifRef),
       ]);
 
       if (!itemSnap?.exists) {
@@ -6661,7 +6703,13 @@ app.post(["/api/signature/notify-signed", "/signature/notify-signed"], generalRa
       const itemData = mergePublicAndPrivateItemData(rawItemData, privData);
       const sigData = sigReqSnap?.exists ? ((typeof sigReqSnap.data === "function" ? sigReqSnap.data() : sigReqSnap.data) || {}) : null;
 
-      if (sigReqSnap?.exists && sigData?.invalidated === true) {
+      const sigCycleMismatch = Boolean(
+        sigReqSnap?.exists &&
+          sigData?.returnCycleId &&
+          privData?.returnCycleId &&
+          sigData.returnCycleId !== privData.returnCycleId
+      );
+      if (sigReqSnap?.exists && (sigData?.invalidated === true || sigCycleMismatch)) {
         throw new Error("TOKEN_INVALIDATED");
       }
 
@@ -6720,8 +6768,21 @@ app.post(["/api/signature/notify-signed", "/signature/notify-signed"], generalRa
         throw new Error("PAYLOAD_TAMPER_DETECTED");
       }
 
-      // 4. Anti-duplication / Idempotency guard
-      if (notifSnap?.exists || sigData?.completionNotified === true) {
+      // 4. Resolve active return cycle and read cycle-scoped notification record BEFORE writes
+      activeCycle = Number(sigData?.returnCycle || privData?.returnCycle || 1);
+      activeCycleId = String(sigData?.returnCycleId || privData?.returnCycleId || `legacy-cycle-${activeCycle}`);
+      notifDocId = activeCycle <= 1 ? `sig_done_${cleanItemId}` : `sig_done_${cleanItemId}_c${activeCycle}`;
+
+      const notifRef = adminDb.collection("email_notifications").doc(notifDocId);
+      const notifSnap = await transaction.get(notifRef);
+
+      // 5. Anti-duplication / Idempotency guard scoped to the active return cycle
+      const sameCycleAlreadyNotified = Boolean(
+        sigData?.completionNotified === true &&
+          (!sigData?.completionNotifiedCycleId || sigData.completionNotifiedCycleId === activeCycleId) &&
+          (!sigData?.completionNotifiedCycle || Number(sigData.completionNotifiedCycle) === activeCycle)
+      );
+      if (notifSnap?.exists || sameCycleAlreadyNotified) {
         throw new Error("NOTIFICATION_ALREADY_LOGGED");
       }
 
@@ -6734,6 +6795,8 @@ app.post(["/api/signature/notify-signed", "/signature/notify-signed"], generalRa
         receiptValidationCode: itemData.receiptValidationCode,
         type: "SIGNATURE_COMPLETED",
         status: "LOGGED",
+        returnCycle: activeCycle,
+        returnCycleId: activeCycleId,
         signedAt: effectiveSignedAt || nowIso,
         createdAt: nowIso,
       });
@@ -6744,6 +6807,8 @@ app.post(["/api/signature/notify-signed", "/signature/notify-signed"], generalRa
           {
             completionNotified: true,
             completionNotifiedAt: nowIso,
+            completionNotifiedCycle: activeCycle,
+            completionNotifiedCycleId: activeCycleId,
           },
           { merge: true }
         );
@@ -6765,16 +6830,20 @@ app.post(["/api/signature/notify-signed", "/signature/notify-signed"], generalRa
         fieldChanged: "email_notifications",
         oldValue: "NONE",
         newValue: notifDocId,
-        details: `Registro auditável de conclusão de assinatura remota confirmado para #${cleanItemId} (${effectiveTitle}).`,
+        returnCycle: activeCycle,
+        returnCycleId: activeCycleId,
+        details: `Registro auditável de conclusão de assinatura remota confirmado para #${cleanItemId} (${effectiveTitle}) no ciclo ${activeCycle}.`,
         immutable: true,
       });
     });
 
-    console.info(`[Signature Completed] Item #${cleanItemId} assinado digitalmente por ${effectiveSigner}.`);
+    console.info(`[Signature Completed] Item #${cleanItemId} assinado digitalmente por ${effectiveSigner} (ciclo ${activeCycle}).`);
     return res.json({
       success: true,
       itemId: cleanItemId,
       notificationId: notifDocId,
+      returnCycle: activeCycle,
+      returnCycleId: activeCycleId,
       signedAt: effectiveSignedAt,
       message: "Assinatura registrada no backend com sucesso.",
     });
@@ -6858,6 +6927,8 @@ export async function executeFormalItemReturn(
   emailDispatched?: boolean;
   emailStatus?: string;
   notificationWarning?: string;
+  returnCycle?: number;
+  returnCycleId?: string;
 }> {
   const staffCheck = await validateStaffOrAdminAccess(adminDb, authUser);
   if (!staffCheck.authorized) {
@@ -7008,6 +7079,8 @@ export async function executeFormalItemReturn(
   let itemCategory = "Geral";
   let itemQrCode = rawItemId;
   let oldStatus = "ENCONTRADO";
+  let nextCycle = 1;
+  let returnCycleId = "";
 
   try {
     if (typeof adminDb.runTransaction !== "function") {
@@ -7022,11 +7095,16 @@ export async function executeFormalItemReturn(
       const itemRef = adminDb.collection("items").doc(rawItemId);
       const privRef = adminDb.collection("item_return_records").doc(rawItemId);
       const itemDoc = await transaction.get(itemRef);
+      const privDoc = await transaction.get(privRef);
       if (!itemDoc || !itemDoc.exists) {
         throw new Error("ITEM_NOT_FOUND");
       }
 
       const itemData = (typeof itemDoc.data === "function" ? itemDoc.data() : itemDoc.data) || {};
+      const prevPrivData = privDoc?.exists ? ((typeof privDoc.data === "function" ? privDoc.data() : privDoc.data) || {}) : {};
+      const previousCycle = Number(prevPrivData.returnCycle || 0);
+      nextCycle = previousCycle > 0 ? previousCycle + 1 : 1;
+      returnCycleId = `cycle-${nextCycle}-${crypto.randomBytes(4).toString("hex")}`;
       oldStatus = itemData.status || "ENCONTRADO";
 
       if (itemData.status === "DEVOLVIDO" || itemData.status === "ENCERRADO") {
@@ -7128,12 +7206,21 @@ export async function executeFormalItemReturn(
         historyLogs: nextPublicHistory,
       });
 
-      // 2. Persist all private return, recipient PII, validation code, and signature fields in restricted /item_return_records
+      // 2. Persist all private return, recipient PII, validation code, cycle, and signature fields in restricted /item_return_records
       transaction.set(
         privRef,
         {
           ...itemUpdate,
           itemId: rawItemId,
+          returnCycle: nextCycle,
+          returnCycleId,
+          devolutionNotified: false,
+          returnEmailNotified: false,
+          devolutionNotificationStatus: isInPerson ? "PENDING" : "SKIPPED",
+          devolutionNotifiedAt: deleteMarker,
+          devolutionNotifiedBy: deleteMarker,
+          devolutionNotificationLastError: deleteMarker,
+          devolutionNotificationFailedAt: deleteMarker,
           privateHistory: nextPrivateHistory,
           privateHistoryLogs: nextPrivateHistory,
           updatedAt: nowIso,
@@ -7158,6 +7245,8 @@ export async function executeFormalItemReturn(
         const { activeKey } = getSignatureEncryptionKeyring();
         transaction.set(sigReqRef, {
           itemId: rawItemId,
+          returnCycle: nextCycle,
+          returnCycleId,
           tokenHash,
           encryptedToken: encryptSignatureToken(rawSignatureToken),
           encryptionKeyId: activeKey.keyId,
@@ -7169,6 +7258,9 @@ export async function executeFormalItemReturn(
           expiresAt,
           used: false,
           invalidated: false,
+          completionNotified: false,
+          completionNotifiedCycle: null,
+          completionNotifiedCycleId: null,
           dispatchedByUserId: authUser.uid,
         });
       }
@@ -7291,7 +7383,7 @@ export async function executeFormalItemReturn(
       }
 
       try {
-        const notifDocId = `sig_req_${rawItemId}_${Date.now()}`;
+        const notifDocId = `sig_req_${rawItemId}_c${nextCycle}_${Date.now()}`;
         await adminDb.collection("email_notifications").doc(notifDocId).set({
           id: notifDocId,
           itemId: rawItemId,
@@ -7305,6 +7397,8 @@ export async function executeFormalItemReturn(
           bodyPreview: `Solicitação de assinatura digital enviada para ${recipientName} (link seguro protegido enviado por e-mail).`,
           type: "REMOTE_SIGNATURE_REQUEST",
           status: emailStatus,
+          returnCycle: nextCycle,
+          returnCycleId,
           messageId,
           error: emailError,
           sentAt: nowIso,
@@ -7363,7 +7457,9 @@ export async function executeFormalItemReturn(
       }
 
       try {
-        const notifDocId = `email_auto_${rawItemId}_ITEM_RETURNED`;
+        const notifDocId = nextCycle <= 1
+          ? `email_auto_${rawItemId}_ITEM_RETURNED`
+          : `email_auto_${rawItemId}_ITEM_RETURNED_c${nextCycle}`;
         await adminDb.collection("email_notifications").doc(notifDocId).set({
           id: notifDocId,
           itemId: rawItemId,
@@ -7374,6 +7470,8 @@ export async function executeFormalItemReturn(
           body: emailBody,
           type: "ITEM_RETURNED_AUTOMATION",
           status: emailDispatched ? "SENT" : emailStatus,
+          returnCycle: nextCycle,
+          returnCycleId,
           messageId,
           error: emailError,
           sentAt: nowIso,
@@ -7398,6 +7496,8 @@ export async function executeFormalItemReturn(
     emailDispatched,
     emailStatus,
     notificationWarning,
+    returnCycle: nextCycle,
+    returnCycleId,
   };
 }
 
@@ -7501,11 +7601,15 @@ export async function executeAdminReopenReturn(
 
       const rawItemData = (typeof itemDoc.data === "function" ? itemDoc.data() : itemDoc.data) || {};
       const privData = privDoc?.exists ? ((typeof privDoc.data === "function" ? privDoc.data() : privDoc.data) || {}) : null;
+      const sigData = sigReqDoc?.exists ? ((typeof sigReqDoc.data === "function" ? sigReqDoc.data() : sigReqDoc.data) || {}) : null;
       const itemData = mergePublicAndPrivateItemData(rawItemData, privData);
 
       if (itemData.status !== "DEVOLVIDO") {
         throw new Error("ITEM_NOT_DEVOLVIDO");
       }
+
+      const reopenedCycle = Number(privData?.returnCycle || sigData?.returnCycle || 1);
+      const reopenedCycleId = privData?.returnCycleId || sigData?.returnCycleId || null;
 
       previousStatus = itemData.type === "PERDIDO" ? "PERDIDO" : "ENCONTRADO";
       const existingHistory = Array.isArray(itemData.history)
@@ -7590,6 +7694,10 @@ export async function executeAdminReopenReturn(
             ...buildPublicFieldDeletionMap(deleteMarker),
             itemId,
             status: previousStatus,
+            returnCycle: reopenedCycle,
+            lastReopenedCycle: reopenedCycle,
+            lastReopenedCycleId: reopenedCycleId,
+            returnCycleId: deleteMarker,
             resolutionDate: deleteMarker,
             reopenedAt: nowIso,
             reopenedByUid: authUser.uid,
@@ -7606,6 +7714,9 @@ export async function executeAdminReopenReturn(
           sigReqRef,
           {
             itemId,
+            returnCycle: reopenedCycle,
+            invalidatedCycle: reopenedCycle,
+            invalidatedCycleId: reopenedCycleId,
             tokenHash: deleteMarker,
             token: deleteMarker,
             encryptedToken: deleteMarker,

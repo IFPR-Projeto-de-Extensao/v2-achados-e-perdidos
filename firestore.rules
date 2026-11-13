@@ -967,6 +967,27 @@ service cloud.firestore {
     // ==========================================
     // 6. Audit Logs Collection (Trilha de Auditoria Imutável)
     // ==========================================
+    function isAllowedClientAuditAction(data) {
+      return 'action' in data &&
+             data.action is string &&
+             data.action.size() > 0 &&
+             !(data.action in [
+               'REGISTRO_DEVOLUCAO',
+               'REABERTURA_DEVOLUCAO',
+               'CONFIRMACAO_NOTIFICACAO_ASSINATURA',
+               'REEMISSAO_LINK_ASSINATURA',
+               'REENVIO_SOLICITACAO_ASSINATURA',
+               'RECUPERACAO_LINK_ASSINATURA',
+               'ROLE_ASSIGNED',
+               'ROLE_REVOKED',
+               'ACCOUNT_DELETED',
+               'ACCOUNT_DELETION_INCONSISTENCY',
+               'MASTER_WIPE_EXECUTED',
+               'UPDATE_SYSTEM_CONFIG',
+               'UNAUTHORIZED_AI_ATTEMPT'
+             ]);
+    }
+
     match /activity_logs/{logId} {
       // Only Admin and Active Servidor can inspect audit trail
       allow get: if isAdmin() || (isServidor() && isAccountActive());
@@ -976,9 +997,11 @@ service cloud.firestore {
       // 1. User must be authenticated and active/admin
       // 2. adminId / actorId MUST match real authenticated request.auth.uid (no cross-user spoofing)
       // 3. actorEmail / adminEmail MUST match authenticated token email if present
-      // 4. actorRole must match user's real role (Admin can log as ADMIN/SERVIDOR; Servidor as SERVIDOR; Aluno as ALUNO)
-      // 5. Aluno can only log permitted item actions ('CADASTRO_OCORRENCIA', 'EDIT_OCORRENCIA', 'STATUS_OVERRIDE', 'EXCLUSAO_ITEM')
+      // 4. Backend-only sensitive actions (REGISTRO_DEVOLUCAO, REABERTURA_DEVOLUCAO, ROLE_ASSIGNED, etc.) are blocked via Client SDK
+      // 5. actorRole must match user's real role (Admin can log as ADMIN/SERVIDOR; Servidor as SERVIDOR; Aluno as ALUNO)
+      // 6. Aluno can only log permitted item actions ('CADASTRO_OCORRENCIA', 'EDIT_OCORRENCIA', 'STATUS_OVERRIDE', 'EXCLUSAO_ITEM')
       allow create: if isSignedIn() && (isAccountActive() || isAdmin()) &&
+        isAllowedClientAuditAction(incoming()) &&
         (
           (!('actorId' in incoming()) || incoming().actorId == request.auth.uid) &&
           (!('adminId' in incoming()) || incoming().adminId == request.auth.uid) &&
@@ -1006,11 +1029,13 @@ service cloud.firestore {
 
       // Create: Strict non-forgeable audit trail
       // 1. User must be authenticated and active/admin
-      // 2. Client actorId MUST match real authenticated request.auth.uid (no cross-user spoofing)
-      // 3. actorEmail MUST match authenticated token email if present
-      // 4. actorRole must match user's real role (Admin can log as ADMIN/SERVIDOR; Servidor as SERVIDOR; Aluno as ALUNO)
-      // 5. Aluno can only log permitted item actions ('CADASTRO_OCORRENCIA', 'EDIT_OCORRENCIA', 'STATUS_OVERRIDE', 'EXCLUSAO_ITEM')
+      // 2. Backend-only sensitive actions are blocked via Client SDK (Admin SDK bypasses rules)
+      // 3. Client actorId MUST match real authenticated request.auth.uid (no cross-user spoofing)
+      // 4. actorEmail MUST match authenticated token email if present
+      // 5. actorRole must match user's real role (Admin can log as ADMIN/SERVIDOR; Servidor as SERVIDOR; Aluno as ALUNO)
+      // 6. Aluno can only log permitted item actions ('CADASTRO_OCORRENCIA', 'EDIT_OCORRENCIA', 'STATUS_OVERRIDE', 'EXCLUSAO_ITEM')
       allow create: if isSignedIn() && (isAccountActive() || isAdmin()) &&
+        isAllowedClientAuditAction(incoming()) &&
         incoming().actorId == request.auth.uid &&
         (request.auth.token.email == null || incoming().actorEmail == request.auth.token.email) &&
         (

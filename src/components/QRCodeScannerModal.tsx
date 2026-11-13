@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useApp } from "../context/AppContext";
 import { LostFoundItem } from "../types";
 import { vibrateClick, vibrateSuccess, vibrateWarning, sanitizeQuery } from "../lib/utils";
-import { parseQrCodeOrUrl, findItemInList, fetchItemFromFirestore } from "../lib/qrCodeUtils";
+import { parseQrCodeOrUrl, findItemInList, fetchItemFromFirestore, classifyQrLookupError } from "../lib/qrCodeUtils";
 import { canStartFormalReturnForItem } from "../lib/devolutionAuth";
 import { auth } from "../lib/firebase";
 import { ModalShell, SubtlePanel, UIBadge, UIButton, UIFieldGroup, UIInput } from "./ui";
@@ -29,9 +29,15 @@ export const QRCodeScannerModal: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const isModalOpenRef = useRef<boolean>(qrScannerOpen);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraPermissionStatus, setCameraPermissionStatus] = useState<"idle" | "requesting" | "granted" | "denied">("idle");
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [scannerInitError, setScannerInitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    isModalOpenRef.current = qrScannerOpen;
+  }, [qrScannerOpen]);
 
   const stopCamera = useCallback(() => {
     if (animationFrameRef.current) {
@@ -42,12 +48,16 @@ export const QRCodeScannerModal: React.FC = () => {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     setCameraActive(false);
   }, []);
 
-  // Cleanup camera stream when modal closes
+  // Cleanup camera stream when modal unmounts
   useEffect(() => {
     return () => {
+      isModalOpenRef.current = false;
       stopCamera();
     };
   }, [stopCamera]);
@@ -57,6 +67,8 @@ export const QRCodeScannerModal: React.FC = () => {
       stopCamera();
       setFoundItem(null);
       setScannedCode("");
+      setScannerInitError(null);
+      setCameraError(null);
     }
   }, [qrScannerOpen, stopCamera]);
 
@@ -73,28 +85,32 @@ export const QRCodeScannerModal: React.FC = () => {
       setIsSearching(true);
       const parsed = parseQrCodeOrUrl(query);
 
-      // 1. Try finding in memory list first
-      let item = findItemInList(parsed, items);
+      try {
+        // 1. Try finding in memory list first
+        let item = findItemInList(parsed, items);
 
-      // 2. If not found in memory, query Firestore
-      if (!item) {
-        try {
-          item = await fetchItemFromFirestore(parsed);
-        } catch (err) {
-          console.warn("[QRCodeScannerModal] Erro na busca remota do QR:", err);
+        // 2. If not found in memory, query Firestore with explicit error propagation
+        if (!item) {
+          item = await fetchItemFromFirestore(parsed, { throwOnError: true });
         }
-      }
 
-      setIsSearching(false);
-
-      if (item) {
-        vibrateSuccess();
-        setFoundItem(item);
-        addToast(`QR Code identificado: "${item.title}"`, "success");
-      } else {
+        if (item) {
+          vibrateSuccess();
+          setFoundItem(item);
+          addToast(`QR Code identificado: "${item.title}"`, "success");
+        } else {
+          vibrateWarning();
+          setFoundItem(null);
+          addToast("Nenhum objeto correspondente encontrado no acervo do campus.", "error");
+        }
+      } catch (err) {
+        console.warn("[QRCodeScannerModal] Erro na busca remota do QR:", err);
         vibrateWarning();
         setFoundItem(null);
-        addToast("Nenhum objeto correspondente encontrado no acervo do campus.", "error");
+        const classified = classifyQrLookupError(err);
+        addToast(classified.userMessage, "error");
+      } finally {
+        setIsSearching(false);
       }
     },
     [items, addToast]
@@ -105,44 +121,64 @@ export const QRCodeScannerModal: React.FC = () => {
     if (!cameraActive || !videoRef.current) return;
 
     let isScanning = true;
+    let consecutiveDetectErrors = 0;
+    let hasReportedFrameError = false;
     const barcodeDetectorSupported = typeof window !== "undefined" && "BarcodeDetector" in window;
 
-    if (barcodeDetectorSupported) {
-      try {
-        // @ts-ignore
-        const barcodeDetector = new window.BarcodeDetector({ formats: ["qr_code", "code_128", "code_39", "ean_13"] });
+    if (!barcodeDetectorSupported) {
+      setScannerInitError("Leitura automática indisponível neste navegador. Digite o código do objeto ou cole o link manualmente abaixo.");
+      return () => {
+        isScanning = false;
+      };
+    }
 
-        const scanFrame = async () => {
-          if (!isScanning || !videoRef.current) return;
+    try {
+      // @ts-ignore
+      const barcodeDetector = new window.BarcodeDetector({ formats: ["qr_code", "code_128", "code_39", "ean_13"] });
+      setScannerInitError(null);
 
-          if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
-            try {
-              const barcodes = await barcodeDetector.detect(videoRef.current);
-              if (barcodes && barcodes.length > 0) {
-                const rawVal = barcodes[0].rawValue;
-                if (rawVal) {
-                  setScannedCode(rawVal);
-                  await handleScanOrSearch(rawVal);
-                  stopCamera();
-                  return;
-                }
+      const scanFrame = async () => {
+        if (!isScanning || !videoRef.current) return;
+
+        if (videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+          try {
+            const barcodes = await barcodeDetector.detect(videoRef.current);
+            consecutiveDetectErrors = 0;
+            if (barcodes && barcodes.length > 0) {
+              const rawVal = barcodes[0].rawValue;
+              if (rawVal) {
+                setScannedCode(rawVal);
+                await handleScanOrSearch(rawVal);
+                stopCamera();
+                return;
               }
-            } catch (_) {}
+            }
+          } catch (detectErr) {
+            consecutiveDetectErrors += 1;
+            if (consecutiveDetectErrors >= 15 && !hasReportedFrameError) {
+              hasReportedFrameError = true;
+              console.warn("[QRCodeScannerModal] Falha recorrente na leitura de quadros do BarcodeDetector:", detectErr);
+              setScannerInitError("O leitor automático encontrou instabilidade com a câmera deste dispositivo. Você pode usar a busca manual pelo código ou link.");
+            }
           }
+        }
 
-          if (isScanning) {
-            animationFrameRef.current = requestAnimationFrame(scanFrame);
-          }
-        };
+        if (isScanning) {
+          animationFrameRef.current = requestAnimationFrame(scanFrame);
+        }
+      };
 
-        animationFrameRef.current = requestAnimationFrame(scanFrame);
-      } catch (_) {}
+      animationFrameRef.current = requestAnimationFrame(scanFrame);
+    } catch (initErr) {
+      console.warn("[QRCodeScannerModal] Falha ao inicializar BarcodeDetector:", initErr);
+      setScannerInitError("Não foi possível inicializar o leitor automático de QR Code neste navegador. Utilize a busca manual abaixo.");
     }
 
     return () => {
       isScanning = false;
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
     };
   }, [cameraActive, handleScanOrSearch, stopCamera]);
@@ -151,6 +187,7 @@ export const QRCodeScannerModal: React.FC = () => {
     vibrateClick();
     setCameraPermissionStatus("requesting");
     setCameraError(null);
+    setScannerInitError(null);
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -161,6 +198,13 @@ export const QRCodeScannerModal: React.FC = () => {
         video: { facingMode: "environment" },
         audio: false,
       });
+
+      // Guard against modal closing/unmounting while getUserMedia was pending
+      if (!isModalOpenRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        setCameraPermissionStatus("idle");
+        return;
+      }
 
       streamRef.current = stream;
       if (videoRef.current) {
@@ -349,6 +393,16 @@ export const QRCodeScannerModal: React.FC = () => {
                   <CameraOff className="w-3.5 h-3.5" />
                   <span>Desligar Câmera</span>
                 </UIButton>
+              </div>
+            )}
+
+            {scannerInitError && (
+              <div
+                role="status"
+                className="flex items-start gap-2 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/80 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-800 dark:text-amber-300"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{scannerInitError}</span>
               </div>
             )}
           </div>

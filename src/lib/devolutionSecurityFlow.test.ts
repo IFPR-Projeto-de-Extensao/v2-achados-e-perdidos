@@ -652,6 +652,174 @@ describe("ETAPA 11: Blindagem Completa do Fluxo de Devolução, Leitor QR e Fire
           incoming: { ...baseItem, status: "ENCONTRADO" },
         })
       ).toBe(false);
+
+      // Item já ENCERRADO não pode ser revertido ou editado diretamente pelo client SDK
+      expect(
+        evaluateItemUpdateRule({
+          authUid: "uid_serv",
+          emailVerified: true,
+          userDoc: { role: "SERVIDOR", approvalStatus: "APROVADO", status: "active" },
+          existing: { ...baseItem, status: "ENCERRADO" },
+          incoming: { ...baseItem, status: "ENCONTRADO" },
+        })
+      ).toBe(false);
+    });
+  });
+
+  describe("5. QR Code — Perfis, Status Finais, Erros de Permissão/Rede e Ausência de Falso Toast", () => {
+    it("deve permitir CTA formal apenas para SERVIDOR aprovado/ativo e ADMIN em objetos elegíveis, e bloquear para objetos DEVOLVIDO ou ENCERRADO", () => {
+      const openItem: Partial<LostFoundItem> = { id: "it-open", status: "ENCONTRADO" };
+      const returnedItem: Partial<LostFoundItem> = { id: "it-ret", status: "DEVOLVIDO" };
+      const closedItem: Partial<LostFoundItem> = { id: "it-cls", status: "ENCERRADO" };
+
+      const servApr: Partial<User> = { id: "s1", role: "SERVIDOR", approvalStatus: "APROVADO", status: "active", emailVerified: true };
+      const adminApr: Partial<User> = { id: "a1", role: "ADMIN", approvalStatus: "APROVADO", status: "active", emailVerified: true };
+
+      expect(canStartFormalReturnForItem(servApr, { uid: "s1", email: "s@ifpr.edu.br", emailVerified: true }, openItem, false)).toBe(true);
+      expect(canStartFormalReturnForItem(adminApr, { uid: "a1", email: "a@ifpr.edu.br", emailVerified: true }, openItem, false)).toBe(true);
+
+      // Objetos já DEVOLVIDO ou ENCERRADO jamais exibem CTA de nova devolução
+      expect(canStartFormalReturnForItem(servApr, { uid: "s1", email: "s@ifpr.edu.br", emailVerified: true }, returnedItem, false)).toBe(false);
+      expect(canStartFormalReturnForItem(adminApr, { uid: "a1", email: "a@ifpr.edu.br", emailVerified: true }, returnedItem, false)).toBe(false);
+      expect(canStartFormalReturnForItem(servApr, { uid: "s1", email: "s@ifpr.edu.br", emailVerified: true }, closedItem, false)).toBe(false);
+      expect(canStartFormalReturnForItem(adminApr, { uid: "a1", email: "a@ifpr.edu.br", emailVerified: true }, closedItem, false)).toBe(false);
+    });
+
+    it("deve propagar erros de permissão e de rede no fetchItemFromFirestore({ throwOnError: true }) e classificá-los sem gerar falso toast de sucesso", async () => {
+      const { fetchItemFromFirestore, classifyQrLookupError } = await import("./qrCodeUtils");
+
+      const permError = Object.assign(new Error("Missing or insufficient permissions."), {
+        code: "permission-denied",
+      });
+      await expect(
+        fetchItemFromFirestore("item-restrito-1", {
+          throwOnError: true,
+          firestoreMocks: {
+            getById: async () => {
+              throw permError;
+            },
+          },
+        })
+      ).rejects.toThrow("Missing or insufficient permissions");
+
+      const permClassified = classifyQrLookupError(permError);
+      expect(permClassified.kind).toBe("PERMISSION_DENIED");
+      expect(permClassified.userMessage).toContain("Permissão insuficiente");
+      expect(permClassified.userMessage).not.toContain("identificado");
+
+      const netError = Object.assign(new Error("Failed to fetch: client is offline"), {
+        code: "unavailable",
+      });
+      await expect(
+        fetchItemFromFirestore("QR-IFPR-999-OFFLINE", {
+          throwOnError: true,
+          firestoreMocks: {
+            getByQrCodeId: async () => {
+              throw netError;
+            },
+          },
+        })
+      ).rejects.toThrow("Failed to fetch");
+
+      const netClassified = classifyQrLookupError(netError);
+      expect(netClassified.kind).toBe("NETWORK_ERROR");
+      expect(netClassified.userMessage).toContain("Erro de conexão");
+      expect(netClassified.userMessage).not.toContain("identificado");
+    });
+  });
+
+  describe("6. Notificações de Devolução — Validação de Token, Autorização e Vínculo com o Emissor", () => {
+    it("deve validar token válido (emissor e ADMIN) e rejeitar token ausente, não verificado, perfil não autorizado ou atendente diferente do emissor (inclusive com /item_return_records)", async () => {
+      const { validateDevolutionNotificationAccess } = await import("../../server");
+
+      const mockDb = createMockAdminFirestore({
+        users: {
+          uid_aluno: { id: "uid_aluno", role: "ALUNO", approvalStatus: "APROVADO", status: "active" },
+          uid_serv_pend: { id: "uid_serv_pend", role: "SERVIDOR", approvalStatus: "PENDENTE", status: "active" },
+          uid_serv_emissor: { id: "uid_serv_emissor", name: "Atendente Emissor", role: "SERVIDOR", approvalStatus: "APROVADO", status: "active" },
+          uid_serv_outro: { id: "uid_serv_outro", name: "Outro Servidor", role: "SERVIDOR", approvalStatus: "APROVADO", status: "active" },
+          uid_admin: { id: "uid_admin", name: "Admin Geral", role: "ADMIN", approvalStatus: "APROVADO", status: "active" },
+        },
+        items: {
+          "item-segregated": {
+            id: "item-segregated",
+            title: "Óculos de Grau",
+            status: "DEVOLVIDO",
+            // Public doc has NO returnedByUserId or recipientEmail (Etapa 15 segregation)
+          },
+        },
+      });
+
+      // Seed private return record in /item_return_records
+      await mockDb.collection("item_return_records").doc("item-segregated").set({
+        itemId: "item-segregated",
+        status: "DEVOLVIDO",
+        returnedByUserId: "uid_serv_emissor",
+        recipientName: "Carlos Aluno",
+        recipientEmail: "carlos@estudantes.ifpr.edu.br",
+        devolutionNotified: false,
+      });
+
+      // 1. Token ausente / sem uid -> 401
+      const noTokenRes = await validateDevolutionNotificationAccess(mockDb, { uid: "" }, "item-segregated");
+      expect(noTokenRes.authorized).toBe(false);
+      expect(noTokenRes.statusCode).toBe(401);
+
+      // 2. Token com email_verified = false -> 403
+      const unverifiedRes = await validateDevolutionNotificationAccess(
+        mockDb,
+        { uid: "uid_serv_emissor", email: "emissor@ifpr.edu.br", email_verified: false },
+        "item-segregated"
+      );
+      expect(unverifiedRes.authorized).toBe(false);
+      expect(unverifiedRes.statusCode).toBe(403);
+
+      // 3. ALUNO ou SERVIDOR pendente -> 403
+      const alunoRes = await validateDevolutionNotificationAccess(
+        mockDb,
+        { uid: "uid_aluno", email: "a@estudantes.ifpr.edu.br", email_verified: true },
+        "item-segregated"
+      );
+      expect(alunoRes.authorized).toBe(false);
+      expect(alunoRes.statusCode).toBe(403);
+
+      const pendRes = await validateDevolutionNotificationAccess(
+        mockDb,
+        { uid: "uid_serv_pend", email: "p@ifpr.edu.br", email_verified: true },
+        "item-segregated"
+      );
+      expect(pendRes.authorized).toBe(false);
+      expect(pendRes.statusCode).toBe(403);
+
+      // 4. Outro SERVIDOR diferente do responsável pela devolução -> 403
+      const otherStaffRes = await validateDevolutionNotificationAccess(
+        mockDb,
+        { uid: "uid_serv_outro", email: "outro@ifpr.edu.br", email_verified: true },
+        "item-segregated"
+      );
+      expect(otherStaffRes.authorized).toBe(false);
+      expect(otherStaffRes.statusCode).toBe(403);
+      expect(otherStaffRes.errorMessage).toContain("Apenas o atendente responsável");
+
+      // 5. SERVIDOR emissor legítimo -> 200 com dados mesclados de /item_return_records
+      const issuerRes = await validateDevolutionNotificationAccess(
+        mockDb,
+        { uid: "uid_serv_emissor", email: "emissor@ifpr.edu.br", email_verified: true },
+        "item-segregated"
+      );
+      expect(issuerRes.authorized).toBe(true);
+      expect(issuerRes.statusCode).toBe(200);
+      expect(issuerRes.itemData?.recipientEmail).toBe("carlos@estudantes.ifpr.edu.br");
+
+      // 6. ADMIN ativo e aprovado -> 200
+      const adminRes = await validateDevolutionNotificationAccess(
+        mockDb,
+        { uid: "uid_admin", email: "admin@ifpr.edu.br", email_verified: true },
+        "item-segregated"
+      );
+      expect(adminRes.authorized).toBe(true);
+      expect(adminRes.statusCode).toBe(200);
     });
   });
 });
+
