@@ -19,6 +19,8 @@ import { ManageUserStatusModal } from "./ManageUserStatusModal";
 import { AccountManagementView } from "./AccountManagementView";
 import { getSafeAvatarUrl, handleAvatarError } from "../lib/avatarUtils";
 import { resolveAccountStatus, formatAccountStatusDetails } from "../lib/accountStatusUtils";
+import { computeDashboardReturnMetrics, isRecipientReturnConcluded } from "../lib/dashboardMetricsUtils";
+import { SurfaceCard, UIButton, UIBadge, EmptyState } from "./ui";
 import { auth, db, traceFirebasePerformance } from "../lib/firebase";
 import { collection, query, limit, getDocs } from "firebase/firestore";
 import {
@@ -229,19 +231,12 @@ export const DashboardView: React.FC = () => {
   );
   const unassignedPendingSignaturesCount = unassignedPendingSignaturesItems.length;
 
-  // Items returned with digital signature count
-  const digitalReturnedItemsCount = items.filter(
-    (it) =>
-      it &&
-      it.status === "DEVOLVIDO" &&
-      (it.recipientSignatureStatus === "SIGNED" ||
-        Boolean(it.recipientSignatureUrl) ||
-        Boolean(it.signedAt) ||
-        Boolean(it.receiptValidationCode) ||
-        it.recipientSignatureType === "REMOTE_EMAIL" ||
-        it.recipientSignatureType === "IN_PERSON_DEVICE" ||
-        Boolean(it.signatureTokenUsed))
-  ).length;
+  const returnMetrics = computeDashboardReturnMetrics(items);
+  const digitalReturnedItemsCount = returnMetrics.concludedReturnsCount;
+  const pendingRemoteSignaturesCount = returnMetrics.pendingRemoteSignaturesCount;
+  const registeredReturnsCount = returnMetrics.registeredReturnsCount;
+  const pendingStaffAttestationCount = returnMetrics.pendingStaffAttestationCount;
+  const dualSignedReturnsCount = returnMetrics.dualSignedReturnsCount;
 
   // Items held for >90 days count
   const itemsOver90DaysCount = items.filter((it) => {
@@ -450,16 +445,16 @@ export const DashboardView: React.FC = () => {
     }
   };
 
-  // Metrics Calculations
+  // Metrics Calculations (Strict separation between registered returns, pending remote signatures, and concluded returns)
   const totalItems = items.length;
   const lostCount = items.filter((i) => i.type === "PERDIDO").length;
   const foundCount = items.filter((i) => i.type === "ENCONTRADO").length;
-  const returnedCount = items.filter((i) => i.status === "DEVOLVIDO").length;
+  const returnedCount = returnMetrics.concludedReturnsCount;
   const inAnalysisCount = items.filter((i) => i.status === "EM_ANALISE").length;
-  const successRate = totalItems > 0 ? Math.round((returnedCount / totalItems) * 100) : 0;
+  const successRate = returnMetrics.successRate;
   const pendingClaimsCount = claims.filter((c) => c.status === "PENDENTE").length;
 
-  // Dynamic Chart 1 Data: Monthly Lost vs Found vs Returned Trend (Fetched from Firestore)
+  // Dynamic Chart 1 Data: Monthly Lost vs Found vs Concluded Returned Trend (Fetched from Firestore)
   const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
   const now = new Date();
   const last6Months = [];
@@ -486,7 +481,7 @@ export const DashboardView: React.FC = () => {
       if (targetMonth) {
         if (it.type === "PERDIDO") targetMonth.perdidos++;
         if (it.type === "ENCONTRADO") targetMonth.encontrados++;
-        if (it.status === "DEVOLVIDO") targetMonth.devolvidos++;
+        if (isRecipientReturnConcluded(it)) targetMonth.devolvidos++;
       }
     }
   });
@@ -504,7 +499,7 @@ export const DashboardView: React.FC = () => {
     categoryCounts[it.category] = (categoryCounts[it.category] || 0) + 1;
   });
 
-  const COLORS = ["#00843D", "#C8102E", "#3B82F6", "#F59E0B", "#8B5CF6", "#EC4899", "#14B8A6"];
+  const COLORS = ["#16845B", "#DC2626", "#2563EB", "#D97706", "#7C3AED", "#DB2777", "#0D9488"];
 
   const pieCategoryData =
     Object.keys(categoryCounts).length > 0
@@ -606,7 +601,7 @@ export const DashboardView: React.FC = () => {
     const doc = new jsPDF();
 
     // Institutional Green Header
-    doc.setFillColor(0, 132, 61); // IFPR Green #00843D
+    doc.setFillColor(22, 132, 91); // Localiza+ Green #16845B
     doc.rect(0, 0, 210, 26, "F");
 
     // Red accent stripe
@@ -652,7 +647,7 @@ export const DashboardView: React.FC = () => {
       startY: 59,
       head: [["ID / QR", "Título do Objeto", "Categoria", "Tipo", "Local Encontrado/Perdido", "Data Registro", "Status", "Registrado Por"]],
       body: tableRows,
-      headStyles: { fillColor: [0, 132, 61], textColor: [255, 255, 255], fontStyle: "bold" },
+      headStyles: { fillColor: [22, 132, 91], textColor: [255, 255, 255], fontStyle: "bold" },
       styles: { fontSize: 7.5, cellPadding: 2 },
       columnStyles: {
         0: { cellWidth: 22 },
@@ -711,7 +706,7 @@ export const DashboardView: React.FC = () => {
     const doc = new jsPDF();
 
     // Institutional Header
-    doc.setFillColor(0, 132, 61); // IFPR Green #00843D
+    doc.setFillColor(22, 132, 91); // Localiza+ Green #16845B
     doc.rect(0, 0, 210, 25, "F");
 
     doc.setTextColor(255, 255, 255);
@@ -744,7 +739,7 @@ export const DashboardView: React.FC = () => {
       startY: 55,
       head: [["Data e Hora", "Responsável", "Operação", "Detalhes da Operação"]],
       body: tableRows,
-      headStyles: { fillColor: [0, 132, 61], textColor: [255, 255, 255], fontStyle: "bold" },
+      headStyles: { fillColor: [22, 132, 91], textColor: [255, 255, 255], fontStyle: "bold" },
       styles: { fontSize: 8, cellPadding: 2.5 },
       columnStyles: {
         0: { cellWidth: 35 },
@@ -891,9 +886,9 @@ export const DashboardView: React.FC = () => {
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-300">
       {/* Compact Operational Header & Role Segmented Control */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white/90 dark:bg-[#0f1420]/90 backdrop-blur-md p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#111827] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)]">
         <div className="flex items-center space-x-3 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-[#00843D]/10 text-[#00843D] dark:text-emerald-400 flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 flex items-center justify-center shrink-0">
             {currentUser.role === "SERVIDOR" ? (
               <Building2 className="w-4.5 h-4.5" />
             ) : (
@@ -906,7 +901,7 @@ export const DashboardView: React.FC = () => {
               <span>•</span>
               <span>IFPR Campus Ivaiporã</span>
             </div>
-            <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight truncate">
+            <h1 className="text-base sm:text-lg font-bold text-[#172B2A] dark:text-white tracking-tight truncate">
               {currentUser.role === "SERVIDOR" ? "Painel do Servidor & Gestão" : "Painel de Operações & Gestão"}
             </h1>
           </div>
@@ -915,13 +910,13 @@ export const DashboardView: React.FC = () => {
         {/* Role Panel Segmented Control & Actions */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           {currentUser.role === "ADMIN" ? (
-            <div className="bg-slate-100 dark:bg-slate-800/90 p-0.5 rounded-lg flex items-center border border-slate-200/60 dark:border-slate-700/60">
+            <div className="bg-[#F8FAFC] dark:bg-slate-800/90 p-1 rounded-xl flex items-center border border-slate-200 dark:border-slate-700">
               <button
                 onClick={() => setActiveDashboardRole("ALUNO")}
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all flex items-center space-x-1 cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1 cursor-pointer ${
                   activeDashboardRole === "ALUNO"
-                    ? "bg-white dark:bg-slate-900 text-[#00843D] dark:text-emerald-400 shadow-xs font-bold"
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    ? "bg-white dark:bg-slate-900 text-[#16845B] dark:text-emerald-400 shadow-xs font-bold"
+                    : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
                 }`}
               >
                 <GraduationCap className="w-3.5 h-3.5" />
@@ -930,10 +925,10 @@ export const DashboardView: React.FC = () => {
 
               <button
                 onClick={() => setActiveDashboardRole("SERVIDOR")}
-                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all flex items-center space-x-1 cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1 cursor-pointer ${
                   activeDashboardRole === "SERVIDOR"
-                    ? "bg-white dark:bg-slate-900 text-[#00843D] dark:text-emerald-400 shadow-xs font-bold"
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    ? "bg-white dark:bg-slate-900 text-[#16845B] dark:text-emerald-400 shadow-xs font-bold"
+                    : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
                 }`}
               >
                 <Building2 className="w-3.5 h-3.5" />
@@ -942,10 +937,10 @@ export const DashboardView: React.FC = () => {
 
               <button
                 onClick={() => setActiveDashboardRole("ADMIN")}
-                className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer ${
                   activeDashboardRole === "ADMIN"
-                    ? "bg-[#00843D] text-white shadow-xs"
-                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    ? "bg-[#16845B] text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
                 }`}
               >
                 <Shield className="w-3.5 h-3.5" />
@@ -953,11 +948,11 @@ export const DashboardView: React.FC = () => {
               </button>
             </div>
           ) : (
-            <div className="px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium flex items-center space-x-2 border border-slate-200 dark:border-slate-700">
+            <div className="px-3 py-1 rounded-lg bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium flex items-center space-x-2 border border-slate-200 dark:border-slate-700">
               {currentUser.role === "SERVIDOR" ? (
-                <Building2 className="w-3.5 h-3.5 text-[#00843D]" />
+                <Building2 className="w-3.5 h-3.5 text-[#16845B]" />
               ) : (
-                <UserCheck className="w-3.5 h-3.5 text-[#00843D]" />
+                <UserCheck className="w-3.5 h-3.5 text-[#16845B]" />
               )}
               <span>{currentUser.role === "SERVIDOR" ? "Painel: Servidor / Portaria" : `Painel: ${currentUser.role}`}</span>
             </div>
@@ -970,9 +965,9 @@ export const DashboardView: React.FC = () => {
               type="button"
               aria-label="Exportar relatório completo de itens em CSV"
               title="Download do Relatório Completo de Achados & Perdidos (CSV)"
-              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs"
+              className="px-3 py-1.5 rounded-lg bg-[#F8FAFC] hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-[#172B2A] dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-[#00843D]" />
+              <FileSpreadsheet className="w-3.5 h-3.5 text-[#16845B]" />
               <span>Exportar CSV</span>
             </button>
           )}
@@ -984,10 +979,10 @@ export const DashboardView: React.FC = () => {
       {/* ========================================================================= */}
       {activeDashboardRole === "ALUNO" && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 flex items-center space-x-3 text-xs text-emerald-800 dark:text-emerald-300">
-            <GraduationCap className="w-5 h-5 shrink-0 text-[#00843D]" />
+          <div className="bg-[#EBF5F0] dark:bg-emerald-950/30 border border-[#16845B]/20 rounded-2xl p-4 flex items-center space-x-3 text-xs text-[#064E3B] dark:text-emerald-300">
+            <GraduationCap className="w-5 h-5 shrink-0 text-[#16845B]" />
             <div>
-              <p className="font-extrabold">Visão do Discente (Aluno)</p>
+              <p className="font-bold">Visão do Discente (Aluno)</p>
               <p className="text-[11px] opacity-90">
                 Acompanhe os itens que você registrou, solicitações de devolução e selo de reputação no campus.
               </p>
@@ -996,57 +991,64 @@ export const DashboardView: React.FC = () => {
 
           {/* Student Stats Cards (Responsive CSS Grid) */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-w-0">
-            <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-2">
-              <div className="flex items-center justify-between text-neutral-500">
+            <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-2">
+              <div className="flex items-center justify-between text-slate-500">
                 <span className="text-xs font-bold uppercase tracking-wider">Minhas Ocorrências</span>
-                <PackageSearch className="w-5 h-5 text-[#00843D]" />
+                <PackageSearch className="w-5 h-5 text-[#16845B]" />
               </div>
-              <p className="text-3xl font-black text-neutral-900 dark:text-white">
+              <p className="text-3xl font-bold text-[#172B2A] dark:text-white tabular-nums">
                 {items.filter((i) => i.registeredByUserId === currentUser.id).length}
               </p>
-              <p className="text-[11px] text-neutral-500">Itens cadastrados por você</p>
+              <p className="text-[11px] text-slate-500">Itens cadastrados por você</p>
             </div>
 
-            <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-2">
-              <div className="flex items-center justify-between text-neutral-500">
+            <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-2">
+              <div className="flex items-center justify-between text-slate-500">
                 <span className="text-xs font-bold uppercase tracking-wider">Reclamações Enviadas</span>
                 <Clock className="w-5 h-5 text-amber-500" />
               </div>
-              <p className="text-3xl font-black text-neutral-900 dark:text-white">
+              <p className="text-3xl font-bold text-[#172B2A] dark:text-white tabular-nums">
                 {claims.filter((c) => c.claimerId === currentUser.id).length}
               </p>
-              <p className="text-[11px] text-neutral-500">Solicitações de dono verdadeiro</p>
+              <p className="text-[11px] text-slate-500">Solicitações de dono verdadeiro</p>
             </div>
 
-            <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-2">
-              <div className="flex items-center justify-between text-neutral-500">
+            <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-2">
+              <div className="flex items-center justify-between text-slate-500">
                 <span className="text-xs font-bold uppercase tracking-wider">Selo de Cidadania</span>
-                <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                <CheckCircle2 className="w-5 h-5 text-[#16845B]" />
               </div>
-              <p className="text-3xl font-black text-[#00843D]">
+              <p className="text-3xl font-bold text-[#16845B] tabular-nums">
                 {currentUser.reputationScore || 10} pts
               </p>
-              <p className="text-[11px] text-neutral-500">Nível: Aluno Cidadão Exemplar</p>
+              <p className="text-[11px] text-slate-500">Nível: Aluno Cidadão Exemplar</p>
             </div>
           </div>
 
           {/* Student My Registered Items Table */}
-          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-extrabold text-neutral-900 dark:text-white">
-                Seus Objetos Cadastrados
+          <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h2 className="text-base font-bold text-[#172B2A] dark:text-white">
+                Seus Objetos e Ocorrências Vinculadas
               </h2>
-              <button
-                onClick={() => requestAuthForRegistration()}
-                className="px-4 py-2 rounded-xl bg-[#00843D] text-white text-xs font-bold hover:bg-[#006e33] transition-colors"
-              >
-                + Registrar Novo Item
-              </button>
+              {((currentUser.role === "SERVIDOR" && currentUser.approvalStatus === "APROVADO") ||
+                currentUser.role === "ADMIN") ? (
+                <button
+                  onClick={() => requestAuthForRegistration()}
+                  className="px-4 py-2 rounded-xl bg-[#16845B] text-white text-xs font-bold hover:bg-[#064E3B] transition-colors cursor-pointer"
+                >
+                  + Registrar Novo Item
+                </button>
+              ) : (
+                <span className="px-3 py-1 rounded-lg bg-[#EBF5F0] dark:bg-[#16845B]/20 text-[#16845B] dark:text-emerald-400 text-xs font-semibold border border-[#16845B]/20">
+                  Acompanhamento Discente
+                </span>
+              )}
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-neutral-50 dark:bg-neutral-800 text-neutral-500 uppercase font-bold text-[10px]">
+                <thead className="bg-[#F8FAFC] dark:bg-slate-800 text-slate-500 uppercase font-bold text-[10px]">
                   <tr>
                     <th className="p-3 rounded-l-xl">Objeto</th>
                     <th className="p-3">Categoria</th>
@@ -1056,10 +1058,10 @@ export const DashboardView: React.FC = () => {
                     <th className="p-3 rounded-r-xl text-right">Ação</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {items.filter((i) => i.registeredByUserId === currentUser.id).length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-8 text-neutral-400">
+                      <td colSpan={6} className="text-center py-8 text-slate-400">
                         Você ainda não cadastrou nenhum objeto.
                       </td>
                     </tr>
@@ -1067,20 +1069,20 @@ export const DashboardView: React.FC = () => {
                     items
                       .filter((i) => i.registeredByUserId === currentUser.id)
                       .map((item) => (
-                        <tr key={item.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
-                          <td className="p-3 font-bold text-neutral-900 dark:text-white">{item.title}</td>
+                        <tr key={item.id} className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/50">
+                          <td className="p-3 font-bold text-[#172B2A] dark:text-white">{item.title}</td>
                           <td className="p-3">{item.category}</td>
                           <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${item.type === "PERDIDO" ? "bg-red-500/10 text-red-600" : "bg-green-500/10 text-green-600"}`}>
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap shrink-0 ${item.type === "PERDIDO" ? "bg-red-500/10 text-red-600" : "bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400"}`}>
                               {item.type}
                             </span>
                           </td>
                           <td className="p-3 font-bold">{item.status}</td>
-                          <td className="p-3 text-neutral-500">{formatDate(item.date)}</td>
+                          <td className="p-3 text-slate-500 tabular-nums">{formatDate(item.date)}</td>
                           <td className="p-3 text-right">
                             <button
                               onClick={() => setSelectedItemForDetail(item)}
-                              className="px-3 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white text-[11px] font-bold transition-colors"
+                              className="px-3 py-1 rounded-lg bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-[#16845B] hover:text-white hover:border-[#16845B] text-[11px] font-bold transition-colors"
                             >
                               Ver Detalhes
                             </button>
@@ -1100,11 +1102,11 @@ export const DashboardView: React.FC = () => {
       {/* ========================================================================= */}
       {activeDashboardRole === "SERVIDOR" && (
         <div className="space-y-8 animate-in fade-in duration-200">
-          <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4 flex items-center justify-between text-xs text-blue-900 dark:text-blue-200">
+          <div className="bg-[#EBF5F0] dark:bg-emerald-950/30 border border-[#16845B]/20 rounded-2xl p-4 flex items-center justify-between text-xs text-[#064E3B] dark:text-emerald-200">
             <div className="flex items-center space-x-3">
-              <Building2 className="w-5 h-5 shrink-0 text-blue-600 dark:text-blue-400" />
+              <Building2 className="w-5 h-5 shrink-0 text-[#16845B] dark:text-emerald-400" />
               <div>
-                <p className="font-extrabold">Painel do Servidor / Portaria e Achados & Perdidos</p>
+                <p className="font-bold">Painel do Servidor / Portaria e Achados & Perdidos</p>
                 <p className="text-[11px] opacity-90">
                   Acesso para conferência de itens, leitor QR Code na recepção e análise de tendências de objetos no campus.
                 </p>
@@ -1112,7 +1114,7 @@ export const DashboardView: React.FC = () => {
             </div>
             <button
               onClick={() => setQrScannerOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-extrabold flex items-center space-x-1.5 text-xs shadow-xs"
+              className="px-3.5 py-2 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold flex items-center space-x-1.5 text-xs shadow-xs shrink-0"
             >
               <QrCode className="w-4 h-4" />
               <span>Escanear Etiqueta QR</span>
@@ -1121,39 +1123,43 @@ export const DashboardView: React.FC = () => {
 
           {/* Servidor Summary Metrics */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-white/95 dark:bg-[#0f1420]/95 p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-1">
+            <div className="bg-white dark:bg-[#111827] p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-1">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total de Itens</span>
-              <p className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{totalItems}</p>
+              <p className="text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight tabular-nums">{totalItems}</p>
               <p className="text-[11px] text-slate-400">Acervo acumulado</p>
             </div>
-            <div className="bg-white/95 dark:bg-[#0f1420]/95 p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-1">
+            <div className="bg-white dark:bg-[#111827] p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-1">
               <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">Em Análise / Recepção</span>
-              <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 tracking-tight">{inAnalysisCount}</p>
+              <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 tracking-tight tabular-nums">{inAnalysisCount}</p>
               <p className="text-[11px] text-slate-400">Guarda na guarita</p>
             </div>
-            <div className="bg-white/95 dark:bg-[#0f1420]/95 p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-1">
-              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">Devoluções Concluídas</span>
-              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 tracking-tight">{returnedCount}</p>
-              <p className="text-[11px] text-slate-400">Entregues aos donos</p>
+            <div className="bg-white dark:bg-[#111827] p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-1">
+              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">Devoluções Concluídas (Receptor)</span>
+              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 tracking-tight tabular-nums">{returnedCount}</p>
+              <p className="text-[10px] text-slate-400 tabular-nums">
+                {registeredReturnsCount} registradas • {pendingRemoteSignaturesCount} pend. remota • {dualSignedReturnsCount} dupla assin.
+              </p>
             </div>
-            <div className="bg-white/95 dark:bg-[#0f1420]/95 p-3.5 sm:p-4 rounded-xl border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-1">
-              <span className="text-[10px] font-bold text-[#00843D] dark:text-emerald-400 uppercase tracking-wider block">Taxa de Sucesso</span>
-              <p className="text-2xl font-bold text-[#00843D] dark:text-emerald-400 tracking-tight">{successRate}%</p>
-              <p className="text-[11px] text-slate-400">Resoluções no campus</p>
+            <div className="bg-white dark:bg-[#111827] p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-1">
+              <span className="text-[10px] font-bold text-[#16845B] dark:text-emerald-400 uppercase tracking-wider block">Taxa de Sucesso (Concluídas)</span>
+              <p className="text-2xl font-bold text-[#16845B] dark:text-emerald-400 tracking-tight tabular-nums">{successRate}%</p>
+              <p className="text-[10px] text-slate-400 tabular-nums">
+                {pendingStaffAttestationCount} aguardando atestação do servidor
+              </p>
             </div>
           </div>
 
           {/* SPECIALIZED REPORTING COMPONENT WITH RECHARTS */}
-          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-100 dark:border-neutral-800 pb-4">
+          <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
               <div>
                 <div className="flex items-center space-x-2">
-                  <TrendingUp className="w-5 h-5 text-[#00843D]" />
-                  <h2 className="text-lg font-black text-neutral-900 dark:text-white">
+                  <TrendingUp className="w-5 h-5 text-[#16845B]" />
+                  <h2 className="text-lg font-bold text-[#172B2A] dark:text-white tracking-tight">
                     Relatório Analítico & Gráficos do Servidor
                   </h2>
                 </div>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Análise temporal, estatísticas por categoria e contagem de análises pendentes no IFPR Campus Ivaiporã.
                 </p>
               </div>
@@ -1166,7 +1172,7 @@ export const DashboardView: React.FC = () => {
                   }}
                   role="button"
                   aria-label="Abrir modal para emitir Relatório de Prestação de Contas de Itens Encontrados em PDF"
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors flex items-center space-x-2 cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold text-xs shadow-xs transition-colors flex items-center space-x-2 cursor-pointer"
                 >
                   <FileText className="w-4 h-4 text-white" />
                   <span>Prestação de Contas SEBAC (PDF)</span>
@@ -1176,7 +1182,7 @@ export const DashboardView: React.FC = () => {
                   onClick={handleExportPendingItemsPDF}
                   role="button"
                   aria-label="Exportar Relatório em PDF contendo a listagem de objetos pendentes"
-                  className="px-4 py-2 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white font-bold text-xs shadow-xs transition-colors flex items-center space-x-2 cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-[#064E3B] hover:bg-[#16845B] text-white font-bold text-xs shadow-xs transition-colors flex items-center space-x-2 cursor-pointer"
                 >
                   <FileText className="w-4 h-4 text-white" />
                   <span>Exportar Pendentes (PDF)</span>
@@ -1186,33 +1192,33 @@ export const DashboardView: React.FC = () => {
                   onClick={handleExportItemsCSV}
                   role="button"
                   aria-label="Exportar todos os dados em formato CSV para a Secretaria"
-                  className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 font-bold text-xs text-neutral-700 dark:text-neutral-300 transition-colors flex items-center space-x-2 cursor-pointer border border-neutral-300 dark:border-neutral-700 shadow-xs"
+                  className="px-4 py-2 rounded-xl bg-[#F8FAFC] dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold text-xs text-slate-700 dark:text-slate-300 transition-colors flex items-center space-x-2 cursor-pointer border border-slate-200 dark:border-slate-700 shadow-xs"
                 >
-                  <FileSpreadsheet className="w-4 h-4 text-[#00843D]" />
+                  <FileSpreadsheet className="w-4 h-4 text-[#16845B]" />
                   <span>Exportar Base Completa (CSV)</span>
                 </button>
               </div>
             </div>
 
             {/* Gráfico de Linhas Recharts: Tendência Mensal de Itens Perdidos vs. Recuperados no Campus Ivaiporã */}
-            <div className="bg-neutral-50 dark:bg-neutral-900/50 p-5 sm:p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800/80 space-y-4">
+            <div className="bg-[#F8FAFC] dark:bg-slate-900/50 p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-slate-800/80 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 tracking-wider flex items-center space-x-1.5">
-                    <TrendingUp className="w-4 h-4 text-[#00843D]" />
+                  <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider flex items-center space-x-1.5">
+                    <TrendingUp className="w-4 h-4 text-[#16845B]" />
                     <span>Tendência Mensal: Itens Perdidos vs. Recuperados (Campus Ivaiporã)</span>
                   </h3>
-                  <p className="text-[11px] text-neutral-500">
+                  <p className="text-[11px] text-slate-500">
                     Comparativo em linha da evolução temporal entre perdas registradas e devoluções bem-sucedidas no campus
                   </p>
                 </div>
                 <div className="flex items-center space-x-3 text-[11px] font-bold">
-                  <span className="flex items-center space-x-1 text-[#C8102E]">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#C8102E] inline-block"></span>
+                  <span className="flex items-center space-x-1 text-red-600">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-600 inline-block"></span>
                     <span>Perdidos</span>
                   </span>
-                  <span className="flex items-center space-x-1 text-[#00843D]">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#00843D] inline-block"></span>
+                  <span className="flex items-center space-x-1 text-[#16845B]">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#16845B] inline-block"></span>
                     <span>Recuperados</span>
                   </span>
                   <span className="flex items-center space-x-1 text-[#3B82F6]">
@@ -1226,12 +1232,12 @@ export const DashboardView: React.FC = () => {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={monthlyData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                    <XAxis dataKey="month" stroke="#888" fontSize={11} />
-                    <YAxis stroke="#888" fontSize={11} allowDecimals={false} />
+                    <XAxis dataKey="month" stroke="#64748B" fontSize={11} />
+                    <YAxis stroke="#64748B" fontSize={11} allowDecimals={false} />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: "#1E1E1E",
-                        borderColor: "#333",
+                        backgroundColor: "#111827",
+                        borderColor: "#334155",
                         borderRadius: "12px",
                         color: "#fff",
                         fontSize: "12px",
@@ -1242,18 +1248,18 @@ export const DashboardView: React.FC = () => {
                       type="monotone"
                       dataKey="perdidos"
                       name="Itens Perdidos"
-                      stroke="#C8102E"
+                      stroke="#DC2626"
                       strokeWidth={3}
-                      dot={{ r: 4, stroke: "#C8102E", fill: "#fff", strokeWidth: 2 }}
+                      dot={{ r: 4, stroke: "#DC2626", fill: "#fff", strokeWidth: 2 }}
                       activeDot={{ r: 7 }}
                     />
                     <Line
                       type="monotone"
                       dataKey="devolvidos"
                       name="Itens Recuperados / Devolvidos"
-                      stroke="#00843D"
+                      stroke="#16845B"
                       strokeWidth={3}
-                      dot={{ r: 4, stroke: "#00843D", fill: "#fff", strokeWidth: 2 }}
+                      dot={{ r: 4, stroke: "#16845B", fill: "#fff", strokeWidth: 2 }}
                       activeDot={{ r: 7 }}
                     />
                     <Line
@@ -1279,11 +1285,11 @@ export const DashboardView: React.FC = () => {
             {/* Charts Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Chart 1: Categorias Mais Comuns */}
-              <div className="bg-white/95 dark:bg-[#0f1420]/95 p-4 sm:p-5 rounded-xl border border-slate-200/80 dark:border-slate-800/80 space-y-3 shadow-xs">
+              <div className="bg-white dark:bg-[#111827] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3 shadow-[0_1px_3px_rgba(23,43,42,0.04)]">
                 <div>
                   <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider flex items-center justify-between">
                     <span>Categorias de Objetos</span>
-                    <span className="text-[10px] text-slate-400 font-mono font-normal">
+                    <span className="text-[10px] text-slate-400 font-mono font-normal tabular-nums">
                       {Object.keys(categoryCounts).length} tipos mapeados
                     </span>
                   </h3>
@@ -1309,8 +1315,8 @@ export const DashboardView: React.FC = () => {
                               {cat.name}
                             </span>
                           </div>
-                          <div className="flex items-center space-x-2 shrink-0">
-                            <span className="font-bold text-slate-900 dark:text-white text-xs">{cat.value}</span>
+                          <div className="flex items-center space-x-2 shrink-0 tabular-nums">
+                            <span className="font-bold text-[#172B2A] dark:text-white text-xs">{cat.value}</span>
                             <span className="text-[10px] text-slate-400 font-mono w-7 text-right">{pct}%</span>
                           </div>
                         </div>
@@ -1336,7 +1342,7 @@ export const DashboardView: React.FC = () => {
                         </Pie>
                         <Tooltip
                           contentStyle={{
-                            backgroundColor: "#0f172a",
+                            backgroundColor: "#111827",
                             borderColor: "#334155",
                             borderRadius: "8px",
                             color: "#fff",
@@ -1350,12 +1356,12 @@ export const DashboardView: React.FC = () => {
               </div>
 
               {/* Chart 2: Análise de Tendência Mensal */}
-              <div className="bg-neutral-50 dark:bg-neutral-900/50 p-5 rounded-3xl border border-neutral-200 dark:border-neutral-800/80 space-y-4">
+              <div className="bg-[#F8FAFC] dark:bg-slate-900/50 p-5 rounded-2xl border border-slate-200 dark:border-slate-800/80 space-y-4">
                 <div>
-                  <h3 className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 tracking-wider">
+                  <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
                     Análise de Tendência Mensal
                   </h3>
-                  <p className="text-[11px] text-neutral-500">
+                  <p className="text-[11px] text-slate-500">
                     Evolução dos registros de Perdidos, Encontrados e Devolvidos no semestre
                   </p>
                 </div>
@@ -1365,28 +1371,28 @@ export const DashboardView: React.FC = () => {
                     <AreaChart data={monthlyData}>
                       <defs>
                         <linearGradient id="colorPerdidos" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#C8102E" stopOpacity={0.8} />
-                          <stop offset="95%" stopColor="#C8102E" stopOpacity={0} />
+                          <stop offset="5%" stopColor="#DC2626" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="#DC2626" stopOpacity={0} />
                         </linearGradient>
                         <linearGradient id="colorEncontrados" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#00843D" stopOpacity={0.8} />
-                          <stop offset="95%" stopColor="#00843D" stopOpacity={0} />
+                          <stop offset="5%" stopColor="#16845B" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="#16845B" stopOpacity={0} />
                         </linearGradient>
                       </defs>
-                      <XAxis dataKey="month" stroke="#888" fontSize={11} />
-                      <YAxis stroke="#888" fontSize={11} />
+                      <XAxis dataKey="month" stroke="#64748B" fontSize={11} />
+                      <YAxis stroke="#64748B" fontSize={11} />
                       <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                       <Tooltip
                         contentStyle={{
-                          backgroundColor: "#1E1E1E",
-                          borderColor: "#333",
+                          backgroundColor: "#111827",
+                          borderColor: "#334155",
                           borderRadius: "12px",
                           color: "#fff",
                           fontSize: "12px",
                         }}
                       />
-                      <Area type="monotone" dataKey="perdidos" stroke="#C8102E" fillOpacity={1} fill="url(#colorPerdidos)" name="Perdidos" />
-                      <Area type="monotone" dataKey="encontrados" stroke="#00843D" fillOpacity={1} fill="url(#colorEncontrados)" name="Encontrados" />
+                      <Area type="monotone" dataKey="perdidos" stroke="#DC2626" fillOpacity={1} fill="url(#colorPerdidos)" name="Perdidos" />
+                      <Area type="monotone" dataKey="encontrados" stroke="#16845B" fillOpacity={1} fill="url(#colorEncontrados)" name="Encontrados" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -1394,17 +1400,17 @@ export const DashboardView: React.FC = () => {
             </div>
 
             {/* Chart 3: Contagem de Ocorrências em Análise por Categoria */}
-            <div className="bg-neutral-50 dark:bg-neutral-900/50 p-5 rounded-3xl border border-neutral-200 dark:border-neutral-800/80 space-y-4">
+            <div className="bg-[#F8FAFC] dark:bg-slate-900/50 p-5 rounded-2xl border border-slate-200 dark:border-slate-800/80 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 tracking-wider">
+                  <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
                     Contagem de Revisões Pendentes por Categoria
                   </h3>
-                  <p className="text-[11px] text-neutral-500">
+                  <p className="text-[11px] text-slate-500">
                     Objetos aguardando comprovação presencial ou validação na recepção
                   </p>
                 </div>
-                <span className="px-3 py-1 rounded-full bg-amber-500/10 text-amber-600 text-xs font-extrabold border border-amber-500/20">
+                <span className="px-3 py-1 rounded-full bg-amber-500/10 text-amber-600 text-xs font-bold border border-amber-500/20 tabular-nums whitespace-nowrap shrink-0">
                   {inAnalysisCount + pendingClaimsCount} Pendentes Total
                 </span>
               </div>
@@ -1413,12 +1419,12 @@ export const DashboardView: React.FC = () => {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={barPendingData}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                    <XAxis dataKey="category" stroke="#888" fontSize={10} />
-                    <YAxis stroke="#888" fontSize={11} />
+                    <XAxis dataKey="category" stroke="#64748B" fontSize={10} />
+                    <YAxis stroke="#64748B" fontSize={11} />
                     <Tooltip
                       contentStyle={{
-                        backgroundColor: "#1E1E1E",
-                        borderColor: "#333",
+                        backgroundColor: "#111827",
+                        borderColor: "#334155",
                         borderRadius: "12px",
                         color: "#fff",
                         fontSize: "12px",
@@ -1431,38 +1437,38 @@ export const DashboardView: React.FC = () => {
             </div>
 
             {/* Storage Deadline Alert Card (Controle de Prazo de Armazenamento - 90 Dias) */}
-            <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-3xl border border-amber-500/30 dark:border-amber-500/30 shadow-md space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-100 dark:border-neutral-800">
+            <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-amber-500/30 dark:border-amber-500/30 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
                 <div className="flex items-center space-x-3">
-                  <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <div className="p-3 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
                     <Clock className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-[#172B2A] dark:text-white flex items-center gap-2">
                       <span>Controle de Prazo de Armazenamento</span>
-                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold uppercase tracking-wide">
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap shrink-0">
                         Portaria IFPR 90 Dias
                       </span>
                     </h3>
-                    <p className="text-xs text-neutral-500">
+                    <p className="text-xs text-slate-500">
                       Monitoramento preventivo de objetos guardados no acervo prestes a vencer o prazo regulamentar.
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center space-x-2">
-                  <span className="px-3 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 font-extrabold text-xs border border-red-500/20 flex items-center gap-1">
+                  <span className="px-3 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 font-bold text-xs border border-red-500/20 flex items-center gap-1 tabular-nums whitespace-nowrap shrink-0">
                     <AlertTriangle className="w-3.5 h-3.5" /> {expiredItems.length} Expirados
                   </span>
-                  <span className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 font-extrabold text-xs border border-amber-500/20 flex items-center gap-1">
+                  <span className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-xs border border-amber-500/20 flex items-center gap-1 tabular-nums whitespace-nowrap shrink-0">
                     <Clock className="w-3.5 h-3.5" /> {nearExpirationItems.length} Próximos do Vencimento
                   </span>
                 </div>
               </div>
 
               {deadlineAlertItems.length === 0 ? (
-                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-xs flex items-center space-x-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div className="p-4 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/30 border border-[#16845B]/20 text-[#064E3B] dark:text-emerald-300 text-xs flex items-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#16845B] shrink-0" />
                   <span>Todos os objetos guardados no acervo do IFPR estão dentro do prazo de guarda de 90 dias. Nenhuma destinação necessária no momento.</span>
                 </div>
               ) : (
@@ -1470,7 +1476,7 @@ export const DashboardView: React.FC = () => {
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
                       <thead>
-                        <tr className="border-b border-neutral-200 dark:border-neutral-800 text-neutral-400 uppercase text-[10px] font-bold">
+                        <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
                           <th className="py-2 px-3">Objeto</th>
                           <th className="py-2 px-3">Categoria</th>
                           <th className="py-2 px-3">Data Cadastro</th>
@@ -1479,29 +1485,29 @@ export const DashboardView: React.FC = () => {
                           <th className="py-2 px-3 text-right">Ação</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                         {deadlineAlertItems.slice(0, 6).map((item) => (
-                          <tr key={item.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
-                            <td className="py-2.5 px-3 font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+                          <tr key={item.id} className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/40">
+                            <td className="py-2.5 px-3 font-bold text-[#172B2A] dark:text-white flex items-center gap-2">
                               {item.imageUrl ? (
                                 <img src={item.imageUrl} alt={item.title} className="w-7 h-7 rounded-lg object-cover" />
                               ) : (
-                                <div className="w-7 h-7 rounded-lg bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center text-[10px] font-bold">IF</div>
+                                <div className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold">IF</div>
                               )}
                               <span className="truncate max-w-[160px]">{item.title}</span>
                             </td>
-                            <td className="py-2.5 px-3 text-neutral-600 dark:text-neutral-400">{item.category}</td>
-                            <td className="py-2.5 px-3 text-neutral-500 font-mono text-[11px]">{formatDate(item.createdAt)}</td>
-                            <td className="py-2.5 px-3 font-mono font-bold text-neutral-800 dark:text-neutral-200 text-[11px]">
+                            <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">{item.category}</td>
+                            <td className="py-2.5 px-3 text-slate-500 font-mono text-[11px] tabular-nums">{formatDate(item.createdAt)}</td>
+                            <td className="py-2.5 px-3 font-mono font-bold text-slate-800 dark:text-slate-200 text-[11px] tabular-nums">
                               {item.data_limite ? formatDate(item.data_limite) : (item.storageDeadlineDate ? formatDate(item.storageDeadlineDate) : "—")}
                             </td>
                             <td className="py-2.5 px-3 text-center">
                               {item.isExpired ? (
-                                <span className="px-2.5 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-400 font-extrabold text-[10px] border border-red-500/20 inline-block">
+                                <span className="px-2.5 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-400 font-bold text-[10px] border border-red-500/20 inline-block whitespace-nowrap shrink-0">
                                   🚨 Prazo Vencido ({Math.abs(item.daysRemaining)}d atrás)
                                 </span>
                               ) : (
-                                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-extrabold text-[10px] border border-amber-500/20 inline-block">
+                                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-[10px] border border-amber-500/20 inline-block whitespace-nowrap shrink-0">
                                   ⚠️ Vence em {item.daysRemaining} dias
                                 </span>
                               )}
@@ -1510,7 +1516,7 @@ export const DashboardView: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => setSelectedItemForDetail(item)}
-                                className="px-3 py-1 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-[11px] shadow-xs cursor-pointer"
+                                className="px-3 py-1 rounded-xl bg-[#064E3B] hover:bg-[#16845B] text-white font-bold text-[11px] shadow-xs cursor-pointer"
                               >
                                 Destinar / Gerenciar
                               </button>
@@ -1525,20 +1531,20 @@ export const DashboardView: React.FC = () => {
             </div>
 
             {/* Painel Operacional de Recepção e Custódia de Objetos no Campus */}
-            <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-100 dark:border-neutral-800 pb-4">
+            <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
                 <div className="flex items-center space-x-3">
-                  <div className="p-3 rounded-2xl bg-[#00843D]/10 text-[#00843D]">
+                  <div className="p-3 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400">
                     <PackageCheck className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-[#172B2A] dark:text-white flex items-center gap-2">
                       <span>Gerenciamento & Recepção de Objetos na Guarita / Secretaria</span>
-                      <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 text-[10px] font-extrabold">
+                      <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 text-[10px] font-bold tabular-nums whitespace-nowrap shrink-0">
                         {items.length} Registros
                       </span>
                     </h3>
-                    <p className="text-xs text-neutral-500">
+                    <p className="text-xs text-slate-500">
                       Confirmação presencial de chegada, guarda física, custódia e baixa de devoluções no campus.
                     </p>
                   </div>
@@ -1554,8 +1560,8 @@ export const DashboardView: React.FC = () => {
                       onClick={() => setServerFilterStatus(st)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                         serverFilterStatus === st
-                          ? "bg-[#00843D] text-white shadow-xs"
-                          : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                          ? "bg-[#16845B] text-white shadow-xs"
+                          : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                       }`}
                     >
                       {st === "TODOS" ? "Todos os Objetos" : st === "EM_ANALISE" ? "Em Análise / Custódia" : st}
@@ -1564,13 +1570,13 @@ export const DashboardView: React.FC = () => {
                 </div>
 
                 <div className="relative min-w-[220px]">
-                  <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={tableSearch}
                     onChange={(e) => setTableSearch(e.target.value)}
                     placeholder="Buscar objeto ou local..."
-                    className="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
+                    className="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:ring-2 focus:ring-[#16845B]"
                   />
                 </div>
               </div>
@@ -1579,7 +1585,7 @@ export const DashboardView: React.FC = () => {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="border-b border-neutral-200 dark:border-neutral-800 text-neutral-400 uppercase text-[10px] font-bold">
+                    <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
                       <th className="py-2.5 px-3">Objeto</th>
                       <th className="py-2.5 px-3">Tipo</th>
                       <th className="py-2.5 px-3">Localização</th>
@@ -1588,7 +1594,7 @@ export const DashboardView: React.FC = () => {
                       <th className="py-2.5 px-3 text-right">Ações Operacionais</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                     {items
                       .filter((it) => {
                         if (serverFilterStatus !== "TODOS" && it.status !== serverFilterStatus) return false;
@@ -1604,40 +1610,40 @@ export const DashboardView: React.FC = () => {
                       })
                       .slice(0, 15)
                       .map((it) => (
-                        <tr key={it.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
+                        <tr key={it.id} className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/40">
                           <td className="py-3 px-3">
                             <div className="flex items-center gap-2.5">
                               {it.imageUrl ? (
-                                <img src={it.imageUrl} alt={it.title} className="w-8 h-8 rounded-lg object-cover border border-neutral-200 dark:border-neutral-700" />
+                                <img src={it.imageUrl} alt={it.title} className="w-8 h-8 rounded-lg object-cover border border-slate-200 dark:border-slate-700" />
                               ) : (
-                                <div className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center font-bold text-neutral-400 text-[10px]">
+                                <div className="w-8 h-8 rounded-lg bg-[#F1F5F9] dark:bg-slate-800 flex items-center justify-center font-bold text-slate-400 text-[10px]">
                                   IF
                                 </div>
                               )}
                               <div>
-                                <span className="font-bold text-neutral-900 dark:text-white block truncate max-w-[180px]">
+                                <span className="font-bold text-[#172B2A] dark:text-white block truncate max-w-[180px]">
                                   {it.title}
                                 </span>
-                                <span className="text-[10px] text-neutral-400 font-mono">
+                                <span className="text-[10px] text-slate-400 font-mono">
                                   {it.category} {it.color ? `• ${it.color}` : ""}
                                 </span>
                               </div>
                             </div>
                           </td>
                           <td className="py-3 px-3">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                              it.type === "ENCONTRADO" ? "bg-emerald-500/10 text-emerald-600" : "bg-red-500/10 text-red-600"
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap shrink-0 ${
+                              it.type === "ENCONTRADO" ? "bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400" : "bg-red-500/10 text-red-600"
                             }`}>
                               {it.type}
                             </span>
                           </td>
-                          <td className="py-3 px-3 text-neutral-600 dark:text-neutral-400 font-medium">
+                          <td className="py-3 px-3 text-slate-600 dark:text-slate-400 font-medium">
                             {it.location || "Campus IFPR"}
                           </td>
                           <td className="py-3 px-3 text-center">
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase inline-block ${
+                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase inline-block whitespace-nowrap shrink-0 ${
                               it.status === "ENCONTRADO"
-                                ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                                ? "bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/20"
                                 : it.status === "EM_ANALISE"
                                 ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
                                 : it.status === "DEVOLVIDO"
@@ -1647,7 +1653,7 @@ export const DashboardView: React.FC = () => {
                               {it.status}
                             </span>
                           </td>
-                          <td className="py-3 px-3 text-neutral-400 font-mono text-[11px]">
+                          <td className="py-3 px-3 text-slate-400 font-mono text-[11px] tabular-nums">
                             {formatDate(it.createdAt)}
                           </td>
                           <td className="py-3 px-3 text-right">
@@ -1656,10 +1662,12 @@ export const DashboardView: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={async () => {
-                                    await updateItemStatus(it.id, "EM_ANALISE");
-                                    addToast(`Chegada do objeto "${it.title}" confirmada sob custódia na Guarita!`, "success");
+                                    try {
+                                      await updateItemStatus(it.id, "EM_ANALISE");
+                                      addToast(`Chegada do objeto "${it.title}" confirmada sob custódia na Guarita!`, "success");
+                                    } catch (_) {}
                                   }}
-                                  className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500 text-amber-700 hover:text-white border border-amber-500/30 text-[10px] font-black transition-all cursor-pointer"
+                                  className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500 text-amber-700 hover:text-white border border-amber-500/30 text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap"
                                   title="Confirmar que o objeto foi recebido fisicamente na guarita / secretaria"
                                 >
                                   📥 Confirmar Chegada
@@ -1668,7 +1676,7 @@ export const DashboardView: React.FC = () => {
                               <button
                                 type="button"
                                 onClick={() => setSelectedItemForDetail(it)}
-                                className="px-2.5 py-1 rounded-lg bg-[#00843D] hover:bg-[#006e33] text-white text-[10px] font-black transition-all cursor-pointer shadow-xs"
+                                className="px-2.5 py-1 rounded-lg bg-[#16845B] hover:bg-[#064E3B] text-white text-[10px] font-bold transition-all cursor-pointer shadow-xs whitespace-nowrap"
                               >
                                 Ver / Devolver
                               </button>
@@ -1690,15 +1698,15 @@ export const DashboardView: React.FC = () => {
       {(activeDashboardRole === "ADMIN" || currentUser.role === "SERVIDOR") && (
         <div className="space-y-8 animate-in fade-in duration-200">
           {currentUser.role !== "ADMIN" && currentUser.role !== "SERVIDOR" ? (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-3xl p-8 text-center space-y-4">
-              <div className="w-12 h-12 rounded-full bg-red-500/20 text-red-500 flex items-center justify-center mx-auto">
+            <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-8 text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-500 flex items-center justify-center mx-auto">
                 <Lock className="w-6 h-6" />
               </div>
               <div className="space-y-1">
-                <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
                   Acesso Restrito
                 </h3>
-                <p className="text-xs text-neutral-500 max-w-md mx-auto">
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
                   Sua conta atual ({currentUser.email}) possui permissão de <strong>{currentUser.role}</strong>. Apenas servidores e administradores autenticados podem acessar o módulo de custódia e assinaturas.
                 </p>
               </div>
@@ -1706,9 +1714,9 @@ export const DashboardView: React.FC = () => {
           ) : (
             <>
               {/* Admin Navigation Cohesive Toolbar */}
-              <div className="bg-white/95 dark:bg-[#0f1420]/95 backdrop-blur-md rounded-xl p-3.5 sm:p-4 border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-3">
+              <div className="bg-white dark:bg-[#111827] rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-3">
                 {/* Level 1: Context Categories */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 pb-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
                   <div className="flex flex-wrap items-center gap-1.5">
                     {[
                       {
@@ -1759,14 +1767,14 @@ export const DashboardView: React.FC = () => {
                             }}
                             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                               isCatActive
-                                ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shadow-xs font-bold"
-                                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                                ? "bg-[#064E3B] text-white dark:bg-[#16845B] dark:text-white shadow-xs font-bold"
+                                : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60"
                             }`}
                           >
                             <Icon className="w-3.5 h-3.5" />
                             <span>{cat.label}</span>
                             {cat.badge && cat.badge > 0 ? (
-                              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
+                              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold tabular-nums">
                                 {cat.badge}
                               </span>
                             ) : null}
@@ -1782,8 +1790,8 @@ export const DashboardView: React.FC = () => {
                         onClick={toggleMaintenanceMode}
                         className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer border ${
                           maintenanceMode
-                            ? "bg-amber-500 text-black border-amber-600 animate-pulse font-bold"
-                            : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
+                            ? "bg-amber-500 text-black border-amber-600 font-bold"
+                            : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                         }`}
                       >
                         <ShieldAlert className="w-3.5 h-3.5" />
@@ -1803,8 +1811,8 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("accounts")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "accounts"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <ShieldAlert className="w-3.5 h-3.5" />
@@ -1815,8 +1823,8 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("users")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "users"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <Users className="w-3.5 h-3.5" />
@@ -1827,14 +1835,14 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("approvals")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "approvals"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <GraduationCap className="w-3.5 h-3.5" />
                           <span>Aprovação (@ifpr)</span>
                           {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-bold">
+                            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-bold tabular-nums">
                               {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length}
                             </span>
                           )}
@@ -1849,8 +1857,8 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("audit")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "audit"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <History className="w-3.5 h-3.5" />
@@ -1861,8 +1869,8 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("health")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "health"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <Activity className="w-3.5 h-3.5" />
@@ -1873,8 +1881,8 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("backups")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "backups"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <HardDrive className="w-3.5 h-3.5" />
@@ -1890,14 +1898,14 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("claims")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "claims"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <ShieldCheck className="w-3.5 h-3.5" />
                           <span>Solicitações de Devolução</span>
                           {pendingClaimsCount > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-bold">
+                            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-bold tabular-nums">
                               {pendingClaimsCount}
                             </span>
                           )}
@@ -1907,14 +1915,14 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("pending_signatures")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "pending_signatures"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <FileSignature className="w-3.5 h-3.5" />
                           <span>Assinaturas Pendentes</span>
                           {pendingSignaturesCount > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-bold">
+                            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-bold tabular-nums">
                               {pendingSignaturesCount}
                             </span>
                           )}
@@ -1924,14 +1932,14 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("custody_reminders")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "custody_reminders"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <AlertTriangle className="w-3.5 h-3.5" />
                           <span>Lembretes (+90 Dias)</span>
                           {itemsOver90DaysCount > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                            <span className="px-1.5 py-0.2 rounded-full bg-red-500 text-white text-[10px] font-bold tabular-nums">
                               {itemsOver90DaysCount}
                             </span>
                           )}
@@ -1941,14 +1949,14 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("digital_returns")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "digital_returns"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <FileCheck2 className="w-3.5 h-3.5" />
                           <span>Métricas Devoluções (D3)</span>
                           {digitalReturnedItemsCount > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold">
+                            <span className="px-1.5 py-0.2 rounded-full bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#064E3B] dark:text-emerald-300 text-[10px] font-bold tabular-nums">
                               {digitalReturnedItemsCount}
                             </span>
                           )}
@@ -1963,8 +1971,8 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("test_batteries")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "test_batteries"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <ShieldCheck className="w-3.5 h-3.5" />
@@ -1976,8 +1984,8 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("test_distribution")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "test_distribution"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <Shuffle className="w-3.5 h-3.5" />
@@ -1993,8 +2001,8 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("documents")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "documents"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <FileText className="w-3.5 h-3.5" />
@@ -2005,8 +2013,8 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("project_settings")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "project_settings"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <Sparkles className="w-3.5 h-3.5" />
@@ -2018,8 +2026,8 @@ export const DashboardView: React.FC = () => {
                           onClick={() => setAdminSubTab("versions")}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
                             adminSubTab === "versions"
-                              ? "bg-[#00843D] text-white shadow-xs font-bold"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                              ? "bg-[#16845B] text-white shadow-xs font-bold"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
                           }`}
                         >
                           <GitBranch className="w-3.5 h-3.5" />
@@ -2042,7 +2050,7 @@ export const DashboardView: React.FC = () => {
                           setNotifyMessage("Olá! Informamos que há uma atualização referente aos seus registros no sistema do IFPR.");
                           setNotifyRelatedItemId("");
                         }}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition-all flex items-center space-x-1.5 shadow-xs cursor-pointer"
+                        className="px-3 py-1.5 rounded-lg bg-[#064E3B] hover:bg-[#16845B] text-white text-xs font-semibold transition-all flex items-center space-x-1.5 shadow-xs cursor-pointer"
                       >
                         <Send className="w-3.5 h-3.5" />
                         <span>Notificar Alunos</span>
@@ -2050,7 +2058,7 @@ export const DashboardView: React.FC = () => {
 
                       <button
                         onClick={() => setIsAddingUserOpen(true)}
-                        className="px-3 py-1.5 rounded-lg bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold transition-all flex items-center space-x-1 shadow-xs cursor-pointer"
+                        className="px-3 py-1.5 rounded-lg bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-bold transition-all flex items-center space-x-1 shadow-xs cursor-pointer"
                       >
                         <UserCheck className="w-3.5 h-3.5" />
                         <span>+ Usuário</span>
@@ -2071,13 +2079,13 @@ export const DashboardView: React.FC = () => {
               {adminSubTab === "users" && (
                 <div className="space-y-6">
                   {/* Maintenance Message Input Box */}
-                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-3xl p-6 space-y-4 shadow-xs">
+                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-6 space-y-4 shadow-xs">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <span className="text-xs font-black uppercase text-amber-700 dark:text-amber-400 flex items-center space-x-2">
+                      <span className="text-xs font-bold uppercase text-amber-700 dark:text-amber-400 flex items-center space-x-2">
                         <SlidersHorizontal className="w-4 h-4 text-amber-500" />
                         <span>Mensagem do Banner de Manutenção Global (Tempo Real)</span>
                       </span>
-                      <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-semibold">
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
                         Sincronização instantânea no Firestore para todos os usuários
                       </span>
                     </div>
@@ -2087,11 +2095,11 @@ export const DashboardView: React.FC = () => {
                         value={customMsgInput}
                         onChange={(e) => setCustomMsgInput(e.target.value)}
                         placeholder="Escreva a mensagem personalizada que aparecerá no banner de manutenção global..."
-                        className="flex-1 w-full px-4 py-3 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 text-xs font-medium outline-none focus:ring-2 focus:ring-amber-500 text-neutral-900 dark:text-neutral-100 shadow-xs"
+                        className="flex-1 w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-medium outline-none focus:ring-2 focus:ring-amber-500 text-[#172B2A] dark:text-slate-100 shadow-xs"
                       />
                       <button
                         onClick={handleSaveCustomMsg}
-                        className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-black font-black text-xs transition-all shadow-md flex items-center justify-center space-x-1.5 cursor-pointer shrink-0"
+                        className="w-full sm:w-auto px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs transition-all shadow-sm flex items-center justify-center space-x-1.5 cursor-pointer shrink-0"
                       >
                         <CheckCircle2 className="w-4 h-4" />
                         <span>Salvar</span>
@@ -2101,102 +2109,102 @@ export const DashboardView: React.FC = () => {
 
                   {/* Telemetry Overview Cards */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 flex items-center space-x-4 shadow-xs">
-                      <div className="p-3 rounded-2xl bg-purple-500/10 text-purple-600">
+                    <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center space-x-4 shadow-[0_1px_3px_rgba(23,43,42,0.04)]">
+                      <div className="p-3 rounded-xl bg-purple-500/10 text-purple-600">
                         <Users className="w-6 h-6" />
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold text-neutral-400 uppercase">Total de Usuários</p>
-                        <p className="text-xl font-black text-neutral-900 dark:text-white">{allUsers.length}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">Total de Usuários</p>
+                        <p className="text-xl font-bold text-[#172B2A] dark:text-white tabular-nums">{allUsers.length}</p>
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 flex items-center space-x-4 shadow-xs">
-                      <div className="p-3 rounded-2xl bg-blue-500/10 text-blue-600">
+                    <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center space-x-4 shadow-[0_1px_3px_rgba(23,43,42,0.04)]">
+                      <div className="p-3 rounded-xl bg-blue-500/10 text-blue-600">
                         <GraduationCap className="w-6 h-6" />
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold text-neutral-400 uppercase">Aprovações Pendentes</p>
-                        <p className="text-xl font-black text-amber-600 dark:text-amber-400">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">Aprovações Pendentes</p>
+                        <p className="text-xl font-bold text-amber-600 dark:text-amber-400 tabular-nums">
                           {allUsers.filter((u) => u.approvalStatus === "PENDENTE").length}
                         </p>
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-[#1E1E1E] p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 flex items-center space-x-4 shadow-xs">
-                      <div className="p-3 rounded-2xl bg-emerald-500/10 text-emerald-600">
+                    <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center space-x-4 shadow-[0_1px_3px_rgba(23,43,42,0.04)]">
+                      <div className="p-3 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400">
                         <Activity className="w-6 h-6" />
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold text-neutral-400 uppercase">Servidor e Firestore</p>
-                        <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">100% Operacional</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">Servidor e Firestore</p>
+                        <p className="text-xl font-bold text-[#16845B] dark:text-emerald-400">100% Operacional</p>
                       </div>
                     </div>
                   </div>
 
                   {/* USER MANAGEMENT & PERMISSIONS TABLE */}
-                  <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6">
+                  <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-6">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div>
                         <div className="flex items-center space-x-2">
-                          <Users className="w-5 h-5 text-[#00843D]" />
-                          <h2 className="text-lg font-black text-neutral-900 dark:text-white">
+                          <Users className="w-5 h-5 text-[#16845B]" />
+                          <h2 className="text-lg font-bold text-[#172B2A] dark:text-white tracking-tight">
                             Gerenciamento de Usuários e Permissões
                           </h2>
                         </div>
-                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                           Alteração de perfis (Aluno, Servidor, Admin) e remoção de usuários no IFPR.
                         </p>
                       </div>
-                      <span className="self-start sm:self-auto px-3 py-1 rounded-full bg-green-500/10 text-green-700 dark:text-green-400 text-xs font-bold border border-green-500/20">
+                      <span className="self-start sm:self-auto px-3 py-1 rounded-full bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#064E3B] dark:text-emerald-400 text-xs font-bold border border-[#16845B]/20 tabular-nums whitespace-nowrap shrink-0">
                         {allUsers.length} Usuários Cadastrados
                       </span>
                     </div>
 
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2 pb-2 border-b border-neutral-200 dark:border-neutral-800">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2 pb-2 border-b border-slate-200 dark:border-slate-800">
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           onClick={() => setUserRoleFilter("ALL")}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            userRoleFilter === "ALL" ? "bg-[#00843D] text-white shadow-xs" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer tabular-nums ${
+                            userRoleFilter === "ALL" ? "bg-[#16845B] text-white shadow-xs" : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
                           }`}
                         >
                           Todos ({allUsers.length})
                         </button>
                         <button
                           onClick={() => setUserRoleFilter("ALUNO")}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            userRoleFilter === "ALUNO" ? "bg-emerald-600 text-white shadow-xs" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer tabular-nums ${
+                            userRoleFilter === "ALUNO" ? "bg-[#16845B] text-white shadow-xs" : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
                           }`}
                         >
                           Alunos ({(allUsers || []).filter((u) => u && u.role === "ALUNO").length})
                         </button>
                         <button
                           onClick={() => setUserRoleFilter("SERVIDOR")}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            userRoleFilter === "SERVIDOR" ? "bg-blue-600 text-white shadow-xs" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer tabular-nums ${
+                            userRoleFilter === "SERVIDOR" ? "bg-blue-600 text-white shadow-xs" : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
                           }`}
                         >
                           Servidores ({(allUsers || []).filter((u) => u && u.role === "SERVIDOR").length})
                         </button>
                         <button
                           onClick={() => setUserRoleFilter("ADMIN")}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            userRoleFilter === "ADMIN" ? "bg-purple-600 text-white shadow-xs" : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer tabular-nums ${
+                            userRoleFilter === "ADMIN" ? "bg-purple-600 text-white shadow-xs" : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
                           }`}
                         >
                           Admins ({(allUsers || []).filter((u) => u && u.role === "ADMIN").length})
                         </button>
 
-                        <div className="h-4 w-px bg-neutral-300 dark:bg-neutral-700 hidden sm:block mx-1" />
+                        <div className="h-4 w-px bg-slate-300 dark:bg-slate-700 hidden sm:block mx-1" />
 
                         {/* Status Quick Filters */}
                         <button
                           onClick={() => setUserStatusFilter("active")}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 tabular-nums ${
                             userStatusFilter === "active"
-                              ? "bg-emerald-600 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-emerald-700 dark:text-emerald-400"
+                              ? "bg-[#16845B] text-white shadow-xs"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-[#16845B] dark:text-emerald-400 border border-slate-200 dark:border-slate-700"
                           }`}
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block mr-1" />
@@ -2205,10 +2213,10 @@ export const DashboardView: React.FC = () => {
 
                         <button
                           onClick={() => setUserStatusFilter("suspended")}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 tabular-nums ${
                             userStatusFilter === "suspended"
                               ? "bg-amber-600 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-amber-700 dark:text-amber-400"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-amber-700 dark:text-amber-400 border border-slate-200 dark:border-slate-700"
                           }`}
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block mr-1" />
@@ -2217,10 +2225,10 @@ export const DashboardView: React.FC = () => {
 
                         <button
                           onClick={() => setUserStatusFilter("banned")}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 tabular-nums ${
                             userStatusFilter === "banned"
                               ? "bg-red-600 text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-red-700 dark:text-red-400"
+                              : "bg-[#F8FAFC] dark:bg-slate-800 text-red-700 dark:text-red-400 border border-slate-200 dark:border-slate-700"
                           }`}
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block mr-1" />
@@ -2229,20 +2237,20 @@ export const DashboardView: React.FC = () => {
                       </div>
 
                       <div className="relative">
-                        <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-400" />
+                        <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
                         <input
                           type="text"
                           value={userSearchText}
                           onChange={(e) => setUserSearchText(e?.target?.value ?? "")}
                           placeholder="Buscar por nome, e-mail, matrícula..."
-                          className="pl-8 pr-3 py-1.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs outline-none w-full md:w-64"
+                          className="pl-8 pr-3 py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs outline-none w-full md:w-64"
                         />
                       </div>
                     </div>
 
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs">
-                        <thead className="bg-neutral-50 dark:bg-neutral-800/60 text-neutral-600 dark:text-neutral-400 uppercase font-extrabold tracking-wider text-[10px]">
+                        <thead className="bg-[#F8FAFC] dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase font-bold tracking-wider text-[10px]">
                           <tr>
                             <th className="p-3.5 rounded-l-xl">Usuário</th>
                             <th className="p-3.5">E-mail</th>
@@ -2253,7 +2261,7 @@ export const DashboardView: React.FC = () => {
                             <th className="p-3.5 rounded-r-xl text-right">Ação</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                           {allUsers
                             .filter((u) => {
                               if (!u) return false;
@@ -2273,27 +2281,27 @@ export const DashboardView: React.FC = () => {
                             .map((u, index) => {
                               const statusDetails = formatAccountStatusDetails(u);
                               return (
-                                <tr key={u.id || `user-${u.email}-${index}`} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
-                                  <td className="p-3.5 font-bold text-neutral-900 dark:text-white">
+                                <tr key={u.id || `user-${u.email}-${index}`} className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/40 transition-colors">
+                                  <td className="p-3.5 font-bold text-[#172B2A] dark:text-white">
                                     <div className="flex items-center space-x-2.5">
                                       <img
                                         src={getSafeAvatarUrl(u.avatarUrl, u.name)}
                                         alt=""
                                         referrerPolicy="no-referrer"
                                         onError={(e) => handleAvatarError(e, u.name)}
-                                        className="w-8 h-8 rounded-full object-cover shrink-0 border border-neutral-200 dark:border-neutral-700"
+                                        className="w-8 h-8 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700"
                                       />
                                       <div className="flex flex-col">
                                         <span className="font-bold">{u.name}</span>
                                         {u.id === currentUser.id && (
-                                          <span className="text-[9px] text-[#00843D] dark:text-green-400 font-extrabold">(Sua Conta)</span>
+                                          <span className="text-[9px] text-[#16845B] dark:text-emerald-400 font-bold">(Sua Conta)</span>
                                         )}
                                       </div>
                                     </div>
                                   </td>
-                                  <td className="p-3.5 font-mono text-neutral-600 dark:text-neutral-300">{u.email}</td>
-                                  <td className="p-3.5 text-neutral-600 dark:text-neutral-300">{u.courseOrDept}</td>
-                                  <td className="p-3.5 font-mono text-neutral-500">{u.registrationNumber || "N/A"}</td>
+                                  <td className="p-3.5 font-mono text-slate-600 dark:text-slate-300">{u.email}</td>
+                                  <td className="p-3.5 text-slate-600 dark:text-slate-300">{u.courseOrDept}</td>
+                                  <td className="p-3.5 font-mono text-slate-500 tabular-nums">{u.registrationNumber || "N/A"}</td>
                                   <td className="p-3.5">
                                     <select
                                       value={u.role}
@@ -2374,8 +2382,8 @@ export const DashboardView: React.FC = () => {
                                       onClick={() => setUserToDelete({ id: u.id, name: u.name })}
                                       className={`p-2 rounded-xl border transition-all inline-flex items-center justify-center ${
                                         u.id === currentUser.id
-                                          ? "opacity-30 cursor-not-allowed bg-neutral-100 text-neutral-400 border-neutral-200"
-                                          : "bg-red-500/10 text-red-600 hover:bg-red-500 hover:text-white border-red-500/20 cursor-pointer"
+                                          ? "opacity-30 cursor-not-allowed bg-slate-100 text-slate-400 border-slate-200"
+                                          : "bg-rose-500/10 text-rose-600 hover:bg-rose-500 hover:text-white border-rose-500/20 cursor-pointer"
                                       }`}
                                     >
                                       <Trash2 className="w-4 h-4" />
@@ -2390,13 +2398,13 @@ export const DashboardView: React.FC = () => {
                   </div>
 
                   {/* OVERRIDE ITEM STATUS TABLE */}
-                  <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6">
+                  <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-6">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div>
-                        <h2 className="text-lg font-black text-neutral-900 dark:text-white">
+                        <h2 className="text-lg font-bold text-[#172B2A] dark:text-white">
                           Controle de Objetos e Override de Status
                         </h2>
-                        <p className="text-xs text-neutral-500">
+                        <p className="text-xs text-slate-500">
                           Alteração direta do status das ocorrências registradas no campus.
                         </p>
                       </div>
@@ -2407,12 +2415,12 @@ export const DashboardView: React.FC = () => {
                           value={tableSearch}
                           onChange={(e) => setTableSearch(e.target.value)}
                           placeholder="Buscar por objeto..."
-                          className="px-3.5 py-1.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs outline-none w-48"
+                          className="px-3.5 py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs outline-none w-48 focus:border-[#16845B]"
                         />
                         <select
                           value={tableCategory}
                           onChange={(e) => setTableCategory(e.target.value)}
-                          className="px-3 py-1.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs font-bold outline-none"
+                          className="px-3 py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs font-semibold outline-none focus:border-[#16845B]"
                         >
                           <option value="TODAS">Todas as Categorias</option>
                           <option value="Eletrônicos">Eletrônicos</option>
@@ -2425,7 +2433,7 @@ export const DashboardView: React.FC = () => {
 
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs">
-                        <thead className="bg-neutral-50 dark:bg-neutral-800/60 text-neutral-600 dark:text-neutral-400 uppercase font-extrabold text-[10px]">
+                        <thead className="bg-[#F8FAFC] dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase font-bold text-[10px]">
                           <tr>
                             <th className="p-3.5 rounded-l-xl">Título / Código</th>
                             <th className="p-3.5">Categoria</th>
@@ -2435,42 +2443,54 @@ export const DashboardView: React.FC = () => {
                             <th className="p-3.5 rounded-r-xl text-right">Ação</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                           {filteredTableItems.map((item) => (
-                            <tr key={item.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40">
-                              <td className="p-3.5 font-bold text-neutral-900 dark:text-white">
+                            <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                              <td className="p-3.5 font-bold text-[#172B2A] dark:text-white">
                                 <div>{item.title}</div>
-                                <div className="text-[10px] font-mono text-neutral-400">{item.id}</div>
+                                <div className="text-[10px] font-mono text-slate-400">{item.id}</div>
                               </td>
                               <td className="p-3.5">{item.category}</td>
                               <td className="p-3.5 truncate max-w-[140px]">{item.location}</td>
-                              <td className="p-3.5 text-neutral-500">{formatDate(item.date)}</td>
+                              <td className="p-3.5 text-slate-500">{formatDate(item.date)}</td>
                               <td className="p-3.5">
-                                <select
-                                  value={item.status}
-                                  onChange={async (e) => {
-                                    const newStat = e.target.value as any;
-                                    updateItemStatus(item.id, newStat);
-                                    await logAdminAction(
-                                      "STATUS_OVERRIDE",
-                                      `Alterou o status do objeto '${item.title}' (${item.id}) para ${newStat}.`
-                                    );
-                                  }}
-                                  className={`py-1.5 px-2.5 rounded-xl text-xs font-bold border outline-none cursor-pointer ${
-                                    item.status === "DEVOLVIDO"
-                                      ? "bg-blue-500/10 text-blue-600 border-blue-500/30"
-                                      : item.status === "ENCONTRADO"
-                                      ? "bg-green-500/10 text-green-600 border-green-500/30"
-                                      : item.status === "PERDIDO"
-                                      ? "bg-red-500/10 text-red-600 border-red-500/30"
-                                      : "bg-amber-500/10 text-amber-600 border-amber-500/30"
-                                  }`}
-                                >
-                                  <option value="PERDIDO">PERDIDO</option>
-                                  <option value="ENCONTRADO">ENCONTRADO</option>
-                                  <option value="EM_ANALISE">EM ANÁLISE</option>
-                                  <option value="DEVOLVIDO">DEVOLVIDO</option>
-                                </select>
+                                {item.status === "DEVOLVIDO" || item.status === "ENCERRADO" ? (
+                                  <span
+                                    className={`inline-flex items-center py-1.5 px-2.5 rounded-xl text-xs font-bold border ${
+                                      item.status === "DEVOLVIDO"
+                                        ? "bg-sky-500/10 text-sky-600 border-sky-500/30"
+                                        : "bg-slate-500/10 text-slate-600 border-slate-500/30"
+                                    }`}
+                                    title="Status final gerenciado pelo fluxo formal (abra os detalhes para consultar ou reabrir)"
+                                  >
+                                    {item.status} (Formal)
+                                  </span>
+                                ) : (
+                                  <select
+                                    value={item.status}
+                                    onChange={async (e) => {
+                                      const newStat = e.target.value as any;
+                                      try {
+                                        await updateItemStatus(item.id, newStat);
+                                        await logAdminAction(
+                                          "STATUS_OVERRIDE",
+                                          `Alterou o status do objeto '${item.title}' (${item.id}) para ${newStat}.`
+                                        );
+                                      } catch (_) {}
+                                    }}
+                                    className={`py-1.5 px-2.5 rounded-xl text-xs font-bold border outline-none cursor-pointer ${
+                                      item.status === "ENCONTRADO"
+                                        ? "bg-[#EBF5F0] text-[#16845B] border-[#16845B]/30 dark:bg-emerald-950/50 dark:text-emerald-400"
+                                        : item.status === "PERDIDO"
+                                        ? "bg-rose-500/10 text-rose-600 border-rose-500/30"
+                                        : "bg-amber-500/10 text-amber-600 border-amber-500/30"
+                                    }`}
+                                  >
+                                    <option value="PERDIDO">PERDIDO</option>
+                                    <option value="ENCONTRADO">ENCONTRADO</option>
+                                    <option value="EM_ANALISE">EM ANÁLISE</option>
+                                  </select>
+                                )}
                               </td>
                               <td className="p-3.5 text-right whitespace-nowrap">
                                 <button
@@ -2501,14 +2521,14 @@ export const DashboardView: React.FC = () => {
                                       `Olá, ${targetUser.name}! Há uma atualização referente ao seu objeto "${item.title}" registrado no Achados e Perdidos do IFPR Campus Ivaiporã.`
                                     );
                                   }}
-                                  className="p-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-600 text-purple-600 hover:text-white font-bold text-[11px] transition-colors border border-purple-500/20 mr-1.5 inline-flex items-center gap-1 cursor-pointer"
+                                  className="p-1.5 rounded-lg bg-[#EBF5F0] hover:bg-[#16845B] text-[#16845B] hover:text-white dark:bg-emerald-950/50 dark:text-emerald-400 dark:hover:bg-[#16845B] dark:hover:text-white font-semibold text-[11px] transition-colors border border-[#16845B]/20 mr-1.5 inline-flex items-center gap-1 cursor-pointer"
                                 >
                                   <Bell className="w-3.5 h-3.5" />
                                   <span>Notificar</span>
                                 </button>
                                 <button
                                   onClick={() => setSelectedItemForDetail(item)}
-                                  className="px-3 py-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white font-bold text-[11px] transition-colors inline-flex items-center"
+                                  className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-[#16845B] hover:text-white font-semibold text-[11px] transition-colors inline-flex items-center cursor-pointer"
                                 >
                                   Detalhes
                                 </button>
@@ -2535,20 +2555,20 @@ export const DashboardView: React.FC = () => {
                   {/* VISUAL APP UPTIME MONITOR (30 DIAS VIA SERVICE WORKER) */}
                   <AppUptimeMonitor />
 
-                  <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-100 dark:border-neutral-800 pb-4">
+                  <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
                       <div className="flex items-center space-x-3">
-                        <div className="p-2.5 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        <div className="p-2.5 rounded-xl bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400 border border-[#16845B]/20">
                           <Activity className="w-6 h-6 animate-pulse" />
                         </div>
                         <div>
-                          <h2 className="text-lg font-black text-neutral-900 dark:text-white flex items-center space-x-2">
+                          <h2 className="text-lg font-bold text-[#172B2A] dark:text-white flex items-center space-x-2">
                             <span>Métricas da Saúde do Sistema (Firebase Performance)</span>
-                            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-black uppercase tracking-wider">
+                            <span className="px-2.5 py-0.5 rounded-lg bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
                               🟢 Excelente
                             </span>
                           </h2>
-                          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
                             Monitoramento em tempo real da latência de rede, tempo de resposta do banco de dados e alocação de memória
                           </p>
                         </div>
@@ -2558,16 +2578,16 @@ export const DashboardView: React.FC = () => {
                         <button
                           onClick={handleExportMonitoringLogsJSON}
                           disabled={isExportingMonitoringJSON}
-                          className="px-4 py-2.5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-black transition-all flex items-center space-x-2 shadow-xs border border-neutral-300 dark:border-neutral-700 cursor-pointer"
+                          className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#172B2A] dark:text-slate-200 text-xs font-bold transition-all flex items-center space-x-2 shadow-xs border border-slate-200 dark:border-slate-700 cursor-pointer"
                         >
-                          <Download className={`w-4 h-4 text-[#00843D] ${isExportingMonitoringJSON ? "animate-bounce" : ""}`} />
+                          <Download className={`w-4 h-4 text-[#16845B] ${isExportingMonitoringJSON ? "animate-bounce" : ""}`} />
                           <span>{isExportingMonitoringJSON ? "Baixando..." : "Baixar Relatório JSON"}</span>
                         </button>
 
                         <button
                           onClick={measurePing}
                           disabled={isPinging}
-                          className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all flex items-center space-x-2 shadow-sm cursor-pointer"
+                          className="px-4 py-2.5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-bold transition-all flex items-center space-x-2 shadow-sm cursor-pointer"
                         >
                           <RefreshCw className={`w-4 h-4 ${isPinging ? "animate-spin" : ""}`} />
                           <span>Medir Desempenho Agora</span>
@@ -2577,69 +2597,69 @@ export const DashboardView: React.FC = () => {
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       {/* Latência de Rede */}
-                      <div className="bg-neutral-50 dark:bg-neutral-900/60 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-3">
+                      <div className="bg-[#F8FAFC] dark:bg-slate-900/60 p-5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-neutral-500 uppercase flex items-center space-x-1.5">
-                            <Wifi className="w-4 h-4 text-blue-500" />
+                          <span className="text-xs font-bold text-slate-500 uppercase flex items-center space-x-1.5">
+                            <Wifi className="w-4 h-4 text-sky-500" />
                             <span>Latência de Rede Ping</span>
                           </span>
-                          <span className="px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-600 text-[10px] font-black">
+                          <span className="px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-600 text-[10px] font-bold">
                             {isOnline ? "Conectado 🟢" : "Offline 🔴"}
                           </span>
                         </div>
                         <div className="flex items-baseline space-x-2">
-                          <span className="text-3xl font-black text-neutral-900 dark:text-white">
+                          <span className="text-3xl font-bold text-[#172B2A] dark:text-white tabular-nums">
                             {pingLatencyMs ? `${pingLatencyMs} ms` : "--"}
                           </span>
-                          <span className="text-xs text-neutral-400">API Gateway</span>
+                          <span className="text-xs text-slate-400">API Gateway</span>
                         </div>
-                        <p className="text-[11px] text-neutral-500">
+                        <p className="text-[11px] text-slate-500">
                           Heartbeat automático a cada 60s monitorando estabilidade móvel.
                         </p>
                       </div>
 
                       {/* Tempo de Resposta Firestore BD */}
-                      <div className="bg-neutral-50 dark:bg-neutral-900/60 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-3">
+                      <div className="bg-[#F8FAFC] dark:bg-slate-900/60 p-5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-neutral-500 uppercase flex items-center space-x-1.5">
-                            <Database className="w-4 h-4 text-emerald-500" />
+                          <span className="text-xs font-bold text-slate-500 uppercase flex items-center space-x-1.5">
+                            <Database className="w-4 h-4 text-[#16845B]" />
                             <span>Resposta Banco Firestore</span>
                           </span>
-                          <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-600 text-[10px] font-black">
+                          <span className="px-2 py-0.5 rounded-md bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400 text-[10px] font-bold">
                             Rápido
                           </span>
                         </div>
                         <div className="flex items-baseline space-x-2">
-                          <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400">
+                          <span className="text-3xl font-bold text-[#16845B] dark:text-emerald-400 tabular-nums">
                             {dbLatencyMs ? `${dbLatencyMs} ms` : "--"}
                           </span>
-                          <span className="text-xs text-neutral-400">leitura/escrita</span>
+                          <span className="text-xs text-slate-400">leitura/escrita</span>
                         </div>
-                        <p className="text-[11px] text-neutral-500">
+                        <p className="text-[11px] text-slate-500">
                           Medido via Firebase Performance Trace (`firestore_db_latency`).
                         </p>
                       </div>
 
                       {/* Uso de Memória RAM */}
-                      <div className="bg-neutral-50 dark:bg-neutral-900/60 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-3">
+                      <div className="bg-[#F8FAFC] dark:bg-slate-900/60 p-5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-neutral-500 uppercase flex items-center space-x-1.5">
+                          <span className="text-xs font-bold text-slate-500 uppercase flex items-center space-x-1.5">
                             <Cpu className="w-4 h-4 text-purple-500" />
                             <span>Uso de Memória RAM</span>
                           </span>
-                          <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-600 text-[10px] font-black">
+                          <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-600 text-[10px] font-bold">
                             {memoryUsageMB < 100 ? "Baixo" : "Médio"}
                           </span>
                         </div>
                         <div className="flex items-baseline space-x-2">
-                          <span className="text-3xl font-black text-neutral-900 dark:text-white">
+                          <span className="text-3xl font-bold text-[#172B2A] dark:text-white tabular-nums">
                             {memoryUsageMB} MB
                           </span>
-                          <span className="text-xs text-neutral-400">/ 512 MB JS Heap</span>
+                          <span className="text-xs text-slate-400">/ 512 MB JS Heap</span>
                         </div>
-                        <div className="w-full bg-neutral-200 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
+                        <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
                           <div
-                            className="bg-purple-600 h-full rounded-full transition-all duration-500"
+                            className="bg-[#16845B] h-full rounded-full transition-all duration-500"
                             style={{ width: `${Math.min(100, Math.round((memoryUsageMB / 512) * 100))}%` }}
                           />
                         </div>
@@ -2647,18 +2667,18 @@ export const DashboardView: React.FC = () => {
                     </div>
 
                     {/* Chart: Network vs DB Latency */}
-                    <div className="bg-neutral-50 dark:bg-neutral-900/40 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-4">
+                    <div className="bg-[#F8FAFC] dark:bg-slate-900/40 p-5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300">
+                        <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300">
                           Gráfico de Latência em Tempo Real (ms)
                         </h3>
                         <div className="flex items-center space-x-4 text-[10px] font-bold">
-                          <span className="flex items-center space-x-1 text-blue-600">
-                            <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />
+                          <span className="flex items-center space-x-1 text-sky-600">
+                            <span className="w-2.5 h-2.5 rounded-full bg-sky-500 inline-block" />
                             <span>Latência de Rede</span>
                           </span>
-                          <span className="flex items-center space-x-1 text-emerald-600">
-                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+                          <span className="flex items-center space-x-1 text-[#16845B]">
+                            <span className="w-2.5 h-2.5 rounded-full bg-[#16845B] inline-block" />
                             <span>Firestore BD</span>
                           </span>
                         </div>
@@ -2671,8 +2691,8 @@ export const DashboardView: React.FC = () => {
                             <XAxis dataKey="time" tick={{ fontSize: 10 }} />
                             <YAxis tick={{ fontSize: 10 }} unit="ms" />
                             <Tooltip contentStyle={{ borderRadius: "12px", fontSize: "11px" }} />
-                            <Area type="monotone" dataKey="network" name="Rede (ms)" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.15} />
-                            <Area type="monotone" dataKey="db" name="Firestore (ms)" stroke="#10b981" fill="#10b981" fillOpacity={0.15} />
+                            <Area type="monotone" dataKey="network" name="Rede (ms)" stroke="#0284c7" fill="#0284c7" fillOpacity={0.15} />
+                            <Area type="monotone" dataKey="db" name="Firestore (ms)" stroke="#16845B" fill="#16845B" fillOpacity={0.15} />
                           </AreaChart>
                         </ResponsiveContainer>
                       </div>
@@ -2681,29 +2701,29 @@ export const DashboardView: React.FC = () => {
                     {/* LOG DE ERROS GLOBAL FIRESTORE */}
                     <div className="space-y-4 pt-2">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-xs font-black uppercase text-red-600 dark:text-red-400 flex items-center space-x-2">
+                        <h3 className="text-xs font-bold uppercase text-rose-600 dark:text-rose-400 flex items-center space-x-2">
                           <ShieldAlert className="w-4 h-4" />
                           <span>Capturas do Error Boundary Global (Exceções em Dispositivos Móveis - RNF02)</span>
                         </h3>
-                        <span className="px-2.5 py-0.5 rounded-full bg-red-500/10 text-red-500 text-[10px] font-black">
+                        <span className="px-2.5 py-0.5 rounded-lg bg-rose-500/10 text-rose-600 text-[10px] font-bold">
                           {errorLogsList.length} Registros
                         </span>
                       </div>
 
                       {errorLogsList.length === 0 ? (
-                        <div className="bg-neutral-50 dark:bg-neutral-900/50 rounded-2xl p-6 text-center space-y-2 border border-dashed border-neutral-200 dark:border-neutral-800">
-                          <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
-                          <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
+                        <div className="bg-[#F8FAFC] dark:bg-slate-900/50 rounded-xl p-6 text-center space-y-2 border border-dashed border-slate-200 dark:border-slate-800">
+                          <CheckCircle2 className="w-8 h-8 text-[#16845B] mx-auto" />
+                          <p className="text-xs font-bold text-[#172B2A] dark:text-slate-200">
                             Sem exceções ou erros não tratados recentes!
                           </p>
-                          <p className="text-[11px] text-neutral-500">
+                          <p className="text-[11px] text-slate-500">
                             Nenhum travamento detectado em dispositivos móveis no IFPR Campus Ivaiporã.
                           </p>
                         </div>
                       ) : (
-                        <div className="overflow-x-auto rounded-2xl border border-neutral-200 dark:border-neutral-800">
+                        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
                           <table className="w-full text-left text-xs">
-                            <thead className="bg-neutral-50 dark:bg-neutral-800 text-neutral-500 uppercase font-bold text-[10px]">
+                            <thead className="bg-[#F8FAFC] dark:bg-slate-800 text-slate-500 uppercase font-bold text-[10px]">
                               <tr>
                                 <th className="p-3">Exceção / Mensagem</th>
                                 <th className="p-3">Dispositivo</th>
@@ -2712,20 +2732,20 @@ export const DashboardView: React.FC = () => {
                                 <th className="p-3">Data e Hora</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-mono text-[11px]">
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[11px]">
                               {errorLogsList.slice(0, 10).map((log, idx) => (
-                                <tr key={log.id || idx} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
-                                  <td className="p-3 text-red-600 dark:text-red-400 font-bold max-w-xs truncate">
+                                <tr key={log.id || idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                  <td className="p-3 text-rose-600 dark:text-rose-400 font-bold max-w-xs truncate">
                                     {log.errorMessage}
                                   </td>
-                                  <td className="p-3 text-neutral-600 dark:text-neutral-300">
-                                    <span className={`px-2 py-0.5 rounded text-[10px] font-black ${log.isMobile ? "bg-purple-500/10 text-purple-600" : "bg-blue-500/10 text-blue-600"}`}>
+                                  <td className="p-3 text-slate-600 dark:text-slate-300">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${log.isMobile ? "bg-purple-500/10 text-purple-600" : "bg-sky-500/10 text-sky-600"}`}>
                                       {log.isMobile ? "📱 Mobile" : "💻 Desktop"}
                                     </span>
                                   </td>
-                                  <td className="p-3 text-neutral-500">{log.userEmail || "Anônimo"}</td>
-                                  <td className="p-3 text-neutral-400">{log.screenWidth}x{log.screenHeight}</td>
-                                  <td className="p-3 text-neutral-400">{new Date(log.timestamp).toLocaleString()}</td>
+                                  <td className="p-3 text-slate-500">{log.userEmail || "Anônimo"}</td>
+                                  <td className="p-3 text-slate-400">{log.screenWidth}x{log.screenHeight}</td>
+                                  <td className="p-3 text-slate-400">{new Date(log.timestamp).toLocaleString()}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -2739,22 +2759,22 @@ export const DashboardView: React.FC = () => {
 
               {/* TAB 3: APPROVAL WORKFLOW FOR ACADEMIC EMAILS (@ifpr.edu.br) */}
               {adminSubTab === "approvals" && (
-                <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-100 dark:border-neutral-800 pb-4">
+                <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
                     <div className="flex items-center space-x-3">
-                      <div className="p-2.5 rounded-2xl bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                      <div className="p-2.5 rounded-xl bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400 border border-[#16845B]/20">
                         <GraduationCap className="w-6 h-6" />
                       </div>
                       <div>
-                        <h2 className="text-lg font-black text-neutral-900 dark:text-white flex items-center space-x-2">
+                        <h2 className="text-lg font-bold text-[#172B2A] dark:text-white flex items-center space-x-2">
                           <span>Workflow de Aprovação de Contas (@ifpr.edu.br)</span>
                           {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length > 0 && (
-                            <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase">
+                            <span className="px-2.5 py-0.5 rounded-lg bg-amber-500 text-black text-[10px] font-bold uppercase">
                               {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length} Em Espera
                             </span>
                           )}
                         </h2>
-                        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
                           Validação das solicitações de cadastro com e-mails @estudantes.ifpr.edu.br e @ifpr.edu.br antes da liberação do sistema
                         </p>
                       </div>
@@ -2763,7 +2783,7 @@ export const DashboardView: React.FC = () => {
                     {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length > 0 && (
                       <button
                         onClick={approveAllPendingUsers}
-                        className="py-2.5 px-4 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs transition-all shadow-sm flex items-center justify-center space-x-2 shrink-0 cursor-pointer"
+                        className="py-2.5 px-4 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold text-xs transition-all shadow-sm flex items-center justify-center space-x-2 shrink-0 cursor-pointer"
                         title="Aprovar todas as solicitações pendentes de uma só vez"
                       >
                         <CheckCircle2 className="w-4 h-4" />
@@ -2773,18 +2793,18 @@ export const DashboardView: React.FC = () => {
                   </div>
 
                   {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length === 0 ? (
-                    <div className="bg-neutral-50 dark:bg-neutral-900/50 rounded-2xl p-6 text-center space-y-2 border border-dashed border-neutral-200 dark:border-neutral-800">
-                      <UserCheck className="w-8 h-8 text-emerald-500 mx-auto" />
-                      <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
+                    <div className="bg-[#F8FAFC] dark:bg-slate-900/50 rounded-xl p-6 text-center space-y-2 border border-dashed border-slate-200 dark:border-slate-800">
+                      <UserCheck className="w-8 h-8 text-[#16845B] mx-auto" />
+                      <p className="text-xs font-bold text-[#172B2A] dark:text-slate-200">
                         Nenhuma conta pendente de aprovação no momento!
                       </p>
-                      <p className="text-[11px] text-neutral-500">
+                      <p className="text-[11px] text-slate-500">
                         Todas as solicitações de alunos e servidores do IFPR Campus Ivaiporã foram validadas.
                       </p>
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      <h3 className="text-xs font-black uppercase text-neutral-500 tracking-wider">
+                      <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider">
                         Solicitações em Espera para Análise de Identidade:
                       </h3>
 
@@ -2800,10 +2820,10 @@ export const DashboardView: React.FC = () => {
                             return (
                               <div
                                 key={pendingUser.id || `pending-${pendingUser.email}-${index}`}
-                                className={`rounded-2xl p-5 border space-y-4 shadow-xs transition-all ${
+                                className={`rounded-xl p-5 border space-y-4 shadow-xs transition-all ${
                                   isPending
                                     ? "bg-amber-500/5 border-amber-500/30 dark:bg-amber-950/20"
-                                    : "bg-neutral-50 dark:bg-neutral-900/80 border-neutral-200 dark:border-neutral-800"
+                                    : "bg-[#F8FAFC] dark:bg-slate-900/80 border-slate-200 dark:border-slate-800"
                                 }`}
                               >
                                 <div className="flex items-start justify-between gap-2">
@@ -2813,35 +2833,35 @@ export const DashboardView: React.FC = () => {
                                       alt={pendingUser.name}
                                       referrerPolicy="no-referrer"
                                       onError={(e) => handleAvatarError(e, pendingUser.name)}
-                                      className="w-10 h-10 rounded-full object-cover border border-neutral-300 dark:border-neutral-700"
+                                      className="w-10 h-10 rounded-full object-cover border border-slate-300 dark:border-slate-700"
                                     />
                                     <div>
-                                      <h4 className="text-xs font-black text-neutral-900 dark:text-white">
+                                      <h4 className="text-xs font-bold text-[#172B2A] dark:text-white">
                                         {pendingUser.name}
                                       </h4>
-                                      <p className="text-[11px] text-neutral-500 font-mono">{pendingUser.email}</p>
+                                      <p className="text-[11px] text-slate-500 font-mono">{pendingUser.email}</p>
                                     </div>
                                   </div>
 
                                   <span
-                                    className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase border ${
+                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase border ${
                                       isPending
                                         ? "bg-amber-500 text-black border-amber-500 animate-pulse"
-                                        : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
+                                        : "bg-[#EBF5F0] text-[#16845B] border-[#16845B]/20"
                                     }`}
                                   >
                                     {isPending ? "⏳ Em Espera" : "✅ Aprovado"}
                                   </span>
                                 </div>
 
-                                <div className="bg-white dark:bg-neutral-900/90 p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 text-[11px] space-y-1">
-                                  <p className="text-neutral-600 dark:text-neutral-400">
+                                <div className="bg-white dark:bg-slate-900/90 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px] space-y-1">
+                                  <p className="text-slate-600 dark:text-slate-400">
                                     <strong>Tipo de Vínculo:</strong> {isStudent ? "🎓 Estudante IFPR" : isStaff ? "🏫 Servidor / Docente IFPR" : "Usuário"}
                                   </p>
-                                  <p className="text-neutral-600 dark:text-neutral-400">
+                                  <p className="text-slate-600 dark:text-slate-400">
                                     <strong>Curso / Departamento:</strong> {pendingUser.courseOrDept}
                                   </p>
-                                  <p className="text-neutral-600 dark:text-neutral-400">
+                                  <p className="text-slate-600 dark:text-slate-400">
                                     <strong>Matrícula IFPR:</strong> {pendingUser.registrationNumber}
                                   </p>
                                 </div>
@@ -2850,14 +2870,14 @@ export const DashboardView: React.FC = () => {
                                   <div className="flex items-center gap-2 pt-1">
                                     <button
                                       onClick={() => approveUser(pendingUser.id, true)}
-                                      className="flex-1 py-2.5 px-3 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs transition-all shadow-sm flex items-center justify-center space-x-1.5"
+                                      className="flex-1 py-2.5 px-3 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold text-xs transition-all shadow-sm flex items-center justify-center space-x-1.5 cursor-pointer"
                                     >
                                       <CheckCircle2 className="w-4 h-4" />
                                       <span>Aprovar Acesso</span>
                                     </button>
                                     <button
                                       onClick={() => approveUser(pendingUser.id, false)}
-                                      className="py-2.5 px-4 rounded-xl bg-red-600/10 hover:bg-red-600 text-red-600 hover:text-white border border-red-500/20 font-bold text-xs transition-all flex items-center justify-center space-x-1.5"
+                                      className="py-2.5 px-4 rounded-xl bg-rose-600/10 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-500/20 font-bold text-xs transition-all flex items-center justify-center space-x-1.5 cursor-pointer"
                                     >
                                       <XCircle className="w-4 h-4" />
                                       <span>Recusar</span>
@@ -2877,17 +2897,17 @@ export const DashboardView: React.FC = () => {
               {adminSubTab === "backups" && (
                 <div className="space-y-6">
                   {/* FIRESTORE AUTOMATED BACKUPS MODULE */}
-                  <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-100 dark:border-neutral-800 pb-4">
+                  <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
                       <div className="flex items-center space-x-3">
-                        <div className="p-2.5 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                        <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600 border border-amber-500/20">
                           <HardDrive className="w-6 h-6" />
                         </div>
                         <div>
-                          <h2 className="text-lg font-black text-neutral-900 dark:text-white">
+                          <h2 className="text-lg font-bold text-[#172B2A] dark:text-white">
                             Backups Automáticos & Snapshots do Firestore
                           </h2>
-                          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
                             Exportação periódica e agendamento de segurança do banco de dados do Campus Ivaiporã
                           </p>
                         </div>
@@ -2897,7 +2917,7 @@ export const DashboardView: React.FC = () => {
                         id="btn-download-full-backup"
                         onClick={handleManualBackup}
                         disabled={isExecutingBackup}
-                        className="px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-black font-black text-xs transition-all shadow-md flex items-center space-x-2 self-start sm:self-auto cursor-pointer"
+                        className="px-5 py-2.5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] active:scale-95 text-white font-bold text-xs transition-all shadow-sm flex items-center space-x-2 self-start sm:self-auto cursor-pointer"
                         title="Exportar snapshot JSON com todas as coleções do Firestore do IFPR"
                       >
                         <Download className={`w-4 h-4 ${isExecutingBackup ? "animate-bounce" : ""}`} />
@@ -2906,28 +2926,28 @@ export const DashboardView: React.FC = () => {
                     </div>
 
                     {/* Configuration Controls */}
-                    <div className="bg-neutral-50 dark:bg-neutral-900/60 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800/80 space-y-4">
-                      <h3 className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 tracking-wider">
+                    <div className="bg-[#F8FAFC] dark:bg-slate-900/60 p-5 rounded-xl border border-slate-200 dark:border-slate-800/80 space-y-4">
+                      <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
                         Agendamento & Frequência do Backup
                       </h3>
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {/* Toggle */}
-                        <div className="flex items-center justify-between bg-white dark:bg-neutral-900 p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800">
-                          <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
+                        <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                          <span className="text-xs font-bold text-[#172B2A] dark:text-slate-200">
                             Backup Automático
                           </span>
                           <input
                             type="checkbox"
                             checked={backupScheduleConfig.enabled}
                             onChange={(e) => updateBackupScheduleConfig({ enabled: e.target.checked })}
-                            className="w-4 h-4 text-amber-500 rounded focus:ring-amber-500 cursor-pointer"
+                            className="w-4 h-4 accent-[#16845B] rounded cursor-pointer"
                           />
                         </div>
 
                         {/* Frequency */}
-                        <div className="bg-white dark:bg-neutral-900 p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
-                          <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
+                        <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                          <span className="text-xs font-bold text-[#172B2A] dark:text-slate-200">
                             Frequência:
                           </span>
                           <select
@@ -2935,7 +2955,7 @@ export const DashboardView: React.FC = () => {
                             onChange={(e) =>
                               updateBackupScheduleConfig({ frequency: e.target.value as BackupScheduleConfig["frequency"] })
                             }
-                            className="bg-transparent text-xs font-bold text-amber-600 dark:text-amber-400 outline-none cursor-pointer"
+                            className="bg-transparent text-xs font-bold text-[#16845B] dark:text-emerald-400 outline-none cursor-pointer"
                           >
                             <option value="A_CADA_12H">A cada 12 Horas</option>
                             <option value="DIARIO_0200">Diário às 02:00h</option>
@@ -2944,15 +2964,15 @@ export const DashboardView: React.FC = () => {
                         </div>
 
                         {/* Auto download */}
-                        <div className="flex items-center justify-between bg-white dark:bg-neutral-900 p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800">
-                          <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
+                        <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                          <span className="text-xs font-bold text-[#172B2A] dark:text-slate-200">
                             Baixar JSON Automático
                           </span>
                           <input
                             type="checkbox"
                             checked={backupScheduleConfig.autoDownload}
                             onChange={(e) => updateBackupScheduleConfig({ autoDownload: e.target.checked })}
-                            className="w-4 h-4 text-amber-500 rounded focus:ring-amber-500 cursor-pointer"
+                            className="w-4 h-4 accent-[#16845B] rounded cursor-pointer"
                           />
                         </div>
                       </div>
@@ -2960,14 +2980,14 @@ export const DashboardView: React.FC = () => {
 
                     {/* Backup History Logs Table */}
                 <div className="space-y-3">
-                  <h3 className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 tracking-wider">
+                  <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
                     Histórico de Backups Realizados ({backupLogs.length})
                   </h3>
 
-                  <div className="overflow-x-auto rounded-2xl border border-neutral-200 dark:border-neutral-800">
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
-                        <tr className="bg-neutral-100 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-400 font-bold border-b border-neutral-200 dark:border-neutral-800">
+                        <tr className="bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-800">
                           <th className="p-3">Data / Hora</th>
                           <th className="p-3">Nome do Arquivo</th>
                           <th className="p-3">Tamanho</th>
@@ -2976,38 +2996,38 @@ export const DashboardView: React.FC = () => {
                           <th className="p-3 text-right">Ação</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                      <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                         {backupLogs.map((log) => (
-                          <tr key={log.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-900/40 transition-colors">
-                            <td className="p-3 font-medium text-neutral-800 dark:text-neutral-200 whitespace-nowrap">
+                          <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors">
+                            <td className="p-3 font-medium text-[#172B2A] dark:text-slate-200 whitespace-nowrap">
                               {formatDate(log.timestamp)}
                             </td>
-                            <td className="p-3 font-mono text-[11px] text-neutral-600 dark:text-neutral-400 whitespace-nowrap">
+                            <td className="p-3 font-mono text-[11px] text-slate-600 dark:text-slate-400 whitespace-nowrap">
                               {log.filename}
                             </td>
-                            <td className="p-3 font-bold text-neutral-700 dark:text-neutral-300 whitespace-nowrap">
+                            <td className="p-3 font-bold text-slate-700 dark:text-slate-300 whitespace-nowrap">
                               {(log.fileSizeBytes / 1024).toFixed(1)} KB
                             </td>
                             <td className="p-3 whitespace-nowrap">
                               <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                                   log.triggerType === "MANUAL"
                                     ? "bg-purple-500/10 text-purple-600"
-                                    : "bg-blue-500/10 text-blue-600"
+                                    : "bg-sky-500/10 text-sky-600"
                                 }`}
                               >
                                 {log.triggerType}
                               </span>
                             </td>
                             <td className="p-3 whitespace-nowrap">
-                              <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-500/10 text-emerald-600">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400">
                                 SUCESSO
                               </span>
                             </td>
                             <td className="p-3 text-right whitespace-nowrap">
                               <button
                                 onClick={() => handleManualBackup()}
-                                className="p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-amber-500 hover:text-black text-neutral-700 dark:text-neutral-300 font-bold transition-all text-[11px]"
+                                className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-[#16845B] hover:text-white text-slate-700 dark:text-slate-300 font-bold transition-all text-[11px] cursor-pointer"
                                 title="Baixar Cópia Snapshot JSON"
                               >
                                 <Download className="w-3.5 h-3.5" />
@@ -3022,17 +3042,17 @@ export const DashboardView: React.FC = () => {
               </div>
 
               {/* ACTIVITY LOG SECTION (AUDIT TRAIL) */}
-              <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-100 dark:border-neutral-800 pb-4">
+              <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
                   <div className="flex items-center space-x-2.5">
-                    <div className="p-2 rounded-xl bg-purple-500/10 text-purple-600">
+                    <div className="p-2 rounded-xl bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400">
                       <History className="w-5 h-5" />
                     </div>
                     <div>
-                      <h2 className="text-lg font-black text-neutral-900 dark:text-white">
+                      <h2 className="text-lg font-bold text-[#172B2A] dark:text-white">
                         Log de Atividades do Administrador (Audit Trail)
                       </h2>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         Registro transparente de exclusões, alterações de permissão, manutenção e overrides de status.
                       </p>
                     </div>
@@ -3041,20 +3061,20 @@ export const DashboardView: React.FC = () => {
                   {/* Filters */}
                   <div className="flex flex-wrap items-center gap-2">
                     <div className="relative">
-                      <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-400" />
+                      <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
                       <input
                         type="text"
                         value={logSearchQuery}
                         onChange={(e) => setLogSearchQuery(e?.target?.value ?? "")}
                         placeholder="Buscar nos logs..."
-                        className="pl-8 pr-3 py-1.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs outline-none w-44"
+                        className="pl-8 pr-3 py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs outline-none w-44 focus:border-[#16845B]"
                       />
                     </div>
 
                     <select
                       value={logFilterAction}
                       onChange={(e) => setLogFilterAction(e?.target?.value ?? "TODOS")}
-                      className="py-1.5 px-3 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs font-bold outline-none"
+                      className="py-1.5 px-3 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs font-bold outline-none focus:border-[#16845B]"
                     >
                       <option value="TODOS">Todas as Ações</option>
                       <option value="EXCLUSAO_USUARIO">Exclusão de Usuário</option>
@@ -3069,7 +3089,7 @@ export const DashboardView: React.FC = () => {
 
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-neutral-50 dark:bg-neutral-800 text-neutral-500 uppercase font-extrabold text-[10px]">
+                    <thead className="bg-[#F8FAFC] dark:bg-slate-800 text-slate-500 uppercase font-bold text-[10px]">
                       <tr>
                         <th className="p-3.5 rounded-l-xl">Data / Hora</th>
                         <th className="p-3.5">Administrador</th>
@@ -3077,7 +3097,7 @@ export const DashboardView: React.FC = () => {
                         <th className="p-3.5 rounded-r-xl">Detalhes da Operação</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-sans">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans">
                       {activityLogs
                         .filter((log) => {
                           if (!log) return false;
@@ -3091,29 +3111,29 @@ export const DashboardView: React.FC = () => {
                           return matchAction && matchSearch;
                         })
                         .map((log) => (
-                          <tr key={log.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
-                            <td className="p-3.5 font-mono text-neutral-500 whitespace-nowrap">
+                          <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                            <td className="p-3.5 font-mono text-slate-500 whitespace-nowrap">
                               {formatDate(log.timestamp)}
                             </td>
-                            <td className="p-3.5 font-bold text-neutral-900 dark:text-white">
+                            <td className="p-3.5 font-bold text-[#172B2A] dark:text-white">
                               {log.adminName}
                             </td>
                             <td className="p-3.5">
                               <span
-                                className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase border ${
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase border ${
                                   log.action === "MODO_MANUTENCAO"
                                     ? "bg-amber-500/10 text-amber-600 border-amber-500/30"
                                     : log.action === "EXCLUSAO_USUARIO" || log.action === "EXCLUSAO_EM_MASSA"
-                                    ? "bg-red-500/10 text-red-600 border-red-500/30"
+                                    ? "bg-rose-500/10 text-rose-600 border-rose-500/30"
                                     : log.action === "ALTERACAO_PERMISSAO"
-                                    ? "bg-purple-500/10 text-purple-600 border-purple-500/30"
-                                    : "bg-blue-500/10 text-blue-600 border-blue-500/30"
+                                    ? "bg-[#EBF5F0] text-[#16845B] border-[#16845B]/30 dark:bg-emerald-950/50 dark:text-emerald-400"
+                                    : "bg-sky-500/10 text-sky-600 border-sky-500/30"
                                 }`}
                               >
                                 {String(log?.action || "LOG").replace("_", " ")}
                               </span>
                             </td>
-                            <td className="p-3.5 text-neutral-700 dark:text-neutral-300">
+                            <td className="p-3.5 text-slate-700 dark:text-slate-300">
                               {log.details}
                             </td>
                           </tr>
@@ -3124,17 +3144,17 @@ export const DashboardView: React.FC = () => {
               </div>
 
               {/* FIRESTORE CLEANUP & MASTER WIPE TOOLS CARD */}
-              <div className="bg-gradient-to-br from-red-500/5 via-neutral-50 to-amber-500/5 dark:from-red-950/20 dark:via-neutral-900 dark:to-amber-950/20 rounded-3xl p-6 sm:p-8 border border-red-500/20 dark:border-red-500/30 shadow-xs space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-red-500/10 dark:border-red-500/20 pb-4">
+              <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 sm:p-8 border border-rose-500/20 dark:border-rose-500/30 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-rose-500/10 dark:border-rose-500/20 pb-4">
                   <div className="flex items-center space-x-3">
-                    <div className="p-3 rounded-2xl bg-red-500/10 text-red-600 border border-red-500/20">
+                    <div className="p-3 rounded-xl bg-rose-500/10 text-rose-600 border border-rose-500/20">
                       <Trash2 className="w-6 h-6" />
                     </div>
                     <div>
-                      <h2 className="text-lg font-black text-neutral-900 dark:text-white flex items-center space-x-2">
+                      <h2 className="text-lg font-bold text-[#172B2A] dark:text-white flex items-center space-x-2">
                         <span>Gestão de Banco de Dados & Reset para Próxima Fase</span>
                       </h2>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         Ferramentas avançadas para backup local em JSON, limpeza de logs/métricas e script de Master Wipe do Firestore
                       </p>
                     </div>
@@ -3143,13 +3163,13 @@ export const DashboardView: React.FC = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* 1. Export JSON Backup */}
-                  <div className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-3 flex flex-col justify-between shadow-xs">
+                  <div className="bg-[#F8FAFC] dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3 flex flex-col justify-between shadow-xs">
                     <div className="space-y-1.5">
-                      <div className="flex items-center space-x-2 text-amber-600 dark:text-amber-400 font-extrabold text-xs">
+                      <div className="flex items-center space-x-2 text-[#16845B] dark:text-emerald-400 font-bold text-xs">
                         <Download className="w-4 h-4" />
                         <span>Backup Completo em JSON</span>
                       </div>
-                      <p className="text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
                         Exporta um arquivo <code>.json</code> local contendo uma cópia snapshot de todas as coleções do Firestore (objetos, usuários, reivindicações, comentários e logs).
                       </p>
                     </div>
@@ -3163,7 +3183,7 @@ export const DashboardView: React.FC = () => {
                         setIsExportingBackup(false);
                       }}
                       disabled={isExportingBackup}
-                      className="w-full py-2.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-extrabold text-xs transition-all shadow-sm flex items-center justify-center space-x-2"
+                      className="w-full py-2.5 px-3 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold text-xs transition-all shadow-sm flex items-center justify-center space-x-2 cursor-pointer"
                     >
                       <Download className={`w-4 h-4 ${isExportingBackup ? "animate-bounce" : ""}`} />
                       <span>{isExportingBackup ? "Gerando JSON..." : "Exportar JSON Local"}</span>
@@ -3171,13 +3191,13 @@ export const DashboardView: React.FC = () => {
                   </div>
 
                   {/* 2. Clear Logs & Metrics */}
-                  <div className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-3 flex flex-col justify-between shadow-xs">
+                  <div className="bg-[#F8FAFC] dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3 flex flex-col justify-between shadow-xs">
                     <div className="space-y-1.5">
-                      <div className="flex items-center space-x-2 text-purple-600 dark:text-purple-400 font-extrabold text-xs">
+                      <div className="flex items-center space-x-2 text-slate-700 dark:text-slate-300 font-bold text-xs">
                         <BarChart3 className="w-4 h-4" />
                         <span>Limpar Logs & Métricas</span>
                       </div>
-                      <p className="text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
                         Exclui todo o histórico de logs de atividades (audit trail), logs de backup e métricas de desempenho no Firestore para reiniciar as estatísticas do zero.
                       </p>
                     </div>
@@ -3185,7 +3205,7 @@ export const DashboardView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setIsClearLogsConfirmOpen(true)}
-                      className="w-full py-2.5 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-extrabold text-xs transition-all shadow-sm flex items-center justify-center space-x-2"
+                      className="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-bold text-xs transition-all shadow-sm flex items-center justify-center space-x-2 cursor-pointer"
                     >
                       <BarChart3 className="w-4 h-4" />
                       <span>Limpar Logs e Métricas</span>
@@ -3193,13 +3213,13 @@ export const DashboardView: React.FC = () => {
                   </div>
 
                   {/* 3. Master Wipe Script */}
-                  <div className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-red-500/30 dark:border-red-500/30 space-y-3 flex flex-col justify-between shadow-xs">
+                  <div className="bg-[#F8FAFC] dark:bg-slate-900 p-5 rounded-xl border border-rose-500/30 dark:border-rose-500/30 space-y-3 flex flex-col justify-between shadow-xs">
                     <div className="space-y-1.5">
-                      <div className="flex items-center space-x-2 text-red-600 dark:text-red-400 font-extrabold text-xs">
+                      <div className="flex items-center space-x-2 text-rose-600 dark:text-rose-400 font-bold text-xs">
                         <ShieldAlert className="w-4 h-4" />
                         <span>Master Wipe (Zerar Banco)</span>
                       </div>
-                      <p className="text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
                         Script administrativo que deleta todos os objetos, usuários fictícios e logs do Firestore com um único comando, mantendo apenas sua conta ativa de administrador.
                       </p>
                     </div>
@@ -3207,7 +3227,7 @@ export const DashboardView: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setIsMasterWipeConfirmOpen(true)}
-                      className="w-full py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs transition-all shadow-sm flex items-center justify-center space-x-2"
+                      className="w-full py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-all shadow-sm flex items-center justify-center space-x-2 cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
                       <span>Zerar Banco de Dados</span>
@@ -3257,27 +3277,27 @@ export const DashboardView: React.FC = () => {
           {/* TAB: GESTÃO DE SOLICITAÇÕES DE DEVOLUÇÃO (SECRETARIA / SEBAC / RNF04) */}
           {adminSubTab === "claims" && (
             <div className="space-y-6 animate-in fade-in duration-200">
-              <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-100 dark:border-neutral-800 pb-4">
+              <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
                   <div className="flex items-center space-x-3">
-                    <div className="p-2.5 rounded-2xl bg-[#00843D]/10 text-[#00843D] border border-[#00843D]/20">
+                    <div className="p-2.5 rounded-xl bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400 border border-[#16845B]/20">
                       <ShieldCheck className="w-6 h-6" />
                     </div>
                     <div>
-                      <h2 className="text-lg font-black text-neutral-900 dark:text-white flex items-center space-x-2">
+                      <h2 className="text-lg font-bold text-[#172B2A] dark:text-white flex items-center space-x-2">
                         <span>Solicitações de Devolução de Objetos</span>
                         {pendingClaimsCount > 0 && (
-                          <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase">
+                          <span className="px-2.5 py-0.5 rounded-lg bg-amber-500 text-black text-[10px] font-bold uppercase">
                             {pendingClaimsCount} Pendentes
                           </span>
                         )}
                       </h2>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
                         Análise de posse, aprovação de pedidos e triagem da Secretaria / SEBAC (IFPR Campus Ivaiporã)
                       </p>
                     </div>
                   </div>
-                  <span className="self-start sm:self-auto px-3 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-xs font-bold border border-neutral-200 dark:border-neutral-700">
+                  <span className="self-start sm:self-auto px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold border border-slate-200 dark:border-slate-700">
                     {(claims || []).length} Registros no Total
                   </span>
                 </div>
@@ -3300,8 +3320,8 @@ export const DashboardView: React.FC = () => {
                           }}
                           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                             isActive
-                              ? "bg-[#00843D] text-white shadow-xs"
-                              : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                              ? "bg-[#16845B] text-white shadow-xs"
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
                           {st === "TODAS" ? "Todas" : st === "PENDENTE" ? "Pendentes" : st === "APROVADO" ? "Aprovadas" : st === "REJEITADO" ? "Rejeitadas" : st === "CONCLUIDO" ? "Concluídas" : "Canceladas"} ({count})
@@ -3311,13 +3331,13 @@ export const DashboardView: React.FC = () => {
                   </div>
 
                   <div className="relative">
-                    <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-neutral-400" />
+                    <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
                     <input
                       type="text"
                       value={claimSearchText}
                       onChange={(e) => setClaimSearchText(e.target.value)}
                       placeholder="Buscar por objeto, solicitante, matrícula..."
-                      className="pl-8 pr-3 py-1.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs outline-none w-full md:w-64"
+                      className="pl-8 pr-3 py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs outline-none w-full md:w-64 focus:border-[#16845B]"
                     />
                   </div>
                 </div>
@@ -3342,12 +3362,12 @@ export const DashboardView: React.FC = () => {
 
                   if (filteredClaims.length === 0) {
                     return (
-                      <div className="bg-neutral-50 dark:bg-neutral-900/50 rounded-2xl p-8 text-center space-y-2 border border-dashed border-neutral-200 dark:border-neutral-800">
-                        <CheckCircle2 className="w-10 h-10 text-neutral-400 mx-auto" />
-                        <p className="text-sm font-bold text-neutral-800 dark:text-neutral-200">
+                      <div className="bg-[#F8FAFC] dark:bg-slate-900/50 rounded-xl p-8 text-center space-y-2 border border-dashed border-slate-200 dark:border-slate-800">
+                        <CheckCircle2 className="w-10 h-10 text-slate-400 mx-auto" />
+                        <p className="text-sm font-bold text-[#172B2A] dark:text-slate-200">
                           Nenhuma solicitação encontrada
                         </p>
-                        <p className="text-xs text-neutral-500 max-w-md mx-auto">
+                        <p className="text-xs text-slate-500 max-w-md mx-auto">
                           Não foram localizadas solicitações de devolução para o filtro selecionado.
                         </p>
                       </div>
@@ -3355,9 +3375,9 @@ export const DashboardView: React.FC = () => {
                   }
 
                   return (
-                    <div className="overflow-x-auto rounded-2xl border border-neutral-200 dark:border-neutral-800">
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
                       <table className="w-full text-left text-xs">
-                        <thead className="bg-neutral-50 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-300 uppercase font-extrabold text-[10px]">
+                        <thead className="bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 uppercase font-bold text-[10px]">
                           <tr>
                             <th className="p-3.5">Objeto / Categoria</th>
                             <th className="p-3.5">Solicitante</th>
@@ -3366,16 +3386,16 @@ export const DashboardView: React.FC = () => {
                             <th className="p-3.5 text-right">Ações</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                           {filteredClaims.map((claim) => {
                             const relatedItem = items.find((it) => it.id === claim.itemId);
                             return (
-                              <tr key={claim.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
+                              <tr key={claim.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                                 <td className="p-3.5">
-                                  <div className="font-bold text-neutral-900 dark:text-white">
+                                  <div className="font-bold text-[#172B2A] dark:text-white">
                                     {claim.itemTitle || relatedItem?.title || "Objeto"}
                                   </div>
-                                  <div className="text-[10px] text-neutral-400 font-mono flex items-center gap-1.5 mt-0.5">
+                                  <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
                                     <span>#{claim.itemId}</span>
                                     <span>•</span>
                                     <span>{claim.itemCategory || relatedItem?.category || "Categoria"}</span>
@@ -3387,7 +3407,7 @@ export const DashboardView: React.FC = () => {
                                         vibrateClick();
                                         setSelectedItemForDetail(relatedItem);
                                       }}
-                                      className="text-[10px] text-[#00843D] hover:underline font-bold mt-1 inline-flex items-center gap-1 cursor-pointer"
+                                      className="text-[10px] text-[#16845B] hover:underline font-bold mt-1 inline-flex items-center gap-1 cursor-pointer"
                                     >
                                       <span>Ver ficha completa do item</span>
                                     </button>
@@ -3395,48 +3415,48 @@ export const DashboardView: React.FC = () => {
                                 </td>
 
                                 <td className="p-3.5">
-                                  <div className="font-bold text-neutral-800 dark:text-neutral-200">
+                                  <div className="font-bold text-[#172B2A] dark:text-slate-200">
                                     {claim.claimerName}
                                   </div>
-                                  <div className="text-[10px] text-neutral-500">
+                                  <div className="text-[10px] text-slate-500">
                                     {claim.claimerEmail}
                                   </div>
-                                  <div className="text-[10px] text-neutral-400 mt-0.5">
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
                                     {claim.claimerRole || "Aluno"} {claim.claimerRegistration ? `• Matrícula: ${claim.claimerRegistration}` : ""}
                                   </div>
                                 </td>
 
                                 <td className="p-3.5 max-w-xs">
-                                  <div className="text-neutral-800 dark:text-neutral-200 text-xs bg-neutral-50 dark:bg-neutral-800/70 p-2 rounded-xl border border-neutral-200 dark:border-neutral-700/60 leading-relaxed whitespace-pre-wrap">
+                                  <div className="text-[#172B2A] dark:text-slate-200 text-xs bg-[#F8FAFC] dark:bg-slate-800/70 p-2 rounded-xl border border-slate-200 dark:border-slate-700/60 leading-relaxed whitespace-pre-wrap">
                                     {claim.distinctiveFeatures || "Sem características registradas."}
                                   </div>
                                   {claim.additionalInfo && (
-                                    <div className="text-[10px] text-neutral-500 mt-1 italic">
+                                    <div className="text-[10px] text-slate-500 mt-1 italic">
                                       Info adicional: {claim.additionalInfo}
                                     </div>
                                   )}
                                   {claim.rejectionReason && (
-                                    <div className="text-[10px] text-red-600 dark:text-red-400 font-bold mt-1 bg-red-500/10 p-1.5 rounded-lg border border-red-500/20">
+                                    <div className="text-[10px] text-rose-600 dark:text-rose-400 font-bold mt-1 bg-rose-500/10 p-1.5 rounded-lg border border-rose-500/20">
                                       Motivo da Rejeição: {claim.rejectionReason}
                                     </div>
                                   )}
                                 </td>
 
                                 <td className="p-3.5 whitespace-nowrap">
-                                  <div className="text-[11px] font-mono text-neutral-600 dark:text-neutral-400 mb-1">
+                                  <div className="text-[11px] font-mono text-slate-600 dark:text-slate-400 mb-1">
                                     {formatDateTime(claim.createdAt)}
                                   </div>
                                   <span
-                                    className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                                    className={`inline-block px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${
                                       claim.status === "PENDENTE"
                                         ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
                                         : claim.status === "APROVADO"
-                                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                        ? "bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400 border-[#16845B]/30"
                                         : claim.status === "REJEITADO"
-                                        ? "bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30"
+                                        ? "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30"
                                         : claim.status === "CONCLUIDO"
-                                        ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
-                                        : "bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border-neutral-300 dark:border-neutral-700"
+                                        ? "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30"
+                                        : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700"
                                     }`}
                                   >
                                     {claim.status === "PENDENTE"
@@ -3450,7 +3470,7 @@ export const DashboardView: React.FC = () => {
                                       : "Cancelado"}
                                   </span>
                                   {claim.reviewedByName && (
-                                    <div className="text-[9px] text-neutral-400 mt-1">
+                                    <div className="text-[9px] text-slate-400 mt-1">
                                       Por: {claim.reviewedByName}
                                     </div>
                                   )}
@@ -3477,7 +3497,7 @@ export const DashboardView: React.FC = () => {
                                             setIsProcessingClaimAction(false);
                                           }
                                         }}
-                                        className="px-3 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-xs transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                                        className="px-3 py-1.5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold text-xs transition-all shadow-xs cursor-pointer disabled:opacity-50"
                                         title="Aprovar posse e autorizar retirada no balcão"
                                       >
                                         Aprovar
@@ -3490,7 +3510,7 @@ export const DashboardView: React.FC = () => {
                                           setClaimToReject(claim);
                                           setRejectionReasonInput("");
                                         }}
-                                        className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                                        className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-all shadow-xs cursor-pointer disabled:opacity-50"
                                         title="Rejeitar solicitação com justificativa"
                                       >
                                         Rejeitar
@@ -3507,7 +3527,7 @@ export const DashboardView: React.FC = () => {
                                             vibrateClick();
                                             setSelectedItemForDetail(relatedItem);
                                           }}
-                                          className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-all shadow-xs cursor-pointer inline-flex items-center gap-1"
+                                          className="px-3 py-1.5 rounded-xl bg-[#064E3B] hover:bg-[#16845B] text-white font-bold text-xs transition-all shadow-xs cursor-pointer inline-flex items-center gap-1"
                                           title="Abrir o modal do objeto para registrar entrega formal com assinatura"
                                         >
                                           <FileSignature className="w-3.5 h-3.5" />
@@ -3522,7 +3542,7 @@ export const DashboardView: React.FC = () => {
                                           setClaimToReject(claim);
                                           setRejectionReasonInput("");
                                         }}
-                                        className="px-2.5 py-1.5 rounded-xl border border-red-500/40 text-red-600 hover:bg-red-500/10 font-bold text-xs transition-all cursor-pointer"
+                                        className="px-2.5 py-1.5 rounded-xl border border-rose-500/40 text-rose-600 hover:bg-rose-500/10 font-bold text-xs transition-all cursor-pointer"
                                         title="Revogar aprovação e rejeitar"
                                       >
                                         Revogar
@@ -3531,7 +3551,7 @@ export const DashboardView: React.FC = () => {
                                   )}
 
                                   {(claim.status === "REJEITADO" || claim.status === "CONCLUIDO" || claim.status === "CANCELADO") && (
-                                    <span className="text-[11px] text-neutral-400 italic">
+                                    <span className="text-[11px] text-slate-400 italic">
                                       Encerrada
                                     </span>
                                   )}
@@ -3550,33 +3570,33 @@ export const DashboardView: React.FC = () => {
 
           {/* Modal de Rejeição de Solicitação */}
           {claimToReject && (
-            <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 dark:bg-black/85 backdrop-blur-md transition-all duration-200">
-              <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-md w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4">
-                <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
+            <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm transition-all duration-200">
+              <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
                   <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-5 h-5 text-red-600" />
+                    <AlertTriangle className="w-5 h-5 text-rose-600" />
                     <div>
-                      <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+                      <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
                         Rejeitar Solicitação de Devolução
                       </h3>
-                      <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
+                      <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
                         Secretaria IFPR • Decisão Administrativa
                       </p>
                     </div>
                   </div>
                   <button
                     onClick={() => setClaimToReject(null)}
-                    className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500"
+                    className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
 
-                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-2xl text-xs space-y-1">
-                  <p className="text-red-900 dark:text-red-300">
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs space-y-1">
+                  <p className="text-rose-900 dark:text-rose-300">
                     Solicitante: <strong>{claimToReject.claimerName}</strong> ({claimToReject.claimerEmail})
                   </p>
-                  <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
                     Objeto: {claimToReject.itemTitle} (#{claimToReject.itemId})
                   </p>
                 </div>
@@ -3607,7 +3627,7 @@ export const DashboardView: React.FC = () => {
                   className="space-y-4"
                 >
                   <div>
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
                       Justificativa da Rejeição * (Será exibida ao solicitante)
                     </label>
                     <textarea
@@ -3616,22 +3636,22 @@ export const DashboardView: React.FC = () => {
                       value={rejectionReasonInput}
                       onChange={(e) => setRejectionReasonInput(e.target.value)}
                       placeholder="Ex: Características informadas não coincidem com o objeto arquivado na guarita..."
-                      className="w-full p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-red-500"
+                      className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#0B0F17] text-[#172B2A] dark:text-white text-xs outline-none focus:border-rose-500"
                     />
                   </div>
 
-                  <div className="flex justify-end space-x-2 pt-2 border-t border-neutral-200 dark:border-neutral-800">
+                  <div className="flex justify-end space-x-2 pt-2 border-t border-slate-200 dark:border-slate-800">
                     <button
                       type="button"
                       onClick={() => setClaimToReject(null)}
-                      className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                     >
                       Cancelar
                     </button>
                     <button
                       type="submit"
                       disabled={isProcessingClaimAction || !rejectionReasonInput.trim()}
-                      className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs shadow-md cursor-pointer disabled:opacity-50"
+                      className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm cursor-pointer disabled:opacity-50"
                     >
                       <span>{isProcessingClaimAction ? "Processando..." : "Confirmar Rejeição"}</span>
                     </button>
@@ -3644,22 +3664,20 @@ export const DashboardView: React.FC = () => {
           {/* TAB: FILA DE ASSINATURAS INSTITUCIONAIS PENDENTES (ATENDENTE / SERVIDOR) */}
           {adminSubTab === "pending_signatures" && (
             <div className="space-y-6 animate-in fade-in duration-200">
-              <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-neutral-100 dark:border-neutral-800 pb-4">
+              <SurfaceCard padding="lg" className="space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
                   <div className="flex items-center space-x-3">
-                    <div className="p-2.5 rounded-2xl bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                    <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50">
                       <FileSignature className="w-6 h-6" />
                     </div>
                     <div>
-                      <h2 className="text-lg font-black text-neutral-900 dark:text-white flex items-center space-x-2">
+                      <h2 className="text-lg font-bold text-[#172B2A] dark:text-white flex flex-wrap items-center gap-2">
                         <span>Fila de Assinaturas Institucionais Pendentes</span>
                         {pendingSignaturesCount > 0 && (
-                          <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-black uppercase">
-                            {pendingSignaturesCount} Pendentes
-                          </span>
+                          <UIBadge tone="amber">{pendingSignaturesCount} Pendentes</UIBadge>
                         )}
                       </h2>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                         Devoluções com termo assinado pelo receptor que aguardam atestação e assinatura institucional do servidor atendente
                       </p>
                     </div>
@@ -3667,19 +3685,15 @@ export const DashboardView: React.FC = () => {
                 </div>
 
                 {pendingSignaturesItems.length === 0 ? (
-                  <div className="bg-neutral-50 dark:bg-neutral-900/50 rounded-2xl p-8 text-center space-y-2 border border-dashed border-neutral-200 dark:border-neutral-800">
-                    <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto" />
-                    <p className="text-sm font-bold text-neutral-800 dark:text-neutral-200">
-                      Nenhuma assinatura institucional pendente para suas devoluções!
-                    </p>
-                    <p className="text-xs text-neutral-500 max-w-md mx-auto">
-                      Todas as devoluções emitidas por você que necessitam de atestação possuem a assinatura dupla concluída ou nenhuma pendência foi registrada para seu usuário.
-                    </p>
-                  </div>
+                  <EmptyState
+                    icon={<CheckCircle2 className="w-7 h-7" />}
+                    title="Nenhuma assinatura institucional pendente para suas devoluções!"
+                    description="Todas as devoluções emitidas por você que necessitam de atestação possuem a assinatura dupla concluída ou nenhuma pendência foi registrada para seu usuário."
+                  />
                 ) : (
-                  <div className="overflow-x-auto rounded-2xl border border-neutral-200 dark:border-neutral-800">
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
                     <table className="w-full text-left text-xs">
-                      <thead className="bg-neutral-50 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-300 uppercase font-extrabold text-[10px]">
+                      <thead className="bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 uppercase font-bold text-[10px]">
                         <tr>
                           <th className="p-3.5">Objeto / Identificador</th>
                           <th className="p-3.5">Receptor / Proprietário</th>
@@ -3688,43 +3702,44 @@ export const DashboardView: React.FC = () => {
                           <th className="p-3.5 text-right">Ação</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                         {pendingSignaturesItems.map((item) => (
-                          <tr key={item.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
-                            <td className="p-3.5 font-bold text-neutral-900 dark:text-white">
+                          <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                            <td className="p-3.5 font-bold text-[#172B2A] dark:text-white">
                               <div>{item.title}</div>
-                              <div className="text-[10px] font-mono text-neutral-400">#{item.id} • {item.category}</div>
+                              <div className="text-[10px] font-mono text-slate-400">#{item.id} • {item.category}</div>
                             </td>
                             <td className="p-3.5">
-                              <div className="font-bold text-neutral-800 dark:text-neutral-200">
+                              <div className="font-bold text-[#172B2A] dark:text-slate-200">
                                 {item.recipientName || item.recipientSignatureName || "Receptor"}
                               </div>
-                              <div className="text-[10px] text-neutral-500">
+                              <div className="text-[10px] text-slate-500">
                                 {item.recipientBond || "Aluno(a)"} • {item.recipientEmail || "Sem e-mail"}
                               </div>
                             </td>
                             <td className="p-3.5">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                              <UIBadge tone="emerald">
                                 <CheckCircle2 className="w-3 h-3" />
                                 <span>Receptor Assinou</span>
-                              </span>
+                              </UIBadge>
                             </td>
-                            <td className="p-3.5 font-mono text-neutral-600 dark:text-neutral-400">
+                            <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400">
                               <div>{formatDate(item.signedAt || item.resolutionDate || item.date)}</div>
-                              <div className="text-[10px] text-neutral-400">{item.receiptValidationCode || "CÓDIGO PENDENTE"}</div>
+                              <div className="text-[10px] text-slate-400">{item.receiptValidationCode || "CÓDIGO PENDENTE"}</div>
                             </td>
                             <td className="p-3.5 text-right whitespace-nowrap">
-                              <button
+                              <UIButton
                                 type="button"
+                                variant="primary"
+                                size="sm"
                                 onClick={() => {
                                   vibrateClick();
                                   setSelectedItemForDetail(item);
                                 }}
-                                className="px-3.5 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs transition-all shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
                               >
                                 <PenTool className="w-3.5 h-3.5" />
                                 <span>Atestar e Assinar</span>
-                              </button>
+                              </UIButton>
                             </td>
                           </tr>
                         ))}
@@ -3735,22 +3750,22 @@ export const DashboardView: React.FC = () => {
 
                 {/* Section for Unassigned Pending Signatures (Missing Issuer) */}
                 {unassignedPendingSignaturesItems.length > 0 && (
-                  <div className="pt-6 border-t border-neutral-200 dark:border-neutral-800 space-y-4">
+                  <div className="pt-6 border-t border-slate-200 dark:border-slate-800 space-y-4">
                     <div className="flex items-center space-x-2 text-amber-700 dark:text-amber-400">
                       <AlertTriangle className="w-5 h-5 shrink-0" />
                       <div>
-                        <h3 className="text-sm font-extrabold uppercase tracking-wide">
+                        <h3 className="text-sm font-bold uppercase tracking-wide">
                           Devoluções Pendentes Sem Emissor Identificado ({unassignedPendingSignaturesCount})
                         </h3>
-                        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
                           Devoluções com assinatura do receptor que não possuem servidor emissor registrado. A atestação está bloqueada até a verificação da autoria original.
                         </p>
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto rounded-2xl border border-amber-500/30 bg-amber-500/5 p-1">
+                    <div className="overflow-x-auto rounded-xl border border-amber-200 dark:border-amber-800/50 bg-amber-50/40 dark:bg-amber-950/20 p-1">
                       <table className="w-full text-left text-xs">
-                        <thead className="bg-amber-500/10 text-amber-900 dark:text-amber-200 uppercase font-extrabold text-[10px]">
+                        <thead className="bg-amber-500/10 text-amber-900 dark:text-amber-200 uppercase font-bold text-[10px]">
                           <tr>
                             <th className="p-3.5">Objeto / Identificador</th>
                             <th className="p-3.5">Receptor</th>
@@ -3759,41 +3774,42 @@ export const DashboardView: React.FC = () => {
                             <th className="p-3.5 text-right">Ação</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-amber-500/10">
+                        <tbody className="divide-y divide-amber-200/40 dark:divide-amber-800/30">
                           {unassignedPendingSignaturesItems.map((item) => (
                             <tr key={item.id} className="hover:bg-amber-500/10 transition-colors">
-                              <td className="p-3.5 font-bold text-neutral-900 dark:text-white">
+                              <td className="p-3.5 font-bold text-[#172B2A] dark:text-white">
                                 <div>{item.title}</div>
-                                <div className="text-[10px] font-mono text-neutral-400">#{item.id} • {item.category}</div>
+                                <div className="text-[10px] font-mono text-slate-400">#{item.id} • {item.category}</div>
                               </td>
                               <td className="p-3.5">
-                                <div className="font-bold text-neutral-800 dark:text-neutral-200">
+                                <div className="font-bold text-[#172B2A] dark:text-slate-200">
                                   {item.recipientName || item.recipientSignatureName || "Receptor"}
                                 </div>
-                                <div className="text-[10px] text-neutral-500">
+                                <div className="text-[10px] text-slate-500">
                                   {item.recipientBond || "Aluno(a)"}
                                 </div>
                               </td>
                               <td className="p-3.5">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                                <UIBadge tone="amber">
                                   <AlertTriangle className="w-3 h-3" />
                                   <span>Emissor Não Identificado</span>
-                                </span>
+                                </UIBadge>
                               </td>
-                              <td className="p-3.5 font-mono text-neutral-600 dark:text-neutral-400">
+                              <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400">
                                 <div>{formatDate(item.signedAt || item.resolutionDate || item.date)}</div>
                               </td>
                               <td className="p-3.5 text-right whitespace-nowrap">
-                                <button
+                                <UIButton
                                   type="button"
+                                  variant="outline"
+                                  size="sm"
                                   onClick={() => {
                                     vibrateClick();
                                     setSelectedItemForDetail(item);
                                   }}
-                                  className="px-3.5 py-1.5 rounded-xl bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-extrabold text-xs transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
                                 >
                                   <span>Verificar Detalhes</span>
-                                </button>
+                                </UIButton>
                               </td>
                             </tr>
                           ))}
@@ -3802,7 +3818,7 @@ export const DashboardView: React.FC = () => {
                     </div>
                   </div>
                 )}
-              </div>
+              </SurfaceCard>
             </div>
           )}
 
@@ -3831,18 +3847,18 @@ export const DashboardView: React.FC = () => {
 
       {/* MODAL: ADICIONAR NOVO USUÁRIO PELO ADMIN */}
       {isAddingUserOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="w-full max-w-lg bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-6">
-            <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-lg bg-white dark:bg-[#111827] rounded-2xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-6">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-4">
               <div className="flex items-center space-x-2.5">
-                <div className="p-2.5 rounded-2xl bg-[#00843D]/10 text-[#00843D]">
+                <div className="p-2.5 rounded-xl bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400">
                   <Users className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                  <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
                     Cadastrar Novo Usuário no IFPR
                   </h3>
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-xs text-slate-500">
                     Administrador TI • Adicionar aluno ou servidor
                   </p>
                 </div>
@@ -3850,7 +3866,7 @@ export const DashboardView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsAddingUserOpen(false)}
-                className="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-white"
+                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -3858,8 +3874,8 @@ export const DashboardView: React.FC = () => {
 
             <form onSubmit={handleAddUserSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="block font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                  Nome Completo <span className="text-red-500">*</span>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Nome Completo <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -3867,13 +3883,13 @@ export const DashboardView: React.FC = () => {
                   value={newUserName}
                   onChange={(e) => setNewUserName(e.target.value)}
                   placeholder="Ex: Carlos Eduardo da Silva"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                 />
               </div>
 
               <div>
-                <label className="block font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                  E-mail Institucional <span className="text-red-500">*</span>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  E-mail Institucional <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="email"
@@ -3881,19 +3897,19 @@ export const DashboardView: React.FC = () => {
                   value={newUserEmail}
                   onChange={(e) => setNewUserEmail(e.target.value)}
                   placeholder="Ex: carlos.silva@estudante.ifpr.edu.br"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Perfil / Função
                   </label>
                   <select
                     value={newUserRole}
                     onChange={(e) => setNewUserRole(e.target.value as UserRole)}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                   >
                     <option value="ALUNO">ALUNO (Discente)</option>
                     <option value="SERVIDOR">SERVIDOR (Docente / TAE)</option>
@@ -3902,7 +3918,7 @@ export const DashboardView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                     Matrícula / Prontuário
                   </label>
                   <input
@@ -3910,13 +3926,13 @@ export const DashboardView: React.FC = () => {
                     value={newUserRegNumber}
                     onChange={(e) => setNewUserRegNumber(e.target.value)}
                     placeholder="Ex: 2026100987"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                   Curso ou Setor no IFPR Campus Ivaiporã
                 </label>
                 <input
@@ -3924,21 +3940,21 @@ export const DashboardView: React.FC = () => {
                   value={newUserDept}
                   onChange={(e) => setNewUserDept(e.target.value)}
                   placeholder="Ex: Técnico em Informática"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                 />
               </div>
 
-              <div className="pt-4 flex justify-end space-x-3 border-t border-neutral-100 dark:border-neutral-800">
+              <div className="pt-4 flex justify-end space-x-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setIsAddingUserOpen(false)}
-                  className="px-4 py-2.5 rounded-xl text-neutral-600 dark:text-neutral-400 font-bold hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                  className="px-4 py-2.5 rounded-xl text-slate-600 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold shadow-md transition-all flex items-center space-x-1.5"
+                  className="px-5 py-2.5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"
                 >
                   <UserCheck className="w-4 h-4" />
                   <span>Cadastrar Usuário</span>
@@ -3951,23 +3967,23 @@ export const DashboardView: React.FC = () => {
 
       {/* MODAL: RESET COMPLETO DO SISTEMA */}
       {isResetConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-5">
-            <div className="flex items-center space-x-3 text-red-600 dark:text-red-400">
-              <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white dark:bg-[#111827] rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-5">
+            <div className="flex items-center space-x-3 text-rose-600 dark:text-rose-400">
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
                 <ShieldAlert className="w-7 h-7" />
               </div>
               <div>
-                <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
                   Resetar Banco de Dados do Sistema
                 </h3>
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs text-slate-500">
                   Exclusivo para Fases de Testes do IFPR
                 </p>
               </div>
             </div>
 
-            <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               Esta ação redefinirá todas as ocorrências, notificações e usuários para os valores padrão de fábrica (Mock Baseline do IFPR Campus Ivaiporã).
             </p>
 
@@ -3975,7 +3991,7 @@ export const DashboardView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsResetConfirmOpen(false)}
-                className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-xs font-bold"
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold cursor-pointer"
               >
                 Cancelar
               </button>
@@ -3986,7 +4002,7 @@ export const DashboardView: React.FC = () => {
                   await logAdminAction("RESET_SISTEMA", "Efetuou o reset total do banco de dados do sistema.");
                   setIsResetConfirmOpen(false);
                 }}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-md"
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm cursor-pointer"
               >
                 Sim, Resetar Sistema
               </button>
@@ -3997,23 +4013,23 @@ export const DashboardView: React.FC = () => {
 
       {/* MODAL: LIMPAR LOGS E MÉTRICAS DE DESEMPENHO */}
       {isClearLogsConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-5">
-            <div className="flex items-center space-x-3 text-purple-600 dark:text-purple-400">
-              <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white dark:bg-[#111827] rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-5">
+            <div className="flex items-center space-x-3 text-[#16845B] dark:text-emerald-400">
+              <div className="p-3 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/60 border border-[#16845B]/20">
                 <BarChart3 className="w-7 h-7" />
               </div>
               <div>
-                <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
                   Limpar Logs e Métricas de Desempenho
                 </h3>
-                <p className="text-xs text-neutral-500">
+                <p className="text-xs text-slate-500">
                   Reiniciar histórico de estatísticas do Firestore
                 </p>
               </div>
             </div>
 
-            <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               Esta ação apagará permanentemente todo o histórico de logs de atividades (audit trail), registros de backup, logs de erro e métricas de desempenho no Firestore. As estatísticas e o monitor de uptime serão iniciados do zero para a próxima fase de testes.
             </p>
 
@@ -4021,7 +4037,7 @@ export const DashboardView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsClearLogsConfirmOpen(false)}
-                className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-xs font-bold"
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold cursor-pointer"
               >
                 Cancelar
               </button>
@@ -4032,7 +4048,7 @@ export const DashboardView: React.FC = () => {
                   await logAdminAction("LIMPEZA_LOGS", "Limpou todo o histórico de logs e métricas de desempenho no Firestore.");
                   setIsClearLogsConfirmOpen(false);
                 }}
-                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-extrabold shadow-md"
+                className="px-4 py-2 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-bold shadow-sm cursor-pointer"
               >
                 Sim, Limpar Logs e Métricas
               </button>
@@ -4043,23 +4059,23 @@ export const DashboardView: React.FC = () => {
 
       {/* MODAL: SCRIPT MASTER WIPE (ZERAR BANCO FIRESTORE) */}
       {isMasterWipeConfirmOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 border border-red-500/30 dark:border-red-500/30 shadow-2xl space-y-5">
-            <div className="flex items-center space-x-3 text-red-600 dark:text-red-400">
-              <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white dark:bg-[#111827] rounded-2xl p-6 border border-rose-500/30 dark:border-rose-500/30 shadow-2xl space-y-5">
+            <div className="flex items-center space-x-3 text-rose-600 dark:text-rose-400">
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
                 <Trash2 className="w-7 h-7" />
               </div>
               <div>
-                <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
                   🔥 Master Wipe - Limpeza Completa
                 </h3>
-                <p className="text-xs text-red-500 font-bold">
+                <p className="text-xs text-rose-500 font-bold">
                   Ação Irreversível no Firestore
                 </p>
               </div>
             </div>
 
-            <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               <strong>ATENÇÃO:</strong> Esta ação executará o script de limpeza total no Firestore. Todos os objetos achados/perdidos, reivindicações, comentários, notificações e usuários (exceto sua conta atual de administrador) serão <strong>DELETADOS PERMANENTEMENTE</strong>.
               <br /><br />
               💡 <em>Recomenda-se exportar o backup em JSON antes de continuar.</em>
@@ -4069,7 +4085,7 @@ export const DashboardView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsMasterWipeConfirmOpen(false)}
-                className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-xs font-bold"
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold cursor-pointer"
               >
                 Cancelar
               </button>
@@ -4080,7 +4096,7 @@ export const DashboardView: React.FC = () => {
                   await logAdminAction("MASTER_WIPE", "Executou a exclusão completa de objetos, usuários e logs do Firestore.");
                   setIsMasterWipeConfirmOpen(false);
                 }}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow-md flex items-center space-x-1.5"
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm flex items-center space-x-1.5 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
                 <span>Confirmar e Deletar Tudo</span>
@@ -4092,23 +4108,23 @@ export const DashboardView: React.FC = () => {
 
       {/* Confirmation Modal for User Deletion */}
       {userToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-5">
-            <div className="flex items-center space-x-3 text-red-600 dark:text-red-400">
-              <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white dark:bg-[#111827] rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-5">
+            <div className="flex items-center space-x-3 text-rose-600 dark:text-rose-400">
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20">
                 <UserX className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-base font-extrabold text-neutral-900 dark:text-white">
+                <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
                   Confirmar Remoção de Usuário
                 </h3>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Ação exclusiva para Administradores
                 </p>
               </div>
             </div>
 
-            <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               Tem certeza que deseja remover o usuário <strong>{userToDelete.name}</strong>? Esta ação removerá os dados de perfil do banco de dados do IFPR.
             </p>
 
@@ -4117,7 +4133,7 @@ export const DashboardView: React.FC = () => {
                 type="button"
                 disabled={isDeletingUser}
                 onClick={() => setUserToDelete(null)}
-                className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
               >
                 Cancelar
               </button>
@@ -4138,7 +4154,7 @@ export const DashboardView: React.FC = () => {
                     setIsDeletingUser(false);
                   }
                 }}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white text-xs font-bold transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white text-xs font-bold transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
               >
                 {isDeletingUser && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 <span>{isDeletingUser ? "Removendo..." : "Sim, Remover Usuário"}</span>
@@ -4150,18 +4166,18 @@ export const DashboardView: React.FC = () => {
 
       {/* MODAL: Enviar Notificação Direta para Aluno(s) */}
       {(notifyModalUser || isBroadcastNotification) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="w-full max-w-lg bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-7 border border-purple-500/30 dark:border-purple-500/30 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-3">
-              <div className="flex items-center space-x-3 text-purple-600 dark:text-purple-400">
-                <div className="p-3 rounded-2xl bg-purple-500/10 border border-purple-500/20">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-lg bg-white dark:bg-[#111827] rounded-2xl p-6 sm:p-7 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center space-x-3 text-[#16845B] dark:text-emerald-400">
+                <div className="p-3 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/60 border border-[#16845B]/20">
                   <Send className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                  <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
                     Enviar Notificação do Sistema
                   </h3>
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-xs text-slate-500">
                     Aviso direto ao discente no painel e sininho do app
                   </p>
                 </div>
@@ -4172,7 +4188,7 @@ export const DashboardView: React.FC = () => {
                   setNotifyModalUser(null);
                   setIsBroadcastNotification(false);
                 }}
-                className="p-1.5 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -4181,7 +4197,7 @@ export const DashboardView: React.FC = () => {
             <form onSubmit={handleSendAdminNotification} className="space-y-4">
               {/* Target Selector */}
               <div>
-                <label className="block text-xs font-black uppercase text-neutral-600 dark:text-neutral-400 mb-1.5">
+                <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 mb-1.5">
                   Destinatário da Notificação
                 </label>
                 <div className="flex items-center gap-2 mb-2">
@@ -4194,10 +4210,10 @@ export const DashboardView: React.FC = () => {
                         setNotifyModalUser(first || null);
                       }
                     }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                       !isBroadcastNotification
-                        ? "bg-purple-600 text-white"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                        ? "bg-[#16845B] text-white"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                     }`}
                   >
                     Aluno Específico
@@ -4208,10 +4224,10 @@ export const DashboardView: React.FC = () => {
                       setIsBroadcastNotification(true);
                       setNotifyModalUser(null);
                     }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                       isBroadcastNotification
-                        ? "bg-purple-600 text-white"
-                        : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
+                        ? "bg-[#16845B] text-white"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                     }`}
                   >
                     📢 Todos os Alunos ({allUsers.filter((u) => u && u.role === "ALUNO").length})
@@ -4225,7 +4241,7 @@ export const DashboardView: React.FC = () => {
                       const sel = allUsers.find((u) => u.id === e.target.value);
                       setNotifyModalUser(sel || null);
                     }}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none font-bold"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs text-[#172B2A] dark:text-white outline-none font-bold focus:border-[#16845B]"
                   >
                     {allUsers.map((u) => (
                       <option key={u.id} value={u.id}>
@@ -4238,7 +4254,7 @@ export const DashboardView: React.FC = () => {
 
               {/* Quick Presets */}
               <div>
-                <label className="block text-[11px] font-bold text-neutral-500 mb-1">
+                <label className="block text-[11px] font-bold text-slate-500 mb-1">
                   Modelos Rápidos:
                 </label>
                 <div className="flex flex-wrap gap-1.5">
@@ -4250,7 +4266,7 @@ export const DashboardView: React.FC = () => {
                         `Olá${notifyModalUser ? ` ${notifyModalUser.name}` : ""}! Um novo item similar ao seu relato foi cadastrado no sistema. Acesse a aba 'Encontrados' para conferir e solicitar a devolução.`
                       );
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-purple-500/10 hover:text-purple-600 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 transition-colors"
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-[#EBF5F0] hover:text-[#16845B] text-[11px] font-semibold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                   >
                     ✨ Objeto Similar
                   </button>
@@ -4262,7 +4278,7 @@ export const DashboardView: React.FC = () => {
                         `Prezado(a)${notifyModalUser ? ` ${notifyModalUser.name}` : ""}, favor comparecer à recepção do campus IFPR Ivaiporã com documento com foto para retirada de seu item.`
                       );
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-purple-500/10 hover:text-purple-600 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 transition-colors"
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-[#EBF5F0] hover:text-[#16845B] text-[11px] font-semibold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                   >
                     🏢 Retirada Presencial
                   </button>
@@ -4274,7 +4290,7 @@ export const DashboardView: React.FC = () => {
                         `Sua comprovação de propriedade foi validada pela equipe do IFPR. O item está liberado para entrega.`
                       );
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-purple-500/10 hover:text-purple-600 text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 transition-colors"
+                    className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-[#EBF5F0] hover:text-[#16845B] text-[11px] font-semibold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                   >
                     ✅ Devolução Aprovada
                   </button>
@@ -4283,7 +4299,7 @@ export const DashboardView: React.FC = () => {
 
               {/* Title Input */}
               <div>
-                <label className="block text-xs font-black uppercase text-neutral-600 dark:text-neutral-400 mb-1.5">
+                <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 mb-1.5">
                   Título da Notificação
                 </label>
                 <input
@@ -4292,19 +4308,19 @@ export const DashboardView: React.FC = () => {
                   value={notifyTitle}
                   onChange={(e) => setNotifyTitle(e.target.value)}
                   placeholder="Ex: Item similar encontrado na Biblioteca..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:border-purple-500 font-bold"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs text-[#172B2A] dark:text-white outline-none focus:border-[#16845B] font-bold"
                 />
               </div>
 
               {/* Related Item (Optional) */}
               <div>
-                <label className="block text-xs font-black uppercase text-neutral-600 dark:text-neutral-400 mb-1.5">
+                <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 mb-1.5">
                   Objeto Relacionado (Opcional)
                 </label>
                 <select
                   value={notifyRelatedItemId}
                   onChange={(e) => setNotifyRelatedItemId(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none"
+                  className="w-full px-3.5 py-2 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                 >
                   <option value="">Nenhum objeto específico vinculado</option>
                   {items.map((it) => (
@@ -4317,7 +4333,7 @@ export const DashboardView: React.FC = () => {
 
               {/* Message Textarea */}
               <div>
-                <label className="block text-xs font-black uppercase text-neutral-600 dark:text-neutral-400 mb-1.5">
+                <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 mb-1.5">
                   Mensagem Detalhada
                 </label>
                 <textarea
@@ -4326,7 +4342,7 @@ export const DashboardView: React.FC = () => {
                   value={notifyMessage}
                   onChange={(e) => setNotifyMessage(e.target.value)}
                   placeholder="Digite as instruções e informações para o aluno..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:border-purple-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                 />
               </div>
 
@@ -4339,14 +4355,14 @@ export const DashboardView: React.FC = () => {
                     setNotifyModalUser(null);
                     setIsBroadcastNotification(false);
                   }}
-                  className="px-4 py-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-xs font-bold transition-colors cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={isSendingNotif}
-                  className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black shadow-md flex items-center space-x-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-bold shadow-sm flex items-center space-x-1.5 transition-all cursor-pointer disabled:opacity-50"
                 >
                   {isSendingNotif ? (
                     <>

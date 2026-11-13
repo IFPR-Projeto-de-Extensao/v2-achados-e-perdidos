@@ -3,8 +3,20 @@ import { LostFoundItem } from "../types";
 import { formatDate, isItemNew } from "../lib/utils";
 import { getItemPublicUrl } from "../lib/qrCodeUtils";
 import { getCategoryDisplay } from "../lib/categoryUtils";
-import { MapPin, Calendar, Tag, ArrowRight, ShieldCheck, QrCode, CheckSquare, Square, Printer, Sparkles, CameraOff } from "lucide-react";
+import {
+  MapPin,
+  Calendar,
+  Tag,
+  ArrowRight,
+  QrCode,
+  CheckSquare,
+  Square,
+  Printer,
+  Sparkles,
+  CameraOff,
+} from "lucide-react";
 import { motion } from "motion/react";
+import { UIBadge, UIButton } from "./ui";
 
 interface ItemCardProps {
   item: LostFoundItem;
@@ -25,47 +37,31 @@ export const ItemCard: React.FC<ItemCardProps> = ({
 }) => {
   const [imgFailed, setImgFailed] = React.useState(false);
 
-  const getStatusBadge = (status: LostFoundItem["status"], type: LostFoundItem["type"]) => {
+  const getStatusBadgeConfig = (
+    status: LostFoundItem["status"],
+    type: LostFoundItem["type"]
+  ): {
+    label: string;
+    tone: "emerald" | "rose" | "amber" | "blue" | "slate";
+  } => {
     switch (status) {
       case "PERDIDO":
-        return {
-          label: "PERDIDO",
-          bgColor: "bg-[#EF4444]/10 dark:bg-[#EF4444]/20",
-          textColor: "text-[#EF4444] dark:text-red-400",
-          borderColor: "border-[#EF4444]/30",
-        };
+        return { label: "Perdido", tone: "rose" };
       case "ENCONTRADO":
-        return {
-          label: "ENCONTRADO",
-          bgColor: "bg-[#22C55E]/10 dark:bg-[#22C55E]/20",
-          textColor: "text-[#22C55E] dark:text-green-400",
-          borderColor: "border-[#22C55E]/30",
-        };
+        return { label: "Encontrado", tone: "emerald" };
       case "EM_ANALISE":
-        return {
-          label: "EM ANÁLISE",
-          bgColor: "bg-[#F59E0B]/10 dark:bg-[#F59E0B]/20",
-          textColor: "text-[#F59E0B] dark:text-amber-400",
-          borderColor: "border-[#F59E0B]/30",
-        };
+        return { label: "Em Análise", tone: "amber" };
       case "DEVOLVIDO":
-        return {
-          label: "DEVOLVIDO",
-          bgColor: "bg-[#3B82F6]/10 dark:bg-[#3B82F6]/20",
-          textColor: "text-[#3B82F6] dark:text-blue-400",
-          borderColor: "border-[#3B82F6]/30",
-        };
+        return { label: "Devolvido", tone: "blue" };
       default:
         return {
-          label: type,
-          bgColor: "bg-neutral-100 dark:bg-neutral-800",
-          textColor: "text-neutral-700 dark:text-neutral-300",
-          borderColor: "border-neutral-200 dark:border-neutral-700",
+          label: type === "PERDIDO" ? "Perdido" : "Encontrado",
+          tone: type === "PERDIDO" ? "rose" : "emerald",
         };
     }
   };
 
-  const badge = getStatusBadge(item.status, item.type);
+  const badge = getStatusBadgeConfig(item.status, item.type);
   const isNew = isItemNew(item);
 
   const handleQuickPrintTag = (e: React.MouseEvent) => {
@@ -80,19 +76,19 @@ export const ItemCard: React.FC<ItemCardProps> = ({
           <title>Etiqueta IFPR - ${item.id}</title>
           <style>
             @media print { body { margin: 0; padding: 10px; background: white; } .no-print { display: none; } }
-            body { font-family: system-ui, -apple-system, sans-serif; padding: 24px; background: #f8fafc; color: #0f172a; }
-            .tag-card { max-width: 440px; margin: 0 auto; bg: white; border: 2px dashed #00843D; border-radius: 16px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-            .header { text-align: center; border-bottom: 2px solid #00843D; padding-bottom: 12px; margin-bottom: 16px; }
-            .header h1 { font-size: 16px; color: #00843D; margin: 0; font-weight: 800; text-transform: uppercase; }
+            body { font-family: 'Inter', system-ui, -apple-system, sans-serif; padding: 24px; background: #f8fafc; color: #172B2A; }
+            .tag-card { max-width: 440px; margin: 0 auto; background: white; border: 2px dashed #16845B; border-radius: 16px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+            .header { text-align: center; border-bottom: 2px solid #16845B; padding-bottom: 12px; margin-bottom: 16px; }
+            .header h1 { font-size: 16px; color: #16845B; margin: 0; font-weight: 800; text-transform: uppercase; }
             .header p { font-size: 12px; color: #64748b; margin: 4px 0 0 0; }
             .qr-box { text-align: center; margin: 16px 0; padding: 16px; background: #f1f5f9; border-radius: 12px; }
             .qr-code-img { width: 140px; height: 140px; margin: 0 auto; }
-            .qr-id { font-family: monospace; font-size: 13px; font-weight: bold; margin-top: 8px; color: #00843D; }
+            .qr-id { font-family: monospace; font-size: 13px; font-weight: bold; margin-top: 8px; color: #16845B; }
             .info-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 12px; }
             .info-table td { padding: 6px 4px; border-bottom: 1px solid #e2e8f0; }
             .info-table td.label { font-weight: bold; color: #475569; width: 38%; }
             .footer { text-align: center; font-size: 10px; color: #94a3b8; margin-top: 16px; padding-top: 8px; border-top: 1px solid #e2e8f0; }
-            .btn-print { display: block; width: 100%; max-width: 440px; margin: 16px auto 0 auto; padding: 12px; background: #00843D; color: white; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; text-align: center; }
+            .btn-print { display: block; width: 100%; max-width: 440px; margin: 16px auto 0 auto; padding: 12px; background: #16845B; color: white; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; text-align: center; }
           </style>
         </head>
         <body>
@@ -111,7 +107,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
               <tr><td class="label">Categoria / Tipo:</td><td>${getCategoryDisplay(item.category)} (${item.type})</td></tr>
               <tr><td class="label">Local Encontrado:</td><td>${item.location}</td></tr>
               <tr><td class="label">Data de Entrada:</td><td>${formatDate(item.date)}</td></tr>
-              <tr><td class="label">Cor / Marca:</td><td>${item.color || 'N/I'} • ${item.brand || 'N/I'}</td></tr>
+              <tr><td class="label">Cor / Marca:</td><td>${item.color || "N/I"} • ${item.brand || "N/I"}</td></tr>
               <tr><td class="label">Atendimento:</td><td>Guarita Principal / SEBAC Campus Ivaiporã</td></tr>
             </table>
             <div class="footer">
@@ -149,58 +145,62 @@ export const ItemCard: React.FC<ItemCardProps> = ({
     }, 500);
   };
 
+  const hasValidImage =
+    Boolean(item.imageUrl) &&
+    item.imageUrl.trim() !== "" &&
+    !item.imageUrl.includes("photo-1584438784894-089d6a62b8fa") &&
+    !imgFailed;
+
   return (
-    <motion.div
+    <motion.article
       layout="position"
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.96, y: -8 }}
-      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+      exit={{ opacity: 0, scale: 0.97, y: -6 }}
+      whileHover={{ y: -3, transition: { duration: 0.18 } }}
       transition={{
-        duration: 0.28,
+        duration: 0.25,
         ease: [0.16, 1, 0.3, 1],
-        delay: index !== undefined ? Math.min(index * 0.03, 0.2) : 0,
+        delay: index !== undefined ? Math.min(index * 0.025, 0.18) : 0,
       }}
-      className="group relative bg-white dark:bg-[#181818] rounded-2xl border border-neutral-200/80 dark:border-neutral-800 shadow-[0_2px_8px_rgba(0,0,0,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.25)] hover:shadow-[0_12px_28px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_12px_28px_rgba(0,0,0,0.5)] hover:border-[#00843D]/50 dark:hover:border-[#00843D]/60 transition-all duration-300 flex flex-col justify-between overflow-hidden"
+      onClick={() => onSelect(item)}
+      className={`group relative bg-white dark:bg-[#111827] rounded-2xl border transition-all duration-200 flex flex-col justify-between overflow-hidden cursor-pointer ${
+        isSelected
+          ? "border-[#16845B] ring-2 ring-[#16845B]/25 shadow-md"
+          : "border-slate-200/80 dark:border-slate-800/90 shadow-[0_2px_10px_rgba(6,78,59,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.3)] hover:shadow-[0_12px_28px_rgba(6,78,59,0.10)] dark:hover:shadow-[0_12px_28px_rgba(0,0,0,0.5)] hover:border-[#16845B]/50 dark:hover:border-emerald-500/50"
+      }`}
     >
       <div>
-        {/* Top Image Container with Badges */}
-        <div className="relative aspect-[16/10] w-full bg-neutral-100 dark:bg-neutral-900 overflow-hidden">
-          {item.imageUrl &&
-          item.imageUrl.trim() !== "" &&
-          !item.imageUrl.includes("photo-1584438784894-089d6a62b8fa") &&
-          !imgFailed ? (
+        {/* Top Image Container with Consistent 16:10 Aspect Ratio */}
+        <div className="relative aspect-[16/10] w-full bg-[#F8FAFC] dark:bg-slate-900 overflow-hidden border-b border-slate-100 dark:border-slate-800/80">
+          {hasValidImage ? (
             <img
               src={item.imageUrl}
               alt={item.title}
               onError={() => setImgFailed(true)}
-              className="w-full h-full object-cover group-hover:scale-106 transition-transform duration-500 ease-out"
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
               loading="lazy"
               decoding="async"
             />
           ) : (
             <div
-              className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-neutral-50 to-neutral-100 dark:from-neutral-900 dark:to-neutral-950 text-neutral-400 dark:text-neutral-500 p-4 text-center"
+              className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#F8FAFC] to-[#EBF5F0]/50 dark:from-slate-900 dark:to-slate-950 text-slate-400 dark:text-slate-500 p-4 text-center"
               aria-label="Sem foto anexada"
             >
-              <div className="w-12 h-12 rounded-2xl bg-white dark:bg-neutral-800 shadow-xs border border-neutral-200/60 dark:border-neutral-700/60 flex items-center justify-center text-neutral-400 dark:text-neutral-400 mb-2 group-hover:scale-110 transition-transform duration-300">
-                <CameraOff className="w-5 h-5 text-neutral-500 dark:text-neutral-400" />
+              <div className="w-11 h-11 rounded-2xl bg-white dark:bg-slate-800 shadow-2xs border border-slate-200/70 dark:border-slate-700/70 flex items-center justify-center text-[#16845B] dark:text-emerald-400 mb-2 group-hover:scale-105 transition-transform duration-200">
+                <CameraOff className="w-5 h-5" />
               </div>
-              <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+              <span className="text-xs font-semibold text-[#172B2A] dark:text-slate-300">
                 Sem foto anexada
               </span>
-              <span className="text-[10px] text-neutral-400 dark:text-neutral-500 mt-0.5">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                 {getCategoryDisplay(item.category)}
               </span>
             </div>
           )}
 
-          {/* Subtle gradient vignette at bottom of image for contrast */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20 pointer-events-none" />
-
-          {/* Top Badges Container */}
-          <div className="absolute top-2.5 left-2.5 right-2.5 z-10 flex items-center justify-between gap-1.5 pointer-events-none">
-            {/* Left Status & Flags */}
+          {/* Top Floating Badges */}
+          <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between gap-1.5 pointer-events-none">
             <div className="flex items-center gap-1.5 pointer-events-auto">
               {selectable && (
                 <button
@@ -209,42 +209,43 @@ export const ItemCard: React.FC<ItemCardProps> = ({
                     e.stopPropagation();
                     onToggleSelect?.(item.id, !isSelected);
                   }}
-                  className={`p-1.5 rounded-lg backdrop-blur-md border shadow-sm transition-all flex items-center justify-center ${
+                  className={`p-1.5 rounded-xl backdrop-blur-md border shadow-xs transition-all flex items-center justify-center cursor-pointer ${
                     isSelected
-                      ? "bg-[#00843D] text-white border-[#00843D]"
-                      : "bg-black/60 text-white border-white/30 hover:bg-black/80"
+                      ? "bg-[#16845B] text-white border-[#16845B]"
+                      : "bg-white/90 dark:bg-slate-900/90 text-[#172B2A] dark:text-white border-slate-200 dark:border-slate-700 hover:bg-white"
                   }`}
                   aria-label={`Selecionar objeto ${item.title}`}
                 >
                   {isSelected ? (
-                    <CheckSquare className="w-4 h-4 text-white fill-white" />
+                    <CheckSquare className="w-4 h-4 text-white" />
                   ) : (
-                    <Square className="w-4 h-4 text-white" />
+                    <Square className="w-4 h-4" />
                   )}
                 </button>
               )}
 
-              <span
-                className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border backdrop-blur-md shadow-xs ${badge.bgColor} ${badge.textColor} ${badge.borderColor}`}
+              <UIBadge
+                tone={badge.tone}
+                className="shadow-2xs backdrop-blur-md bg-opacity-95"
               >
                 {badge.label}
-              </span>
+              </UIBadge>
 
               {isNew && (
                 <span
                   id={`item-card-new-badge-${item.id}`}
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-emerald-600/90 text-white border border-emerald-400/50 shadow-xs backdrop-blur-md"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#16845B] text-white border border-white/20 shadow-2xs"
                   title="Item registrado no campus nas últimas 24 horas"
                 >
-                  <Sparkles className="w-2.5 h-2.5 text-amber-300 fill-amber-300" />
+                  <Sparkles className="w-2.5 h-2.5 text-amber-200 fill-amber-200" />
                   <span>Novo</span>
                 </span>
               )}
             </div>
 
             {/* Right QR Tag Identifier */}
-            <div className="bg-black/70 backdrop-blur-md text-white/95 px-2 py-1 rounded-lg text-[10px] font-mono font-bold flex items-center space-x-1 border border-white/20 shadow-xs pointer-events-auto">
-              <QrCode className="w-3 h-3 text-emerald-400" />
+            <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md text-[#172B2A] dark:text-slate-200 px-2 py-0.5 rounded-lg text-[10px] font-mono font-semibold flex items-center gap-1 border border-slate-200/80 dark:border-slate-700 shadow-2xs pointer-events-auto">
+              <QrCode className="w-3 h-3 text-[#16845B] dark:text-emerald-400" />
               <span>{String(item.id ?? "").toUpperCase()}</span>
             </div>
           </div>
@@ -252,60 +253,73 @@ export const ItemCard: React.FC<ItemCardProps> = ({
 
         {/* Card Body */}
         <div className="p-4 sm:p-5 space-y-2.5">
-          {/* Metadata Row: Category • Date • Color */}
-          <div className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400 truncate">
-            <span className="font-bold text-[#00843D] dark:text-green-400">
-              {getCategoryDisplay(item.category)}
+          {/* Category & Color Pill Row */}
+          <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+            <span className="inline-flex items-center gap-1 font-semibold text-[#16845B] dark:text-emerald-400 truncate">
+              <Tag className="w-3 h-3 shrink-0" />
+              <span className="truncate">{getCategoryDisplay(item.category)}</span>
             </span>
-            <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
-            <span>{formatDate(item.date)}</span>
             {item.color && (
-              <>
-                <span aria-hidden="true" className="text-neutral-300 dark:text-neutral-700">·</span>
-                <span className="truncate">{item.color}</span>
-              </>
+              <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate max-w-[110px]">
+                {item.color}
+              </span>
             )}
           </div>
 
-          {/* Title */}
-          <h3 className="font-extrabold text-sm sm:text-base text-neutral-900 dark:text-white line-clamp-1 group-hover:text-[#00843D] dark:group-hover:text-green-400 transition-colors">
+          {/* Readable Item Title */}
+          <h3 className="font-bold text-base text-[#172B2A] dark:text-white line-clamp-1 group-hover:text-[#16845B] dark:group-hover:text-emerald-400 transition-colors tracking-tight">
             {item.title}
           </h3>
 
-          {/* Description */}
-          <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-2 leading-relaxed min-h-[2rem]">
+          {/* Concise Description */}
+          <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed min-h-[2rem]">
             {item.description}
           </p>
 
-          {/* Location Bar */}
-          <div className="pt-2.5 border-t border-neutral-100 dark:border-neutral-800/80 flex items-center text-xs text-neutral-500 dark:text-neutral-400">
-            <MapPin className="w-3.5 h-3.5 text-[#00843D] dark:text-green-400 shrink-0 mr-1.5" />
-            <span className="truncate font-medium">{item.location}</span>
+          {/* Discreet Location & Date Metadata */}
+          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400 shrink-0" />
+              <span className="truncate font-medium text-[#172B2A]/85 dark:text-slate-300">
+                {item.location}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+              <Calendar className="w-3.5 h-3.5 shrink-0" />
+              <span>{formatDate(item.date)}</span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Card Footer Actions */}
       <div className="px-4 pb-4 sm:px-5 sm:pb-5 pt-1 flex items-center gap-2">
-        <button
+        <UIButton
           type="button"
-          onClick={() => onSelect(item)}
-          className="flex-1 flex items-center justify-center space-x-1.5 py-2.5 px-3 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white dark:hover:bg-[#00843D] dark:hover:text-white text-neutral-800 dark:text-neutral-200 font-bold text-xs transition-all duration-200 cursor-pointer group-hover:bg-[#00843D] group-hover:text-white shadow-2xs"
+          variant="secondary"
+          size="md"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(item);
+          }}
+          className="flex-1 min-h-[40px] group-hover:bg-[#16845B] group-hover:text-white group-hover:border-[#16845B] dark:group-hover:bg-[#16845B] dark:group-hover:text-white dark:group-hover:border-[#16845B]"
         >
           <span>Ver Detalhes</span>
           <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-        </button>
+        </UIButton>
 
         <button
           type="button"
           onClick={handleQuickPrintTag}
-          className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:text-[#00843D] hover:border-[#00843D]/50 dark:hover:text-green-400 font-bold text-xs transition-all cursor-pointer shadow-2xs"
+          className="min-h-[40px] min-w-[40px] p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-[#16845B] hover:border-[#16845B]/50 hover:bg-[#EBF5F0]/50 dark:hover:text-emerald-400 font-semibold text-xs transition-all cursor-pointer shadow-2xs flex items-center justify-center"
           title="Imprimir Etiqueta Física QR"
           aria-label="Imprimir Etiqueta Física QR"
         >
-          <Printer className="w-3.5 h-3.5" />
+          <Printer className="w-4 h-4" />
         </button>
       </div>
-    </motion.div>
+    </motion.article>
   );
 };
+
+export default ItemCard;

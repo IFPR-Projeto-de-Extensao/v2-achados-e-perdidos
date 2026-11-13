@@ -1,21 +1,17 @@
 import React, { useState, useMemo, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { ItemCard } from "./ItemCard";
-import { formatDate, formatDateTime, vibrateClick, vibrateSuccess, formatPhone, isValidPhone } from "../lib/utils";
+import { formatDateTime, vibrateClick, vibrateSuccess, formatPhone, isValidPhone } from "../lib/utils";
 import { UserRole, BadgeTier } from "../types";
 import { calculateUserReputation } from "../lib/reputationSystem";
-import { resolveAccountStatus, formatAccountStatusDetails } from "../lib/accountStatusUtils";
+import { formatAccountStatusDetails } from "../lib/accountStatusUtils";
 import { compressImage } from "../lib/imageCompression";
 import { getSafeAvatarUrl, handleAvatarError } from "../lib/avatarUtils";
 import {
-  User as UserIcon,
-  GraduationCap,
   Mail,
-  Building2,
   ShieldCheck,
   PackageSearch,
   CheckCircle2,
-  Clock,
   IdCard,
   Edit,
   Phone,
@@ -32,27 +28,29 @@ import {
   BellRing,
   Send,
   Radio,
-  CheckCircle,
   Search,
-  Flame,
-  Star,
-  Info,
   Sun,
   Moon,
   ChevronDown,
   ChevronUp,
-  ShieldAlert,
   AlertOctagon,
   Camera,
-  Upload,
   Loader2,
 } from "lucide-react";
+import {
+  SurfaceCard,
+  SubtlePanel,
+  UIButton,
+  UIBadge,
+  EmptyState,
+  UIFieldGroup,
+  UIInput,
+} from "./ui";
 
 export const ProfileView: React.FC = () => {
   const {
     currentUser,
     updateUserRole,
-    loginWithGoogle,
     logout,
     firebaseUser,
     items,
@@ -67,7 +65,6 @@ export const ProfileView: React.FC = () => {
     darkMode,
     toggleDarkMode,
     t,
-    language,
     cancelClaim,
   } = useApp();
 
@@ -180,21 +177,21 @@ export const ProfileView: React.FC = () => {
       case "DIAMANTE":
         return {
           bg: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-500/30",
-          cardBg: "from-cyan-500/15 via-sky-500/10 to-blue-500/15",
-          iconColor: "text-cyan-400",
+          cardBg: "from-cyan-500/10 via-sky-500/5 to-blue-500/10",
+          iconColor: "text-cyan-500",
           accentColor: "#06B6D4",
         };
       case "OURO":
         return {
           bg: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40",
-          cardBg: "from-amber-500/15 via-yellow-500/10 to-amber-600/15",
+          cardBg: "from-amber-500/10 via-yellow-500/5 to-amber-600/10",
           iconColor: "text-amber-500",
           accentColor: "#F59E0B",
         };
       case "PRATA":
         return {
           bg: "bg-slate-400/20 text-slate-700 dark:text-slate-300 border-slate-400/40",
-          cardBg: "from-slate-400/15 to-slate-600/15",
+          cardBg: "from-slate-400/10 to-slate-600/10",
           iconColor: "text-slate-400",
           accentColor: "#94A3B8",
         };
@@ -202,7 +199,7 @@ export const ProfileView: React.FC = () => {
       default:
         return {
           bg: "bg-amber-700/15 text-amber-800 dark:text-amber-400 border-amber-700/30",
-          cardBg: "from-amber-700/10 to-amber-900/10",
+          cardBg: "from-amber-700/10 to-amber-900/5",
           iconColor: "text-amber-700",
           accentColor: "#B45309",
         };
@@ -212,9 +209,9 @@ export const ProfileView: React.FC = () => {
   const currentTierDetails = getTierDetails(reputation.levelTier);
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 pb-16">
+    <div className="max-w-5xl mx-auto space-y-6 sm:space-y-8 pb-16 animate-in fade-in duration-300">
       {/* Profile Header Card */}
-      <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-sm flex flex-col md:flex-row items-center md:items-start space-y-4 md:space-y-0 md:space-x-6">
+      <SurfaceCard className="p-6 sm:p-8 flex flex-col md:flex-row items-center md:items-start gap-5 md:gap-6">
         {/* Avatar with Camera Trigger & Fallback */}
         <div className="relative group shrink-0">
           <img
@@ -222,9 +219,9 @@ export const ProfileView: React.FC = () => {
             alt={currentUser.name}
             referrerPolicy="no-referrer"
             onError={(e) => handleAvatarError(e, currentUser.name)}
-            className="w-24 h-24 rounded-2xl object-cover border-4 border-[#00843D] shadow-md transition-transform group-hover:scale-105"
+            className="w-24 h-24 rounded-2xl object-cover border-3 border-[#16845B] shadow-sm transition-transform group-hover:scale-105"
           />
-          <span className="absolute -bottom-2 -right-2 px-2.5 py-0.5 rounded-full bg-[#00843D] text-white text-[10px] font-bold uppercase tracking-wide border-2 border-white dark:border-[#1E1E1E] z-10">
+          <span className="absolute -bottom-2 -right-2 px-2.5 py-0.5 rounded-lg bg-[#16845B] text-white text-[10px] font-bold uppercase tracking-wide border-2 border-white dark:border-[#111827] z-10">
             {currentUser.role}
           </span>
 
@@ -242,7 +239,7 @@ export const ProfileView: React.FC = () => {
           {/* Camera Button Overlay */}
           <label
             htmlFor="profile-avatar-file-input"
-            className={`absolute inset-0 rounded-2xl bg-black/60 text-white flex flex-col items-center justify-center cursor-pointer transition-all duration-200 ${
+            className={`absolute inset-0 rounded-2xl bg-slate-950/60 text-white flex flex-col items-center justify-center cursor-pointer transition-all duration-200 ${
               isUploadingPhoto ? "opacity-100" : "opacity-0 group-hover:opacity-100"
             }`}
             title="Clique para alterar sua foto de perfil"
@@ -250,76 +247,80 @@ export const ProfileView: React.FC = () => {
             {isUploadingPhoto ? (
               <>
                 <Loader2 className="w-6 h-6 animate-spin text-white mb-1" />
-                <span className="text-[9px] font-extrabold text-center uppercase tracking-tight">Salvando...</span>
+                <span className="text-[9px] font-bold text-center uppercase tracking-tight">Salvando...</span>
               </>
             ) : (
               <>
                 <Camera className="w-6 h-6 text-white mb-1 drop-shadow-sm" />
-                <span className="text-[10px] font-extrabold text-center uppercase tracking-tight">Alterar</span>
+                <span className="text-[10px] font-bold text-center uppercase tracking-tight">Alterar</span>
               </>
             )}
           </label>
         </div>
 
         {/* User Details */}
-        <div className="flex-1 text-center md:text-left space-y-2">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+        <div className="flex-1 w-full text-center md:text-left space-y-3">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">
+              <h1 className="text-xl sm:text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight">
                 {currentUser.name}
               </h1>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                 {currentUser.courseOrDept}
               </p>
             </div>
 
             {/* Role switch prompt, Google Login & Edit */}
             <div className="flex flex-wrap items-center gap-2 justify-center md:justify-end">
-              <button
+              <UIButton
+                variant="secondary"
+                size="sm"
                 onClick={() => setIsEditing(!isEditing)}
-                className="px-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-xs font-bold hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors flex items-center gap-1"
               >
                 <Edit className="w-3.5 h-3.5" />
                 <span>{isEditing ? "Cancelar" : "Editar Perfil"}</span>
-              </button>
+              </UIButton>
 
               {(currentUser.id !== "guest_visitor" || firebaseUser) ? (
-                <button
+                <UIButton
+                  variant="danger"
+                  size="sm"
                   onClick={logout}
-                  className="px-3.5 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 text-xs font-bold hover:bg-red-500 hover:text-white transition-colors flex items-center gap-1.5 border border-red-500/20"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>Sair da Conta</span>
-                </button>
+                </UIButton>
               ) : (
-                <button
+                <UIButton
+                  variant="primary"
+                  size="sm"
                   onClick={() => setAuthModalOpen(true)}
-                  className="px-3.5 py-1.5 rounded-xl bg-[#00843D] text-white text-xs font-bold hover:bg-[#006830] transition-colors flex items-center gap-1.5 shadow-xs"
                 >
                   <ShieldCheck className="w-4 h-4" />
                   <span>Login / Cadastro</span>
-                </button>
+                </UIButton>
               )}
+
               {currentUser.role === "ADMIN" ? (
-                <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-green-50 dark:bg-green-950/40 border border-[#00843D]/30 text-xs font-bold text-[#00843D] dark:text-green-400">
-                  <Shield className="w-3.5 h-3.5 text-[#00843D]" />
+                <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-[#EBF5F0] dark:bg-[#16845B]/15 border border-[#16845B]/25 text-xs font-semibold text-[#16845B] dark:text-emerald-400">
+                  <Shield className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
                   <span>Função:</span>
                   <select
                     value={currentUser.role}
                     onChange={(e) => updateUserRole(currentUser.id, e.target.value as UserRole)}
-                    className="bg-transparent text-xs font-bold text-neutral-900 dark:text-white outline-none cursor-pointer"
+                    className="bg-transparent text-xs font-bold text-[#172B2A] dark:text-white outline-none cursor-pointer"
                   >
-                    <option value="ALUNO" className="bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white">ALUNO</option>
-                    <option value="SERVIDOR" className="bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white">SERVIDOR</option>
-                    <option value="ADMIN" className="bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white">ADMIN</option>
-                    <option value="INTRUSO" className="bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white">Usuário externo</option>
+                    <option value="ALUNO" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">ALUNO</option>
+                    <option value="SERVIDOR" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">SERVIDOR</option>
+                    <option value="ADMIN" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">ADMIN</option>
+                    <option value="INTRUSO" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Usuário externo</option>
                   </select>
                 </div>
               ) : (
                 <button
                   type="button"
                   onClick={() => addToast("Sua função é definida e alterada apenas pelo Administrador do IFPR.", "info")}
-                  className="px-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-xs font-bold text-neutral-600 dark:text-neutral-300 flex items-center gap-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
                   title="Somente Administradores do IFPR podem alterar perfis e permissões"
                 >
                   <Lock className="w-3.5 h-3.5 text-amber-500" />
@@ -332,7 +333,7 @@ export const ProfileView: React.FC = () => {
                 const statusInfo = formatAccountStatusDetails(currentUser);
                 return (
                   <div
-                    className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold ${statusInfo.badgeClass}`}
+                    className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold ${statusInfo.badgeClass}`}
                     title={statusInfo.description}
                   >
                     <span className={`w-2 h-2 rounded-full ${statusInfo.dotClass}`} />
@@ -344,106 +345,88 @@ export const ProfileView: React.FC = () => {
           </div>
 
           {!isEditing ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 text-xs text-neutral-600 dark:text-neutral-300 border-t border-neutral-100 dark:border-neutral-800">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 text-xs text-slate-600 dark:text-slate-300 border-t border-slate-100 dark:border-slate-800">
               <div className="flex items-center justify-center md:justify-start space-x-2">
-                <Mail className="w-4 h-4 text-[#00843D]" />
+                <Mail className="w-4 h-4 text-[#16845B] shrink-0" />
                 <span className="truncate">{currentUser.email}</span>
               </div>
               <div className="flex items-center justify-center md:justify-start space-x-2">
-                <IdCard className="w-4 h-4 text-[#00843D]" />
+                <IdCard className="w-4 h-4 text-[#16845B] shrink-0" />
                 <span>Matrícula: {currentUser.registrationNumber}</span>
               </div>
               <div className="flex items-center justify-center md:justify-start space-x-2">
-                <Phone className="w-4 h-4 text-[#00843D]" />
+                <Phone className="w-4 h-4 text-[#16845B] shrink-0" />
                 <span>{currentUser.phone ? formatPhone(currentUser.phone) : "Telefone não informado"}</span>
               </div>
             </div>
           ) : (
-            <form onSubmit={handleSaveProfile} className="pt-3 border-t border-neutral-200 dark:border-neutral-800 space-y-3">
+            <form onSubmit={handleSaveProfile} className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3 text-left">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-neutral-600 dark:text-neutral-400 mb-1">
-                    Nome Completo
-                  </label>
-                  <input
+                <UIFieldGroup label="Nome Completo" required>
+                  <UIInput
                     type="text"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 outline-none focus:ring-2 focus:ring-[#00843D]"
                     required
                   />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-neutral-600 dark:text-neutral-400 mb-1">
-                    Curso / Departamento
-                  </label>
-                  <input
+                </UIFieldGroup>
+                <UIFieldGroup label="Curso / Departamento">
+                  <UIInput
                     type="text"
                     value={editCourse}
                     onChange={(e) => setEditCourse(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 outline-none focus:ring-2 focus:ring-[#00843D]"
                   />
-                </div>
+                </UIFieldGroup>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-neutral-600 dark:text-neutral-400 mb-1">
-                    Matrícula / Registro
-                  </label>
-                  <input
+                <UIFieldGroup label="Matrícula / Registro">
+                  <UIInput
                     type="text"
                     value={editMatricula}
                     onChange={(e) => setEditMatricula(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 outline-none focus:ring-2 focus:ring-[#00843D]"
                   />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-neutral-600 dark:text-neutral-400 mb-1">
-                    Telefone / WhatsApp
-                  </label>
-                  <input
+                </UIFieldGroup>
+                <UIFieldGroup label="Telefone / WhatsApp">
+                  <UIInput
                     type="text"
                     value={editPhone}
                     onChange={(e) => setEditPhone(formatPhone(e.target.value))}
                     placeholder="(43) 99876-5432"
                     maxLength={15}
-                    className="w-full px-3 py-1.5 text-xs rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 outline-none focus:ring-2 focus:ring-[#00843D]"
                   />
-                </div>
+                </UIFieldGroup>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                <button
+                <UIButton
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
+                  variant="secondary"
+                  size="sm"
                   disabled={isUploadingPhoto}
-                  className="px-3 py-1.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-xs font-bold text-neutral-700 dark:text-neutral-200 flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
                 >
                   {isUploadingPhoto ? (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <Camera className="w-3.5 h-3.5 text-[#00843D]" />
+                    <Camera className="w-3.5 h-3.5 text-[#16845B]" />
                   )}
                   <span>{isUploadingPhoto ? "Salvando foto..." : "Alterar Foto de Perfil"}</span>
-                </button>
+                </UIButton>
 
                 <div className="flex justify-end space-x-2">
-                  <button
-                    type="submit"
-                    className="px-4 py-1.5 bg-[#00843D] text-white font-bold text-xs rounded-xl hover:bg-[#006830] transition-colors cursor-pointer shadow-xs"
-                  >
+                  <UIButton type="submit" variant="primary" size="sm">
                     Salvar Alterações no Banco de Dados
-                  </button>
+                  </UIButton>
                 </div>
               </div>
             </form>
           )}
         </div>
-      </div>
+      </SurfaceCard>
 
       {/* REPUTATION & BADGES SYSTEM (GAMIFICAÇÃO DE CIDADANIA) */}
-      <div className={`p-6 sm:p-8 rounded-3xl bg-gradient-to-br ${currentTierDetails.cardBg} bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6`}>
+      <SurfaceCard className={`p-6 sm:p-8 bg-gradient-to-br ${currentTierDetails.cardBg} space-y-6`}>
         {/* Main Status & Level Header */}
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
           <div className="flex items-center space-x-4">
@@ -461,44 +444,44 @@ export const ProfileView: React.FC = () => {
 
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
+                <h2 className="text-xl sm:text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight">
                   {reputation.levelTitle}
                 </h2>
-                <span className={`px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider border ${currentTierDetails.bg}`}>
+                <span className={`px-3 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider border ${currentTierDetails.bg}`}>
                   Nível {reputation.level} • {reputation.levelTier}
                 </span>
               </div>
-              <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-300 mt-1 max-w-xl">
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 max-w-xl">
                 Reconhecimento comunitário por devolver pertences encontrados e fortalecer a honestidade no IFPR Campus Ivaiporã.
               </p>
             </div>
           </div>
 
           {/* Quick Metrics Pillar */}
-          <div className="grid grid-cols-3 gap-2 w-full lg:w-auto shrink-0">
-            <div className="p-3 rounded-2xl bg-white/80 dark:bg-neutral-900/80 border border-neutral-200/80 dark:border-neutral-800 text-center">
-              <span className="text-xl sm:text-2xl font-black text-[#00843D] dark:text-green-400 block">
+          <div className="grid grid-cols-3 gap-2.5 w-full lg:w-auto shrink-0">
+            <div className="p-3.5 rounded-xl bg-white/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 text-center">
+              <span className="text-xl sm:text-2xl font-bold text-[#16845B] dark:text-emerald-400 block tabular-nums">
                 {reputation.totalPoints}
               </span>
-              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tight">
                 Pontos
               </span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-white/80 dark:bg-neutral-900/80 border border-neutral-200/80 dark:border-neutral-800 text-center">
-              <span className="text-xl sm:text-2xl font-black text-blue-600 dark:text-blue-400 block">
+            <div className="p-3.5 rounded-xl bg-white/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 text-center">
+              <span className="text-xl sm:text-2xl font-bold text-sky-600 dark:text-sky-400 block tabular-nums">
                 {reputation.itemsReturnedCount}
               </span>
-              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tight">
                 Devoluções
               </span>
             </div>
 
-            <div className="p-3 rounded-2xl bg-white/80 dark:bg-neutral-900/80 border border-neutral-200/80 dark:border-neutral-800 text-center">
-              <span className="text-xl sm:text-2xl font-black text-purple-600 dark:text-purple-400 block">
+            <div className="p-3.5 rounded-xl bg-white/90 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 text-center">
+              <span className="text-xl sm:text-2xl font-bold text-[#064E3B] dark:text-emerald-300 block tabular-nums">
                 {reputation.badges.filter((b) => b.unlocked).length}/{reputation.badges.length}
               </span>
-              <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-tight">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tight">
                 Medalhas
               </span>
             </div>
@@ -506,27 +489,27 @@ export const ProfileView: React.FC = () => {
         </div>
 
         {/* Level Progression Bar */}
-        <div className="space-y-2 pt-2 border-t border-neutral-200/60 dark:border-neutral-800/60">
-          <div className="flex items-center justify-between text-xs font-bold">
-            <span className="text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+        <div className="space-y-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/60">
+          <div className="flex items-center justify-between text-xs font-semibold">
+            <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
               <span>Progresso para a Próxima Categoria ({reputation.progressToNextLevel}%)</span>
             </span>
-            <span className="text-[#00843D] dark:text-green-400 font-extrabold">
+            <span className="text-[#16845B] dark:text-emerald-400 font-bold">
               {reputation.totalPoints} / {reputation.nextLevelPoints} pts
             </span>
           </div>
 
-          <div className="w-full h-3 rounded-full bg-neutral-200 dark:bg-neutral-800/90 overflow-hidden p-0.5">
+          <div className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-[#00843D] via-emerald-400 to-amber-400 transition-all duration-700"
+              className="h-full rounded-full bg-gradient-to-r from-[#16845B] via-emerald-500 to-[#064E3B] transition-all duration-700"
               style={{ width: `${reputation.progressToNextLevel}%` }}
             />
           </div>
         </div>
 
         {/* BADGES GALLERY GRID (COLLAPSIBLE / DEFAULT HIDDEN TO KEEP INTERFACE CLEAN) */}
-        <div className="space-y-3 pt-2 border-t border-neutral-200/60 dark:border-neutral-800/60">
+        <div className="space-y-3 pt-2 border-t border-slate-200/60 dark:border-slate-800/60">
           <div className="flex items-center justify-between">
             <button
               type="button"
@@ -534,11 +517,11 @@ export const ProfileView: React.FC = () => {
                 vibrateClick();
                 setShowBadges((prev) => !prev);
               }}
-              className="flex items-center gap-2 font-black text-xs sm:text-sm text-neutral-900 dark:text-white uppercase tracking-wider hover:text-[#00843D] transition-colors cursor-pointer"
+              className="flex items-center gap-2 font-bold text-xs sm:text-sm text-[#172B2A] dark:text-white uppercase tracking-wider hover:text-[#16845B] transition-colors cursor-pointer"
             >
-              <Award className="w-4 h-4 text-[#00843D]" />
+              <Award className="w-4 h-4 text-[#16845B]" />
               <span>Galeria de Medalhas e Conquistas ({reputation.badges.filter((b) => b.unlocked).length}/{reputation.badges.length})</span>
-              {showBadges ? <ChevronUp className="w-4 h-4 text-neutral-500" /> : <ChevronDown className="w-4 h-4 text-neutral-500" />}
+              {showBadges ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
             </button>
 
             <button
@@ -547,7 +530,7 @@ export const ProfileView: React.FC = () => {
                 vibrateClick();
                 setShowBadges((prev) => !prev);
               }}
-              className="text-[11px] font-bold text-[#00843D] dark:text-green-400 hover:underline cursor-pointer"
+              className="text-[11px] font-semibold text-[#16845B] dark:text-emerald-400 hover:underline cursor-pointer"
             >
               {showBadges ? "Ocultar Galeria" : "Exibir Galeria"}
             </button>
@@ -555,110 +538,111 @@ export const ProfileView: React.FC = () => {
 
           {showBadges && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 animate-in fade-in duration-200">
-            {reputation.badges.map((badge) => {
-              const tierInfo = getTierDetails(badge.tier);
-              const isUnlocked = badge.unlocked;
+              {reputation.badges.map((badge) => {
+                const tierInfo = getTierDetails(badge.tier);
+                const isUnlocked = badge.unlocked;
 
-              // Render dynamic icon
-              const renderBadgeIcon = () => {
-                switch (badge.iconName) {
-                  case "HeartHandshake":
-                    return <HeartHandshake className="w-5 h-5" />;
-                  case "ShieldCheck":
-                    return <ShieldCheck className="w-5 h-5" />;
-                  case "Award":
-                    return <Award className="w-5 h-5" />;
-                  case "Crown":
-                    return <Crown className="w-5 h-5" />;
-                  case "Search":
-                    return <Search className="w-5 h-5" />;
-                  case "Sparkles":
-                  default:
-                    return <Sparkles className="w-5 h-5" />;
-                }
-              };
+                const renderBadgeIcon = () => {
+                  switch (badge.iconName) {
+                    case "HeartHandshake":
+                      return <HeartHandshake className="w-5 h-5" />;
+                    case "ShieldCheck":
+                      return <ShieldCheck className="w-5 h-5" />;
+                    case "Award":
+                      return <Award className="w-5 h-5" />;
+                    case "Crown":
+                      return <Crown className="w-5 h-5" />;
+                    case "Search":
+                      return <Search className="w-5 h-5" />;
+                    case "Sparkles":
+                    default:
+                      return <Sparkles className="w-5 h-5" />;
+                  }
+                };
 
-              return (
-                <div
-                  key={badge.id}
-                  className={`p-4 rounded-2xl border transition-all relative overflow-hidden flex flex-col justify-between ${
-                    isUnlocked
-                      ? "bg-white dark:bg-neutral-800/90 border-neutral-300 dark:border-neutral-700 shadow-xs hover:border-[#00843D]/50"
-                      : "bg-neutral-50/70 dark:bg-neutral-900/50 border-dashed border-neutral-300 dark:border-neutral-800 opacity-75"
-                  }`}
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div
-                        className={`p-2.5 rounded-xl border ${
-                          isUnlocked
-                            ? tierInfo.bg
-                            : "bg-neutral-200 dark:bg-neutral-800 text-neutral-400 border-neutral-300 dark:border-neutral-700"
-                        }`}
-                      >
-                        {renderBadgeIcon()}
-                      </div>
+                return (
+                  <div
+                    key={badge.id}
+                    className={`p-4 rounded-2xl border transition-all relative overflow-hidden flex flex-col justify-between ${
+                      isUnlocked
+                        ? "bg-white dark:bg-slate-800/90 border-slate-200 dark:border-slate-700 shadow-xs hover:border-[#16845B]/50"
+                        : "bg-slate-50/70 dark:bg-slate-900/50 border-dashed border-slate-200 dark:border-slate-800 opacity-75"
+                    }`}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div
+                          className={`p-2.5 rounded-xl border ${
+                            isUnlocked
+                              ? tierInfo.bg
+                              : "bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700"
+                          }`}
+                        >
+                          {renderBadgeIcon()}
+                        </div>
 
-                      <div className="flex items-center gap-1.5">
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border ${tierInfo.bg}`}>
-                          {badge.tier}
-                        </span>
-                        {isUnlocked && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-500/10 text-[#00843D] dark:text-green-400 border border-emerald-500/20">
-                            +{badge.pointsReward} pts
+                        <div className="flex items-center gap-1.5">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${tierInfo.bg}`}>
+                            {badge.tier}
                           </span>
-                        )}
+                          {isUnlocked && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400 border border-[#16845B]/20">
+                              +{badge.pointsReward} pts
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="font-bold text-sm text-[#172B2A] dark:text-white flex items-center gap-1.5">
+                          <span>{badge.name}</span>
+                          {isUnlocked && <CheckCircle2 className="w-3.5 h-3.5 text-[#16845B] shrink-0" />}
+                        </h4>
+                        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-snug">
+                          {badge.description}
+                        </p>
                       </div>
                     </div>
 
-                    <div>
-                      <h4 className="font-extrabold text-sm text-neutral-900 dark:text-white flex items-center gap-1.5">
-                        <span>{badge.name}</span>
-                        {isUnlocked && <CheckCircle2 className="w-3.5 h-3.5 text-[#00843D] shrink-0" />}
-                      </h4>
-                      <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-1 leading-snug">
-                        {badge.description}
-                      </p>
+                    {/* Badge Progress Tracker */}
+                    <div className="pt-3 mt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-1">
+                      <div className="flex items-center justify-between text-[10px] font-semibold">
+                        <span className="text-slate-500">{badge.requirementText}</span>
+                        <span className={isUnlocked ? "text-[#16845B] dark:text-emerald-400" : "text-slate-400"}>
+                          {badge.currentCount}/{badge.targetCount}
+                        </span>
+                      </div>
+
+                      <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${
+                            isUnlocked
+                              ? "bg-[#16845B]"
+                              : "bg-slate-400 dark:bg-slate-600"
+                          }`}
+                          style={{ width: `${badge.progress}%` }}
+                        />
+                      </div>
                     </div>
                   </div>
-
-                  {/* Badge Progress Tracker */}
-                  <div className="pt-3 mt-3 border-t border-neutral-100 dark:border-neutral-800/80 space-y-1">
-                    <div className="flex items-center justify-between text-[10px] font-bold">
-                      <span className="text-neutral-500">{badge.requirementText}</span>
-                      <span className={isUnlocked ? "text-[#00843D] dark:text-green-400" : "text-neutral-400"}>
-                        {badge.currentCount}/{badge.targetCount}
-                      </span>
-                    </div>
-
-                    <div className="w-full h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          isUnlocked
-                            ? "bg-[#00843D]"
-                            : "bg-neutral-400 dark:bg-neutral-600"
-                        }`}
-                        style={{ width: `${badge.progress}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
           )}
         </div>
-      </div>
+      </SurfaceCard>
 
       {/* FCM Cloud Messaging Push Notifications Card */}
-      <div id="fcm-notification-subscription-card" className="p-6 rounded-3xl bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-4">
+      <SurfaceCard id="fcm-notification-subscription-card" className="p-6 space-y-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center space-x-3.5">
-            <div className={`p-3 rounded-2xl border shrink-0 ${
-              fcmSubscribed
-                ? "bg-emerald-500/10 text-[#00843D] dark:text-green-400 border-emerald-500/20"
-                : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
-            }`}>
+            <div
+              className={`p-3 rounded-xl border shrink-0 ${
+                fcmSubscribed
+                  ? "bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400 border-[#16845B]/20"
+                  : "bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-400 border-sky-200 dark:border-sky-800"
+              }`}
+            >
               {fcmSubscribed ? (
                 <BellRing className="w-6 h-6 animate-pulse" />
               ) : (
@@ -666,23 +650,17 @@ export const ProfileView: React.FC = () => {
               )}
             </div>
             <div>
-              <div className="flex items-center space-x-2">
-                <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
                   {t("fcmTitle", "Notificações Push do Sistema (FCM)")}
                 </h3>
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
-                    fcmSubscribed
-                      ? "bg-emerald-500/10 text-[#00843D] dark:text-green-400 border-emerald-500/30"
-                      : "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30"
-                  }`}
-                >
+                <UIBadge tone={fcmSubscribed ? "emerald" : "amber"}>
                   {fcmSubscribed
                     ? t("fcmSubscribed", "Ativo no Dispositivo")
                     : t("fcmUnsubscribed", "Não Inscrito")}
-                </span>
+                </UIBadge>
               </div>
-              <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-1 max-w-xl">
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-xl leading-relaxed">
                 {t(
                   "fcmDescription",
                   "Receba alertas automáticos via Firebase Cloud Messaging no navegador ou celular quando um objeto que você registrou como perdido for encontrado ou devolvido no campus."
@@ -695,9 +673,10 @@ export const ProfileView: React.FC = () => {
             {!fcmSubscribed ? (
               <button
                 id="btn-subscribe-fcm"
+                type="button"
                 onClick={handleSubscribeFCM}
                 disabled={isSubscribingFCM}
-                className="px-4 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white font-bold text-xs flex items-center justify-center space-x-2 transition-all shadow-xs disabled:opacity-50"
+                className="px-4 py-2.5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-semibold text-xs flex items-center justify-center space-x-2 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
               >
                 <Radio className="w-4 h-4" />
                 <span>
@@ -710,17 +689,19 @@ export const ProfileView: React.FC = () => {
               <div className="flex items-center gap-2">
                 <button
                   id="btn-test-fcm"
+                  type="button"
                   onClick={handleTestFCM}
-                  className="px-3.5 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 font-bold text-xs flex items-center space-x-1.5 transition-colors border border-neutral-200 dark:border-neutral-700"
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#172B2A] dark:text-slate-200 font-semibold text-xs flex items-center space-x-1.5 transition-colors border border-slate-200 dark:border-slate-700 cursor-pointer"
                 >
-                  <Send className="w-3.5 h-3.5 text-[#00843D]" />
+                  <Send className="w-3.5 h-3.5 text-[#16845B]" />
                   <span>{t("fcmTestBtn", "Testar Alerta Push")}</span>
                 </button>
 
                 <button
+                  type="button"
                   onClick={handleSubscribeFCM}
                   disabled={isSubscribingFCM}
-                  className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-[#00843D] dark:text-green-400 font-bold text-xs flex items-center space-x-1 border border-emerald-500/20 hover:bg-emerald-100"
+                  className="px-3 py-2 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 font-semibold text-xs flex items-center space-x-1 border border-[#16845B]/20 hover:bg-emerald-100/70 cursor-pointer"
                   title="Atualizar Token FCM"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
@@ -730,41 +711,44 @@ export const ProfileView: React.FC = () => {
             )}
           </div>
         </div>
-      </div>
+      </SurfaceCard>
 
       {/* TEMA DA INTERFACE (SELETOR CLARO / ESCURO) */}
-      <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 border border-neutral-200 dark:border-neutral-800 shadow-xs">
+      <SurfaceCard className="p-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center space-x-3.5">
-            <div className={`p-3 rounded-2xl border ${
-              darkMode
-                ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
-                : "bg-amber-500/10 text-amber-600 border-amber-500/20"
-            }`}>
+            <div
+              className={`p-3 rounded-xl border ${
+                darkMode
+                  ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
+                  : "bg-amber-500/10 text-amber-600 border-amber-500/20"
+              }`}
+            >
               {darkMode ? <Moon className="w-6 h-6" /> : <Sun className="w-6 h-6" />}
             </div>
             <div>
-              <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+              <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
                 Aparência &amp; Tema Visual
               </h3>
-              <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-1 max-w-xl">
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-xl">
                 Escolha entre o modo claro institucional ou o modo escuro de alto contraste para maior conforto visual.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 w-full sm:w-auto">
+          <div className="flex items-center gap-2 p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 w-full sm:w-auto">
             <button
+              type="button"
               onClick={() => {
                 if (darkMode) {
                   vibrateClick();
                   toggleDarkMode();
                 }
               }}
-              className={`flex-1 sm:flex-initial flex items-center justify-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              className={`flex-1 sm:flex-initial flex items-center justify-center space-x-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 !darkMode
-                  ? "bg-white text-neutral-900 shadow-xs border border-neutral-200/80"
-                  : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+                  ? "bg-white text-[#172B2A] shadow-xs border border-slate-200/80"
+                  : "text-slate-500 hover:text-[#172B2A] dark:text-slate-400 dark:hover:text-white"
               }`}
             >
               <Sun className="w-4 h-4 text-amber-500" />
@@ -772,16 +756,17 @@ export const ProfileView: React.FC = () => {
             </button>
 
             <button
+              type="button"
               onClick={() => {
                 if (!darkMode) {
                   vibrateClick();
                   toggleDarkMode();
                 }
               }}
-              className={`flex-1 sm:flex-initial flex items-center justify-center space-x-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              className={`flex-1 sm:flex-initial flex items-center justify-center space-x-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                 darkMode
-                  ? "bg-neutral-900 text-white shadow-xs border border-neutral-700"
-                  : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white"
+                  ? "bg-[#111827] text-white shadow-xs border border-slate-700"
+                  : "text-slate-500 hover:text-[#172B2A] dark:text-slate-400 dark:hover:text-white"
               }`}
             >
               <Moon className="w-4 h-4 text-indigo-400" />
@@ -789,16 +774,17 @@ export const ProfileView: React.FC = () => {
             </button>
           </div>
         </div>
-      </div>
+      </SurfaceCard>
 
       {/* Tabs */}
-      <div className="flex items-center space-x-2 border-b border-neutral-200 dark:border-neutral-800 pb-3">
+      <div className="flex items-center space-x-2 border-b border-slate-200 dark:border-slate-800 pb-3">
         <button
+          type="button"
           onClick={() => setActiveTab("my_items")}
-          className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center space-x-2 transition-all ${
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer ${
             activeTab === "my_items"
-              ? "bg-[#00843D] text-white shadow-xs"
-              : "bg-white dark:bg-[#1E1E1E] text-neutral-600 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-800"
+              ? "bg-[#16845B] text-white shadow-xs"
+              : "bg-white dark:bg-[#111827] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:border-[#16845B]/40"
           }`}
         >
           <PackageSearch className="w-4 h-4" />
@@ -806,11 +792,12 @@ export const ProfileView: React.FC = () => {
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab("claims")}
-          className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center space-x-2 transition-all ${
+          className={`px-4 py-2.5 rounded-xl text-xs font-bold flex items-center space-x-2 transition-all cursor-pointer ${
             activeTab === "claims"
-              ? "bg-[#00843D] text-white shadow-xs"
-              : "bg-white dark:bg-[#1E1E1E] text-neutral-600 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-800"
+              ? "bg-[#16845B] text-white shadow-xs"
+              : "bg-white dark:bg-[#111827] text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 hover:border-[#16845B]/40"
           }`}
         >
           <ShieldCheck className="w-4 h-4" />
@@ -822,15 +809,11 @@ export const ProfileView: React.FC = () => {
       {activeTab === "my_items" ? (
         <div className="space-y-4">
           {userItems.length === 0 ? (
-            <div className="text-center py-12 bg-white dark:bg-[#1E1E1E] rounded-3xl border border-neutral-200 dark:border-neutral-800 p-8 space-y-3">
-              <PackageSearch className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto" />
-              <h3 className="font-bold text-base text-neutral-800 dark:text-white">
-                Nenhum objeto cadastrado por você ainda.
-              </h3>
-              <p className="text-xs text-neutral-500">
-                Caso tenha perdido ou encontrado um pertence no campus, faça o registro.
-              </p>
-            </div>
+            <EmptyState
+              icon={<PackageSearch className="w-7 h-7" />}
+              title="Nenhum objeto cadastrado por você ainda."
+              description="Caso tenha encontrado ou registrado um pertence na custódia do campus, ele aparecerá listado aqui."
+            />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {userItems.map((item) => (
@@ -842,15 +825,11 @@ export const ProfileView: React.FC = () => {
       ) : (
         <div className="space-y-4">
           {userClaims.length === 0 ? (
-            <div className="text-center py-12 bg-white dark:bg-[#1E1E1E] rounded-3xl border border-neutral-200 dark:border-neutral-800 p-8 space-y-3">
-              <ShieldCheck className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto" />
-              <h3 className="font-bold text-base text-neutral-800 dark:text-white">
-                Nenhuma solicitação de devolução efetuada.
-              </h3>
-              <p className="text-xs text-neutral-500">
-                Ao solicitar a posse de um objeto encontrado, o histórico ficará listado aqui.
-              </p>
-            </div>
+            <EmptyState
+              icon={<ShieldCheck className="w-7 h-7" />}
+              title="Nenhuma solicitação de devolução efetuada."
+              description="Ao solicitar a posse de um objeto encontrado no catálogo, o histórico ficará listado aqui."
+            />
           ) : (
             <div className="space-y-4">
               {userClaims.map((claim) => {
@@ -860,38 +839,38 @@ export const ProfileView: React.FC = () => {
                 const isRejected = claim.status === "REJEITADO";
 
                 return (
-                  <div
+                  <SurfaceCard
                     key={claim.id}
-                    className="p-5 rounded-3xl bg-white dark:bg-[#1E1E1E] border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-3 transition-colors"
+                    className="p-5 space-y-3 transition-colors"
                   >
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-neutral-100 dark:border-neutral-800 pb-3">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
                       <div>
                         <div className="flex items-center space-x-2 flex-wrap">
-                          <span className="font-extrabold text-base text-neutral-900 dark:text-white">
+                          <span className="font-bold text-base text-[#172B2A] dark:text-white">
                             {claim.itemTitle || relatedItem?.title || "Objeto"}
                           </span>
-                          <span className="text-[10px] font-mono text-neutral-400">
+                          <span className="text-[10px] font-mono text-slate-400">
                             #{claim.itemId}
                           </span>
                         </div>
-                        <span className="text-[11px] text-neutral-400 block mt-0.5">
+                        <span className="text-[11px] text-slate-400 block mt-0.5">
                           Solicitado em: {formatDateTime(claim.createdAt)}
                         </span>
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <span
-                          className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${
+                        <UIBadge
+                          tone={
                             claim.status === "PENDENTE"
-                              ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                              ? "amber"
                               : claim.status === "APROVADO"
-                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                              ? "emerald"
                               : claim.status === "REJEITADO"
-                              ? "bg-red-500/10 text-red-700 dark:text-red-300 border-red-500/30"
+                              ? "rose"
                               : claim.status === "CONCLUIDO"
-                              ? "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
-                              : "bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border-neutral-300 dark:border-neutral-700"
-                          }`}
+                              ? "blue"
+                              : "slate"
+                          }
                         >
                           {claim.status === "PENDENTE"
                             ? "Em Análise"
@@ -902,20 +881,22 @@ export const ProfileView: React.FC = () => {
                             : claim.status === "CONCLUIDO"
                             ? "Concluído"
                             : "Cancelado"}
-                        </span>
+                        </UIBadge>
                       </div>
                     </div>
 
                     {/* Declared Features */}
                     <div className="space-y-1 text-xs">
-                      <span className="font-bold text-neutral-700 dark:text-neutral-300 block">
+                      <span className="font-semibold text-slate-700 dark:text-slate-300 block">
                         Características particulares informadas (RNF04):
                       </span>
-                      <p className="text-neutral-800 dark:text-neutral-200 bg-neutral-50 dark:bg-neutral-800/60 p-3 rounded-2xl border border-neutral-200 dark:border-neutral-700/60 leading-relaxed whitespace-pre-wrap">
-                        {claim.distinctiveFeatures || claim.verificationAnswer || "Sem características descritas."}
-                      </p>
+                      <SubtlePanel className="p-3">
+                        <p className="text-[#172B2A] dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
+                          {claim.distinctiveFeatures || claim.verificationAnswer || "Sem características descritas."}
+                        </p>
+                      </SubtlePanel>
                       {claim.additionalInfo && (
-                        <p className="text-[11px] text-neutral-500 italic mt-1">
+                        <p className="text-[11px] text-slate-500 italic mt-1">
                           Informações adicionais: {claim.additionalInfo}
                         </p>
                       )}
@@ -923,9 +904,9 @@ export const ProfileView: React.FC = () => {
 
                     {/* Approved Notice */}
                     {isApproved && (
-                      <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-xs text-emerald-900 dark:text-emerald-200 space-y-1">
-                        <div className="flex items-center gap-2 font-bold text-emerald-800 dark:text-emerald-300">
-                          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div className="p-3.5 bg-[#EBF5F0] dark:bg-emerald-950/40 border border-[#16845B]/25 rounded-xl text-xs text-[#064E3B] dark:text-emerald-200 space-y-1">
+                        <div className="flex items-center gap-2 font-bold text-[#16845B] dark:text-emerald-300">
+                          <ShieldCheck className="w-4 h-4 shrink-0" />
                           <span>Pedido Aprovado pela Secretaria!</span>
                         </div>
                         <p className="text-[11px] leading-relaxed">
@@ -936,8 +917,8 @@ export const ProfileView: React.FC = () => {
 
                     {/* Rejected Notice */}
                     {isRejected && claim.rejectionReason && (
-                      <div className="p-3.5 bg-red-500/10 border border-red-500/30 rounded-2xl text-xs text-red-900 dark:text-red-200 space-y-1">
-                        <div className="flex items-center gap-2 font-bold text-red-700 dark:text-red-400">
+                      <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 rounded-xl text-xs text-rose-900 dark:text-rose-200 space-y-1">
+                        <div className="flex items-center gap-2 font-bold text-rose-700 dark:text-rose-400">
                           <AlertOctagon className="w-4 h-4 shrink-0" />
                           <span>Solicitação Não Aprovada</span>
                         </div>
@@ -948,7 +929,7 @@ export const ProfileView: React.FC = () => {
                     )}
 
                     {/* Bottom Actions */}
-                    <div className="flex items-center justify-between pt-2 border-t border-neutral-100 dark:border-neutral-800 flex-wrap gap-2">
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 flex-wrap gap-2">
                       {relatedItem ? (
                         <button
                           type="button"
@@ -956,12 +937,12 @@ export const ProfileView: React.FC = () => {
                             vibrateClick();
                             setSelectedItemForDetail(relatedItem);
                           }}
-                          className="text-xs font-bold text-[#00843D] hover:underline cursor-pointer"
+                          className="text-xs font-semibold text-[#16845B] hover:text-[#064E3B] dark:text-emerald-400 hover:underline cursor-pointer"
                         >
                           Ver Detalhes do Objeto
                         </button>
                       ) : (
-                        <span className="text-[10px] text-neutral-400">ID #{claim.itemId}</span>
+                        <span className="text-[10px] text-slate-400">ID #{claim.itemId}</span>
                       )}
 
                       {isPending && (
@@ -984,13 +965,13 @@ export const ProfileView: React.FC = () => {
                               setCancellingClaimId(null);
                             }
                           }}
-                          className="px-3.5 py-1.5 rounded-xl border border-red-500/40 text-red-600 hover:bg-red-500/10 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                          className="px-3.5 py-1.5 rounded-xl border border-rose-200 dark:border-rose-800/70 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
                         >
                           {cancellingClaimId === claim.id ? "Cancelando..." : "Cancelar Solicitação"}
                         </button>
                       )}
                     </div>
-                  </div>
+                  </SurfaceCard>
                 );
               })}
             </div>

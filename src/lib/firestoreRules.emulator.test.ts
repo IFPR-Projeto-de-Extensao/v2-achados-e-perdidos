@@ -1016,4 +1016,500 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
       );
     });
   });
+
+  describe("Collection /items — Etapa 11 Devolution Security Rules (Update & Create)", () => {
+    const setupItemDoc = async (collectionName: string, itemId: string, data: Record<string, any>) => {
+      await testEnv!.withSecurityRulesDisabled(async (context) => {
+        const db = context.firestore();
+        await setDoc(doc(db, collectionName, itemId), data);
+      });
+    };
+
+    const seedActors = async () => {
+      await setupUserDoc("aluno_autor", {
+        id: "aluno_autor",
+        email: "aluno.autor@ifpr.edu.br",
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+      await setupUserDoc("servidor_apr", {
+        id: "servidor_apr",
+        email: "servidor.apr@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+      await setupUserDoc("servidor_pend", {
+        id: "servidor_pend",
+        email: "servidor.pend@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "PENDENTE",
+        status: "active",
+      });
+      await setupUserDoc("servidor_susp", {
+        id: "servidor_susp",
+        email: "servidor.susp@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "suspended",
+      });
+      await setupUserDoc("admin_apr", {
+        id: "admin_apr",
+        email: "admin.apr@ifpr.edu.br",
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+    };
+
+    beforeEach(async () => {
+      await seedActors();
+    });
+
+    it("32. ALUNO autor edita metadados seguros de item PERDIDO (assertSucceeds), mas FALHA ao tentar alterar status para DEVOLVIDO ou ENCONTRADO", async () => {
+      await setupItemDoc("items", "item_aluno_1", {
+        id: "item_aluno_1",
+        title: "Caderno Azul",
+        description: "Caderno perdido no bloco B",
+        category: "Documentos",
+        location: "Bloco B",
+        status: "PERDIDO",
+        registeredByUserId: "aluno_autor",
+        registeredByRole: "ALUNO",
+        createdAt: new Date().toISOString(),
+      });
+
+      const db = testEnv!.authenticatedContext("aluno_autor", {
+        email: "aluno.autor@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      const itemRef = doc(db, "items", "item_aluno_1");
+      await assertSucceeds(
+        updateDoc(itemRef, {
+          description: "Caderno azul capa dura com adesivo",
+          location: "Bloco B - Sala 102",
+        })
+      );
+
+      await assertFails(
+        updateDoc(itemRef, {
+          status: "DEVOLVIDO",
+        })
+      );
+
+      await assertFails(
+        updateDoc(itemRef, {
+          status: "ENCONTRADO",
+        })
+      );
+    });
+
+    it("33. ALUNO autor FALHA ao editar até metadados comuns quando o item já está DEVOLVIDO", async () => {
+      await setupItemDoc("items", "item_aluno_devolvido", {
+        id: "item_aluno_devolvido",
+        title: "Guarda-chuva",
+        description: "Preto",
+        category: "Outros",
+        location: "Cantina",
+        status: "DEVOLVIDO",
+        registeredByUserId: "aluno_autor",
+        registeredByRole: "ALUNO",
+        returnedByUserId: "servidor_apr",
+        receiptValidationCode: "REC-TEST01",
+        recipientSignatureStatus: "SIGNED",
+        createdAt: new Date().toISOString(),
+      });
+
+      const db = testEnv!.authenticatedContext("aluno_autor", {
+        email: "aluno.autor@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      await assertFails(
+        updateDoc(doc(db, "items", "item_aluno_devolvido"), {
+          description: "Tentativa de edição após devolução",
+        })
+      );
+    });
+
+    it("34. SERVIDOR aprovado transita ENCONTRADO -> EM_ANALISE (assertSucceeds), mas FALHA ao tentar marcar DEVOLVIDO diretamente", async () => {
+      await setupItemDoc("items", "item_srv_1", {
+        id: "item_srv_1",
+        title: "Pendrive Kingston",
+        description: "32GB preto",
+        category: "Eletrônicos",
+        location: "Lab 01",
+        status: "ENCONTRADO",
+        registeredByUserId: "servidor_apr",
+        registeredByRole: "SERVIDOR",
+        createdAt: new Date().toISOString(),
+      });
+
+      const db = testEnv!.authenticatedContext("servidor_apr", {
+        email: "servidor.apr@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      const itemRef = doc(db, "items", "item_srv_1");
+      await assertSucceeds(
+        updateDoc(itemRef, {
+          status: "EM_ANALISE",
+        })
+      );
+
+      await assertFails(
+        updateDoc(itemRef, {
+          status: "DEVOLVIDO",
+        })
+      );
+    });
+
+    it("35. ADMIN aprovado também FALHA ao tentar gravar DEVOLVIDO ou campos formais de devolução diretamente pelo cliente", async () => {
+      await setupItemDoc("items", "item_adm_bypass", {
+        id: "item_adm_bypass",
+        title: "Fone Bluetooth",
+        description: "Case branca",
+        category: "Eletrônicos",
+        location: "Biblioteca",
+        status: "ENCONTRADO",
+        registeredByUserId: "servidor_apr",
+        registeredByRole: "SERVIDOR",
+        createdAt: new Date().toISOString(),
+      });
+
+      const db = testEnv!.authenticatedContext("admin_apr", {
+        email: "admin.apr@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      const itemRef = doc(db, "items", "item_adm_bypass");
+      await assertFails(
+        updateDoc(itemRef, {
+          status: "DEVOLVIDO",
+          returnedByUserId: "admin_apr",
+          receiptValidationCode: "REC-FORGED",
+          recipientSignatureStatus: "SIGNED",
+        })
+      );
+
+      await assertFails(
+        updateDoc(itemRef, {
+          receiptValidationCode: "REC-FORGED",
+        })
+      );
+    });
+
+    it("36. SERVIDOR pendente ou suspenso FALHA ao alterar status de item", async () => {
+      await setupItemDoc("items", "item_srv_pend", {
+        id: "item_srv_pend",
+        title: "Garrafa Térmica",
+        description: "Verde",
+        category: "Outros",
+        location: "Quadra",
+        status: "ENCONTRADO",
+        registeredByUserId: "servidor_apr",
+        registeredByRole: "SERVIDOR",
+        createdAt: new Date().toISOString(),
+      });
+
+      const dbPend = testEnv!.authenticatedContext("servidor_pend", {
+        email: "servidor.pend@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      await assertFails(
+        updateDoc(doc(dbPend, "items", "item_srv_pend"), {
+          status: "EM_ANALISE",
+        })
+      );
+
+      const dbSusp = testEnv!.authenticatedContext("servidor_susp", {
+        email: "servidor.susp@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      await assertFails(
+        updateDoc(doc(dbSusp, "items", "item_srv_pend"), {
+          status: "EM_ANALISE",
+        })
+      );
+    });
+
+    it("37. SERVIDOR aprovado FALHA ao tentar editar ou reverter item já DEVOLVIDO ou ENCERRADO via cliente", async () => {
+      await setupItemDoc("items", "item_ja_devolvido", {
+        id: "item_ja_devolvido",
+        title: "Chave de Carro",
+        description: "Com chaveiro IFPR",
+        category: "Chaves",
+        location: "Estacionamento",
+        status: "DEVOLVIDO",
+        registeredByUserId: "servidor_apr",
+        registeredByRole: "SERVIDOR",
+        returnedByUserId: "servidor_apr",
+        receiptValidationCode: "REC-REAL01",
+        recipientSignatureStatus: "SIGNED",
+        createdAt: new Date().toISOString(),
+      });
+
+      const db = testEnv!.authenticatedContext("servidor_apr", {
+        email: "servidor.apr@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      await assertFails(
+        updateDoc(doc(db, "items", "item_ja_devolvido"), {
+          status: "ENCONTRADO",
+        })
+      );
+
+      await assertFails(
+        updateDoc(doc(db, "items", "item_ja_devolvido"), {
+          staffSignatureStatus: "STAFF_SIGNED",
+        })
+      );
+    });
+
+    it("38. Criação direta em /items, /found_items ou /lost_items com status DEVOLVIDO ou campos de devolução é negada (assertFails)", async () => {
+      const db = testEnv!.authenticatedContext("servidor_apr", {
+        email: "servidor.apr@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      for (const col of ["items", "found_items", "lost_items"]) {
+        await assertFails(
+          setDoc(doc(db, col, `item_create_dev_${col}`), {
+            id: `item_create_dev_${col}`,
+            title: "Item Forjado",
+            description: "Criado já devolvido",
+            category: "Outros",
+            location: "Bloco A",
+            status: "DEVOLVIDO",
+            registeredByUserId: "servidor_apr",
+            registeredByRole: "SERVIDOR",
+            createdAt: new Date().toISOString(),
+          })
+        );
+
+        await assertFails(
+          setDoc(doc(db, col, `item_create_field_${col}`), {
+            id: `item_create_field_${col}`,
+            title: "Item Com Campo Protegido",
+            description: "Tentativa de injetar código de recibo",
+            category: "Outros",
+            location: "Bloco A",
+            status: "ENCONTRADO",
+            receiptValidationCode: "REC-FAKE",
+            registeredByUserId: "servidor_apr",
+            registeredByRole: "SERVIDOR",
+            createdAt: new Date().toISOString(),
+          })
+        );
+      }
+    });
+
+    it("39. SERVIDOR aprovado encerra item como ENCERRADO somente quando destinationType e destinationReason estão preenchidos", async () => {
+      await setupItemDoc("items", "item_enc_1", {
+        id: "item_enc_1",
+        title: "Casaco Moletom",
+        description: "Cinza sem identificação",
+        category: "Vestuário",
+        location: "Auditório",
+        status: "ENCONTRADO",
+        registeredByUserId: "servidor_apr",
+        registeredByRole: "SERVIDOR",
+        createdAt: new Date().toISOString(),
+      });
+
+      const db = testEnv!.authenticatedContext("servidor_apr", {
+        email: "servidor.apr@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      const itemRef = doc(db, "items", "item_enc_1");
+
+      await assertFails(
+        updateDoc(itemRef, {
+          status: "ENCERRADO",
+          destinationType: "DOADO",
+          destinationReason: "",
+        })
+      );
+
+      await assertSucceeds(
+        updateDoc(itemRef, {
+          status: "ENCERRADO",
+          destinationType: "DOADO",
+          destinationReason: "Prazo institucional de 90 dias expirado conforme edital.",
+        })
+      );
+    });
+
+    it("40. Usuário com active: false no perfil FALHA ao tentar atualizar ou reivindicar itens (isAccountActive)", async () => {
+      await setupUserDoc("serv_inactive", {
+        id: "serv_inactive",
+        email: "inativo@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: false,
+      });
+      await setupItemDoc("items", "item_active_guard", {
+        id: "item_active_guard",
+        title: "Caderno Espiral",
+        description: "Capa azul",
+        category: "Outros",
+        location: "Bloco 1",
+        status: "ENCONTRADO",
+        registeredByUserId: "servidor_apr",
+        registeredByRole: "SERVIDOR",
+        createdAt: new Date().toISOString(),
+      });
+
+      const dbInactive = testEnv!.authenticatedContext("serv_inactive", {
+        email: "inativo@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      await assertFails(
+        updateDoc(doc(dbInactive, "items", "item_active_guard"), {
+          status: "EM_ANALISE",
+        })
+      );
+    });
+
+    it("41. Mesmo ADMIN ou autor FALHA ao tentar excluir item com status DEVOLVIDO pelo cliente; leitura de signature_requests também falha", async () => {
+      const { deleteDoc } = await import("firebase/firestore");
+      await setupItemDoc("items", "item_del_guard", {
+        id: "item_del_guard",
+        title: "Mochila Preta",
+        description: "Notebook dentro",
+        category: "Mochilas",
+        location: "Biblioteca",
+        status: "DEVOLVIDO",
+        registeredByUserId: "servidor_apr",
+        registeredByRole: "SERVIDOR",
+        createdAt: new Date().toISOString(),
+      });
+
+      const dbAdmin = testEnv!.authenticatedContext("admin_apr", {
+        email: "admin.apr@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      await assertFails(deleteDoc(doc(dbAdmin, "items", "item_del_guard")));
+      await assertFails(getDoc(doc(dbAdmin, "signature_requests", "item_del_guard")));
+    });
+
+    it("42. Visitante não autenticado e ALUNO leem catálogo público higienizado (/items sem PII), mas FALHAM se o documento contiver campos privados de devolução", async () => {
+      await setupItemDoc("items", "item_public_clean", {
+        id: "item_public_clean",
+        title: "Garrafa Azul",
+        description: "Garrafa térmica sem dados pessoais",
+        category: "Outros",
+        location: "Biblioteca",
+        status: "DEVOLVIDO",
+        registeredByUserId: "servidor_apr",
+        registeredByRole: "SERVIDOR",
+        createdAt: new Date().toISOString(),
+      });
+
+      await setupItemDoc("items", "item_unsanitized_pii", {
+        id: "item_unsanitized_pii",
+        title: "Carteira com PII",
+        description: "Item legado com dados pessoais no doc público",
+        category: "Documentos",
+        location: "Portaria",
+        status: "DEVOLVIDO",
+        recipientName: "Maria Aluna",
+        recipientEmail: "maria@estudantes.ifpr.edu.br",
+        recipientDocument: "12345678900",
+        recipientSignatureUrl: "data:image/png;base64,AAA",
+        receiptValidationCode: "COMP-IFPR-999999",
+        registeredByUserId: "servidor_apr",
+        registeredByRole: "SERVIDOR",
+        createdAt: new Date().toISOString(),
+      });
+
+      const unauthDb = testEnv!.unauthenticatedContext().firestore();
+      const alunoDb = testEnv!.authenticatedContext("aluno_1", {
+        email: "aluno1@estudantes.ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      const servDb = testEnv!.authenticatedContext("servidor_apr", {
+        email: "servidor.apr@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      // Clean public projection is readable by visitor and student
+      await assertSucceeds(getDoc(doc(unauthDb, "items", "item_public_clean")));
+      await assertSucceeds(getDoc(doc(alunoDb, "items", "item_public_clean")));
+
+      // Unsanitized doc with PII is blocked for visitor and student, allowed only for active staff/admin
+      await assertFails(getDoc(doc(unauthDb, "items", "item_unsanitized_pii")));
+      await assertFails(getDoc(doc(alunoDb, "items", "item_unsanitized_pii")));
+      await assertSucceeds(getDoc(doc(servDb, "items", "item_unsanitized_pii")));
+    });
+
+    it("43. Coleção /item_return_records bloqueia visitante e outros alunos, permite get ao próprio recipientUid e get/list a SERVIDOR/ADMIN ativos, e nega escrita cliente", async () => {
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), "item_return_records", "item_ret_1"), {
+          itemId: "item_ret_1",
+          recipientUid: "aluno_1",
+          recipientName: "Aluno Um",
+          recipientEmail: "aluno1@estudantes.ifpr.edu.br",
+          recipientDocument: "2026111",
+          recipientSignatureStatus: "SIGNED",
+          receiptValidationCode: "COMP-IFPR-111222",
+        });
+      });
+
+      await setupUserDoc("aluno_outro", {
+        id: "aluno_outro",
+        email: "outro@estudantes.ifpr.edu.br",
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+
+      const unauthDb = testEnv!.unauthenticatedContext().firestore();
+      const ownerAlunoDb = testEnv!.authenticatedContext("aluno_1", {
+        email: "aluno1@estudantes.ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      const otherAlunoDb = testEnv!.authenticatedContext("aluno_outro", {
+        email: "outro@estudantes.ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      const servDb = testEnv!.authenticatedContext("servidor_apr", {
+        email: "servidor.apr@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      const adminDb = testEnv!.authenticatedContext("admin_apr", {
+        email: "admin.apr@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      await assertFails(getDoc(doc(unauthDb, "item_return_records", "item_ret_1")));
+      await assertFails(getDoc(doc(otherAlunoDb, "item_return_records", "item_ret_1")));
+      await assertFails(getDocs(collection(ownerAlunoDb, "item_return_records")));
+
+      // Own recipientUid can get their own return record
+      await assertSucceeds(getDoc(doc(ownerAlunoDb, "item_return_records", "item_ret_1")));
+
+      // Active SERVIDOR and ADMIN can get and list
+      await assertSucceeds(getDoc(doc(servDb, "item_return_records", "item_ret_1")));
+      await assertSucceeds(getDocs(collection(servDb, "item_return_records")));
+      await assertSucceeds(getDoc(doc(adminDb, "item_return_records", "item_ret_1")));
+
+      // Client write is always denied
+      await assertFails(
+        setDoc(doc(adminDb, "item_return_records", "item_ret_1"), {
+          recipientName: "Adulterado",
+        })
+      );
+    });
+  });
 });
+

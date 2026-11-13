@@ -26,6 +26,7 @@ import {
   HelpCircle,
   Hash,
 } from "lucide-react";
+import { SurfaceCard, UIButton, UIBadge, UIFieldGroup, UIInput, UITextarea } from "../ui";
 
 interface DocumentFillFormProps {
   template: DocumentTemplate;
@@ -192,102 +193,98 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
   };
 
   return (
-    <div id="document-fill-form-view" className="space-y-6 animate-fade-in text-slate-100">
+    <div id="document-fill-form-view" className="space-y-6 animate-fade-in text-[#172B2A] dark:text-slate-100">
       {/* Top Bar Navigation */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm">
-        <div className="flex items-center space-x-3">
-          <button
-            type="button"
+      <SurfaceCard padding="md" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center space-x-3 min-w-0">
+          <UIButton
+            variant="secondary"
+            size="sm"
             onClick={onBack}
-            className="p-2.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors border border-slate-700"
+            className="!p-2.5"
             title="Voltar para lista de modelos"
           >
             <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="px-2.5 py-0.5 text-xs font-semibold bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30">
-                {template.code}
-              </span>
-              <h2 className="text-lg font-bold text-white tracking-tight">{template.title}</h2>
-              <span className="hidden sm:inline-flex items-center space-x-1 px-2 py-0.5 text-[11px] font-medium bg-cyan-500/10 text-cyan-400 rounded-full border border-cyan-500/20">
-                <Sparkles className="w-3 h-3 mr-1" />
+          </UIButton>
+          <div className="min-w-0">
+            <div className="flex items-center flex-wrap gap-2">
+              <UIBadge tone="emerald">{template.code}</UIBadge>
+              <h2 className="text-lg font-bold text-[#172B2A] dark:text-white tracking-tight truncate">
+                {template.title}
+              </h2>
+              <UIBadge tone="blue" className="hidden sm:inline-flex">
+                <Sparkles className="w-3 h-3" />
                 {detectedTags.length} campos detectados
-              </span>
+              </UIBadge>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">{template.description}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{template.description}</p>
           </div>
         </div>
 
         {/* Action Controls */}
-        <div className="flex items-center flex-wrap gap-2">
-          <button
-            type="button"
+        <div className="flex items-center flex-wrap gap-2 shrink-0">
+          <UIButton
+            variant="secondary"
+            size="sm"
             onClick={handleResetDefaults}
-            className="px-3 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 transition-colors flex items-center space-x-1.5"
             title="Restaurar valores padrão"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Padrões</span>
-          </button>
+          </UIButton>
 
-          <button
-            type="button"
+          <UIButton
+            variant="outline"
+            size="sm"
             onClick={() => setIsPreviewModalOpen(true)}
-            className="px-3.5 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-xl border border-emerald-500/30 transition-colors flex items-center space-x-1.5"
           >
             <Eye className="w-4 h-4" />
             <span>Ver Prévia A4</span>
-          </button>
+          </UIButton>
 
-          <button
-            type="button"
+          <UIButton
+            variant="primary"
+            size="sm"
             onClick={handleGeneratePdf}
             disabled={isGenerating || isGeneratingCanvas}
-            className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-md transition-all flex items-center space-x-2 disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
             <span>{isGenerating ? "Gerando..." : "Gerar e Baixar PDF"}</span>
-          </button>
+          </UIButton>
         </div>
-      </div>
+      </SurfaceCard>
 
       {/* Main Grid: Form on Left, Live Mini Preview on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Form Fields */}
         <div className="lg:col-span-7 space-y-6">
           {/* Document Number / Emission details card */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center space-x-2 text-emerald-400 font-semibold text-sm">
+          <SurfaceCard padding="md" className="space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+              <div className="flex items-center space-x-2 text-[#16845B] dark:text-emerald-400 font-semibold text-sm">
                 <Hash className="w-4 h-4" />
                 <span>Identificação do Documento</span>
               </div>
-              <span className="text-[11px] text-slate-400">Versão {template.version}.0</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">Versão {template.version}.0</span>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                Número de Registro / Protocolo
-              </label>
-              <input
+            <UIFieldGroup label="Número de Registro / Protocolo" htmlFor="doc-protocol-number">
+              <UIInput
+                id="doc-protocol-number"
                 type="text"
                 value={documentNumber}
                 onChange={(e) => setDocumentNumber(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors font-mono"
+                className="font-mono"
                 placeholder="Ex: DOC-EXT-2026/0042"
               />
-            </div>
-          </div>
+            </UIFieldGroup>
+          </SurfaceCard>
 
           {/* Grouped Field Sections */}
           {Object.entries(groupedFields).map(([sectionTitle, fields], sIdx) => (
-            <div
-              key={sIdx}
-              className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-sm"
-            >
-              <div className="flex items-center space-x-2 text-white font-semibold text-sm border-b border-slate-800 pb-3">
-                <FileText className="w-4 h-4 text-emerald-400" />
+            <SurfaceCard key={sIdx} padding="md" className="space-y-4">
+              <div className="flex items-center space-x-2 text-[#172B2A] dark:text-white font-semibold text-sm border-b border-slate-100 dark:border-slate-800 pb-3">
+                <FileText className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
                 <span>{sectionTitle}</span>
               </div>
 
@@ -297,82 +294,77 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
 
                   return (
                     <div key={field.id} className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-medium text-slate-300 flex items-center space-x-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-xs font-semibold text-[#172B2A] dark:text-slate-200 flex items-center space-x-1">
                           <span>{field.label}</span>
-                          {field.required && <span className="text-rose-400 font-bold">*</span>}
+                          {field.required && <span className="text-red-500 font-bold">*</span>}
                         </label>
-                        <span className="text-[10px] text-slate-500 font-mono">
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
                           {`{{${field.name}}}`}
                         </span>
                       </div>
 
                       {field.type === "textarea" ? (
-                        <textarea
+                        <UITextarea
                           rows={4}
                           value={val}
                           onChange={(e) => handleInputChange(field.name, e.target.value)}
                           placeholder={field.placeholder || ""}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors leading-relaxed"
+                          className="leading-relaxed"
                         />
                       ) : (
-                        <input
+                        <UIInput
                           type={field.type === "number" ? "number" : "text"}
                           value={val}
                           onChange={(e) => handleInputChange(field.name, e.target.value)}
                           placeholder={field.placeholder || ""}
-                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs sm:text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
                         />
                       )}
                     </div>
                   );
                 })}
               </div>
-            </div>
+            </SurfaceCard>
           ))}
 
           {/* Bottom Action Footer */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={onBack}
-              className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white transition-colors"
-            >
+          <SurfaceCard padding="sm" className="flex items-center justify-between">
+            <UIButton variant="ghost" size="sm" onClick={onBack}>
               Cancelar
-            </button>
-            <button
-              type="button"
+            </UIButton>
+            <UIButton
+              variant="primary"
+              size="md"
               onClick={handleGeneratePdf}
               disabled={isGenerating}
-              className="px-5 py-2.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-md transition-all flex items-center space-x-2 disabled:opacity-50"
             >
               <Download className="w-4 h-4" />
               <span>{isGenerating ? "Processando..." : "Gerar e Baixar Documento PDF"}</span>
-            </button>
-          </div>
+            </UIButton>
+          </SurfaceCard>
         </div>
 
         {/* Right Column: Dynamic Live Preview Card */}
         <div className="lg:col-span-5 space-y-4">
-          <div className="sticky top-20 bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
-              <div className="flex items-center space-x-2 text-slate-300 font-semibold text-xs">
-                <Eye className="w-4 h-4 text-emerald-400" />
+          <SurfaceCard padding="sm" className="sticky top-20 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+              <div className="flex items-center space-x-2 text-[#172B2A] dark:text-slate-200 font-semibold text-xs">
+                <Eye className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
                 <span>Prévia em Tempo Real</span>
               </div>
               <button
                 type="button"
                 onClick={() => setIsPreviewModalOpen(true)}
-                className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold"
+                className="text-[11px] text-[#16845B] dark:text-emerald-400 hover:text-[#064E3B] dark:hover:text-emerald-300 font-semibold cursor-pointer"
               >
                 Expandir A4
               </button>
             </div>
 
-            {/* Document Paper Preview Card */}
+            {/* Document Paper Preview Card (Strictly white paper contrast) */}
             <div
               ref={livePreviewRef}
-              className="bg-white text-slate-900 p-5 rounded-lg border border-slate-300 shadow-inner max-h-[680px] overflow-y-auto text-[10px] space-y-3 font-sans"
+              className="bg-white text-slate-900 p-5 rounded-lg border border-slate-200 shadow-inner max-h-[680px] overflow-y-auto text-[10px] space-y-3 font-sans"
             >
               <div className="w-full h-1 bg-[#00843D]"></div>
               <div className="text-center font-bold text-[9px] uppercase text-slate-700">
@@ -422,10 +414,10 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
               )}
             </div>
 
-            <p className="text-[11px] text-slate-400 text-center">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">
               As alterações preenchidas à esquerda atualizam a visualização instantaneamente.
             </p>
-          </div>
+          </SurfaceCard>
         </div>
       </div>
 

@@ -3,13 +3,14 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { LostFoundItem } from "../types";
 import { useApp } from "../context/AppContext";
-import { formatDateTime, formatSafeDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, isItemNew, getItemAgeText, getTodayDateString, isFutureDate, validateItemOccurrenceDate, validateItemTextFields, ITEM_FIELD_LIMITS, generateSecureSignatureToken } from "../lib/utils";
+import { formatDateTime, formatSafeDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateCritical, isItemNew, getItemAgeText, getTodayDateString, isFutureDate, validateItemOccurrenceDate, validateItemTextFields, ITEM_FIELD_LIMITS } from "../lib/utils";
 import { auth } from "../lib/firebase";
 import { getItemPublicUrl, getItemQrValue } from "../lib/qrCodeUtils";
 import { QRCodeSVG } from "qrcode.react";
 import { RestrictedQRViewModal } from "./RestrictedQRViewModal";
 import { AccessibleVoiceReader } from "./AccessibleVoiceReader";
 import { normalizeCategory, getCategoryDisplay, CANONICAL_ITEM_CATEGORIES } from "../lib/categoryUtils";
+import { canOperateFormalReturn, canReopenFormalReturn, canStartFormalReturnForItem } from "../lib/devolutionAuth";
 import { IFPR_LOCATIONS, IFPR_LOCATION_GROUPS } from "../data/mockData";
 
 /**
@@ -101,9 +102,19 @@ import {
   RefreshCw,
   FileSignature,
   CameraOff,
+  ChevronLeft,
 } from "lucide-react";
 import { DigitalSignaturePad } from "./DigitalSignaturePad";
 import { RemoteSignatureModal } from "./RemoteSignatureModal";
+import {
+  UIBadge,
+  UIButton,
+  UIFieldGroup,
+  UIInput,
+  UISelect,
+  UITextarea,
+  SubtlePanel,
+} from "./ui";
 
 interface ItemDetailModalProps {
   item: LostFoundItem;
@@ -128,9 +139,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     registerItemDestination,
     logItemLabelGenerated,
     updateItemData,
+    setSelectedItemForDetail,
+    returnModalAutoOpen,
+    setReturnModalAutoOpen,
   } = useApp();
 
   const currentItem = items.find((i) => i.id === item.id) || item;
+  const canPerformFormalReturn = canStartFormalReturnForItem(currentUser, auth.currentUser, currentItem, isGuest);
+  const canSignAsStaff = canOperateFormalReturn(currentUser, auth.currentUser, isGuest);
+  const canReopenReturn = canReopenFormalReturn(currentUser, auth.currentUser, isGuest);
 
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [mainImageError, setMainImageError] = useState(false);
@@ -184,8 +201,19 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const [returnSignatureDataUrl, setReturnSignatureDataUrl] = useState<string>("");
   const [isRegisteringReturn, setIsRegisteringReturn] = useState(false);
 
+  useEffect(() => {
+    if (returnModalAutoOpen) {
+      if (canPerformFormalReturn) {
+        setReturnModalOpen(true);
+      }
+      setReturnModalAutoOpen(false);
+    }
+  }, [returnModalAutoOpen, canPerformFormalReturn, setReturnModalAutoOpen]);
+
   // Digital Signature Remote Modal State
   const [remoteSignatureModalOpen, setRemoteSignatureModalOpen] = useState(false);
+  const [resolvedRemoteToken, setResolvedRemoteToken] = useState<string>("");
+  const [isResolvingRemoteLink, setIsResolvingRemoteLink] = useState(false);
   const [showSignaturePreviewModal, setShowSignaturePreviewModal] = useState(false);
   const [isResendingSignatureEmail, setIsResendingSignatureEmail] = useState(false);
 
@@ -237,18 +265,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       vibrateSuccess();
       addToast("Atestação e assinatura do atendente registradas com sucesso!", "success");
 
-      // Update local item state in context
-      if (updateItemData) {
-        await updateItemData(currentItem.id, {
-          staffSignatureStatus: "SIGNED",
-          staffSignatureUrl: staffSignatureDataUrl,
-          staffSignatureMethod: staffSignatureMethod,
-          staffSignedAt: data.staffSignedAt || new Date().toISOString(),
-          staffSignerUid: currentUser.id,
-          staffSignerName: currentUser.name,
-          staffSignerEmail: currentUser.email,
-        });
-      }
+      // Sync open detail view immediately in-memory (backend transaction already persisted in Firestore)
+      setSelectedItemForDetail({
+        ...currentItem,
+        staffSignatureStatus: "SIGNED",
+        staffSignatureUrl: staffSignatureDataUrl,
+        staffSignatureMethod: staffSignatureMethod,
+        staffSignedAt: data.staffSignedAt || new Date().toISOString(),
+        staffSignerUid: currentUser.id,
+        staffSignerName: data.staffSignerName || currentUser.name,
+        staffSignerEmail: currentUser.email,
+      });
 
       setStaffSignatureModalOpen(false);
       setStaffSignatureDataUrl("");
@@ -715,60 +742,60 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     const recipientName =
       overrideRecipient?.name ||
       returnRecipientName.trim() ||
-      item.recipientName ||
-      item.recipientSignatureName ||
+      currentItem.recipientName ||
+      currentItem.recipientSignatureName ||
       (approvedClaim ? approvedClaim.claimerName : "") ||
       "Proprietário / Receptor";
 
     const recipientEmail =
       overrideRecipient?.email ||
       returnRecipientEmail.trim() ||
-      item.recipientEmail ||
-      item.recipientSignatureEmail ||
+      currentItem.recipientEmail ||
+      currentItem.recipientSignatureEmail ||
       (approvedClaim ? approvedClaim.claimerEmail : "") ||
       "Não informado";
 
     const recipientBond =
       overrideRecipient?.bond ||
       returnRecipientBond ||
-      item.recipientBond ||
-      item.recipientSignatureBond ||
+      currentItem.recipientBond ||
+      currentItem.recipientSignatureBond ||
       "Aluno(a)";
 
     const recipientDoc =
       overrideRecipient?.doc ||
       returnRecipientDocument.trim() ||
-      item.recipientDocument ||
+      currentItem.recipientDocument ||
       "Documento oficial com foto conferido no balcão";
 
     const attendantName =
-      item.returnedByName ||
+      currentItem.returnedByName ||
       currentUser?.name ||
       "Servidor Responsável SEBAC / Portaria";
 
     const attendantRole =
-      item.returnedByRole ||
+      currentItem.returnedByRole ||
       currentUser?.role ||
       "Servidor";
 
     const signatureDataUrl =
       overrideRecipient?.signatureDataUrl ||
       returnSignatureDataUrl ||
-      item.recipientSignatureUrl ||
+      currentItem.recipientSignatureUrl ||
       "";
 
     const isPendingRemote =
-      item.recipientSignatureStatus === "PENDING_REMOTE" && !signatureDataUrl;
+      currentItem.recipientSignatureStatus === "PENDING_REMOTE" && !signatureDataUrl;
 
-    const safeId = String(item?.id ?? "ITEM").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-    const receiptCode = item.receiptValidationCode || `REC-IFPR-${safeId}-${Date.now().toString().slice(-4)}`;
+    const safeId = String(currentItem?.id ?? "ITEM").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+    const receiptCode = currentItem.receiptValidationCode || `REC-IFPR-${safeId}-${Date.now().toString().slice(-4)}`;
 
     const htmlContent = `
       <!DOCTYPE html>
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>Comprovante de Devolução IFPR - ${item.id}</title>
+          <title>Comprovante de Devolução IFPR - ${currentItem.id}</title>
           <style>
             @media print {
               body { margin: 0; padding: 20px; background: white; }
@@ -810,12 +837,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
             <div class="section-title">1. Dados do Objeto Entregue</div>
             <table class="data-grid">
-              <tr><td class="label">ID da Ocorrência:</td><td class="value">#${item.id}</td></tr>
-              <tr><td class="label">Título / Descrição:</td><td class="value">${item.title}</td></tr>
-              <tr><td class="label">Categoria / Tipo:</td><td class="value">${getCategoryDisplay(item.category)} (${item.type})</td></tr>
-              <tr><td class="label">Local onde foi Encontrado:</td><td class="value">${item.location}</td></tr>
-              <tr><td class="label">Cor / Marca:</td><td class="value">${item.color || 'N/I'} • ${item.brand || 'N/I'}</td></tr>
-              <tr><td class="label">Código de Rastreamento QR:</td><td class="value" style="font-family: monospace; color: #00843D;">${item.qrCodeId || item.id}</td></tr>
+              <tr><td class="label">ID da Ocorrência:</td><td class="value">#${currentItem.id}</td></tr>
+              <tr><td class="label">Título / Descrição:</td><td class="value">${currentItem.title}</td></tr>
+              <tr><td class="label">Categoria / Tipo:</td><td class="value">${getCategoryDisplay(currentItem.category)} (${currentItem.type})</td></tr>
+              <tr><td class="label">Local onde foi Encontrado:</td><td class="value">${currentItem.location}</td></tr>
+              <tr><td class="label">Cor / Marca:</td><td class="value">${currentItem.color || 'N/I'} • ${currentItem.brand || 'N/I'}</td></tr>
+              <tr><td class="label">Código de Rastreamento QR:</td><td class="value" style="font-family: monospace; color: #00843D;">${currentItem.qrCodeId || currentItem.id}</td></tr>
             </table>
 
             <div class="section-title">2. Dados do Proprietário / Recebedor</div>
@@ -841,13 +868,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               </div>
               <div class="sig-line">
                 ${
-                  item.staffSignatureUrl
-                    ? `<img src="${item.staffSignatureUrl}" style="max-height: 52px; max-width: 220px; margin: 0 auto 6px auto; display: block;" alt="Assinatura do Atendente" />`
-                    : item.staffSignatureStatus === "PENDING_STAFF"
+                  currentItem.staffSignatureUrl
+                    ? `<img src="${currentItem.staffSignatureUrl}" style="max-height: 52px; max-width: 220px; margin: 0 auto 6px auto; display: block;" alt="Assinatura do Atendente" />`
+                    : currentItem.staffSignatureStatus === "PENDING_STAFF"
                     ? `<div style="height: 40px; display: flex; align-items: center; justify-content: center; color: #d97706; font-size: 11px; font-weight: bold; font-style: italic;">[Atestação Institucional Pendente]</div>`
                     : `<div style="height: 52px;"></div>`
                 }
-                <strong>${item.staffSignerName || attendantName}</strong><br/>
+                <strong>${currentItem.staffSignerName || attendantName}</strong><br/>
                 <span style="font-weight: normal; font-size: 10px; color: #64748b;">${attendantRole} • SEBAC / Portaria IFPR</span>
               </div>
             </div>
@@ -1034,51 +1061,84 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     setIsPostingComment(false);
   };
 
+  // Resolve authoritative signature token/link strictly via backend /api/signature/send-request
+  const resolveRemoteSignatureLink = async (mode: "LINK_ONLY" | "EMAIL"): Promise<{ token: string; signatureLink: string; message?: string }> => {
+    if (!currentItem?.id) {
+      throw new Error("Identificador da ocorrência ausente.");
+    }
+    if (!canSignAsStaff || !auth.currentUser) {
+      throw new Error("Apenas servidores emissores ou administradores ativos podem gerenciar links de assinatura.");
+    }
+
+    const idToken = await auth.currentUser.getIdToken();
+    const res = await fetch("/api/signature/send-request", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        itemId: currentItem.id,
+        mode,
+        originUrl: window.location.origin,
+      }),
+    });
+
+    const resJson = await res.json().catch(() => ({}));
+    if (!res.ok || !resJson?.success) {
+      throw new Error(resJson?.error || `Erro HTTP ${res.status} ao obter link de assinatura.`);
+    }
+
+    if (!resJson.token || !resJson.signatureLink) {
+      throw new Error("Servidor não retornou token ou link válido de assinatura.");
+    }
+
+    return {
+      token: String(resJson.token),
+      signatureLink: String(resJson.signatureLink),
+      message: resJson.message,
+    };
+  };
+
+  const handleOpenInPersonRemoteSignature = async () => {
+    if (!canSignAsStaff) return;
+    setIsResolvingRemoteLink(true);
+    try {
+      const { token } = await resolveRemoteSignatureLink("LINK_ONLY");
+      setResolvedRemoteToken(token);
+      setRemoteSignatureModalOpen(true);
+    } catch (e: any) {
+      console.error("[handleOpenInPersonRemoteSignature] Falha:", e?.message || e);
+      addToast(e?.message || "Erro ao preparar assinatura presencial do termo pendente.", "error");
+    } finally {
+      setIsResolvingRemoteLink(false);
+    }
+  };
+
+  const handleCopyRemoteSignatureLink = async () => {
+    if (!canSignAsStaff) return;
+    setIsResolvingRemoteLink(true);
+    try {
+      const { signatureLink } = await resolveRemoteSignatureLink("LINK_ONLY");
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(signatureLink);
+      }
+      vibrateSuccess();
+      addToast("Link de assinatura digital copiado para a área de transferência!", "success");
+    } catch (e: any) {
+      console.error("[handleCopyRemoteSignatureLink] Falha:", e?.message || e);
+      addToast(e?.message || "Erro ao obter link seguro de assinatura.", "error");
+    } finally {
+      setIsResolvingRemoteLink(false);
+    }
+  };
+
   // Handle Resend Signature Email
   const handleResendSignatureEmail = async () => {
-    if (!item.id) return;
+    if (!currentItem?.id || !canSignAsStaff) return;
     setIsResendingSignatureEmail(true);
     try {
-      const origin = window.location.origin;
-      const token = item.signatureToken || generateSecureSignatureToken("sig_");
-      const signatureLink = `${origin}/?tab=sign-receipt&itemId=${encodeURIComponent(item.id)}&token=${encodeURIComponent(token)}`;
-
-      let idToken = "";
-      if (auth.currentUser) {
-        try {
-          idToken = await auth.currentUser.getIdToken();
-        } catch (_) {}
-      }
-
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (idToken) {
-        headers["Authorization"] = `Bearer ${idToken}`;
-      }
-
-      const res = await fetch("/api/signature/send-request", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          itemId: item.id,
-          itemTitle: item.title,
-          recipientEmail: item.recipientSignatureEmail || item.contactInfo || "localizamais0@gmail.com",
-          recipientName: item.recipientSignatureName || "Aluno / Servidor IFPR",
-          signatureLink,
-          signatureToken: token,
-          returnedByName: currentUser.name,
-        }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Erro HTTP ${res.status} ao reenviar termo de assinatura.`);
-      }
-
-      const resJson = await res.json().catch(() => ({}));
-      if (!resJson.success) {
-        throw new Error(resJson.error || "Servidor não confirmou o reenvio do termo.");
-      }
-
+      const resJson = await resolveRemoteSignatureLink("EMAIL");
       vibrateSuccess();
       addToast(resJson.message || "Link de assinatura digital reenviado com sucesso por e-mail!", "success");
     } catch (e: any) {
@@ -1132,9 +1192,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
         signatureDataUrl: returnSignatureMode === "IN_PERSON_DEVICE" ? returnSignatureDataUrl : undefined,
       });
       onClose();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      addToast("Erro ao registrar devolução do objeto.", "error");
+      addToast(err?.message || "Erro ao registrar devolução do objeto.", "error");
     } finally {
       setIsRegisteringReturn(false);
     }
@@ -1405,28 +1465,44 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     }
   };
 
-  const handleMarkAsReturned = () => {
-    updateItemStatus(item.id, "DEVOLVIDO");
-    addToast(`Objeto "${item.title}" marcado como Devolvido com sucesso!`, "success");
-    onClose();
-  };
-
-  const getStatusBadgeClass = (status: LostFoundItem["status"]) => {
+  const getStatusBadgeTone = (
+    status: LostFoundItem["status"]
+  ): "emerald" | "rose" | "amber" | "blue" | "slate" => {
     switch (status) {
       case "PERDIDO":
-        return "bg-[#EF4444]/10 text-[#EF4444] border-[#EF4444]/30";
+        return "rose";
       case "ENCONTRADO":
-        return "bg-[#22C55E]/10 text-[#22C55E] border-[#22C55E]/30";
+        return "emerald";
       case "EM_ANALISE":
-        return "bg-[#F59E0B]/10 text-[#F59E0B] border-[#F59E0B]/30";
+        return "amber";
       case "DEVOLVIDO":
-        return "bg-[#3B82F6]/10 text-[#3B82F6] border-[#3B82F6]/30";
+        return "blue";
+      default:
+        return "slate";
+    }
+  };
+
+  const getStatusLabel = (status: LostFoundItem["status"]) => {
+    switch (status) {
+      case "PERDIDO":
+        return "Perdido";
+      case "ENCONTRADO":
+        return "Encontrado";
+      case "EM_ANALISE":
+        return "Em Análise";
+      case "DEVOLVIDO":
+        return "Devolvido";
+      default:
+        return String(status || "Registrado").replace("_", " ");
     }
   };
 
   // Progress Tracker Step States
   const step1Done = true; // Reported/Registered
-  const step2Done = item.status === "EM_ANALISE" || item.status === "DEVOLVIDO" || claims.some((c) => c.itemId === item.id);
+  const step2Done =
+    item.status === "EM_ANALISE" ||
+    item.status === "DEVOLVIDO" ||
+    claims.some((c) => c.itemId === item.id);
   const step3Done = item.status === "DEVOLVIDO";
 
   return (
@@ -1434,7 +1510,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       role="dialog"
       aria-modal="true"
       aria-labelledby="item-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md transition-all duration-200 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm transition-all duration-200 overflow-y-auto"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           vibrateClick();
@@ -1443,85 +1519,102 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       }}
     >
       <div
-        className="relative w-full max-w-4xl bg-[#0b0f17] text-slate-100 rounded-2xl sm:rounded-3xl shadow-2xl border border-white/10 overflow-hidden my-6 sm:my-8 animate-in fade-in zoom-in-95 duration-200"
+        className="relative w-full max-w-4xl bg-white dark:bg-[#111827] text-[#172B2A] dark:text-slate-100 rounded-2xl sm:rounded-3xl shadow-[0_24px_64px_rgba(6,78,59,0.16)] dark:shadow-[0_24px_64px_rgba(0,0,0,0.7)] border border-slate-200 dark:border-slate-800 overflow-hidden my-6 sm:my-8 animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Modern Minimalist Header Bar */}
-        <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-white/10 bg-[#0f172a]/70">
+        {/* Clean Minimal Top Header Bar (Matching Reference Moodboard "< Voltar") */}
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-slate-200/80 dark:border-slate-800 bg-[#F8FAFC]/80 dark:bg-slate-900/70 gap-2">
           <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
-            <span
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold tracking-wider border ${getStatusBadgeClass(
-                item?.status || "PERDIDO"
-              )}`}
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                onClose();
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-[#172B2A] dark:text-slate-200 hover:bg-slate-200/70 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
-              {String(item?.status || "REGISTRADO").replace("_", " ")}
-            </span>
+              <ChevronLeft className="w-4 h-4 text-[#16845B]" />
+              <span>Voltar</span>
+            </button>
+
+            <UIBadge tone={getStatusBadgeTone(item?.status || "PERDIDO")}>
+              {getStatusLabel(item?.status || "PERDIDO")}
+            </UIBadge>
+
             {isItemNew(item) && (
               <span
                 id={`detail-new-badge-${item.id}`}
-                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[11px] font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-500/40"
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#16845B] text-white"
                 title="Cadastrado nas últimas 24 horas no campus"
               >
-                <Sparkles className="w-3 h-3 text-amber-300 fill-amber-300" />
+                <Sparkles className="w-3 h-3 text-amber-200 fill-amber-200" />
                 <span>Recente (24h)</span>
               </span>
             )}
+
             <button
               type="button"
               onClick={() => {
                 vibrateClick();
                 if (typeof navigator !== "undefined" && navigator.clipboard) {
                   navigator.clipboard.writeText(item.id);
-                  addToast("ID do objeto copiado para a área de transferência!", "info");
+                  addToast(
+                    "ID do objeto copiado para a área de transferência!",
+                    "info"
+                  );
                 }
               }}
               title="Clique para copiar o ID do registro"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-slate-200 text-xs font-mono border border-white/5 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-mono border border-slate-200/80 dark:border-slate-700 transition-colors cursor-pointer"
             >
               <Copy className="w-3 h-3 text-slate-400" />
-              <span>ID: {item.id.length > 14 ? `${item.id.slice(0, 10)}...` : item.id}</span>
+              <span>
+                ID: {item.id.length > 14 ? `${item.id.slice(0, 10)}...` : item.id}
+              </span>
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {/* Printable PDF Campus Summary Report Button */}
-            <button
+            <UIButton
+              type="button"
+              variant="outline"
+              size="sm"
               onClick={() => {
                 vibrateClick();
                 handleGenerateItemSummaryPDF();
               }}
-              role="button"
               aria-label="Gerar Laudo e Relatório Oficial em PDF deste Item"
-              className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-[#00843D] hover:text-white border border-[#00843D]/30 text-emerald-400 font-semibold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
               title="Gerar Laudo / Relatório Oficial em PDF (jsPDF)"
             >
               <FileText className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Relatório PDF</span>
-            </button>
+            </UIButton>
 
             {/* Share Button (Web Share API) */}
-            <button
+            <UIButton
+              type="button"
+              variant="secondary"
+              size="sm"
               onClick={() => {
                 vibrateClick();
                 handleShareItem();
               }}
-              role="button"
               aria-label="Compartilhar link deste item"
-              className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 hover:text-white text-slate-300 border border-white/10 font-semibold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
               title="Compartilhar Link do Item"
             >
               <Share2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Compartilhar</span>
-            </button>
+            </UIButton>
 
             <button
+              type="button"
               onClick={() => {
                 vibrateClick();
                 onClose();
               }}
-              role="button"
               aria-label="Fechar detalhes do item"
-              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              className="p-2 rounded-xl text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1533,26 +1626,28 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           {/* Left Column: Image Gallery, Tramitation Journey & QR Code */}
           <div className="space-y-4">
             {/* Object Image Presentation */}
-            <div className="relative h-64 sm:h-72 w-full rounded-2xl bg-[#0e1626] overflow-hidden border border-white/10 flex items-center justify-center">
-              {allImages.length > 0 && allImages[activeImageIndex] && !mainImageError ? (
+            <div className="relative h-64 sm:h-72 w-full rounded-2xl bg-[#F8FAFC] dark:bg-slate-900 overflow-hidden border border-slate-200/80 dark:border-slate-800 flex items-center justify-center">
+              {allImages.length > 0 &&
+              allImages[activeImageIndex] &&
+              !mainImageError ? (
                 <img
                   src={allImages[activeImageIndex]}
                   alt={item.title}
                   onError={() => setMainImageError(true)}
-                  className="w-full h-full object-contain bg-black/40"
+                  className="w-full h-full object-contain p-2"
                 />
               ) : (
                 <div
-                  className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-slate-400"
+                  className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-slate-500 dark:text-slate-400 bg-gradient-to-b from-[#F8FAFC] to-[#EBF5F0]/40 dark:from-slate-900 dark:to-slate-950"
                   aria-label="Sem foto anexada"
                 >
-                  <div className="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 mb-2.5">
-                    <CameraOff className="w-6 h-6 text-slate-500" />
+                  <div className="w-12 h-12 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-[#16845B] dark:text-emerald-400 mb-2.5 shadow-2xs">
+                    <CameraOff className="w-6 h-6" />
                   </div>
-                  <span className="text-xs font-semibold text-slate-300">
+                  <span className="text-xs font-semibold text-[#172B2A] dark:text-slate-200">
                     Sem foto anexada
                   </span>
-                  <span className="text-[11px] text-slate-500 mt-1 max-w-xs leading-relaxed">
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-xs leading-relaxed">
                     Este objeto foi registrado no IFPR Campus Ivaiporã sem fotografia.
                   </span>
                 </div>
@@ -1561,43 +1656,48 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
             {/* Thumbnails if multiple */}
             {allImages.length > 1 && !mainImageError && (
-              <div className="flex gap-2">
+              <div className="flex gap-2 overflow-x-auto pb-1">
                 {allImages.map((img, idx) => (
                   <button
                     key={idx}
+                    type="button"
                     onClick={() => {
                       setMainImageError(false);
                       setActiveImageIndex(idx);
                     }}
-                    className={`w-14 h-14 rounded-xl overflow-hidden border transition-all cursor-pointer ${
+                    className={`w-14 h-14 rounded-xl overflow-hidden border transition-all cursor-pointer shrink-0 ${
                       activeImageIndex === idx
-                        ? "border-[#00843D] ring-2 ring-[#00843D]/50 scale-105"
-                        : "border-white/10 opacity-60 hover:opacity-100"
+                        ? "border-[#16845B] ring-2 ring-[#16845B]/30 scale-105"
+                        : "border-slate-200 dark:border-slate-700 opacity-60 hover:opacity-100"
                     }`}
                   >
-                    <img src={img} alt="" className="w-full h-full object-cover" />
+                    <img
+                      src={img}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
                   </button>
                 ))}
               </div>
             )}
 
             {/* Visual Journey Progress Tracker (Minimalist Stepper) */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-[#0e1626] border border-white/10 space-y-3">
-              <div className="flex items-center justify-between text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                <div className="flex items-center gap-1.5 text-emerald-400">
-                  <Clock className="w-4 h-4 text-[#00843D]" />
+            <SubtlePanel className="space-y-3">
+              <div className="flex items-center justify-between text-xs font-semibold text-[#172B2A] dark:text-slate-200">
+                <div className="flex items-center gap-1.5 text-[#16845B] dark:text-emerald-400">
+                  <Clock className="w-4 h-4" />
                   <span>Jornada de Tramitação</span>
                 </div>
-                <span className="text-[10px] text-slate-500 font-mono">
+                <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
                   {item.status === "DEVOLVIDO" ? "Concluído" : "Em andamento"}
                 </span>
               </div>
 
               <div className="relative flex items-center justify-between pt-2 px-3">
                 {/* Connecting Line */}
-                <div className="absolute top-5 left-8 right-8 h-0.5 bg-slate-800 -z-0">
+                <div className="absolute top-5 left-8 right-8 h-0.5 bg-slate-200 dark:bg-slate-700 -z-0">
                   <div
-                    className="h-full bg-[#00843D] transition-all duration-500"
+                    className="h-full bg-[#16845B] transition-all duration-500"
                     style={{
                       width: step3Done ? "100%" : step2Done ? "50%" : "0%",
                     }}
@@ -1606,163 +1706,229 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
                 {/* Step 1: Reported */}
                 <div className="relative z-10 flex flex-col items-center text-center space-y-1">
-                  <div className="w-8 h-8 rounded-full bg-[#00843D] text-white flex items-center justify-center font-bold text-xs shadow-md">
+                  <div className="w-8 h-8 rounded-full bg-[#16845B] text-white flex items-center justify-center font-bold text-xs shadow-xs">
                     <CheckCircle2 className="w-4 h-4" />
                   </div>
-                  <span className="font-bold text-[11px] text-slate-200">
+                  <span className="font-semibold text-[11px] text-[#172B2A] dark:text-slate-200">
                     Registrado
                   </span>
-                  <span className="text-[9px] text-slate-400 font-mono">{formatDate(item.date)}</span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                    {formatDate(item.date)}
+                  </span>
                 </div>
 
                 {/* Step 2: Under Review */}
                 <div className="relative z-10 flex flex-col items-center text-center space-y-1">
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-md transition-colors ${
+                    className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-xs transition-colors ${
                       step2Done
-                        ? "bg-[#00843D] text-white"
-                        : "bg-slate-800 border border-slate-700 text-slate-400"
+                        ? "bg-[#16845B] text-white"
+                        : "bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-400"
                     }`}
                   >
                     <ShieldCheck className="w-4 h-4" />
                   </div>
-                  <span className={`font-bold text-[11px] ${step2Done ? "text-slate-200" : "text-slate-500"}`}>
+                  <span
+                    className={`font-semibold text-[11px] ${
+                      step2Done
+                        ? "text-[#172B2A] dark:text-slate-200"
+                        : "text-slate-400 dark:text-slate-500"
+                    }`}
+                  >
                     Em Análise
                   </span>
-                  <span className="text-[9px] text-slate-400">Validação SEBAC</span>
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Validação SEBAC
+                  </span>
                 </div>
 
                 {/* Step 3: Returned */}
                 <div className="relative z-10 flex flex-col items-center text-center space-y-1">
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-md transition-colors ${
+                    className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shadow-xs transition-colors ${
                       step3Done
                         ? "bg-sky-600 text-white"
-                        : "bg-slate-800 border border-slate-700 text-slate-400"
+                        : "bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-400"
                     }`}
                   >
                     <FileCheck className="w-4 h-4" />
                   </div>
-                  <span className={`font-bold text-[11px] ${step3Done ? "text-sky-400" : "text-slate-500"}`}>
+                  <span
+                    className={`font-semibold text-[11px] ${
+                      step3Done
+                        ? "text-sky-600 dark:text-sky-400"
+                        : "text-slate-400 dark:text-slate-500"
+                    }`}
+                  >
                     Devolvido
                   </span>
-                  <span className="text-[9px] text-slate-400 font-mono">
-                    {item.resolutionDate ? formatDate(item.resolutionDate) : "Pendente"}
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                    {item.resolutionDate
+                      ? formatDate(item.resolutionDate)
+                      : "Pendente"}
                   </span>
                 </div>
               </div>
-            </div>
+            </SubtlePanel>
 
             {/* QR Code & Label Container */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-[#0c1424] border border-[#00843D]/25 space-y-3.5">
+            <SubtlePanel className="border-[#16845B]/20 dark:border-emerald-800/50 space-y-3.5">
               <div className="flex items-center gap-3.5">
-                <div className="p-2 bg-white rounded-xl shadow-md shrink-0">
-                  <QRCodeSVG id={`qr-code-svg-${item.id}`} value={getItemQrValue(item)} size={68} level="H" />
+                <div className="p-2 bg-white rounded-xl border border-slate-200 shadow-2xs shrink-0">
+                  <QRCodeSVG
+                    id={`qr-code-svg-${item.id}`}
+                    value={getItemQrValue(item)}
+                    size={68}
+                    level="H"
+                  />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <h5 className="font-bold text-xs text-white flex items-center gap-1.5">
-                    <QrCode className="w-3.5 h-3.5 text-[#00843D]" /> Código Etiqueta QR
+                  <h5 className="font-bold text-xs text-[#172B2A] dark:text-white flex items-center gap-1.5">
+                    <QrCode className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />{" "}
+                    Código Etiqueta QR
                   </h5>
-                  <p className="text-[11px] text-slate-300 font-mono mt-0.5 truncate">
+                  <p className="text-[11px] text-[#16845B] dark:text-emerald-400 font-mono font-semibold mt-0.5 truncate">
                     {item.qrCodeId}
                   </p>
-                  <p className="text-[10px] text-slate-400 mt-1 leading-snug">
-                    Apresente este código no balcão de Achados e Perdidos do IFPR para liberação e baixa oficial.
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+                    Apresente este código no setor responsável do IFPR para identificação e baixa oficial.
                   </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
-                <button
+                <UIButton
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setShowRestrictedQRView(true)}
-                  className="py-2 px-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-white/5 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                 >
-                  <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                  <Eye className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
                   <span>Modo QR</span>
-                </button>
+                </UIButton>
 
-                <button
+                <UIButton
                   type="button"
+                  variant="primary"
+                  size="sm"
                   onClick={handleDownloadQRCodePNG}
-                  className="py-2 px-2.5 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                   title="Baixar imagem PNG do QR Code em alta resolução"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Baixar PNG</span>
-                </button>
+                </UIButton>
 
-                <button
+                <UIButton
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={handlePrintQRTag}
-                  className="py-2 px-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-[#00843D]/30 text-emerald-400 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                 >
                   <Printer className="w-3.5 h-3.5" />
                   <span>Etiqueta</span>
-                </button>
+                </UIButton>
 
-                <button
+                <UIButton
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={handleGenerateItemSummaryPDF}
-                  className="py-2 px-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-white/5 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
                   title="Gerar Ficha / Relatório Oficial do Campus em PDF (jsPDF)"
                 >
-                  <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                  <FileText className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
                   <span>Laudo PDF</span>
-                </button>
+                </UIButton>
 
-                <button
+                <UIButton
                   type="button"
+                  variant="secondary"
+                  size="sm"
                   onClick={handlePrintReceiptPDF}
-                  className="py-2 px-2.5 rounded-xl bg-sky-950/40 hover:bg-sky-900/50 border border-sky-500/30 text-sky-300 font-semibold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs col-span-2 sm:col-span-1"
+                  className="col-span-2 sm:col-span-1"
                   title="Recibo de Devolução Individual"
                 >
-                  <FileCheck className="w-3.5 h-3.5" />
+                  <FileCheck className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
                   <span>Recibo PDF</span>
-                </button>
+                </UIButton>
               </div>
-            </div>
+            </SubtlePanel>
           </div>
 
-          {/* Right Column: Information, Metadata, Signature & Actions */}
-          <div className="space-y-4 sm:space-y-5">
-            <div>
-              <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400 mb-1">
-                <Tag className="w-3.5 h-3.5" />
-                <span>{getCategoryDisplay(item.category)}</span>
-                <span>•</span>
-                <span>{item.type}</span>
+          {/* Right Column: Core Information, Recovery Guidance & Actions (Matching Moodboard "Mochila") */}
+          <div className="space-y-5">
+            {/* Title, Status Pill, Date & Location Hierarchy */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#16845B] dark:text-emerald-400">
+                  <Tag className="w-3.5 h-3.5" />
+                  <span>{getCategoryDisplay(item.category)}</span>
+                </span>
+                <span className="text-slate-300 dark:text-slate-700">•</span>
+                <UIBadge tone={getStatusBadgeTone(item?.status || "PERDIDO")}>
+                  {getStatusLabel(item?.status || "PERDIDO")}
+                </UIBadge>
               </div>
 
-              <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight break-words">
+              <h2
+                id="item-modal-title"
+                className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight break-words"
+              >
                 {item.title}
               </h2>
-            </div>
 
-            {/* Details Grid (Minimalist Cards) */}
-            <div className="grid grid-cols-2 gap-2.5 text-xs">
-              <div className="p-3 rounded-xl bg-[#0e1626] border border-white/5">
-                <span className="text-slate-400 block mb-0.5">Cor Predominante</span>
-                <span className="font-semibold text-slate-100">{item.color || "Não informada"}</span>
-              </div>
-              <div className="p-3 rounded-xl bg-[#0e1626] border border-white/5">
-                <span className="text-slate-400 block mb-0.5">Marca / Fabricante</span>
-                <span className="font-semibold text-slate-100">{item.brand || "Não informada"}</span>
-              </div>
-              <div className="p-3 rounded-xl bg-[#0e1626] border border-white/5">
-                <span className="text-slate-400 block mb-0.5">Data do Registro</span>
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="font-semibold text-slate-100">{formatDate(item.date)}</span>
+              {/* Date & Location Key Indicators (Matching Reference Screen) */}
+              <div className="space-y-1.5 pt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0" />
+                  <span className="font-medium">{formatDate(item.date)}</span>
                   {item.createdAt && (
-                    <span className="text-[10px] text-emerald-400 font-medium font-mono">
-                      ({getItemAgeText(item.createdAt)})
+                    <span className="text-xs text-slate-400 dark:text-slate-500">
+                      • {getItemAgeText(item.createdAt)}
                     </span>
                   )}
                 </div>
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0" />
+                  <span className="font-medium text-[#172B2A] dark:text-white">
+                    {item.location}
+                  </span>
+                </div>
               </div>
-              <div className="p-3 rounded-xl bg-[#0e1626] border border-white/5">
-                <span className="text-slate-400 block mb-0.5">Cadastrado por</span>
-                <span className="font-semibold text-slate-100 truncate block">
+            </div>
+
+            {/* Description Section */}
+            <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Descrição do Objeto
+              </h4>
+              <p className="text-sm text-[#172B2A] dark:text-slate-200 leading-relaxed break-words">
+                {item.description}
+              </p>
+            </div>
+
+            {/* Additional Characteristics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+              <div className="p-3 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70">
+                <span className="text-slate-500 dark:text-slate-400 block mb-0.5 text-[11px]">
+                  Cor Predominante
+                </span>
+                <span className="font-semibold text-[#172B2A] dark:text-slate-100">
+                  {item.color || "Não informada"}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70">
+                <span className="text-slate-500 dark:text-slate-400 block mb-0.5 text-[11px]">
+                  Marca / Fabricante
+                </span>
+                <span className="font-semibold text-[#172B2A] dark:text-slate-100">
+                  {item.brand || "Não informada"}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70 col-span-2 sm:col-span-1">
+                <span className="text-slate-500 dark:text-slate-400 block mb-0.5 text-[11px]">
+                  Cadastrado por
+                </span>
+                <span className="font-semibold text-[#172B2A] dark:text-slate-100 truncate block">
                   {item.registeredByName}
                 </span>
               </div>
@@ -1771,42 +1937,41 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             {/* Accessible Voice Reader (Text-to-Speech) */}
             <AccessibleVoiceReader item={item} />
 
-            {/* Description Box */}
-            <div className="space-y-1.5">
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Descrição Detalhada
-              </h4>
-              <p className="text-xs sm:text-sm text-slate-200 leading-relaxed bg-[#0e1626] p-3.5 rounded-xl border border-white/5 break-words">
-                {item.description}
-              </p>
-            </div>
-
-            {/* Contact / Delivery instructions */}
-            <div className="p-3.5 rounded-xl bg-sky-950/20 border border-sky-500/20 space-y-1">
-              <div className="flex items-center space-x-2 text-xs font-semibold text-sky-400">
-                <Building className="w-4 h-4" />
-                <span>Instruções de Retirada / Contato</span>
+            {/* "Como recuperar?" Recovery Instructions Box (Matching Reference Moodboard) */}
+            <div className="p-4 rounded-2xl bg-[#EBF5F0]/70 dark:bg-emerald-950/30 border border-[#16845B]/20 dark:border-emerald-800/50 space-y-1.5">
+              <div className="flex items-center gap-2 text-sm font-bold text-[#064E3B] dark:text-emerald-300">
+                <Building className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0" />
+                <span>Como recuperar?</span>
               </div>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                {item.contactInfo}
+              <p className="text-xs sm:text-sm text-[#172B2A] dark:text-slate-200 leading-relaxed">
+                Compareça na administração / ponto de guarda do campus com um documento oficial de identificação ou envie uma solicitação abaixo.
               </p>
+              {item.contactInfo && (
+                <p className="text-xs font-semibold text-[#064E3B] dark:text-emerald-300 pt-1">
+                  Ponto de atendimento / Contato: {item.contactInfo}
+                </p>
+              )}
             </div>
 
             {/* Digital Signature Card (If Item is Returned or Signature in Progress) */}
-            {(item.status === "DEVOLVIDO" || item.recipientSignatureStatus || item.recipientSignatureUrl) && (
+            {(currentItem.status === "DEVOLVIDO" ||
+              currentItem.recipientSignatureStatus ||
+              currentItem.recipientSignatureUrl) && (
               <div
                 className={`p-4 rounded-2xl border transition-all ${
-                  item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
-                    ? "bg-emerald-950/20 border-emerald-500/30"
-                    : "bg-amber-950/20 border-amber-500/30"
+                  currentItem.recipientSignatureStatus === "SIGNED" ||
+                  currentItem.recipientSignatureUrl
+                    ? "bg-[#EBF5F0]/60 dark:bg-emerald-950/30 border-[#16845B]/30 dark:border-emerald-800/60"
+                    : "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/60"
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-start gap-2.5">
                     <div
                       className={`p-2 rounded-xl shrink-0 ${
-                        item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
-                          ? "bg-[#00843D] text-white"
+                        currentItem.recipientSignatureStatus === "SIGNED" ||
+                        currentItem.recipientSignatureUrl
+                          ? "bg-[#16845B] text-white"
                           : "bg-amber-500 text-white"
                       }`}
                     >
@@ -1814,104 +1979,139 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-bold text-xs text-white uppercase tracking-wider">
+                        <h4 className="font-bold text-xs text-[#172B2A] dark:text-white uppercase tracking-wider">
                           Termo de Devolução & Assinatura Digital
                         </h4>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wider ${
-                            item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
-                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                              : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                          }`}
+                        <UIBadge
+                          tone={
+                            currentItem.recipientSignatureStatus === "SIGNED" ||
+                            currentItem.recipientSignatureUrl
+                              ? "emerald"
+                              : "amber"
+                          }
                         >
-                          {item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
+                          {currentItem.recipientSignatureStatus === "SIGNED" ||
+                          currentItem.recipientSignatureUrl
                             ? "Assinado Digitalmente"
                             : "Aguardando Assinatura Remota"}
-                        </span>
+                        </UIBadge>
                       </div>
 
-                      <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                        {item.recipientSignatureStatus === "SIGNED" || item.recipientSignatureUrl
-                          ? `Recebido por: ${item.recipientSignatureName || item.registeredByName || "Proprietário"} (${item.recipientSignatureBond || "Comunidade IFPR"}) em ${formatDateTime(item.recipientSignatureDate || item.resolutionDate)}.`
-                          : `Link de assinatura despachado para ${item.recipientSignatureEmail || item.contactInfo || "o e-mail do proprietário"}.`}
+                      <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                        {currentItem.recipientSignatureStatus === "SIGNED" ||
+                        currentItem.recipientSignatureUrl
+                          ? `Recebido por: ${
+                              currentItem.recipientName ||
+                              currentItem.recipientSignatureName ||
+                              "Proprietário"
+                            } (${
+                              currentItem.recipientBond ||
+                              currentItem.recipientSignatureBond ||
+                              "Comunidade IFPR"
+                            }) em ${formatDateTime(
+                              currentItem.signedAt ||
+                              currentItem.recipientSignatureDate ||
+                              currentItem.resolutionDate
+                            )}.`
+                          : `Link de assinatura despachado para ${
+                              currentItem.recipientEmail ||
+                              currentItem.recipientSignatureEmail ||
+                              "o e-mail cadastrado do proprietário"
+                            }.`}
                       </p>
                     </div>
                   </div>
                 </div>
 
                 {/* Signature Preview Thumbnail if signed */}
-                {(item.recipientSignatureUrl || returnSignatureDataUrl) && (
-                  <div className="mt-3 pt-3 border-t border-emerald-500/20 flex items-center justify-between gap-4 flex-wrap">
+                {(currentItem.recipientSignatureUrl || returnSignatureDataUrl) && (
+                  <div className="mt-3 pt-3 border-t border-[#16845B]/20 dark:border-emerald-800/50 flex items-center justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-3">
-                      <div className="bg-white p-1.5 rounded-xl border border-emerald-500/30 shadow-xs">
+                      <div className="bg-white p-1.5 rounded-xl border border-slate-200 shadow-2xs">
                         <img
-                          src={item.recipientSignatureUrl || returnSignatureDataUrl}
+                          src={
+                            currentItem.recipientSignatureUrl || returnSignatureDataUrl
+                          }
                           alt="Assinatura Digital"
                           className="h-10 max-w-[140px] object-contain"
                         />
                       </div>
                       <div className="text-[11px]">
-                        <span className="font-semibold text-slate-200 block">
+                        <span className="font-semibold text-[#172B2A] dark:text-slate-200 block">
                           Assinatura Registrada
                         </span>
-                        <span className="text-slate-400 text-[10px] font-mono">
-                          Código: {item.signatureToken || item.id}
+                        <span className="text-slate-500 dark:text-slate-400 text-[10px] font-mono">
+                          Código: {currentItem.receiptValidationCode || currentItem.id}
                         </span>
                       </div>
                     </div>
 
-                    <button
+                    <UIButton
                       type="button"
+                      variant="primary"
+                      size="sm"
                       onClick={handlePrintReceiptPDF}
-                      className="py-1.5 px-3 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
                     >
                       <Printer className="w-3.5 h-3.5" />
                       <span>Imprimir Recibo Assinado</span>
-                    </button>
+                    </UIButton>
                   </div>
                 )}
 
-                {/* Remote Pending Signature Actions */}
-                {item.recipientSignatureStatus === "PENDING_REMOTE" && !item.recipientSignatureUrl && (
-                  <div className="mt-3 pt-3 border-t border-amber-500/20 flex items-center justify-between gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => setRemoteSignatureModalOpen(true)}
-                      className="py-1.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
-                    >
-                      <PenTool className="w-3.5 h-3.5" />
-                      <span>Assinar no Dispositivo Agora</span>
-                    </button>
-
-                    <div className="flex items-center gap-2">
-                      <button
+                {/* Remote Pending Signature Actions (Staff / Admin Only) */}
+                {canSignAsStaff &&
+                  currentItem.status === "DEVOLVIDO" &&
+                  currentItem.recipientSignatureStatus === "PENDING_REMOTE" &&
+                  !currentItem.recipientSignatureUrl && (
+                    <div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-800/50 flex items-center justify-between gap-2 flex-wrap">
+                      <UIButton
                         type="button"
-                        onClick={() => {
-                          const origin = window.location.origin;
-                          const token = item.signatureToken || item.id;
-                          const link = `${origin}/?tab=sign-receipt&itemId=${item.id}&token=${token}`;
-                          navigator.clipboard.writeText(link);
-                          vibrateSuccess();
-                          addToast("Link de assinatura digital copiado para a área de transferência!", "success");
-                        }}
-                        className="py-1.5 px-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 text-slate-200 font-semibold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                        variant="primary"
+                        size="sm"
+                        onClick={handleOpenInPersonRemoteSignature}
+                        disabled={isResolvingRemoteLink || isResendingSignatureEmail}
                       >
-                        <Copy className="w-3.5 h-3.5" />
-                        <span>Copiar Link</span>
-                      </button>
+                        <PenTool className="w-3.5 h-3.5" />
+                        <span>
+                          {isResolvingRemoteLink
+                            ? "Preparando..."
+                            : "Assinar no Dispositivo Agora"}
+                        </span>
+                      </UIButton>
 
-                      <button
-                        type="button"
-                        onClick={handleResendSignatureEmail}
-                        disabled={isResendingSignatureEmail}
-                        className="py-1.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isResendingSignatureEmail ? "animate-spin" : ""}`} />
-                        <span>{isResendingSignatureEmail ? "Reenviando..." : "Reenviar E-mail"}</span>
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <UIButton
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleCopyRemoteSignatureLink}
+                          disabled={isResolvingRemoteLink || isResendingSignatureEmail}
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copiar Link</span>
+                        </UIButton>
+
+                        <UIButton
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleResendSignatureEmail}
+                          disabled={isResendingSignatureEmail || isResolvingRemoteLink}
+                        >
+                          <RefreshCw
+                            className={`w-3.5 h-3.5 ${
+                              isResendingSignatureEmail ? "animate-spin" : ""
+                            }`}
+                          />
+                          <span>
+                            {isResendingSignatureEmail
+                              ? "Reenviando..."
+                              : "Reenviar E-mail"}
+                          </span>
+                        </UIButton>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
               </div>
             )}
 
@@ -1920,14 +2120,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               currentItem.recipientSignatureStatus === "SIGNED" &&
               currentItem.staffSignatureStatus !== "SIGNED" &&
               !currentItem.returnedByUserId && (
-                <div className="p-4 rounded-2xl bg-amber-950/20 border border-amber-500/30 space-y-2">
-                  <div className="flex items-center space-x-2 text-amber-200">
-                    <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+                <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 space-y-2">
+                  <div className="flex items-start gap-2.5 text-amber-900 dark:text-amber-200">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                     <div>
                       <h4 className="font-bold text-xs uppercase tracking-wider">
                         Atestação Bloqueada — Emissor Não Identificado
                       </h4>
-                      <p className="text-[11px] text-slate-300 leading-relaxed mt-0.5">
+                      <p className="text-[11px] text-amber-800 dark:text-amber-300/90 leading-relaxed mt-0.5">
                         Esta devolução não possui o servidor emissor registrado no sistema. Por segurança e auditoria, a atestação está bloqueada para impedir a atribuição retroativa não comprovada.
                       </p>
                     </div>
@@ -1939,114 +2139,139 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             {currentItem.status === "DEVOLVIDO" &&
               currentItem.recipientSignatureStatus === "SIGNED" &&
               currentItem.staffSignatureStatus !== "SIGNED" &&
-              (currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") &&
+              canSignAsStaff &&
               Boolean(currentItem.returnedByUserId) &&
               currentItem.returnedByUserId === currentUser.id && (
-                <div className="p-4 rounded-2xl bg-amber-950/20 border border-amber-500/30 space-y-3">
-                  <div className="flex items-center space-x-2 text-amber-200">
-                    <FileSignature className="w-5 h-5 text-amber-400 shrink-0" />
+                <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 space-y-3">
+                  <div className="flex items-start gap-2.5 text-amber-900 dark:text-amber-200">
+                    <FileSignature className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                     <div>
                       <h4 className="font-bold text-xs uppercase tracking-wider">
                         Atestação Institucional do Atendente Pendente
                       </h4>
-                      <p className="text-[11px] text-slate-300 leading-relaxed mt-0.5">
-                        O receptor ({currentItem.recipientName || currentItem.recipientSignatureName || "Aluno"}) assinou a devolução. Registre sua atestação e assinatura como servidor emissor responsável.
+                      <p className="text-[11px] text-amber-800 dark:text-amber-300/90 leading-relaxed mt-0.5">
+                        O receptor (
+                        {currentItem.recipientName ||
+                          currentItem.recipientSignatureName ||
+                          "Aluno"}
+                        ) assinou a devolução. Registre sua atestação e assinatura como servidor emissor responsável.
                       </p>
                     </div>
                   </div>
-                  <button
+                  <UIButton
                     type="button"
+                    variant="primary"
+                    size="md"
+                    fullWidth
                     onClick={() => setStaffSignatureModalOpen(true)}
-                    className="w-full py-2.5 px-4 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer"
                   >
                     <PenTool className="w-4 h-4" />
                     <span>Atestar e Assinar Devolução (Atendente)</span>
-                  </button>
+                  </UIButton>
                 </div>
               )}
 
             {/* Action Area: Primary Action & Operational Controls */}
-            <div className="pt-2 space-y-2.5 border-t border-white/10">
+            <div className="pt-3 space-y-2.5 border-t border-slate-200/80 dark:border-slate-800">
               {/* Primary User Action: Claim Ownership */}
-              {item.status !== "DEVOLVIDO" && item.status !== "ENCERRADO" && (
-                userActiveClaim ? (
+              {currentItem.status !== "DEVOLVIDO" &&
+                currentItem.status !== "ENCERRADO" &&
+                (userActiveClaim ? (
                   <div
                     className={`p-4 rounded-2xl border text-xs space-y-1.5 ${
                       userActiveClaim.status === "APROVADO"
-                        ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-200"
-                        : "bg-sky-950/20 border-sky-500/30 text-sky-200"
+                        ? "bg-[#EBF5F0] dark:bg-emerald-950/30 border-[#16845B]/30 text-[#064E3B] dark:text-emerald-200"
+                        : "bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-800/60 text-sky-900 dark:text-sky-200"
                     }`}
                   >
                     <div className="flex items-center gap-2 font-bold">
-                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      <ShieldCheck className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
                       <span>
                         {userActiveClaim.status === "APROVADO"
                           ? "Sua solicitação foi APROVADA pela Secretaria!"
                           : "Solicitação de Devolução em Análise"}
                       </span>
                     </div>
-                    <p className="text-[11px] leading-relaxed text-slate-300">
+                    <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
                       {userActiveClaim.status === "APROVADO"
                         ? "Compareça à Secretaria / SEBAC portando documento oficial com foto para concluir a retirada do pertence."
                         : "Você já enviou uma solicitação para este objeto. A equipe da Secretaria está analisando as informações fornecidas. Você pode acompanhar ou cancelar seu pedido na aba 'Meu Perfil'."}
                     </p>
                   </div>
                 ) : (
-                  <button
+                  <UIButton
+                    type="button"
+                    variant="primary"
+                    size="lg"
+                    fullWidth
                     onClick={() => setClaimModalOpen(true)}
-                    className="w-full py-3.5 px-4 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-bold text-sm shadow-lg shadow-[#00843D]/25 transition-all flex items-center justify-center space-x-2 cursor-pointer"
                   >
                     <ShieldCheck className="w-5 h-5" />
                     <span>Solicitar Este Objeto (Reclamar Posse)</span>
-                  </button>
-                )
-              )}
+                  </UIButton>
+                ))}
 
-              {/* Operational Actions for Servidores and Admins */}
-              {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && item.status !== "DEVOLVIDO" && item.status !== "ENCERRADO" && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setReturnModalOpen(true)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs"
-                  >
-                    <CheckCircle className="w-4 h-4" />
-                    <span>Registrar Devolução Formal</span>
-                  </button>
+              {/* Operational Actions for Approved & Active Servidores and Admins */}
+              {canPerformFormalReturn && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <UIButton
+                      type="button"
+                      variant="dark"
+                      size="md"
+                      fullWidth
+                      onClick={() => setReturnModalOpen(true)}
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      <span>Registrar Devolução Formal</span>
+                    </UIButton>
 
-                  <button
-                    onClick={() => setDestinationModalOpen(true)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/5 font-semibold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs"
-                  >
-                    <PackageCheck className="w-4 h-4" />
-                    <span>Registrar Destinação</span>
-                  </button>
-                </div>
-              )}
+                    <UIButton
+                      type="button"
+                      variant="secondary"
+                      size="md"
+                      fullWidth
+                      onClick={() => setDestinationModalOpen(true)}
+                    >
+                      <PackageCheck className="w-4 h-4" />
+                      <span>Registrar Destinação</span>
+                    </UIButton>
+                  </div>
+                )}
 
               {/* Admin Only: Reopen Return Button if item was already returned */}
-              {currentUser.role === "ADMIN" && item.status === "DEVOLVIDO" && (
-                <button
+              {canReopenReturn && currentItem.status === "DEVOLVIDO" && (
+                <UIButton
+                  type="button"
+                  variant="secondary"
+                  size="md"
+                  fullWidth
                   onClick={() => setReopenModalOpen(true)}
-                  className="w-full py-2.5 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer shadow-xs"
+                  className="border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300"
                 >
                   <RotateCcw className="w-4 h-4" />
                   <span>[Admin] Reabrir Devolução (Corrigir Erro)</span>
-                </button>
+                </UIButton>
               )}
 
               {/* Grouped Secondary Actions */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                <button
+                <UIButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  fullWidth
                   onClick={() => setEmailModalOpen(true)}
-                  className="w-full py-2 px-3 rounded-xl border border-white/10 hover:bg-white/5 text-slate-300 font-semibold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
                 >
-                  <Send className="w-3.5 h-3.5 text-[#00843D]" />
+                  <Send className="w-3.5 h-3.5 text-[#16845B]" />
                   <span>Enviar Mensagem</span>
-                </button>
+                </UIButton>
 
                 {isAuthorizedToEdit && (
-                  <button
+                  <UIButton
                     type="button"
+                    variant="outline"
+                    size="sm"
+                    fullWidth
                     onClick={() => {
                       setEditTitle(item.title);
                       setEditDescription(item.description);
@@ -2058,21 +2283,20 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                       setEditContactInfo(item.contactInfo || "");
                       setEditItemModalOpen(true);
                     }}
-                    className="w-full py-2 px-3 rounded-xl border border-amber-500/30 bg-amber-950/20 hover:bg-amber-900/30 text-amber-300 font-semibold text-xs transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
                     title="Editar dados e informações do objeto"
                   >
-                    <Edit className="w-3.5 h-3.5 text-amber-400" />
+                    <Edit className="w-3.5 h-3.5" />
                     <span>Editar Informações</span>
-                  </button>
+                  </UIButton>
                 )}
               </div>
             </div>
 
             {/* Comments Section */}
-            <div className="space-y-3 pt-3 border-t border-white/10">
+            <div className="space-y-3 pt-3 border-t border-slate-200/80 dark:border-slate-800">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold text-white flex items-center gap-1.5 uppercase tracking-wider">
-                  <MessageSquare className="w-4 h-4 text-[#00843D]" /> Perguntas & Comentários ({itemComments.length})
+                <h4 className="text-xs font-bold text-[#172B2A] dark:text-white flex items-center gap-1.5 uppercase tracking-wider">
+                  <MessageSquare className="w-4 h-4 text-[#16845B]" /> Perguntas & Comentários ({itemComments.length})
                 </h4>
               </div>
 
@@ -2085,20 +2309,22 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   itemComments.map((com) => (
                     <div
                       key={com.id}
-                      className="p-3 rounded-xl bg-[#0e1626] border border-white/5 text-xs space-y-1"
+                      className="p-3 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-xs space-y-1"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-bold text-slate-200">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-[#172B2A] dark:text-slate-200">
                             {com.userName}
                           </span>
-                          <span className="px-1.5 py-0.5 text-[9px] font-semibold rounded bg-[#00843D]/20 text-emerald-400 border border-[#00843D]/30">
-                            {com.userRole}
-                          </span>
+                          <UIBadge tone="emerald">{com.userRole}</UIBadge>
                         </div>
-                        <span className="text-[10px] text-slate-500 font-mono">{formatDateTime(com.createdAt)}</span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {formatDateTime(com.createdAt)}
+                        </span>
                       </div>
-                      <p className="text-slate-300 leading-snug">{com.text}</p>
+                      <p className="text-slate-600 dark:text-slate-300 leading-snug">
+                        {com.text}
+                      </p>
                     </div>
                   ))
                 )}
@@ -2106,67 +2332,76 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
               {/* Add Comment Form */}
               <form onSubmit={handlePostComment} className="flex gap-2">
-                <input
-                  type="text"
-                  required
-                  value={newCommentText}
-                  onChange={(e) => setNewCommentText(e.target.value)}
-                  placeholder="Escreva uma pergunta ou esclarecimento..."
-                  className="flex-1 px-3 py-2 rounded-xl border border-white/10 bg-[#0e1626] text-xs text-white placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
-                />
-                <button
+                <div className="flex-1">
+                  <UIInput
+                    type="text"
+                    required
+                    value={newCommentText}
+                    onChange={(e) => setNewCommentText(e.target.value)}
+                    placeholder="Escreva uma pergunta ou esclarecimento..."
+                  />
+                </div>
+                <UIButton
                   type="submit"
+                  variant="primary"
+                  size="md"
                   disabled={isPostingComment}
-                  className="px-3.5 py-2 rounded-xl bg-[#00843D] text-white font-semibold text-xs hover:bg-[#00A34D] transition-colors shrink-0 flex items-center gap-1 cursor-pointer disabled:opacity-50"
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>Enviar</span>
-                </button>
+                </UIButton>
               </form>
             </div>
 
             {/* Vertical Timeline History Section */}
-            <div className="space-y-3 pt-3 border-t border-white/10">
+            <div className="space-y-3 pt-3 border-t border-slate-200/80 dark:border-slate-800">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-white flex items-center gap-1.5">
-                  <History className="w-4 h-4 text-emerald-400" /> Trilha de Auditoria ({sortedTimeline.length})
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[#172B2A] dark:text-white flex items-center gap-1.5">
+                  <History className="w-4 h-4 text-[#16845B]" /> Trilha de Auditoria ({sortedTimeline.length})
                 </h4>
-                <span className="text-[10px] text-slate-500 font-mono">Registro Histórico</span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  Registro Histórico
+                </span>
               </div>
 
               <div className="max-h-56 overflow-y-auto pr-2">
                 {sortedTimeline.length === 0 ? (
-                  <div className="p-3 bg-[#0e1626] rounded-xl text-xs text-slate-500 italic">
+                  <div className="p-3 bg-[#F8FAFC] dark:bg-slate-800/70 rounded-xl text-xs text-slate-500 italic">
                     Nenhum evento registrado ainda nesta ocorrência.
                   </div>
                 ) : (
-                  <div className="relative border-l border-white/10 ml-3 pl-4 space-y-3.5 py-1">
+                  <div className="relative border-l border-slate-200 dark:border-slate-700 ml-3 pl-4 space-y-3.5 py-1">
                     {sortedTimeline.map((log: any, index: number) => (
                       <div key={log.id || index} className="relative group">
                         {/* Timeline Circle Bullet Node */}
-                        <div className="absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full bg-[#00843D] ring-4 ring-[#0b0f17] shadow-xs" />
+                        <div className="absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full bg-[#16845B] ring-4 ring-white dark:ring-[#111827] shadow-2xs" />
 
-                        <div className="p-3 rounded-xl bg-[#0e1626] border border-white/5 text-xs space-y-1">
+                        <div className="p-3 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70 text-xs space-y-1">
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-bold text-slate-200 text-xs">
+                            <span className="font-bold text-[#172B2A] dark:text-slate-200 text-xs">
                               {log.action}
                             </span>
-                            <span className="text-[10px] font-mono text-slate-500 shrink-0">
+                            <span className="text-[10px] font-mono text-slate-400 shrink-0">
                               {formatDateTime(log.timestamp)}
                             </span>
                           </div>
 
                           {log.details && (
-                            <p className="text-slate-400 text-[11px] leading-relaxed">
+                            <p className="text-slate-600 dark:text-slate-300 text-[11px] leading-relaxed">
                               {log.details}
                             </p>
                           )}
 
-                          <div className="text-[10px] text-slate-500 font-medium flex items-center gap-1 pt-0.5">
-                            <User className="w-3 h-3 text-[#00843D] shrink-0" />
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1 pt-0.5">
+                            <User className="w-3 h-3 text-[#16845B] shrink-0" />
                             <span>
-                              Responsável: <strong className="text-slate-300">{log.actorName || log.userName || "Usuário"}</strong>
-                              {log.actorRole || log.userRole ? ` (${log.actorRole || log.userRole})` : ""}
+                              Responsável:{" "}
+                              <strong className="text-[#172B2A] dark:text-slate-200">
+                                {log.actorName || log.userName || "Usuário"}
+                              </strong>
+                              {log.actorRole || log.userRole
+                                ? ` (${log.actorRole || log.userRole})`
+                                : ""}
                             </span>
                           </div>
                         </div>
@@ -2180,90 +2415,117 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
         </div>
       </div>
 
-      {/* Claim Modal (Solicitar Devolução / RNF04) */}
+      {/* =========================================================================
+          CLAIM MODAL (SOLICITAR DEVOLUÇÃO / REIVINDICAÇÃO — RNF04)
+          ========================================================================= */}
       {claimModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md transition-all duration-200">
-          <div className="bg-[#0b0f17] text-slate-100 rounded-3xl p-6 max-w-lg w-full border border-white/10 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-400" />
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="claim-modal-title"
+          className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm transition-all duration-200"
+        >
+          <div className="bg-white dark:bg-[#111827] text-[#172B2A] dark:text-slate-100 rounded-2xl sm:rounded-3xl p-6 max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-[0_24px_64px_rgba(6,78,59,0.18)] space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-start justify-between border-b border-slate-200/80 dark:border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/60 text-[#16845B] dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
                 <div>
-                  <h3 className="font-bold text-base text-white">
+                  <h3
+                    id="claim-modal-title"
+                    className="font-bold text-base sm:text-lg text-[#172B2A] dark:text-white"
+                  >
                     Solicitar Devolução de Objeto
                   </h3>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Verificação de Posse • IFPR Campus Ivaiporã
                   </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setClaimModalOpen(false)}
-                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                aria-label="Fechar janela de reivindicação"
+                className="p-2 rounded-xl text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-3 bg-[#0e1626] rounded-2xl border border-white/5 text-xs space-y-1">
-              <div className="font-semibold text-slate-200">
-                Objeto: {currentItem.title}
+            <SubtlePanel className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold text-xs text-[#172B2A] dark:text-white">
+                  Objeto selecionado: {currentItem.title}
+                </span>
+                <UIBadge tone="emerald">
+                  {getCategoryDisplay(currentItem.category)}
+                </UIBadge>
               </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Para que a Secretaria do IFPR comprove a posse, informe detalhes particulares do objeto (marcas de uso, adesivos, itens no interior, marcas específicas).
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Para comprovar a titularidade do pertence junto à Secretaria (SEBAC), descreva características particulares (marcas de uso, adesivos, chaveiros, itens internos ou detalhes específicos).
               </p>
-            </div>
+            </SubtlePanel>
 
             <form onSubmit={handleClaimSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Características Particulares / Marcas de Identificação *
-                </label>
-                <textarea
+              <UIFieldGroup
+                label="Características Particulares / Marcas de Identificação"
+                htmlFor="claim-distinctive-features"
+                required
+                hint="Informe detalhes que apenas o proprietário do objeto saberia descrever."
+              >
+                <UITextarea
+                  id="claim-distinctive-features"
                   required
                   rows={4}
                   value={claimDistinctiveFeatures}
                   onChange={(e) => setClaimDistinctiveFeatures(e.target.value)}
-                  placeholder="Ex: No bolso interno há um adesivo azul, pequena marca de arranhão na quina esquerda, capa de proteção preta..."
-                  className="w-full p-3 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 focus:ring-2 focus:ring-[#00843D] outline-none"
+                  placeholder="Ex: No bolso interno há um adesivo azul, pequena marca de arranhão na lateral, capa protetora preta..."
                 />
-              </div>
+              </UIFieldGroup>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Informações Adicionais (Opcional)
-                </label>
-                <textarea
+              <UIFieldGroup
+                label="Informações Adicionais (Opcional)"
+                htmlFor="claim-additional-info"
+              >
+                <UITextarea
+                  id="claim-additional-info"
                   rows={2}
                   value={claimAdditionalInfo}
                   onChange={(e) => setClaimAdditionalInfo(e.target.value)}
-                  placeholder="Ex: Data aproximada em que perdeu, local provável ou qualquer outro detalhe útil..."
-                  className="w-full p-3 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 focus:ring-2 focus:ring-[#00843D] outline-none"
+                  placeholder="Ex: Horário aproximado em que perdeu, turma/curso ou telefone adicional..."
                 />
-              </div>
+              </UIFieldGroup>
 
-              <div className="p-3 bg-amber-950/20 border border-amber-500/20 rounded-xl text-[11px] text-amber-300 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
-                <span>
-                  Sua solicitação será analisada pela equipe da Secretaria (SEBAC). Se aprovada, você receberá orientações para comparecer ao setor munido de documento oficial com foto.
+              <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                <span className="leading-relaxed">
+                  Sua solicitação será analisada pela equipe administrativa (SEBAC). Após aprovação, compareça ao setor munido de documento oficial com foto para retirar o pertence.
                 </span>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2 border-t border-white/10">
-                <button
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200/80 dark:border-slate-800">
+                <UIButton
                   type="button"
+                  variant="ghost"
+                  size="md"
                   onClick={() => setClaimModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
-                </button>
-                <button
+                </UIButton>
+                <UIButton
                   type="submit"
-                  disabled={isSubmittingClaim || !claimDistinctiveFeatures.trim()}
-                  className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                  variant="primary"
+                  size="md"
+                  disabled={
+                    isSubmittingClaim || !claimDistinctiveFeatures.trim()
+                  }
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>{isSubmittingClaim ? "Enviando..." : "Enviar Solicitação"}</span>
-                </button>
+                  <span>
+                    {isSubmittingClaim ? "Enviando..." : "Enviar Solicitação"}
+                  </span>
+                </UIButton>
               </div>
             </form>
           </div>
@@ -2272,83 +2534,80 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       {/* Notification / Message Modal */}
       {emailModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md transition-all duration-200">
-          <div className="bg-[#0b0f17] text-slate-100 rounded-3xl p-6 max-w-lg w-full border border-white/10 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <h3 className="font-bold text-base text-white flex items-center gap-2">
-                <Send className="w-5 h-5 text-emerald-400" /> Enviar Notificação Institucional
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm transition-all duration-200">
+          <div className="bg-white dark:bg-[#111827] text-[#172B2A] dark:text-slate-100 rounded-2xl sm:rounded-3xl p-6 max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-3">
+              <h3 className="font-bold text-base text-[#172B2A] dark:text-white flex items-center gap-2">
+                <Send className="w-5 h-5 text-[#16845B]" /> Enviar Notificação Institucional
               </h3>
               <button
+                type="button"
                 onClick={() => setEmailModalOpen(false)}
-                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Envie uma notificação institucional sobre o objeto <strong>"{item.title}"</strong>. A mensagem será registrada no sistema e entregue ao destinatário no Localiza+.
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              Envie uma notificação institucional sobre o objeto{" "}
+              <strong>"{item.title}"</strong>. A mensagem será registrada no sistema e entregue ao destinatário no Localiza+.
             </p>
 
             <form onSubmit={handleSendEmailSubmit} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Destinatário (E-mail / Contato) *
-                </label>
-                <input
+              <UIFieldGroup
+                label="Destinatário (E-mail / Contato)"
+                required
+              >
+                <UIInput
                   type="email"
                   required
                   value={recipientEmail}
                   onChange={(e) => setRecipientEmail(e.target.value)}
                   placeholder="exemplo@ifpr.edu.br"
-                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
-              </div>
+              </UIFieldGroup>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Assunto *
-                </label>
-                <input
+              <UIFieldGroup label="Assunto" required>
+                <UIInput
                   type="text"
                   required
                   value={emailSubject}
                   onChange={(e) => setEmailSubject(e.target.value)}
                   placeholder="Ex: Informação sobre objeto encontrado"
-                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
-              </div>
+              </UIFieldGroup>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Conteúdo da Mensagem *
-                </label>
-                <textarea
+              <UIFieldGroup label="Conteúdo da Mensagem" required>
+                <UITextarea
                   required
                   rows={4}
                   value={emailBody}
                   onChange={(e) => setEmailBody(e.target.value)}
                   placeholder="Escreva os detalhes ou esclarecimentos necessários..."
-                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
-              </div>
+              </UIFieldGroup>
 
-              <div className="flex justify-end space-x-2 pt-2 border-t border-white/10">
-                <button
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200/80 dark:border-slate-800">
+                <UIButton
                   type="button"
+                  variant="ghost"
+                  size="md"
                   onClick={() => setEmailModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
-                </button>
-                <button
+                </UIButton>
+                <UIButton
                   type="submit"
+                  variant="primary"
+                  size="md"
                   disabled={isSendingEmail}
-                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>{isSendingEmail ? "Enviando..." : "Enviar Notificação"}</span>
-                </button>
+                  <span>
+                    {isSendingEmail ? "Enviando..." : "Enviar Notificação"}
+                  </span>
+                </UIButton>
               </div>
             </form>
           </div>
@@ -2357,91 +2616,85 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       {/* Devolution Registration Modal */}
       {returnModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 transition-all">
-          <div className="bg-[#0b0f17] text-slate-100 rounded-3xl p-6 max-w-xl w-full border border-white/10 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2">
-                <FileSignature className="w-5 h-5 text-emerald-400" />
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 transition-all">
+          <div className="bg-white dark:bg-[#111827] text-[#172B2A] dark:text-slate-100 rounded-2xl sm:rounded-3xl p-6 max-w-xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <FileSignature className="w-5 h-5 text-[#16845B]" />
                 <div>
-                  <h3 className="font-bold text-base text-white">
+                  <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
                     Registrar Devolução & Assinatura Digital
                   </h3>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     Protocolo Oficial SEBAC • IFPR Campus Ivaiporã
                   </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setReturnModalOpen(false)}
-                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleRegisterReturnSubmit} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Nome Completo do Receptor / Proprietário *
-                </label>
-                <input
+              <UIFieldGroup
+                label="Nome Completo do Receptor / Proprietário"
+                required
+              >
+                <UIInput
                   type="text"
                   required
                   value={returnRecipientName}
                   onChange={(e) => setReturnRecipientName(e.target.value)}
                   placeholder="Nome de quem está recebendo o pertence..."
-                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
-              </div>
+              </UIFieldGroup>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-1">
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    E-mail do Receptor *
-                  </label>
-                  <input
+                <UIFieldGroup label="E-mail do Receptor" required>
+                  <UIInput
                     type="email"
                     required
                     value={returnRecipientEmail}
                     onChange={(e) => setReturnRecipientEmail(e.target.value)}
                     placeholder="email@estudantes.ifpr.edu.br"
-                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                   />
-                </div>
+                </UIFieldGroup>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Vínculo no Campus *
-                  </label>
-                  <select
+                <UIFieldGroup label="Vínculo no Campus" required>
+                  <UISelect
                     value={returnRecipientBond}
-                    onChange={(e) => setReturnRecipientBond(e.target.value as any)}
-                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-[#00843D]"
+                    onChange={(e) =>
+                      setReturnRecipientBond(e.target.value as any)
+                    }
                   >
-                    <option value="Aluno" className="bg-[#0b0f17] text-white">Aluno(a)</option>
-                    <option value="Servidor" className="bg-[#0b0f17] text-white">Servidor / TAE / Professor</option>
-                    <option value="Terceirizado" className="bg-[#0b0f17] text-white">Funcionário Terceirizado</option>
-                    <option value="Visitante" className="bg-[#0b0f17] text-white">Visitante Externo</option>
-                  </select>
-                </div>
+                    <option value="Aluno">Aluno(a)</option>
+                    <option value="Servidor">Servidor / TAE / Professor</option>
+                    <option value="Terceirizado">
+                      Funcionário Terceirizado
+                    </option>
+                    <option value="Visitante">Visitante Externo</option>
+                  </UISelect>
+                </UIFieldGroup>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Matrícula / Doc. ID
-                  </label>
-                  <input
+                <UIFieldGroup label="Matrícula / Doc. ID">
+                  <UIInput
                     type="text"
                     value={returnRecipientDocument}
-                    onChange={(e) => setReturnRecipientDocument(e.target.value)}
+                    onChange={(e) =>
+                      setReturnRecipientDocument(e.target.value)
+                    }
                     placeholder="RG, CPF ou Matrícula..."
-                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                   />
-                </div>
+                </UIFieldGroup>
               </div>
 
               {/* Signature Method Selector */}
               <div className="space-y-1.5 pt-1">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200">
                   Etapa de Assinatura Digital de Recebimento
                 </label>
 
@@ -2449,17 +2702,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   <button
                     type="button"
                     onClick={() => setReturnSignatureMode("IN_PERSON_DEVICE")}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                       returnSignatureMode === "IN_PERSON_DEVICE"
-                        ? "bg-[#00843D]/20 border-[#00843D] text-emerald-300 font-bold shadow-xs"
-                        : "border-white/10 text-slate-400 hover:bg-white/5"
+                        ? "bg-[#EBF5F0] dark:bg-emerald-950/50 border-[#16845B] text-[#064E3B] dark:text-emerald-300 font-bold shadow-2xs"
+                        : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
                     }`}
                   >
                     <div className="flex items-center gap-1.5 text-xs font-bold">
-                      <PenTool className="w-4 h-4 text-emerald-400" />
+                      <PenTool className="w-4 h-4 text-[#16845B]" />
                       <span>Presencial no Dispositivo</span>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
                       O aluno/servidor assina agora na tela do atendente.
                     </p>
                   </button>
@@ -2467,17 +2720,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   <button
                     type="button"
                     onClick={() => setReturnSignatureMode("REMOTE_EMAIL")}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                       returnSignatureMode === "REMOTE_EMAIL"
-                        ? "bg-[#00843D]/20 border-[#00843D] text-emerald-300 font-bold shadow-xs"
-                        : "border-white/10 text-slate-400 hover:bg-white/5"
+                        ? "bg-[#EBF5F0] dark:bg-emerald-950/50 border-[#16845B] text-[#064E3B] dark:text-emerald-300 font-bold shadow-2xs"
+                        : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
                     }`}
                   >
                     <div className="flex items-center gap-1.5 text-xs font-bold">
-                      <Send className="w-4 h-4 text-emerald-400" />
+                      <Send className="w-4 h-4 text-[#16845B]" />
                       <span>Link por E-mail (Remoto)</span>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1 leading-snug">
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
                       Envia link seguro para assinatura posterior no celular.
                     </p>
                   </button>
@@ -2496,57 +2749,61 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   />
                 </div>
               ) : (
-                <div className="p-3.5 bg-sky-950/20 border border-sky-500/20 rounded-2xl text-xs text-sky-200 space-y-1.5">
-                  <div className="flex items-center gap-2 font-bold text-sky-300">
+                <div className="p-3.5 bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/60 rounded-xl text-xs text-sky-900 dark:text-sky-200 space-y-1.5">
+                  <div className="flex items-center gap-2 font-bold text-sky-800 dark:text-sky-300">
                     <MailCheck className="w-4 h-4" />
                     <span>Disparo Automático do Termo de Recebimento</span>
                   </div>
-                  <p className="text-[11px] leading-relaxed text-slate-300">
+                  <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
                     Ao registrar, um e-mail com link exclusivo e token de segurança será enviado para{" "}
-                    <strong>{returnRecipientEmail || "o e-mail do receptor"}</strong>. Ele poderá assinar pelo próprio celular a qualquer momento.
+                    <strong>
+                      {returnRecipientEmail || "o e-mail do receptor"}
+                    </strong>
+                    . Ele poderá assinar pelo próprio celular a qualquer momento.
                   </p>
                 </div>
               )}
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Observações de Entrega
-                </label>
-                <textarea
+              <UIFieldGroup label="Observações de Entrega">
+                <UITextarea
                   rows={2}
                   value={returnObservations}
                   onChange={(e) => setReturnObservations(e.target.value)}
                   placeholder="Ex: Objeto conferido com êxito pelo proprietário na SEBAC..."
-                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
-              </div>
+              </UIFieldGroup>
 
-              <div className="p-3 bg-emerald-950/20 border border-emerald-500/20 rounded-xl flex items-start gap-2.5">
+              <div className="p-3.5 bg-[#EBF5F0]/70 dark:bg-emerald-950/30 border border-[#16845B]/25 dark:border-emerald-800/60 rounded-xl flex items-start gap-2.5">
                 <input
                   type="checkbox"
                   id="confirmIdentityCheck"
                   required
                   checked={returnIdentityConfirmed}
                   onChange={(e) => setReturnIdentityConfirmed(e.target.checked)}
-                  className="mt-0.5 rounded border-white/20 bg-slate-800 text-[#00843D] focus:ring-[#00843D] cursor-pointer"
+                  className="mt-0.5 rounded border-slate-300 text-[#16845B] focus:ring-[#16845B] cursor-pointer"
                 />
-                <label htmlFor="confirmIdentityCheck" className="text-xs text-emerald-300 cursor-pointer font-bold">
+                <label
+                  htmlFor="confirmIdentityCheck"
+                  className="text-xs text-[#064E3B] dark:text-emerald-200 cursor-pointer font-semibold"
+                >
                   Confirmo que conferi presencialmente o documento oficial com foto do receptor antes da liberação do objeto.
                 </label>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2 border-t border-white/10">
-                <button
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200/80 dark:border-slate-800">
+                <UIButton
                   type="button"
+                  variant="ghost"
+                  size="md"
                   onClick={() => setReturnModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
-                </button>
-                <button
+                </UIButton>
+                <UIButton
                   type="submit"
+                  variant="primary"
+                  size="md"
                   disabled={isRegisteringReturn}
-                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <CheckCircle className="w-3.5 h-3.5" />
                   <span>
@@ -2556,7 +2813,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                       ? "Concluir Devolução com Assinatura"
                       : "Concluir & Enviar Link de Assinatura"}
                   </span>
-                </button>
+                </UIButton>
               </div>
             </form>
           </div>
@@ -2564,13 +2821,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       )}
 
       {/* Remote Signature Modal Trigger */}
-      {remoteSignatureModalOpen && (
+      {remoteSignatureModalOpen && resolvedRemoteToken && (
         <RemoteSignatureModal
-          itemId={item.id}
-          token={item.signatureToken}
-          onClose={() => setRemoteSignatureModalOpen(false)}
+          itemId={currentItem.id}
+          token={resolvedRemoteToken}
+          onClose={() => {
+            setRemoteSignatureModalOpen(false);
+            setResolvedRemoteToken("");
+          }}
           onSuccess={() => {
             setRemoteSignatureModalOpen(false);
+            setResolvedRemoteToken("");
             addToast("Assinatura digital registrada com sucesso!", "success");
           }}
         />
@@ -2578,63 +2839,64 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       {/* Reopen Return Modal (Admin Only) */}
       {reopenModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 transition-all">
-          <div className="bg-[#0b0f17] text-slate-100 rounded-3xl p-6 max-w-md w-full border border-white/10 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 transition-all">
+          <div className="bg-white dark:bg-[#111827] text-[#172B2A] dark:text-slate-100 rounded-2xl sm:rounded-3xl p-6 max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <RotateCcw className="w-5 h-5 text-amber-400" />
+                <RotateCcw className="w-5 h-5 text-amber-500" />
                 <div>
-                  <h3 className="font-bold text-base text-white">
+                  <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
                     Reabrir Devolução de Objeto
                   </h3>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                  <p className="text-[11px] text-slate-500">
                     Ação Administrativa de Ajuste
                   </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setReopenModalOpen(false)}
-                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-3 bg-amber-950/20 border border-amber-500/20 rounded-xl text-xs text-amber-300 leading-relaxed">
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
               A reabertura do item alterará o status de volta para ativo, removerá o carimbo de devolução e gravará um log de auditoria associado ao seu usuário.
             </div>
 
             <form onSubmit={handleReopenReturnSubmit} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Justificativa da Reabertura *
-                </label>
-                <textarea
+              <UIFieldGroup label="Justificativa da Reabertura" required>
+                <UITextarea
                   required
                   rows={3}
                   value={reopenReason}
                   onChange={(e) => setReopenReason(e.target.value)}
                   placeholder="Ex: Devolução cadastrada por engano no item incorreto durante conferência de estoque..."
-                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-amber-500"
                 />
-              </div>
+              </UIFieldGroup>
 
-              <div className="flex justify-end space-x-2 pt-2 border-t border-white/10">
-                <button
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200/80 dark:border-slate-800">
+                <UIButton
                   type="button"
+                  variant="ghost"
+                  size="md"
                   onClick={() => setReopenModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
-                </button>
-                <button
+                </UIButton>
+                <UIButton
                   type="submit"
+                  variant="primary"
+                  size="md"
                   disabled={isReopeningReturn}
-                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>{isReopeningReturn ? "Reabrindo..." : "Confirmar Reabertura"}</span>
-                </button>
+                  <span>
+                    {isReopeningReturn ? "Reabrindo..." : "Confirmar Reabertura"}
+                  </span>
+                </UIButton>
               </div>
             </form>
           </div>
@@ -2643,92 +2905,101 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       {/* Destination Modal (Unclaimed Items) */}
       {destinationModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 transition-all">
-          <div className="bg-[#0b0f17] text-slate-100 rounded-3xl p-6 max-w-md w-full border border-white/10 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 transition-all">
+          <div className="bg-white dark:bg-[#111827] text-[#172B2A] dark:text-slate-100 rounded-2xl sm:rounded-3xl p-6 max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <PackageCheck className="w-5 h-5 text-emerald-400" />
+                <PackageCheck className="w-5 h-5 text-[#16845B]" />
                 <div>
-                  <h3 className="font-bold text-base text-white">
+                  <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
                     Destinação de Pertence Não Reclamado
                   </h3>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                  <p className="text-[11px] text-slate-500">
                     Destinação Institucional (Até 60 dias)
                   </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setDestinationModalOpen(false)}
-                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleDestinationSubmit} className="space-y-3.5">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Tipo de Destinação *
-                </label>
-                <select
+              <UIFieldGroup label="Tipo de Destinação" required>
+                <UISelect
                   value={destinationType}
                   onChange={(e) => setDestinationType(e.target.value as any)}
-                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-[#00843D]"
                 >
-                  <option value="DOACAO" className="bg-[#0b0f17] text-white">Doação para Entidade / Projeto Social</option>
-                  <option value="DESCARTE" className="bg-[#0b0f17] text-white">Descarte Ecológico / Lixo Eletrônico</option>
-                  <option value="LEILAO_PROJETO" className="bg-[#0b0f17] text-white">Uso em Projetos de Ensino / Pesquisa</option>
-                  <option value="OUTRO" className="bg-[#0b0f17] text-white">Outra Destinação Autorizada</option>
-                </select>
-              </div>
+                  <option value="DOACAO">
+                    Doação para Entidade / Projeto Social
+                  </option>
+                  <option value="DESCARTE">
+                    Descarte Ecológico / Lixo Eletrônico
+                  </option>
+                  <option value="LEILAO_PROJETO">
+                    Uso em Projetos de Ensino / Pesquisa
+                  </option>
+                  <option value="OUTRO">Outra Destinação Autorizada</option>
+                </UISelect>
+              </UIFieldGroup>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Entidade Beneficiária / Justificativa *
-                </label>
-                <textarea
+              <UIFieldGroup
+                label="Entidade Beneficiária / Justificativa"
+                required
+              >
+                <UITextarea
                   required
                   rows={3}
                   value={destinationNotes}
                   onChange={(e) => setDestinationNotes(e.target.value)}
                   placeholder="Ex: Entregue à Instituição Social de Ivaiporã conforme autorização da Direção Geral..."
-                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
-              </div>
+              </UIFieldGroup>
 
-              <div className="flex justify-end space-x-2 pt-2 border-t border-white/10">
-                <button
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200/80 dark:border-slate-800">
+                <UIButton
                   type="button"
+                  variant="ghost"
+                  size="md"
                   onClick={() => setDestinationModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
-                </button>
-                <button
+                </UIButton>
+                <UIButton
                   type="submit"
+                  variant="primary"
+                  size="md"
                   disabled={isRegisteringDestination}
-                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer"
                 >
                   <PackageCheck className="w-3.5 h-3.5" />
-                  <span>{isRegisteringDestination ? "Registrando..." : "Confirmar & Encerrar"}</span>
-                </button>
+                  <span>
+                    {isRegisteringDestination
+                      ? "Registrando..."
+                      : "Confirmar & Encerrar"}
+                  </span>
+                </UIButton>
               </div>
             </form>
           </div>
         </div>
       )}
+
       {/* Edit Item Modal (Authorized Users) */}
       {editItemModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md transition-all duration-200">
-          <div className="bg-[#0b0f17] text-slate-100 rounded-3xl p-6 max-w-xl w-full border border-white/10 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm transition-all duration-200">
+          <div className="bg-white dark:bg-[#111827] text-[#172B2A] dark:text-slate-100 rounded-2xl sm:rounded-3xl p-6 max-w-xl w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <Edit className="w-5 h-5 text-amber-400" />
+                <Edit className="w-5 h-5 text-[#16845B]" />
                 <div>
-                  <h3 className="font-bold text-base text-white">
+                  <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
                     Editar Informações do Objeto
                   </h3>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                  <p className="text-[11px] text-slate-500">
                     Apenas o Cadastrador do Item ou Servidores/Admins podem alterar
                   </p>
                 </div>
@@ -2736,7 +3007,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <button
                 type="button"
                 onClick={() => setEditItemModalOpen(false)}
-                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -2745,14 +3016,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             <form onSubmit={handleSaveEditedItem} className="space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-semibold text-slate-300">
+                  <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200">
                     Título / Nome do Objeto *
                   </label>
                   <span
                     id="edit-title-char-counter"
                     className={`text-[10px] font-mono font-medium ${
                       editTitle.length >= ITEM_FIELD_LIMITS.TITLE
-                        ? "text-amber-400 font-bold"
+                        ? "text-amber-600 font-bold"
                         : "text-slate-500"
                     }`}
                     title={`Limite máximo: ${ITEM_FIELD_LIMITS.TITLE} caracteres`}
@@ -2760,26 +3031,25 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     {editTitle.length} / {ITEM_FIELD_LIMITS.TITLE} caracteres
                   </span>
                 </div>
-                <input
+                <UIInput
                   type="text"
                   required
                   maxLength={ITEM_FIELD_LIMITS.TITLE}
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-semibold text-slate-300">
+                  <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200">
                     Descrição Detalhada
                   </label>
                   <span
                     id="edit-description-char-counter"
                     className={`text-[10px] font-mono font-medium ${
                       editDescription.length >= ITEM_FIELD_LIMITS.DESCRIPTION
-                        ? "text-amber-400 font-bold"
+                        ? "text-amber-600 font-bold"
                         : "text-slate-500"
                     }`}
                     title={`Limite máximo: ${ITEM_FIELD_LIMITS.DESCRIPTION} caracteres`}
@@ -2787,151 +3057,144 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     {editDescription.length} / {ITEM_FIELD_LIMITS.DESCRIPTION} caracteres
                   </span>
                 </div>
-                <textarea
+                <UITextarea
                   rows={3}
                   maxLength={ITEM_FIELD_LIMITS.DESCRIPTION}
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    Categoria
-                  </label>
-                  <select
+                <UIFieldGroup label="Categoria">
+                  <UISelect
                     value={editCategory}
-                    onChange={(e) => setEditCategory(normalizeCategory(e.target.value))}
-                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-[#00843D]"
+                    onChange={(e) =>
+                      setEditCategory(normalizeCategory(e.target.value))
+                    }
                   >
                     {CANONICAL_ITEM_CATEGORIES.map((cat) => (
-                      <option key={cat} value={cat} className="bg-[#0b0f17] text-white">
+                      <option key={cat} value={cat}>
                         {cat}
                       </option>
                     ))}
-                  </select>
-                </div>
+                  </UISelect>
+                </UIFieldGroup>
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-semibold text-slate-300">
+                    <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200">
                       Localização no Campus
                     </label>
                     <span className="text-[10px] font-mono text-slate-500">
                       Máx. {ITEM_FIELD_LIMITS.LOCATION} carac.
                     </span>
                   </div>
-                  <select
+                  <UISelect
                     value={editLocation}
                     onChange={(e) => setEditLocation(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs font-bold outline-none cursor-pointer focus:ring-2 focus:ring-[#00843D]"
                   >
                     {IFPR_LOCATION_GROUPS.map((group) => (
-                      <optgroup key={group.group} label={group.group} className="bg-[#0b0f17] text-slate-300">
+                      <optgroup key={group.group} label={group.group}>
                         {group.locations.map((loc) => (
-                          <option key={loc} value={loc} className="bg-[#0b0f17] text-white">
+                          <option key={loc} value={loc}>
                             {loc}
                           </option>
                         ))}
                       </optgroup>
                     ))}
                     {editLocation && !IFPR_LOCATIONS.includes(editLocation) && (
-                      <option value={editLocation} className="bg-[#0b0f17] text-white">
+                      <option value={editLocation}>
                         {editLocation} (Legado)
                       </option>
                     )}
-                  </select>
+                  </UISelect>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Data da Ocorrência *
-                </label>
-                <input
+              <UIFieldGroup label="Data da Ocorrência" required>
+                <UIInput
                   type="date"
                   required
                   max={getTodayDateString()}
                   value={editDate}
                   onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
-              </div>
+              </UIFieldGroup>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-semibold text-slate-300">
+                    <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200">
                       Cor Predominante
                     </label>
                     <span className="text-[10px] font-mono text-slate-500">
                       Máx. {ITEM_FIELD_LIMITS.COLOR} carac.
                     </span>
                   </div>
-                  <input
+                  <UIInput
                     type="text"
                     maxLength={ITEM_FIELD_LIMITS.COLOR}
                     value={editColor}
                     onChange={(e) => setEditColor(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                   />
                 </div>
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-xs font-semibold text-slate-300">
+                    <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200">
                       Marca / Fabricante
                     </label>
                     <span className="text-[10px] font-mono text-slate-500">
                       Máx. {ITEM_FIELD_LIMITS.BRAND} carac.
                     </span>
                   </div>
-                  <input
+                  <UIInput
                     type="text"
                     maxLength={ITEM_FIELD_LIMITS.BRAND}
                     value={editBrand}
                     onChange={(e) => setEditBrand(e.target.value)}
-                    className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                   />
                 </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-semibold text-slate-300">
+                  <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200">
                     Contato / Instruções de Devolução
                   </label>
                   <span className="text-[10px] font-mono text-slate-500">
                     Máx. {ITEM_FIELD_LIMITS.CONTACT_INFO} carac.
                   </span>
                 </div>
-                <input
+                <UIInput
                   type="text"
                   maxLength={ITEM_FIELD_LIMITS.CONTACT_INFO}
                   value={editContactInfo}
                   onChange={(e) => setEditContactInfo(e.target.value)}
-                  className="w-full p-2.5 rounded-xl border border-white/10 bg-[#0e1626] text-white text-xs placeholder-slate-500 outline-none focus:ring-2 focus:ring-[#00843D]"
                 />
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2 border-t border-white/10">
-                <button
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200/80 dark:border-slate-800">
+                <UIButton
                   type="button"
+                  variant="ghost"
+                  size="md"
                   onClick={() => setEditItemModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
-                </button>
-                <button
+                </UIButton>
+                <UIButton
                   type="submit"
+                  variant="primary"
+                  size="md"
                   disabled={isSavingEdit}
-                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <Save className="w-3.5 h-3.5" />
-                  <span>{isSavingEdit ? "Salvando..." : "Salvar Alterações"}</span>
-                </button>
+                  <span>
+                    {isSavingEdit ? "Salvando..." : "Salvar Alterações"}
+                  </span>
+                </UIButton>
               </div>
             </form>
           </div>
@@ -2940,42 +3203,58 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       {/* Staff Attendant Signature Modal */}
       {staffSignatureModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md transition-all duration-200">
-          <div className="bg-[#0b0f17] text-slate-100 rounded-3xl p-6 max-w-lg w-full border border-white/10 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/80 backdrop-blur-sm transition-all duration-200">
+          <div className="bg-white dark:bg-[#111827] text-[#172B2A] dark:text-slate-100 rounded-2xl sm:rounded-3xl p-6 max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <FileSignature className="w-5 h-5 text-emerald-400" />
+                <FileSignature className="w-5 h-5 text-[#16845B]" />
                 <div>
-                  <h3 className="font-bold text-base text-white">
+                  <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
                     Atestação Institucional do Atendente
                   </h3>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                  <p className="text-[11px] text-slate-500">
                     IFPR Campus Ivaiporã • Servidor Responsável
                   </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setStaffSignatureModalOpen(false)}
-                className="p-1.5 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-3 bg-[#0e1626] rounded-xl border border-white/5 text-xs space-y-1">
-              <p className="font-semibold text-white">Objeto: {currentItem.title} (#{currentItem.id})</p>
-              <p className="text-slate-300">
-                Receptor: <strong>{currentItem.recipientName || currentItem.recipientSignatureName || "Receptor"}</strong> ({currentItem.recipientBond || "Aluno(a)"})
+            <SubtlePanel className="text-xs space-y-1">
+              <p className="font-bold text-[#172B2A] dark:text-white">
+                Objeto: {currentItem.title} (#{currentItem.id})
+              </p>
+              <p className="text-slate-600 dark:text-slate-300">
+                Receptor:{" "}
+                <strong>
+                  {currentItem.recipientName ||
+                    currentItem.recipientSignatureName ||
+                    "Receptor"}
+                </strong>{" "}
+                ({currentItem.recipientBond || "Aluno(a)"})
               </p>
               <p className="text-slate-400 text-[10px] font-mono">
-                Assinado pelo receptor em: {formatDateTime(currentItem.signedAt || currentItem.resolutionDate)}
+                Assinado pelo receptor em:{" "}
+                {formatDateTime(
+                  currentItem.signedAt || currentItem.resolutionDate
+                )}
               </p>
-            </div>
+            </SubtlePanel>
 
-            <form onSubmit={handleConfirmStaffSignatureSubmit} className="space-y-4">
+            <form
+              onSubmit={handleConfirmStaffSignatureSubmit}
+              className="space-y-4"
+            >
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-2">
-                  Assinatura Digital do Servidor Atendente ({currentUser?.name || "Servidor IFPR"}) *
+                <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200 mb-2">
+                  Assinatura Digital do Servidor Atendente (
+                  {currentUser?.name || "Servidor IFPR"}) *
                 </label>
                 <DigitalSignaturePad
                   signerName={currentUser?.name || "Servidor Atendente"}
@@ -2983,28 +3262,38 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   signerEmail={currentUser?.email}
                   onSignatureCapture={(dataUrl, method) => {
                     setStaffSignatureDataUrl(dataUrl);
-                    setStaffSignatureMethod(method === "TYPED_NAME" ? "TYPED_NAME" : "DRAWN");
+                    setStaffSignatureMethod(
+                      method === "TYPED_NAME" ? "TYPED_NAME" : "DRAWN"
+                    );
                   }}
                   onClear={() => setStaffSignatureDataUrl("")}
                 />
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2 border-t border-white/10">
-                <button
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200/80 dark:border-slate-800">
+                <UIButton
                   type="button"
+                  variant="ghost"
+                  size="md"
                   onClick={() => setStaffSignatureModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 cursor-pointer"
                 >
                   Cancelar
-                </button>
-                <button
+                </UIButton>
+                <UIButton
                   type="submit"
-                  disabled={isSubmittingStaffSignature || !staffSignatureDataUrl}
-                  className="px-5 py-2 rounded-xl bg-[#00843D] hover:bg-[#00A34D] text-white font-bold text-xs shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+                  variant="primary"
+                  size="md"
+                  disabled={
+                    isSubmittingStaffSignature || !staffSignatureDataUrl
+                  }
                 >
                   <PenTool className="w-3.5 h-3.5" />
-                  <span>{isSubmittingStaffSignature ? "Registrando..." : "Confirmar Atestação e Assinatura"}</span>
-                </button>
+                  <span>
+                    {isSubmittingStaffSignature
+                      ? "Registrando..."
+                      : "Confirmar Atestação e Assinatura"}
+                  </span>
+                </UIButton>
               </div>
             </form>
           </div>

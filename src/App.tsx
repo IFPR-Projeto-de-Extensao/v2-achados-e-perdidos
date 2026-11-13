@@ -44,8 +44,9 @@ import {
 } from "./lib/routeAnimations";
 import { AppRouteKey } from "./lib/routes";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
-import { GitBranch, LogIn } from "lucide-react";
+import { GitBranch, LogIn, Wrench } from "lucide-react";
 import { vibrateClick } from "./lib/utils";
+import { SurfaceCard, UIButton, UIBadge, ModalShell } from "./components/ui";
 
 const MainContent: React.FC = () => {
   const {
@@ -302,42 +303,44 @@ const MainContent: React.FC = () => {
         if (!isAuthenticated || isGuest) {
           return (
             <div className="max-w-2xl mx-auto py-12 px-4 animate-in fade-in duration-300">
-              <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-8 sm:p-10 border border-neutral-200 dark:border-neutral-800 shadow-xl text-center space-y-6">
-                <div className="w-20 h-20 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-[#00843D] dark:text-green-400 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center mx-auto shadow-inner">
-                  <GitBranch className="w-10 h-10" />
+              <SurfaceCard padding="lg" className="text-center space-y-6">
+                <div className="w-16 h-16 rounded-2xl bg-[#EBF5F0] dark:bg-[#16845B]/20 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/20 flex items-center justify-center mx-auto">
+                  <GitBranch className="w-8 h-8" />
                 </div>
 
                 <div className="space-y-2">
-                  <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                  <h1 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
                     Histórico Oficial de Versões
                   </h1>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-300 max-w-md mx-auto leading-relaxed">
+                  <p className="text-sm text-slate-600 dark:text-slate-300 max-w-md mx-auto leading-relaxed">
                     O acesso ao changelog institucional e histórico de releases é restrito a membros autenticados da comunidade acadêmica do IFPR. Entre com sua conta institucional (@ifpr.edu.br ou @estudantes.ifpr.edu.br).
                   </p>
                 </div>
 
                 <div className="pt-2 flex flex-col sm:flex-row gap-3 justify-center">
-                  <button
+                  <UIButton
+                    variant="primary"
+                    size="lg"
                     onClick={() => {
                       vibrateClick();
                       setAuthModalOpen(true);
                     }}
-                    className="py-3.5 px-6 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-black text-sm shadow-lg shadow-[#00843D]/20 transition-all flex items-center justify-center space-x-2 cursor-pointer"
                   >
                     <LogIn className="w-4 h-4" />
                     <span>Entrar com Conta Institucional</span>
-                  </button>
-                  <button
+                  </UIButton>
+                  <UIButton
+                    variant="secondary"
+                    size="lg"
                     onClick={() => {
                       vibrateClick();
                       navigate("/");
                     }}
-                    className="py-3.5 px-6 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 font-bold text-sm transition-all flex items-center justify-center space-x-2 cursor-pointer"
                   >
                     <span>Voltar ao Início</span>
-                  </button>
+                  </UIButton>
                 </div>
-              </div>
+              </SurfaceCard>
             </div>
           );
         }
@@ -350,10 +353,10 @@ const MainContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0B0F17] text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 selection:bg-[#00843D] selection:text-white relative">
+    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0B0F17] text-[#172B2A] dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 selection:bg-[#16845B] selection:text-white relative">
       {/* Ambient Institutional Lighting Mesh */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden" aria-hidden="true">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[320px] bg-gradient-to-b from-[#00843D]/6 via-[#00843D]/2 to-transparent dark:from-emerald-500/8 dark:via-emerald-500/2 dark:to-transparent blur-3xl opacity-75" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[320px] bg-gradient-to-b from-[#16845B]/5 via-[#16845B]/1 to-transparent dark:from-emerald-500/8 dark:via-emerald-500/2 dark:to-transparent blur-3xl opacity-75" />
       </div>
 
       {/* Toast Notifications */}
@@ -364,11 +367,11 @@ const MainContent: React.FC = () => {
 
       {/* Mandatory Email Verification Alert Banner */}
       {isEmailVerificationRequired && (
-        <div className="bg-amber-600 dark:bg-amber-700 text-white px-4 py-2.5 text-xs font-bold text-center flex flex-wrap items-center justify-center gap-2 shadow-sm border-b border-amber-500">
+        <div className="bg-amber-600 dark:bg-amber-700 text-white px-4 py-2.5 text-xs font-semibold text-center flex flex-wrap items-center justify-center gap-2 shadow-2xs border-b border-amber-500">
           <span>⚠️ Seu e-mail ainda não foi verificado. Confirme o endereço para liberar o acesso ao sistema.</span>
           <button
             onClick={() => navigate("/verificar-email")}
-            className="underline hover:text-amber-100 font-extrabold ml-1 uppercase text-[11px]"
+            className="underline hover:text-amber-100 font-bold ml-1 uppercase text-[11px] cursor-pointer"
           >
             Verificar Agora →
           </button>
@@ -377,40 +380,40 @@ const MainContent: React.FC = () => {
 
       {/* Pending User Approval Banner for Academic Users */}
       {currentUser.approvalStatus === "PENDENTE" && (
-        <div className="bg-blue-600 dark:bg-blue-700 text-white px-4 py-2 text-xs font-bold text-center flex items-center justify-center space-x-2 shadow-sm border-b border-blue-500">
+        <div className="bg-sky-600 dark:bg-sky-700 text-white px-4 py-2 text-xs font-semibold text-center flex items-center justify-center space-x-2 shadow-2xs border-b border-sky-500">
           <span>ℹ️ SUA CONTA ACADÊMICA ESTÁ AGUARDANDO APROVAÇÃO PELA SECRETARIA DO IFPR CAMPUS IVAIPORÃ (Algumas ações de criação podem ser restritas).</span>
         </div>
       )}
 
       {/* Global Maintenance Mode Overlay for Standard Users */}
       {maintenanceMode && currentUser.role !== "ADMIN" && (
-        <div className="fixed inset-0 z-50 bg-neutral-950/95 backdrop-blur-md flex items-center justify-center p-4 text-center">
-          <div className="max-w-md w-full bg-neutral-900 border border-amber-500/40 rounded-3xl p-8 space-y-6 shadow-2xl text-white">
-            <div className="w-16 h-16 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto animate-bounce">
-              <span className="text-3xl">🛠️</span>
+        <ModalShell isOpen={true} maxWidthClass="max-w-md" ariaLabel="Sistema em Manutenção Programada">
+          <div className="p-6 sm:p-8 space-y-6 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60 flex items-center justify-center mx-auto">
+              <Wrench className="w-7 h-7" />
             </div>
             <div className="space-y-2">
-              <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-black uppercase tracking-wider">
-                Manutenção Programada • IFPR Campus Ivaiporã
-              </span>
-              <h2 className="text-xl font-black text-white">
+              <UIBadge tone="amber">Manutenção Programada • IFPR Campus Ivaiporã</UIBadge>
+              <h2 className="text-xl font-bold text-[#172B2A] dark:text-white pt-1">
                 Sistema em Atualização Técnica
               </h2>
-              <p className="text-xs text-neutral-300 leading-relaxed bg-neutral-950/60 p-4 rounded-xl border border-neutral-800 text-amber-200/90 font-medium">
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-[#F8FAFC] dark:bg-slate-800/70 p-4 rounded-xl border border-slate-200 dark:border-slate-700 font-medium">
                 {maintenanceCustomMessage || DEFAULT_MAINTENANCE_MESSAGE}
               </p>
             </div>
 
-            <div className="pt-2 flex flex-col gap-2">
-              <button
+            <div className="pt-1">
+              <UIButton
+                variant="primary"
+                size="lg"
+                fullWidth
                 onClick={() => setAuthModalOpen(true)}
-                className="w-full py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-black font-extrabold text-xs transition-all shadow-md"
               >
-                Sou Administrador TI (Entrar no Painel)
-              </button>
+                <span>Sou Administrador TI (Entrar no Painel)</span>
+              </UIButton>
             </div>
           </div>
-        </div>
+        </ModalShell>
       )}
 
       {/* Top Navbar */}

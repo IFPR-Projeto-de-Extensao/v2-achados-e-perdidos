@@ -31,6 +31,7 @@ import {
   Eye,
   FileText,
 } from "lucide-react";
+import { SurfaceCard, SubtlePanel, UIButton, UIBadge, UIFieldGroup, UIInput, EmptyState, ModalShell } from "../ui";
 
 /**
  * Componente ProjectConfigView
@@ -83,17 +84,17 @@ export const ProjectConfigView: React.FC = () => {
   // Se o usuário não for administrador, exibir tela de aviso com bloqueio
   if (!isAdmin) {
     return (
-      <div className="p-8 max-w-4xl mx-auto text-center bg-white dark:bg-[#1E1E1E] rounded-3xl border border-red-200 dark:border-red-900/30 shadow-lg space-y-4">
-        <div className="w-16 h-16 rounded-2xl bg-red-100 dark:bg-red-950/40 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto">
+      <SurfaceCard padding="lg" className="max-w-4xl mx-auto text-center border-red-200 dark:border-red-900/30 space-y-4">
+        <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto border border-red-200/70 dark:border-red-900/40">
           <ShieldAlert className="w-8 h-8" />
         </div>
-        <h2 className="text-xl font-black text-neutral-900 dark:text-white">
+        <h2 className="text-xl font-bold text-[#172B2A] dark:text-white tracking-tight">
           Acesso Restrito a Administradores
         </h2>
-        <p className="text-sm text-neutral-600 dark:text-neutral-400 max-w-md mx-auto">
+        <p className="text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto">
           Apenas usuários com a função de <strong>ADMINISTRADOR</strong> possuem permissão para visualizar e configurar as informações permanentes do projeto no Firebase/Firestore.
         </p>
-      </div>
+      </SurfaceCard>
     );
   }
 
@@ -269,39 +270,33 @@ export const ProjectConfigView: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Banner / Controls */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-[#1E1E1E] p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm">
-        <div className="flex items-center space-x-4">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md">
+      <SurfaceCard padding="md" className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center space-x-4 min-w-0">
+          <div className="w-12 h-12 rounded-2xl bg-[#EBF5F0] dark:bg-[#16845B]/20 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/15 flex items-center justify-center shrink-0">
             <Sparkles className="w-6 h-6" />
           </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h2 className="text-xl font-black text-neutral-900 dark:text-white">
+          <div className="min-w-0">
+            <div className="flex items-center flex-wrap gap-2">
+              <h2 className="text-xl font-bold text-[#172B2A] dark:text-white tracking-tight">
                 Dados do Projeto InovaIF
               </h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40">
-                Firestore Conectado
-              </span>
+              <UIBadge tone="emerald">Firestore Conectado</UIBadge>
             </div>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Informações permanentes da equipe, integrantes, orientador e campus para preenchimento de documentos e PDFs
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={handleExportJson}
-            title="Exportar dados em JSON"
-            className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 text-xs font-bold flex items-center space-x-1.5 transition-all"
-          >
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <UIButton variant="secondary" size="sm" onClick={handleExportJson} title="Exportar dados em JSON">
             <Download className="w-4 h-4" />
             <span className="hidden sm:inline">Exportar</span>
-          </button>
+          </UIButton>
 
           <label
             title="Importar JSON"
-            className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 text-xs font-bold flex items-center space-x-1.5 cursor-pointer transition-all"
+            className="inline-flex items-center justify-center font-semibold px-3 py-1.5 text-xs rounded-lg gap-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[#172B2A] dark:text-slate-100 hover:bg-[#F8FAFC] dark:hover:bg-slate-700 cursor-pointer transition-all shadow-2xs"
           >
             <Upload className="w-4 h-4" />
             <span className="hidden sm:inline">Importar</span>
@@ -314,20 +309,12 @@ export const ProjectConfigView: React.FC = () => {
             />
           </label>
 
-          <button
-            onClick={handleReset}
-            disabled={isSaving}
-            className="px-3.5 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-700 text-xs font-bold flex items-center space-x-1.5 transition-all shadow-xs"
-          >
+          <UIButton variant="secondary" size="sm" onClick={handleReset} disabled={isSaving}>
             <RotateCcw className="w-4 h-4" />
             <span>Restaurar Padrão</span>
-          </button>
+          </UIButton>
 
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black flex items-center space-x-2 transition-all shadow-md"
-          >
+          <UIButton variant="primary" size="md" onClick={handleSave} disabled={isSaving}>
             {isSaving ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin" />
@@ -339,221 +326,207 @@ export const ProjectConfigView: React.FC = () => {
                 <span>Salvar Alterações</span>
               </>
             )}
-          </button>
+          </UIButton>
         </div>
-      </div>
+      </SurfaceCard>
 
       {/* Sub navigation within Project Config */}
-      <div className="flex items-center space-x-2 border-b border-neutral-200 dark:border-neutral-800 pb-2 overflow-x-auto">
-        <button
+      <div className="flex items-center space-x-2 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto">
+        <UIButton
+          variant={activeTab === "equipe" ? "primary" : "ghost"}
+          size="sm"
           onClick={() => setActiveTab("equipe")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
-            activeTab === "equipe"
-              ? "bg-emerald-600 text-white shadow-sm"
-              : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-          }`}
         >
           <Users className="w-4 h-4" />
           <span>Equipe & Integrantes ({formData.members?.length || 0})</span>
-        </button>
+        </UIButton>
 
-        <button
+        <UIButton
+          variant={activeTab === "professor" ? "primary" : "ghost"}
+          size="sm"
           onClick={() => setActiveTab("professor")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
-            activeTab === "professor"
-              ? "bg-emerald-600 text-white shadow-sm"
-              : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-          }`}
         >
           <GraduationCap className="w-4 h-4" />
           <span>Professor Orientador</span>
-        </button>
+        </UIButton>
 
-        <button
+        <UIButton
+          variant={activeTab === "instituicao" ? "primary" : "ghost"}
+          size="sm"
           onClick={() => setActiveTab("instituicao")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
-            activeTab === "instituicao"
-              ? "bg-emerald-600 text-white shadow-sm"
-              : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-          }`}
         >
           <Building2 className="w-4 h-4" />
           <span>Campus & Instituição</span>
-        </button>
+        </UIButton>
 
-        <button
+        <UIButton
+          variant={activeTab === "tags" ? "primary" : "ghost"}
+          size="sm"
           onClick={() => setActiveTab("tags")}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-2 ${
-            activeTab === "tags"
-              ? "bg-emerald-600 text-white shadow-sm"
-              : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-          }`}
         >
           <FileCode2 className="w-4 h-4" />
           <span>Marcadores Dinâmicos (Tags)</span>
-        </button>
+        </UIButton>
       </div>
 
       {/* TAB 1: EQUIPE E INTEGRANTES */}
       {activeTab === "equipe" && (
         <div className="space-y-6">
           {/* Nome da Equipe */}
-          <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-4">
+          <SurfaceCard padding="md" className="space-y-4">
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-xl bg-[#EBF5F0] dark:bg-[#16845B]/20 text-[#16845B] dark:text-emerald-400 flex items-center justify-center shrink-0">
                 <Users className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-black text-neutral-900 dark:text-white">
+                <h3 className="text-sm font-bold text-[#172B2A] dark:text-white">
                   Identificação da Equipe / Projeto
                 </h3>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
                   Nome oficial exibido no cabeçalho e corpo dos termos de aceite
                 </p>
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-black text-neutral-700 dark:text-neutral-300 mb-1.5">
-                Nome da Equipe / Solução
-              </label>
-              <input
+            <UIFieldGroup label="Nome da Equipe / Solução">
+              <UIInput
                 type="text"
                 value={formData.teamName}
                 onChange={(e) => setFormData({ ...formData, teamName: e.target.value })}
                 placeholder="Ex: InovaIF"
-                className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                className="font-semibold"
               />
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
-                Disponível na tag: <code className="text-emerald-600 dark:text-emerald-400 font-mono font-bold">{"{{nome_equipe}}"}</code>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                Disponível na tag: <code className="text-[#16845B] dark:text-emerald-400 font-mono font-bold">{"{{nome_equipe}}"}</code>
               </p>
-            </div>
-          </div>
+            </UIFieldGroup>
+          </SurfaceCard>
 
           {/* Lista de Integrantes */}
-          <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
+          <SurfaceCard padding="md" className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                <div className="w-9 h-9 rounded-xl bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
                   <Users className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-black text-neutral-900 dark:text-white">
+                  <h3 className="text-sm font-bold text-[#172B2A] dark:text-white">
                     Integrantes da Equipe ({formData.members?.length || 0})
                   </h3>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
                     Estudantes pesquisadores e desenvolvedores com respectivas matrículas acadêmicas
                   </p>
                 </div>
               </div>
 
-              <button
-                onClick={handleOpenAddMember}
-                className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center space-x-1.5 transition-all shadow-xs"
-              >
+              <UIButton variant="primary" size="sm" onClick={handleOpenAddMember}>
                 <Plus className="w-4 h-4" />
                 <span>Adicionar Integrante</span>
-              </button>
+              </UIButton>
             </div>
 
             {/* Tabela / Lista de Membros */}
-            <div className="divide-y divide-neutral-100 dark:divide-neutral-800 border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden">
-              {formData.members?.map((member, idx) => (
-                <div
-                  key={member.id || idx}
-                  className="p-4 flex items-center justify-between hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors"
-                >
-                  <div className="flex items-center space-x-3 min-w-0">
-                    <span className="w-6 h-6 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 text-xs font-black flex items-center justify-center shrink-0">
-                      {idx + 1}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-sm font-black text-neutral-900 dark:text-white truncate">
-                          {member.name}
-                        </span>
-                        {idx === 0 && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
-                            Representante
+            {(!formData.members || formData.members.length === 0) ? (
+              <EmptyState
+                icon={<Users className="w-6 h-6" />}
+                title="Nenhum integrante cadastrado"
+                description="Clique no botão acima para adicionar estudantes participantes à equipe."
+              />
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                {formData.members.map((member, idx) => (
+                  <div
+                    key={member.id || idx}
+                    className="p-4 flex items-center justify-between hover:bg-[#F8FAFC] dark:hover:bg-slate-800/40 transition-colors gap-3"
+                  >
+                    <div className="flex items-center space-x-3 min-w-0">
+                      <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold flex items-center justify-center shrink-0 tabular-nums">
+                        {idx + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center flex-wrap gap-2">
+                          <span className="text-sm font-bold text-[#172B2A] dark:text-white truncate">
+                            {member.name}
                           </span>
-                        )}
-                      </div>
-                      <div className="flex items-center space-x-3 text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                        <span>Matrícula: <strong className="font-mono text-neutral-700 dark:text-neutral-300">{member.registrationNumber || "Não informada"}</strong></span>
-                        <span>•</span>
-                        <span>{member.role || "Desenvolvedor"}</span>
+                          {idx === 0 && <UIBadge tone="emerald">Representante</UIBadge>}
+                        </div>
+                        <div className="flex items-center flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          <span>
+                            Matrícula:{" "}
+                            <strong className="font-mono text-[#172B2A] dark:text-slate-300">
+                              {member.registrationNumber || "Não informada"}
+                            </strong>
+                          </span>
+                          <span>•</span>
+                          <span>{member.role || "Desenvolvedor"}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex items-center space-x-1 shrink-0">
-                    <button
-                      onClick={() => handleMoveMember(idx, "up")}
-                      disabled={idx === 0}
-                      title="Mover para cima"
-                      className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-30"
-                    >
-                      <MoveUp className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleMoveMember(idx, "down")}
-                      disabled={idx === (formData.members?.length || 0) - 1}
-                      title="Mover para baixo"
-                      className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-30"
-                    >
-                      <MoveDown className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleOpenEditMember(member)}
-                      title="Editar integrante"
-                      className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteMember(member.id)}
-                      title="Remover integrante"
-                      className="p-1.5 rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center space-x-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleMoveMember(idx, "up")}
+                        disabled={idx === 0}
+                        title="Mover para cima"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-[#172B2A] dark:hover:text-slate-200 disabled:opacity-30 cursor-pointer"
+                      >
+                        <MoveUp className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveMember(idx, "down")}
+                        disabled={idx === (formData.members?.length || 0) - 1}
+                        title="Mover para baixo"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-[#172B2A] dark:hover:text-slate-200 disabled:opacity-30 cursor-pointer"
+                      >
+                        <MoveDown className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditMember(member)}
+                        title="Editar integrante"
+                        className="p-1.5 rounded-lg text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/40 cursor-pointer"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteMember(member.id)}
+                        title="Remover integrante"
+                        className="p-1.5 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
-
-              {(!formData.members || formData.members.length === 0) && (
-                <div className="p-8 text-center text-xs text-neutral-400">
-                  Nenhum integrante cadastrado. Clique no botão acima para adicionar.
-                </div>
-              )}
-            </div>
-          </div>
+                ))}
+              </div>
+            )}
+          </SurfaceCard>
         </div>
       )}
 
       {/* TAB 2: PROFESSOR ORIENTADOR */}
       {activeTab === "professor" && (
-        <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6">
+        <SurfaceCard padding="md" className="space-y-6">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-lg bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
               <GraduationCap className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-black text-neutral-900 dark:text-white">
+              <h3 className="text-sm font-bold text-[#172B2A] dark:text-white">
                 Professor(a) Responsável / Orientador(a)
               </h3>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Docente orientador responsável pela validação e visto dos documentos de extensão
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-black text-neutral-700 dark:text-neutral-300 mb-1.5">
-                Nome Completo do Professor
-              </label>
-              <input
+            <UIFieldGroup label="Nome Completo do Professor">
+              <UIInput
                 type="text"
                 value={formData.professor?.name || ""}
                 onChange={(e) =>
@@ -563,18 +536,15 @@ export const ProjectConfigView: React.FC = () => {
                   })
                 }
                 placeholder="Ex: Ronan Anacleto Lopes"
-                className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                className="font-semibold"
               />
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
-                Tag: <code className="text-emerald-600 font-mono font-bold">{"{{professor_responsavel}}"}</code>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                Tag: <code className="text-[#16845B] dark:text-emerald-400 font-mono font-bold">{"{{professor_responsavel}}"}</code>
               </p>
-            </div>
+            </UIFieldGroup>
 
-            <div>
-              <label className="block text-xs font-black text-neutral-700 dark:text-neutral-300 mb-1.5">
-                Titulação Acadêmica
-              </label>
-              <input
+            <UIFieldGroup label="Titulação Acadêmica">
+              <UIInput
                 type="text"
                 value={formData.professor?.title || ""}
                 onChange={(e) =>
@@ -584,60 +554,56 @@ export const ProjectConfigView: React.FC = () => {
                   })
                 }
                 placeholder="Ex: Mestre, Doutor, Especialista"
-                className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                className="font-semibold"
               />
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
-                Tag: <code className="text-emerald-600 font-mono font-bold">{"{{formacao_professor}}"}</code>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                Tag: <code className="text-[#16845B] dark:text-emerald-400 font-mono font-bold">{"{{formacao_professor}}"}</code>
               </p>
-            </div>
+            </UIFieldGroup>
 
             <div className="md:col-span-2">
-              <label className="block text-xs font-black text-neutral-700 dark:text-neutral-300 mb-1.5">
-                Cargo / Função no IFPR
-              </label>
-              <input
-                type="text"
-                value={formData.professor?.role || ""}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    professor: { ...formData.professor, role: e.target.value },
-                  })
-                }
-                placeholder="Ex: Coordenador do Curso de Sistemas de Informação"
-                className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
-              />
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
-                Tag: <code className="text-emerald-600 font-mono font-bold">{"{{cargo_professor}}"}</code>
-              </p>
+              <UIFieldGroup label="Cargo / Função no IFPR">
+                <UIInput
+                  type="text"
+                  value={formData.professor?.role || ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      professor: { ...formData.professor, role: e.target.value },
+                    })
+                  }
+                  placeholder="Ex: Coordenador do Curso de Sistemas de Informação"
+                  className="font-semibold"
+                />
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  Tag: <code className="text-[#16845B] dark:text-emerald-400 font-mono font-bold">{"{{cargo_professor}}"}</code>
+                </p>
+              </UIFieldGroup>
             </div>
           </div>
-        </div>
+        </SurfaceCard>
       )}
 
       {/* TAB 3: CAMPUS & INSTITUIÇÃO */}
       {activeTab === "instituicao" && (
-        <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6">
+        <SurfaceCard padding="md" className="space-y-6">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-[#EBF5F0] dark:bg-[#16845B]/20 text-[#16845B] dark:text-emerald-400 flex items-center justify-center shrink-0">
               <Building2 className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-black text-neutral-900 dark:text-white">
+              <h3 className="text-sm font-bold text-[#172B2A] dark:text-white">
                 Dados Institucionais do IFPR
               </h3>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Endereçamento oficial, campus e informações que compõem o cabeçalho e rodapé dos documentos
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-black text-neutral-700 dark:text-neutral-300 mb-1.5">
-                Nome da Instituição
-              </label>
-              <input
+            <UIFieldGroup label="Nome da Instituição">
+              <UIInput
                 type="text"
                 value={formData.institution?.name || ""}
                 onChange={(e) =>
@@ -647,18 +613,15 @@ export const ProjectConfigView: React.FC = () => {
                   })
                 }
                 placeholder="Ex: Instituto Federal do Paraná"
-                className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                className="font-semibold"
               />
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
-                Tag: <code className="text-emerald-600 font-mono font-bold">{"{{instituicao}}"}</code>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                Tag: <code className="text-[#16845B] dark:text-emerald-400 font-mono font-bold">{"{{instituicao}}"}</code>
               </p>
-            </div>
+            </UIFieldGroup>
 
-            <div>
-              <label className="block text-xs font-black text-neutral-700 dark:text-neutral-300 mb-1.5">
-                Campus de Lotação
-              </label>
-              <input
+            <UIFieldGroup label="Campus de Lotação">
+              <UIInput
                 type="text"
                 value={formData.institution?.campus || ""}
                 onChange={(e) =>
@@ -668,39 +631,35 @@ export const ProjectConfigView: React.FC = () => {
                   })
                 }
                 placeholder="Ex: Campus Ivaiporã"
-                className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                className="font-semibold"
               />
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
-                Tag: <code className="text-emerald-600 font-mono font-bold">{"{{campus}}"}</code>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                Tag: <code className="text-[#16845B] dark:text-emerald-400 font-mono font-bold">{"{{campus}}"}</code>
               </p>
-            </div>
+            </UIFieldGroup>
 
             <div className="md:col-span-2">
-              <label className="block text-xs font-black text-neutral-700 dark:text-neutral-300 mb-1.5">
-                Endereço do Campus (Rua, Número, Bairro)
-              </label>
-              <input
-                type="text"
-                value={formData.institution?.address || ""}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    institution: { ...formData.institution, address: e.target.value },
-                  })
-                }
-                placeholder="Ex: Rua Max Arthur Greipel, nº 505 - Parque Industrial"
-                className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
-              />
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
-                Tag: <code className="text-emerald-600 font-mono font-bold">{"{{endereco_instituicao}}"}</code>
-              </p>
+              <UIFieldGroup label="Endereço do Campus (Rua, Número, Bairro)">
+                <UIInput
+                  type="text"
+                  value={formData.institution?.address || ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      institution: { ...formData.institution, address: e.target.value },
+                    })
+                  }
+                  placeholder="Ex: Rua Max Arthur Greipel, nº 505 - Parque Industrial"
+                  className="font-semibold"
+                />
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  Tag: <code className="text-[#16845B] dark:text-emerald-400 font-mono font-bold">{"{{endereco_instituicao}}"}</code>
+                </p>
+              </UIFieldGroup>
             </div>
 
-            <div>
-              <label className="block text-xs font-black text-neutral-700 dark:text-neutral-300 mb-1.5">
-                Cidade
-              </label>
-              <input
+            <UIFieldGroup label="Cidade">
+              <UIInput
                 type="text"
                 value={formData.institution?.city || ""}
                 onChange={(e) =>
@@ -710,78 +669,67 @@ export const ProjectConfigView: React.FC = () => {
                   })
                 }
                 placeholder="Ex: Ivaiporã"
-                className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                className="font-semibold"
               />
+            </UIFieldGroup>
+
+            <div className="grid grid-cols-2 gap-2">
+              <UIFieldGroup label="UF (Estado)">
+                <UIInput
+                  type="text"
+                  value={formData.institution?.state || ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      institution: { ...formData.institution, state: e.target.value },
+                    })
+                  }
+                  placeholder="PR"
+                  maxLength={2}
+                  className="font-semibold uppercase"
+                />
+              </UIFieldGroup>
+              <UIFieldGroup label="CEP">
+                <UIInput
+                  type="text"
+                  value={formData.institution?.zipCode || ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      institution: { ...formData.institution, zipCode: e.target.value },
+                    })
+                  }
+                  placeholder="86873-400"
+                  className="font-semibold"
+                />
+              </UIFieldGroup>
             </div>
 
-            <div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-black text-neutral-700 dark:text-neutral-300 mb-1.5">
-                    UF (Estado)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.institution?.state || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        institution: { ...formData.institution, state: e.target.value },
-                      })
-                    }
-                    placeholder="PR"
-                    maxLength={2}
-                    className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-hidden uppercase"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-neutral-700 dark:text-neutral-300 mb-1.5">
-                    CEP
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.institution?.zipCode || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        institution: { ...formData.institution, zipCode: e.target.value },
-                      })
-                    }
-                    placeholder="86873-400"
-                    className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="md:col-span-2 p-3 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl flex items-center justify-between text-xs">
-              <span className="text-emerald-900 dark:text-emerald-300 font-medium">
+            <div className="md:col-span-2 p-3.5 bg-[#EBF5F0] dark:bg-emerald-950/20 border border-[#16845B]/20 dark:border-emerald-900/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <span className="text-[#064E3B] dark:text-emerald-300 font-medium">
                 Endereço unificado para rodapé: <strong>{projectTags.endereco_completo}</strong>
               </span>
-              <button
-                onClick={() => handleCopyTag("endereco_completo")}
-                className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-bold text-[11px] flex items-center space-x-1 shrink-0"
-              >
+              <UIButton variant="primary" size="sm" onClick={() => handleCopyTag("endereco_completo")}>
                 <Copy className="w-3 h-3" />
                 <span>Copiar Tag</span>
-              </button>
+              </UIButton>
             </div>
           </div>
-        </div>
+        </SurfaceCard>
       )}
 
       {/* TAB 4: VISUALIZADOR DE MARCADORES DINÂMICOS */}
       {activeTab === "tags" && (
-        <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-4">
+        <SurfaceCard padding="md" className="space-y-4">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
               <FileCode2 className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-sm font-black text-neutral-900 dark:text-white">
+              <h3 className="text-sm font-bold text-[#172B2A] dark:text-white">
                 Marcadores Dinâmicos Disponíveis para Modelos
               </h3>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Insira estas tags nos modelos de documentos (cabeçalho, seções, parágrafos ou assinaturas). Ao gerar o PDF, os valores abaixo serão substituídos automaticamente.
               </p>
             </div>
@@ -793,136 +741,119 @@ export const ProjectConfigView: React.FC = () => {
               const isCopied = copiedTag === tagInfo.tag;
 
               return (
-                <div
+                <SubtlePanel
                   key={tagInfo.tag}
-                  className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-800/30 flex flex-col justify-between space-y-2 hover:border-emerald-300 dark:hover:border-emerald-800 transition-all"
+                  padding="sm"
+                  className="flex flex-col justify-between space-y-2 hover:border-[#16845B]/40 transition-all"
                 >
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="flex items-center space-x-2">
-                        <code className="text-xs font-mono font-black text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md">
+                      <div className="flex items-center flex-wrap gap-1.5">
+                        <code className="text-xs font-mono font-bold text-[#064E3B] dark:text-emerald-300 bg-[#EBF5F0] dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-[#16845B]/20">
                           {"{{" + tagInfo.tag + "}}"}
                         </code>
-                        <span className="text-[10px] uppercase font-black px-1.5 py-0.5 rounded-sm bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300">
-                          {tagInfo.category}
-                        </span>
+                        <UIBadge tone="slate">{tagInfo.category}</UIBadge>
                       </div>
-                      <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 mt-1 block">
+                      <span className="text-xs font-bold text-[#172B2A] dark:text-slate-200 mt-1.5 block">
                         {tagInfo.label}
                       </span>
                     </div>
 
                     <button
+                      type="button"
                       onClick={() => handleCopyTag(tagInfo.tag)}
                       title="Copiar marcador"
-                      className="p-1.5 rounded-lg bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-600 transition-all shadow-2xs"
+                      className="p-1.5 rounded-lg bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-[#EBF5F0] dark:hover:bg-[#16845B]/20 hover:text-[#16845B] transition-all shadow-2xs cursor-pointer"
                     >
-                      {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      {isCopied ? <Check className="w-3.5 h-3.5 text-[#16845B]" /> : <Copy className="w-3.5 h-3.5" />}
                     </button>
                   </div>
 
-                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     {tagInfo.description}
                   </p>
 
-                  <div className="pt-2 border-t border-neutral-200/60 dark:border-neutral-800 text-xs">
-                    <span className="text-[10px] uppercase font-bold text-neutral-400 block">
+                  <div className="pt-2 border-t border-slate-200/70 dark:border-slate-800 text-xs">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">
                       Valor resolvido atual:
                     </span>
-                    <span className="text-neutral-900 dark:text-white font-medium break-words">
+                    <span className="text-[#172B2A] dark:text-white font-medium break-words">
                       {currentValue || "(Vazio)"}
                     </span>
                   </div>
-                </div>
+                </SubtlePanel>
               );
             })}
           </div>
-        </div>
+        </SurfaceCard>
       )}
 
       {/* MODAL: ADICIONAR / EDITAR INTEGRANTE */}
-      {isMemberModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-5 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                  <Users className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-neutral-900 dark:text-white">
-                    {editingMember ? "Editar Integrante" : "Novo Integrante"}
-                  </h3>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    Membro da equipe desenvolvedora
-                  </p>
-                </div>
-              </div>
+      <ModalShell
+        isOpen={isMemberModalOpen}
+        onClose={() => setIsMemberModalOpen(false)}
+        maxWidthClass="max-w-md"
+        ariaLabel={editingMember ? "Editar Integrante" : "Novo Integrante"}
+      >
+        <div className="p-6 space-y-5">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-xl bg-[#EBF5F0] dark:bg-[#16845B]/20 text-[#16845B] dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <Users className="w-5 h-5" />
             </div>
-
-            <form onSubmit={handleSaveMemberModal} className="space-y-4">
-              <div>
-                <label className="block text-xs font-black text-neutral-700 dark:text-neutral-300 mb-1.5">
-                  Nome Completo do Estudante *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={memberForm.name}
-                  onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })}
-                  placeholder="Ex: Gabriel Oliveira da Silva"
-                  className="w-full px-4 py-2.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-neutral-700 dark:text-neutral-300 mb-1.5">
-                  Número de Matrícula *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={memberForm.registrationNumber}
-                  onChange={(e) =>
-                    setMemberForm({ ...memberForm, registrationNumber: e.target.value })
-                  }
-                  placeholder="Ex: 20251IVA10030010"
-                  className="w-full px-4 py-2.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm font-mono font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-hidden uppercase"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-neutral-700 dark:text-neutral-300 mb-1.5">
-                  Função / Papel no Projeto
-                </label>
-                <input
-                  type="text"
-                  value={memberForm.role}
-                  onChange={(e) => setMemberForm({ ...memberForm, role: e.target.value })}
-                  placeholder="Ex: Estudante Pesquisador / Desenvolvedor"
-                  className="w-full px-4 py-2.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
-                />
-              </div>
-
-              <div className="flex items-center justify-end space-x-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsMemberModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 text-xs font-bold hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all shadow-sm"
-                >
-                  {editingMember ? "Atualizar" : "Adicionar"}
-                </button>
-              </div>
-            </form>
+            <div>
+              <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
+                {editingMember ? "Editar Integrante" : "Novo Integrante"}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Membro da equipe desenvolvedora
+              </p>
+            </div>
           </div>
+
+          <form onSubmit={handleSaveMemberModal} className="space-y-4">
+            <UIFieldGroup label="Nome Completo do Estudante" required>
+              <UIInput
+                type="text"
+                required
+                value={memberForm.name}
+                onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })}
+                placeholder="Ex: Gabriel Oliveira da Silva"
+              />
+            </UIFieldGroup>
+
+            <UIFieldGroup label="Número de Matrícula" required>
+              <UIInput
+                type="text"
+                required
+                value={memberForm.registrationNumber}
+                onChange={(e) =>
+                  setMemberForm({ ...memberForm, registrationNumber: e.target.value })
+                }
+                placeholder="Ex: 20251IVA10030010"
+                className="font-mono uppercase"
+              />
+            </UIFieldGroup>
+
+            <UIFieldGroup label="Função / Papel no Projeto">
+              <UIInput
+                type="text"
+                value={memberForm.role}
+                onChange={(e) => setMemberForm({ ...memberForm, role: e.target.value })}
+                placeholder="Ex: Estudante Pesquisador / Desenvolvedor"
+              />
+            </UIFieldGroup>
+
+            <div className="flex items-center justify-end space-x-2 pt-2">
+              <UIButton variant="secondary" size="md" onClick={() => setIsMemberModalOpen(false)}>
+                Cancelar
+              </UIButton>
+              <UIButton type="submit" variant="primary" size="md">
+                {editingMember ? "Atualizar" : "Adicionar"}
+              </UIButton>
+            </div>
+          </form>
         </div>
-      )}
+      </ModalShell>
     </div>
   );
 };

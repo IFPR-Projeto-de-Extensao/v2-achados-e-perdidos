@@ -31,9 +31,16 @@ import {
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
-import { db, handleFirestoreError, OperationType } from "../lib/firebase";
-import { logItemReturnAudit } from "../lib/auditLogger";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../lib/firebase";
+import {
+  ModalShell,
+  UIButton,
+  UIBadge,
+  SubtlePanel,
+  UIFieldGroup,
+  UIInput,
+} from "./ui";
 
 interface RemoteSignatureModalProps {
   itemId?: string;
@@ -42,7 +49,24 @@ interface RemoteSignatureModalProps {
   onSuccess?: () => void;
 }
 
-type VerificationStatus = "CHECKING" | "VALID" | "INVALID_TOKEN" | "NOT_FOUND" | "ALREADY_SIGNED";
+type VerificationStatus =
+  | "CHECKING"
+  | "VALID"
+  | "INVALID_TOKEN"
+  | "TOKEN_EXPIRED"
+  | "TOKEN_INVALIDATED"
+  | "NOT_FOUND"
+  | "ALREADY_SIGNED"
+  | "ERROR";
+
+function encodeBase64Utf8(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
 
 export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
   itemId,
@@ -50,7 +74,7 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { items, currentUser, addToast, updateDocDirectly, logAdminAction } = useApp();
+  const { items, currentUser, addToast } = useApp();
   const { navigate } = useRouter();
 
   const [verificationStatus, setVerificationStatus] = useState<VerificationStatus>("CHECKING");
@@ -68,61 +92,116 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
   const [validationCode, setValidationCode] = useState<string>("");
   const [signedTimestamp, setSignedTimestamp] = useState<string>("");
 
-  // Token Authenticity Verification against Firestore & Backend
+  // Token Authenticity Verification against Authoritative Backend FIRST
   const verifyAuthenticity = useCallback(async () => {
+    setActiveItem(null);
+    setSignatureDataUrl("");
+    setValidationCode("");
+    setSignedTimestamp("");
+    setIsCompleted(false);
+
     if (!itemId) {
       setVerificationStatus("NOT_FOUND");
       setVerificationError("Código do objeto ausente na requisição.");
       return;
     }
 
-    if (!token) {
+    if (!token || token.trim().length < 16) {
       setVerificationStatus("INVALID_TOKEN");
-      setVerificationError("Token de segurança da assinatura não informado no link de acesso.");
+      setVerificationError("Token de segurança da assinatura não informado ou inválido no link de acesso.");
       return;
     }
 
     setVerificationStatus("CHECKING");
     setVerificationError("");
-    setVerificationStep("Conectando ao Firestore institucional...");
+    setVerificationStep("Validando token criptográfico de autorização no servidor...");
 
     try {
-      // Step 1: Query Firestore Real-time
-      setVerificationStep("Consultando registro do objeto no Firestore...");
-      let directFirestoreDoc: any = null;
-      try {
-        const docRef = doc(db, "items", itemId);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          directFirestoreDoc = { id: docSnap.id, ...docSnap.data() } as LostFoundItem;
-        }
-      } catch (firestoreErr) {
-        console.warn("[RemoteSignature] Leitura cliente do Firestore com fallback:", firestoreErr);
-      }
-
-      // Step 2: Query Authoritative Backend Verification Endpoint
-      setVerificationStep("Validando token criptográfico de autorização...");
+      // Step 1: Authoritative Backend Token Verification MUST succeed before ANY item state or ALREADY_SIGNED evaluation
       let apiVerificationResult: any = null;
+      let httpStatus = 0;
       try {
         const res = await fetch("/api/signature/verify-token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ itemId, token }),
         });
+        httpStatus = res.status;
+        const payload = await res.json().catch(() => ({}));
         if (res.ok) {
-          apiVerificationResult = await res.json();
+          apiVerificationResult = payload;
         } else {
-          const errData = await res.json().catch(() => ({}));
-          apiVerificationResult = { valid: false, reason: errData.reason || "SERVER_ERROR", error: errData.error };
+          apiVerificationResult = {
+            valid: false,
+            reason: payload.reason || (res.status === 503 ? "SERVER_UNAVAILABLE" : "INVALID_TOKEN"),
+            error: payload.error,
+          };
         }
       } catch (apiErr) {
         console.warn("[RemoteSignature] Falha ao consultar endpoint de verificação:", apiErr);
+        setVerificationStatus("ERROR");
+        setVerificationError("Não foi possível conectar ao servidor de verificação de assinaturas. Verifique sua conexão e tente novamente.");
+        return;
       }
 
-      // Consolidate data from Firestore and API
+      // Reject immediately if backend did not validate the cryptographic token
+      if (!apiVerificationResult || apiVerificationResult.valid !== true) {
+        const reason = String(apiVerificationResult?.reason || "");
+        if (reason === "NOT_FOUND" || httpStatus === 404) {
+          setVerificationStatus("NOT_FOUND");
+          setVerificationError(
+            apiVerificationResult?.error ||
+              `Ocorrência com identificador #${itemId} não foi localizada no banco de dados do IFPR.`
+          );
+          return;
+        }
+        if (reason === "TOKEN_EXPIRED") {
+          setVerificationStatus("TOKEN_EXPIRED");
+          setVerificationError(
+            apiVerificationResult?.error ||
+              "Este link de assinatura remota expirou. Solicite um novo link na SEBAC / Portaria."
+          );
+          return;
+        }
+        if (reason === "TOKEN_INVALIDATED" || reason === "ITEM_REOPENED" || httpStatus === 410) {
+          setVerificationStatus("TOKEN_INVALIDATED");
+          setVerificationError(
+            apiVerificationResult?.error ||
+              "Este link de assinatura foi invalidado por reabertura administrativa ou substituição de ciclo."
+          );
+          return;
+        }
+        if (reason === "SERVER_UNAVAILABLE" || reason === "ENCRYPTION_KEY_MISSING" || httpStatus === 503 || httpStatus >= 500) {
+          setVerificationStatus("ERROR");
+          setVerificationError(
+            apiVerificationResult?.error ||
+              "Serviço de verificação temporariamente indisponível no servidor."
+          );
+          return;
+        }
+        setVerificationStatus("INVALID_TOKEN");
+        setVerificationError(
+          apiVerificationResult?.error ||
+            "O token fornecido na URL é inválido ou não corresponde à solicitação ativa deste objeto no IFPR."
+        );
+        return;
+      }
+
+      // Step 2: Token is cryptographically verified by the backend; now we can safely inspect the returned item data
+      let directFirestoreDoc: LostFoundItem | null = null;
+      try {
+        const docRef = doc(db, "items", itemId);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          directFirestoreDoc = { id: docSnap.id, ...(docSnap.data() as any) } as LostFoundItem;
+        }
+      } catch (_) {}
+
       const foundItem: LostFoundItem | null =
+        (apiVerificationResult.item
+          ? ({ ...(directFirestoreDoc || {}), ...(apiVerificationResult.item as LostFoundItem) } as LostFoundItem)
+          : null) ||
         directFirestoreDoc ||
-        (apiVerificationResult?.item ? (apiVerificationResult.item as LostFoundItem) : null) ||
         items.find((i) => i.id === itemId) ||
         null;
 
@@ -132,29 +211,32 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
         return;
       }
 
+      const authoritativeValidationCode = String(
+        apiVerificationResult.receiptValidationCode || foundItem.receiptValidationCode || ""
+      ).trim();
+
       setActiveItem(foundItem);
       setDocumentNumber(foundItem.recipientDocument || "");
-      setValidationCode(foundItem.receiptValidationCode || `REC-IFPR-${foundItem.id.toUpperCase().slice(0, 6)}`);
+      setValidationCode(authoritativeValidationCode);
 
-      // Check if already signed (Safe Recovery after F5)
-      const alreadySigned =
-        foundItem.recipientSignatureStatus === "SIGNED" ||
-        Boolean(foundItem.recipientSignatureUrl) ||
-        apiVerificationResult?.isAlreadySigned;
+      // Step 3: Check if already signed ONLY after backend confirmed valid === true
+      const alreadySigned = Boolean(apiVerificationResult.isAlreadySigned);
 
       if (alreadySigned) {
         setVerificationStatus("ALREADY_SIGNED");
         setIsCompleted(true);
         const recoveredSigUrl =
+          apiVerificationResult.recipientSignatureUrl ||
+          apiVerificationResult.item?.recipientSignatureUrl ||
           foundItem.recipientSignatureUrl ||
-          apiVerificationResult?.recipientSignatureUrl ||
-          apiVerificationResult?.item?.recipientSignatureUrl ||
           "";
         setSignatureDataUrl(recoveredSigUrl);
-        setSignedTimestamp(foundItem.signedAt || apiVerificationResult?.signedAt || new Date().toISOString());
-        if (apiVerificationResult?.receiptValidationCode || foundItem.receiptValidationCode) {
-          setValidationCode(apiVerificationResult?.receiptValidationCode || foundItem.receiptValidationCode || "");
-        }
+        setSignedTimestamp(
+          apiVerificationResult.signedAt ||
+            foundItem.signedAt ||
+            ""
+        );
+        setValidationCode(authoritativeValidationCode);
         return;
       }
 
@@ -166,13 +248,13 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
       }
 
       // 2. Token Used Check
-      if (foundItem.signatureTokenUsed && !alreadySigned) {
+      if (foundItem.signatureTokenUsed) {
         setVerificationStatus("INVALID_TOKEN");
         setVerificationError("Este termo de assinatura digital já foi utilizado anteriormente.");
         return;
       }
 
-      // 3. State Machine Eligibility Check: Must be pending remote signature OR available for return
+      // 3. State Machine Eligibility Check
       const isPendingRemote = foundItem.recipientSignatureStatus === "PENDING_REMOTE";
       const isAvailableForReturn =
         foundItem.status === "DISPONIVEL" ||
@@ -187,22 +269,12 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
         return;
       }
 
-      // 4. Server-Authoritative Token Validation
-      if (!apiVerificationResult || apiVerificationResult.valid !== true) {
-        setVerificationStatus("INVALID_TOKEN");
-        setVerificationError(
-          apiVerificationResult?.error ||
-          "O token fornecido na URL é inválido, expirou ou não corresponde à solicitação ativa deste objeto no IFPR."
-        );
-        return;
-      }
-
       // Valid Authenticity Confirmed!
       setVerificationStep("Autenticidade confirmada com sucesso!");
       setVerificationStatus("VALID");
     } catch (err: any) {
       console.error("[RemoteSignature] Erro durante verificação de autenticidade:", err);
-      setVerificationStatus("INVALID_TOKEN");
+      setVerificationStatus("ERROR");
       setVerificationError("Falha na comunicação de segurança ao autenticar token no servidor.");
     }
   }, [itemId, token, items]);
@@ -211,7 +283,11 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
     verifyAuthenticity();
   }, [verifyAuthenticity]);
 
-  const item = activeItem || items.find((i) => i.id === itemId);
+  // Never fall back to unverified items when token verification has not succeeded
+  const item =
+    verificationStatus === "VALID" || verificationStatus === "ALREADY_SIGNED"
+      ? activeItem
+      : null;
 
   const signerName = item?.recipientName || currentUser?.name || "Proprietário / Receptor";
   const signerEmail = item?.recipientEmail || currentUser?.email || "estudante@ifpr.edu.br";
@@ -219,7 +295,7 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
 
   // Handle Confirm and Finalize Signature (Centralized Server-Authoritative Execution)
   const handleConfirmSignature = async () => {
-    if (!item) return;
+    if (!item || verificationStatus !== "VALID") return;
 
     if (!signatureDataUrl) {
       addToast("Por favor, faça sua assinatura digital no quadro antes de confirmar.", "error");
@@ -259,31 +335,18 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
         throw new Error(confirmResult.error || "Servidor não confirmou o registro da assinatura.");
       }
 
-      const confirmedValCode = confirmResult.validationCode || `REC-IFPR-${item.id.toUpperCase().slice(0, 6)}`;
+      const confirmedValCode = String(confirmResult.validationCode || item.receiptValidationCode || "").trim();
       const confirmedSignedAt = confirmResult.signedAt || new Date().toISOString();
       const confirmedSigUrl = confirmResult.recipientSignatureUrl || signatureDataUrl;
       setSignatureDataUrl(confirmedSigUrl);
 
-      // Local Context Synchronous Update with Server-Confirmed Data
-      try {
-        await updateDocDirectly("items", item.id, {
-          recipientSignatureUrl: signatureDataUrl,
-          recipientSignatureType: "REMOTE_EMAIL",
-          recipientSignatureStatus: "SIGNED",
-          recipientDocument: documentNumber || item.recipientDocument || "",
-          signedAt: confirmedSignedAt,
-          status: "DEVOLVIDO",
-          receiptValidationCode: confirmedValCode,
-          signatureTokenUsed: true,
-        });
-      } catch (_) {}
-
-      // Optional async notify endpoint (fire & forget)
+      // Authenticated async notify endpoint with verified token
       fetch("/api/signature/notify-signed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           itemId: item.id,
+          token,
           itemTitle: item.title,
           signerName,
           signerEmail,
@@ -311,12 +374,19 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
   };
 
   const handleDownloadSignedPDF = () => {
-    if (!item) return;
+    if (!item || (verificationStatus !== "ALREADY_SIGNED" && !isCompleted)) {
+      addToast("A emissão do comprovante exige uma assinatura previamente validada pelo servidor.", "error");
+      return;
+    }
+
+    const currentValidationCode = String(validationCode || item.receiptValidationCode || "").trim();
+    if (!currentValidationCode) {
+      addToast("Código oficial de validação ausente. Não é possível emitir comprovante sem validação do servidor.", "error");
+      return;
+    }
 
     try {
       const doc = new jsPDF("p", "mm", "a4");
-      const currentValidationCode =
-        validationCode || item.receiptValidationCode || `REC-IFPR-${item.id.toUpperCase().slice(0, 6)}`;
       const transactionId = (item as any).transactionId || `TX-${currentValidationCode}-${Date.now().toString(36).toUpperCase()}`;
       const effectiveSignedTime = signedTimestamp || item.signedAt || new Date().toISOString();
       const formattedDateTime = new Date(effectiveSignedTime).toLocaleString("pt-BR", {
@@ -333,9 +403,9 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
           ? "Presencial no Dispositivo do Campus"
           : "Remota via Link Seguro & E-mail Institucional";
 
-      const authHash =
-        item.signatureToken ||
-        (token ? `TOK-${token.slice(0, 12)}...` : `SEC-HASH-${Buffer.from(item.id + effectiveSignedTime).toString("base64").slice(0, 16)}`);
+      const isStaffAttested =
+        item.staffSignatureStatus === "SIGNED" && Boolean(item.staffSignatureUrl);
+      const authHash = `VAL-${currentValidationCode}`;
 
       // Banner Header IFPR (Green & Red accent)
       doc.setFillColor(0, 132, 61);
@@ -414,8 +484,9 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
           ["Modalidade da Assinatura:", signatureMethodLabel],
           ["Classificação Legal:", "Assinatura Eletrônica Simples (Art. 5º, I, da Lei nº 14.063/2020)"],
           ["Evidência de Autenticidade:", "Desenho manuscrito em tela + link de uso único associado ao item"],
-          ["Status do Registro:", "CONFIRMADO & PERSISTIDO NO FIRESTORE (STATUS: DEVOLVIDO)"],
-          ["Código Validador:", currentValidationCode],
+          ["Assinatura do Receptor:", "CONFIRMADA & PERSISTIDA NO FIRESTORE (DEVOLVIDO)"],
+          ["Atestação Institucional:", isStaffAttested ? "DUPLA ASSINATURA CONCLUÍDA (ATENDENTE ASSINOU)" : "Atestação Institucional Pendente"],
+          ["Código / Hash Verificador:", `${currentValidationCode} (${authHash})`],
           ["Carimbo de Tempo (ISO):", effectiveSignedTime],
           ["Origem da Operação:", (item as any).signatureIpOrDevice || "Navegador Web / Mobile Autenticado IFPR"],
           ["Regulamentação:", "Portaria Interna IFPR • Lei Federal nº 14.063/2020 (Art. 5º, I)"],
@@ -467,15 +538,34 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
       doc.text(`Assinado Digitalmente (${signerBond})`, 54.5, currentY + 33, { align: "center" });
 
       // Right Signature line: Server
+      if (isStaffAttested && item.staffSignatureUrl) {
+        try {
+          doc.addImage(item.staffSignatureUrl, "PNG", 123, currentY, 65, 24);
+        } catch (e) {
+          console.warn("Staff signature image render skipped:", e);
+        }
+      } else {
+        doc.setFont("helvetica", "italic");
+        doc.setFontSize(7.5);
+        doc.setTextColor(180, 83, 9);
+        doc.text("[Atestação Institucional Pendente]", 155.5, currentY + 14, { align: "center" });
+      }
       doc.line(115, currentY + 26, 196, currentY + 26);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7.5);
       doc.setTextColor(30, 41, 59);
-      doc.text(item.returnedByName || "Servidor Responsável", 155.5, currentY + 29.5, { align: "center" });
+      doc.text(item.staffSignerName || item.returnedByName || "Servidor Responsável", 155.5, currentY + 29.5, { align: "center" });
       doc.setFont("helvetica", "normal");
       doc.setFontSize(6.5);
       doc.setTextColor(100, 116, 139);
-      doc.text("SEBAC / Portaria • IFPR Campus Ivaiporã", 155.5, currentY + 33, { align: "center" });
+      doc.text(
+        isStaffAttested
+          ? "SEBAC / Portaria • Atestação Assinada"
+          : "SEBAC / Portaria • Atestação Institucional Pendente",
+        155.5,
+        currentY + 33,
+        { align: "center" }
+      );
 
       // Footer
       doc.setFontSize(6.5);
@@ -497,26 +587,34 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-70 flex items-center justify-center p-4 bg-black/80 dark:bg-black/90 backdrop-blur-md overflow-y-auto animate-in fade-in transition-all duration-200">
-      <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-xl w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 my-8 relative overflow-hidden transition-colors duration-200">
+    <ModalShell
+      isOpen={true}
+      onClose={onClose}
+      maxWidthClass="max-w-xl"
+      zIndexClass="z-70"
+      ariaLabel="Assinatura Digital de Recebimento"
+    >
+      <div className="p-5 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-[#00843D]/10 flex items-center justify-center text-[#00843D]">
+        <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3.5 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/50 border border-[#16845B]/20 flex items-center justify-center text-[#16845B] dark:text-emerald-400 shrink-0">
               <FileCheck2 className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
+            <div className="min-w-0">
+              <h3 className="font-bold text-base text-[#172B2A] dark:text-white truncate">
                 Assinatura Digital de Recebimento
               </h3>
-              <p className="text-[10px] text-neutral-500 uppercase tracking-wider font-bold">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-wider font-semibold">
                 Termo Oficial IFPR Campus Ivaiporã
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 cursor-pointer"
+            className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer shrink-0"
+            aria-label="Fechar modal"
           >
             <X className="w-4 h-4" />
           </button>
@@ -526,178 +624,188 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
         {verificationStatus === "CHECKING" && (
           <div className="py-12 text-center space-y-4 animate-in fade-in">
             <div className="relative w-16 h-16 mx-auto">
-              <div className="w-16 h-16 rounded-3xl bg-[#00843D]/10 text-[#00843D] flex items-center justify-center animate-pulse">
+              <div className="w-16 h-16 rounded-2xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/20 flex items-center justify-center animate-pulse">
                 <ShieldCheck className="w-8 h-8" />
               </div>
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#00843D] text-white flex items-center justify-center animate-spin">
+              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-[#16845B] text-white flex items-center justify-center animate-spin shadow-xs">
                 <Loader2 className="w-3.5 h-3.5" />
               </div>
             </div>
             <div className="space-y-1.5 max-w-sm mx-auto">
-              <h4 className="text-sm font-extrabold text-neutral-900 dark:text-white">
+              <h4 className="text-sm font-bold text-[#172B2A] dark:text-white">
                 Validando Autenticidade no Firestore...
               </h4>
-              <p className="text-xs text-[#00843D] dark:text-[#00c75c] font-semibold animate-pulse">
+              <p className="text-xs text-[#16845B] dark:text-emerald-400 font-semibold animate-pulse">
                 {verificationStep}
               </p>
-              <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Consultando o token de segurança e a integridade da custódia institucional do item #{itemId}.
               </p>
             </div>
 
-            {/* Visual step indicator */}
-            <div className="w-48 mx-auto h-1.5 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
-              <div className="h-full bg-[#00843D] rounded-full animate-[progress_1.5s_ease-in-out_infinite]" style={{ width: "70%" }} />
+            <div className="w-48 mx-auto h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-[#16845B] rounded-full animate-[progress_1.5s_ease-in-out_infinite]"
+                style={{ width: "70%" }}
+              />
             </div>
           </div>
         )}
 
-        {/* 2. STATE: INVALID TOKEN OR ERROR WITH VISUAL FEEDBACK */}
-        {(verificationStatus === "INVALID_TOKEN" || verificationStatus === "NOT_FOUND") && (
+        {/* 2. STATE: INVALID / EXPIRED / INVALIDATED TOKEN OR ERROR WITH VISUAL FEEDBACK */}
+        {(verificationStatus === "INVALID_TOKEN" ||
+          verificationStatus === "TOKEN_EXPIRED" ||
+          verificationStatus === "TOKEN_INVALIDATED" ||
+          verificationStatus === "NOT_FOUND" ||
+          verificationStatus === "ERROR") && (
           <div className="py-6 space-y-4 text-center animate-in zoom-in-95">
-            <div className="w-16 h-16 rounded-3xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto ring-8 ring-amber-500/5">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
               <ShieldAlert className="w-8 h-8" />
             </div>
             <div className="space-y-1.5 max-w-md mx-auto">
-              <h4 className="text-base font-extrabold text-neutral-900 dark:text-white">
-                {verificationStatus === "NOT_FOUND" ? "Objeto Não Encontrado" : "Token de Assinatura Inválido"}
+              <h4 className="text-base font-bold text-[#172B2A] dark:text-white">
+                {verificationStatus === "NOT_FOUND"
+                  ? "Objeto Não Encontrado"
+                  : verificationStatus === "TOKEN_EXPIRED"
+                  ? "Link de Assinatura Expirado"
+                  : verificationStatus === "TOKEN_INVALIDATED"
+                  ? "Link de Assinatura Invalidado"
+                  : verificationStatus === "ERROR"
+                  ? "Erro de Comunicação com o Servidor"
+                  : "Token de Assinatura Inválido"}
               </h4>
-              <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                 {verificationError ||
                   "O link de assinatura utilizado possui um token que não coincide com a solicitação oficial ativa no Firestore."}
               </p>
             </div>
 
-            <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-900/50 text-left space-y-1 text-xs text-amber-800 dark:text-amber-300">
+            <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-900/50 text-left space-y-1 text-xs text-amber-900 dark:text-amber-300">
               <p className="font-bold flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5" /> Diretrizes de Segurança Institucional:
+                <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                <span>Diretrizes de Segurança Institucional</span>
               </p>
-              <p className="text-[11px] leading-relaxed">
-                Por normas de auditoria e custódia do IFPR Campus Ivaiporã, devoluções só podem ser assinadas através do link original enviado ao e-mail institucional cadastrado ou gerado pela equipe SEBAC.
+              <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300/90">
+                Por normas de auditoria e custódia do IFPR Campus Ivaiporã, devoluções e comprovantes só podem ser acessados através do link criptográfico válido enviado ao e-mail institucional cadastrado.
               </p>
             </div>
 
-            <div className="flex items-center justify-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={verifyAuthenticity}
-                className="px-4 py-2.5 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-              >
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+              <UIButton type="button" variant="secondary" size="md" onClick={verifyAuthenticity}>
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Revalidar Token</span>
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-5 py-2.5 bg-neutral-900 dark:bg-neutral-100 hover:bg-neutral-800 text-white dark:text-neutral-900 rounded-xl text-xs font-bold cursor-pointer"
-              >
+              </UIButton>
+              <UIButton type="button" variant="dark" size="md" onClick={onClose}>
                 Fechar
-              </button>
+              </UIButton>
             </div>
           </div>
         )}
 
         {/* 3. STATE: ALREADY SIGNED / COMPLETED SUCCESS FEEDBACK */}
         {verificationStatus === "ALREADY_SIGNED" && item && (
-          <div className="text-center py-6 space-y-4 animate-in zoom-in-95">
-            <div className="w-16 h-16 rounded-3xl bg-emerald-500/15 text-[#00843D] dark:text-[#00c75c] flex items-center justify-center mx-auto ring-8 ring-emerald-500/5">
-              <CheckCircle className="w-9 h-9" />
+          <div className="text-center py-4 space-y-4 animate-in zoom-in-95">
+            <div className="w-16 h-16 rounded-2xl bg-[#EBF5F0] dark:bg-emerald-950/50 border border-[#16845B]/25 text-[#16845B] dark:text-emerald-400 flex items-center justify-center mx-auto">
+              <CheckCircle className="w-8 h-8" />
             </div>
-            <div className="space-y-1">
-              <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#00843D]/10 text-[#00843D] text-[10px] font-black uppercase mb-1">
-                <BadgeCheck className="w-3.5 h-3.5" /> Devolução Homologada
-              </div>
-              <h4 className="text-lg font-black text-neutral-900 dark:text-white">
+            <div className="space-y-1.5">
+              <UIBadge tone="emerald">
+                <BadgeCheck className="w-3.5 h-3.5" />
+                <span>Devolução Homologada</span>
+              </UIBadge>
+              <h4 className="text-lg font-bold text-[#172B2A] dark:text-white">
                 Recebimento Confirmado & Assinado!
               </h4>
-              <p className="text-xs text-neutral-600 dark:text-neutral-400 max-w-sm mx-auto">
+              <p className="text-xs text-slate-600 dark:text-slate-400 max-w-sm mx-auto leading-relaxed">
                 O termo de restituição com assinatura digital foi validado, a baixa para status <strong>DEVOLVIDO</strong> foi registrada e o log de auditoria foi gravado com sucesso no Firestore.
               </p>
             </div>
 
             {/* Verification Metadata Box */}
-            <div className="p-3 bg-neutral-50 dark:bg-neutral-850 rounded-2xl border border-neutral-200 dark:border-neutral-750 text-left space-y-1.5 text-xs">
-              <div className="flex justify-between items-center text-[11px] text-neutral-500">
+            <SubtlePanel padding="sm" className="text-left space-y-2 text-xs">
+              <div className="flex justify-between items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                 <span>Código de Validação:</span>
-                <span className="font-mono font-bold text-neutral-900 dark:text-white">
-                  {validationCode || item.receiptValidationCode || `REC-IFPR-${item.id.toUpperCase().slice(0, 6)}`}
+                <span className="font-mono font-bold text-[#172B2A] dark:text-white tabular-nums">
+                  {validationCode || item.receiptValidationCode || "Validado no Servidor"}
                 </span>
               </div>
-              <div className="flex justify-between items-center text-[11px] text-neutral-500">
+              <div className="flex justify-between items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                 <span>Receptor:</span>
-                <span className="font-bold text-neutral-900 dark:text-white">
+                <span className="font-semibold text-[#172B2A] dark:text-white text-right">
                   {signerName} ({signerBond})
                 </span>
               </div>
-              <div className="flex justify-between items-center text-[11px] text-neutral-500">
+              <div className="flex justify-between items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                 <span>Data e Hora:</span>
-                <span className="text-neutral-900 dark:text-white">
+                <span className="text-[#172B2A] dark:text-white tabular-nums">
                   {new Date(signedTimestamp || item.signedAt || Date.now()).toLocaleString("pt-BR")}
                 </span>
               </div>
-              <div className="flex justify-between items-center text-[11px] text-neutral-500">
+              <div className="flex justify-between items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                 <span>Status no Banco:</span>
-                <span className="font-bold text-[#00843D] dark:text-[#00c75c]">DEVOLVIDO (Finalizado)</span>
+                <UIBadge tone="emerald">DEVOLVIDO (Finalizado)</UIBadge>
               </div>
-            </div>
+            </SubtlePanel>
 
             {signatureDataUrl && (
-              <div className="max-w-xs mx-auto p-3 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-700 shadow-xs">
-                <p className="text-[10px] uppercase font-bold text-neutral-400 mb-1">
+              <div className="max-w-xs mx-auto p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+                <p className="text-[10px] uppercase font-bold text-slate-400 mb-1.5">
                   Assinatura Gravada:
                 </p>
-                <img
-                  src={signatureDataUrl}
-                  alt="Assinatura Digital"
-                  className="max-h-20 mx-auto object-contain"
-                />
+                <div className="bg-white rounded-lg p-1.5">
+                  <img
+                    src={signatureDataUrl}
+                    alt="Assinatura Digital"
+                    className="max-h-20 mx-auto object-contain"
+                  />
+                </div>
               </div>
             )}
 
-            <div className="space-y-2 pt-2">
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                <button
+            <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
+              <UIButton
+                type="button"
+                id="download-comprovante-btn"
+                variant="primary"
+                size="md"
+                onClick={handleDownloadSignedPDF}
+                title="Download Comprovante Oficial em PDF"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Comprovante</span>
+              </UIButton>
+
+              <UIButton
+                type="button"
+                variant="secondary"
+                size="md"
+                onClick={() => {
+                  navigate("/encontrados");
+                  onClose();
+                }}
+              >
+                <PackageSearch className="w-4 h-4 text-[#16845B]" />
+                <span>Ver Lista de Itens</span>
+              </UIButton>
+
+              {currentUser && (
+                <UIButton
                   type="button"
-                  id="download-comprovante-btn"
-                  onClick={handleDownloadSignedPDF}
-                  className="px-4 py-2.5 bg-[#00843D] hover:bg-[#006e33] text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5 cursor-pointer transition-all"
-                  title="Download Comprovante Oficial em PDF"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Download Comprovante</span>
-                </button>
-                <button
-                  type="button"
+                  variant="secondary"
+                  size="md"
                   onClick={() => {
-                    navigate("/encontrados");
+                    navigate("/perfil");
                     onClose();
                   }}
-                  className="px-4 py-2.5 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
-                  <PackageSearch className="w-4 h-4 text-[#00843D]" />
-                  <span>Ver Lista de Itens</span>
-                </button>
-                {currentUser && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      navigate("/perfil");
-                      onClose();
-                    }}
-                    className="px-4 py-2.5 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <User className="w-4 h-4 text-blue-500" />
-                    <span>Meu Perfil</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-4 py-2.5 bg-neutral-900 dark:bg-neutral-100 hover:bg-neutral-850 text-white dark:text-neutral-900 rounded-xl text-xs font-bold cursor-pointer"
-                >
-                  Concluir
-                </button>
-              </div>
+                  <User className="w-4 h-4 text-sky-600" />
+                  <span>Meu Perfil</span>
+                </UIButton>
+              )}
+
+              <UIButton type="button" variant="dark" size="md" onClick={onClose}>
+                Concluir
+              </UIButton>
             </div>
           </div>
         )}
@@ -706,76 +814,66 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
         {verificationStatus === "VALID" && item && (
           <div className="space-y-4 animate-in fade-in">
             {/* Authenticity Badge with Visual Success Confirmation */}
-            <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-bold text-[#00843D] dark:text-[#00c75c]">
-                <ShieldCheck className="w-4 h-4 shrink-0" />
+            <div className="p-3 bg-[#EBF5F0]/80 dark:bg-emerald-950/35 border border-[#16845B]/25 dark:border-emerald-800/60 rounded-xl flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 text-xs font-semibold text-[#064E3B] dark:text-emerald-300">
+                <ShieldCheck className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0" />
                 <span>Token Validado com Sucesso no Firestore</span>
               </div>
-              <span className="text-[10px] font-mono text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-md font-bold flex items-center gap-1">
-                <Lock className="w-2.5 h-2.5" /> Oficial IFPR
-              </span>
+              <UIBadge tone="emerald" className="font-mono">
+                <Lock className="w-2.5 h-2.5" />
+                <span>Oficial IFPR</span>
+              </UIBadge>
             </div>
 
             {/* Item Summary Card */}
-            <div className="p-3.5 bg-neutral-50 dark:bg-neutral-850 rounded-2xl border border-neutral-200 dark:border-neutral-750 flex items-center gap-3.5">
+            <SubtlePanel padding="sm" className="flex items-center gap-3.5">
               {item.imageUrl ? (
                 <img
                   src={item.imageUrl}
                   alt={item.title}
-                  className="w-16 h-16 rounded-xl object-cover border border-neutral-200 dark:border-neutral-700 shrink-0"
+                  className="w-16 h-16 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0"
                 />
               ) : (
-                <div className="w-16 h-16 rounded-xl bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 shrink-0">
+                <div className="w-16 h-16 rounded-xl bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
                   <Tag className="w-6 h-6" />
                 </div>
               )}
 
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded-md bg-[#00843D]/10 text-[#00843D] text-[10px] font-black uppercase">
-                    {item.category}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <UIBadge tone="emerald">{item.category}</UIBadge>
+                  <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                    #{item.id}
                   </span>
-                  <span className="text-[10px] font-mono text-neutral-500">#{item.id}</span>
                 </div>
-                <h4 className="text-sm font-extrabold text-neutral-900 dark:text-white truncate mt-0.5">
+                <h4 className="text-sm font-bold text-[#172B2A] dark:text-white truncate mt-1">
                   {item.title}
                 </h4>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[11px] text-neutral-500">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[11px] text-slate-500 dark:text-slate-400">
                   <span className="flex items-center gap-1">
-                    <MapPin className="w-3 h-3 text-[#00843D]" /> {item.location}
+                    <MapPin className="w-3 h-3 text-[#16845B]" /> {item.location}
                   </span>
                   <span className="flex items-center gap-1">
-                    <UserCheck className="w-3 h-3 text-blue-500" /> Entregue por: {item.returnedByName || "SEBAC"}
+                    <UserCheck className="w-3 h-3 text-sky-600" /> Entregue por: {item.returnedByName || "SEBAC"}
                   </span>
                 </div>
               </div>
-            </div>
+            </SubtlePanel>
 
             {/* Signer Details Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
-                  Nome do Receptor:
-                </label>
-                <input
-                  type="text"
-                  readOnly
-                  value={signerName}
-                  className="w-full p-2.5 bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-xl text-xs font-semibold text-neutral-900 dark:text-white"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1">
-                  Documento / Matrícula (Opcional):
-                </label>
-                <input
+              <UIFieldGroup label="Nome do Receptor">
+                <UIInput type="text" readOnly value={signerName} />
+              </UIFieldGroup>
+
+              <UIFieldGroup label="Documento / Matrícula (Opcional)">
+                <UIInput
                   type="text"
                   value={documentNumber}
                   onChange={(e) => setDocumentNumber(e.target.value)}
                   placeholder="Ex: RG, CPF ou Matrícula IFPR..."
-                  className="w-full p-2.5 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-xl text-xs font-semibold text-neutral-900 dark:text-white focus:ring-2 focus:ring-[#00843D] outline-none"
                 />
-              </div>
+              </UIFieldGroup>
             </div>
 
             {/* Signature Pad */}
@@ -791,42 +889,38 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
             />
 
             {/* Confirmation checkbox */}
-            <div className="p-3 bg-neutral-50 dark:bg-neutral-800/60 rounded-xl border border-neutral-200 dark:border-neutral-700 flex items-start gap-2.5">
+            <SubtlePanel padding="sm" className="flex items-start gap-2.5">
               <input
                 type="checkbox"
                 id="signConsent"
                 checked={confirmationChecked}
                 onChange={(e) => setConfirmationChecked(e.target.checked)}
-                className="mt-0.5 rounded border-neutral-300 text-[#00843D] focus:ring-[#00843D] cursor-pointer"
+                className="mt-0.5 rounded border-slate-300 dark:border-slate-600 text-[#16845B] focus:ring-[#16845B] cursor-pointer"
               />
-              <label htmlFor="signConsent" className="text-xs text-neutral-700 dark:text-neutral-300 cursor-pointer">
+              <label htmlFor="signConsent" className="text-xs text-slate-700 dark:text-slate-300 cursor-pointer leading-relaxed">
                 Confirmo a exatidão das informações, declaro que recebi o pertence acima discriminado e dou plena quitação de entrega perante o IFPR Campus Ivaiporã.
               </label>
-            </div>
+            </SubtlePanel>
 
             {/* Submission Progress Feedback Banner */}
             {isSubmitting && submissionStep && (
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-[#00843D] dark:text-[#00c75c] font-bold flex items-center gap-2 animate-pulse">
-                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              <div className="p-3 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 border border-[#16845B]/25 text-xs text-[#064E3B] dark:text-emerald-300 font-semibold flex items-center gap-2 animate-pulse">
+                <Loader2 className="w-4 h-4 animate-spin shrink-0 text-[#16845B]" />
                 <span>{submissionStep}</span>
               </div>
             )}
 
             {/* Footer Action Buttons */}
-            <div className="flex items-center justify-end space-x-2 pt-2 border-t border-neutral-200 dark:border-neutral-800">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isSubmitting}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer disabled:opacity-50"
-              >
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <UIButton type="button" variant="ghost" size="md" onClick={onClose} disabled={isSubmitting}>
                 Cancelar
-              </button>
-              <button
+              </UIButton>
+              <UIButton
                 type="button"
+                variant="primary"
+                size="md"
                 disabled={!signatureDataUrl || !confirmationChecked || isSubmitting}
                 onClick={handleConfirmSignature}
-                className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-all"
               >
                 {isSubmitting ? (
                   <>
@@ -839,11 +933,11 @@ export const RemoteSignatureModal: React.FC<RemoteSignatureModalProps> = ({
                     <span>Assinar e Confirmar Recebimento</span>
                   </>
                 )}
-              </button>
+              </UIButton>
             </div>
           </div>
         )}
       </div>
-    </div>
+    </ModalShell>
   );
 };

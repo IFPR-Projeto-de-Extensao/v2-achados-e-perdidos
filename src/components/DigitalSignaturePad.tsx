@@ -393,20 +393,20 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
       {/* Header & Mode Switch */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center space-x-2">
-          <PenTool className="w-4 h-4 text-[#00843D]" />
-          <span className="text-xs font-black text-neutral-800 dark:text-neutral-200">
+          <PenTool className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
+          <span className="text-xs font-bold text-[#172B2A] dark:text-slate-200">
             Assinatura Digital de Recebimento
           </span>
         </div>
 
-        <div className="flex items-center space-x-1.5 p-0.5 bg-neutral-100 dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700">
+        <div className="flex items-center space-x-1 p-1 bg-[#F8FAFC] dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
           <button
             type="button"
             onClick={() => setSignatureMode("draw")}
-            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
               signatureMode === "draw"
-                ? "bg-white dark:bg-neutral-700 text-[#00843D] shadow-xs"
-                : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
+                ? "bg-white dark:bg-[#111827] text-[#16845B] dark:text-emerald-400 shadow-2xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
             }`}
           >
             ✍️ Desenhar Traço
@@ -414,10 +414,10 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
           <button
             type="button"
             onClick={() => setSignatureMode("type")}
-            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+            className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-all cursor-pointer ${
               signatureMode === "type"
-                ? "bg-white dark:bg-neutral-700 text-[#00843D] shadow-xs"
-                : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
+                ? "bg-white dark:bg-[#111827] text-[#16845B] dark:text-emerald-400 shadow-2xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
             }`}
           >
             ⌨️ Digitar Nome
@@ -426,22 +426,22 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
       </div>
 
       {/* Drawing / Typing Canvas Container */}
-      <div className="relative border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-[#00843D] dark:hover:border-[#00843D] rounded-2xl overflow-hidden bg-white shadow-inner transition-colors">
+      <div className="relative border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-[#16845B] dark:hover:border-[#16845B] rounded-2xl overflow-hidden bg-white shadow-inner transition-colors">
         {signatureMode === "type" && (
-          <div className="p-3 bg-neutral-50 dark:bg-neutral-850 border-b border-neutral-200 dark:border-neutral-750 flex flex-wrap items-center gap-2">
+          <div className="p-3 bg-[#F8FAFC] dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-2">
             <div className="relative flex-1 min-w-[200px]">
               <input
                 type="text"
                 value={typedName}
                 onChange={(e) => setTypedName(e.target.value)}
                 placeholder="Digite o nome completo do receptor..."
-                className="w-full p-2 text-xs font-semibold bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-xl outline-none focus:ring-2 focus:ring-[#00843D] text-neutral-900 dark:text-white"
+                className="w-full p-2 text-xs font-semibold bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-[#16845B]/30 focus:border-[#16845B] text-[#172B2A] dark:text-white"
               />
             </div>
             <select
               value={typedFont}
               onChange={(e) => setTypedFont(e.target.value as any)}
-              className="p-2 text-xs font-bold bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-xl outline-none text-neutral-800 dark:text-neutral-200 cursor-pointer"
+              className="p-2 text-xs font-semibold bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-[#16845B] text-[#172B2A] dark:text-slate-200 cursor-pointer"
             >
               <option value="cursive">Estilo Manuscrito (Caveat)</option>
               <option value="serif">Estilo Clássico (Serif)</option>
@@ -463,14 +463,14 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
         />
 
         {/* Floating Controls Bar */}
-        <div className="absolute top-2 right-2 flex items-center space-x-1.5 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xs p-1 rounded-xl shadow-md border border-neutral-200 dark:border-neutral-700 z-10">
+        <div className="absolute top-2 right-2 flex items-center space-x-1.5 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-xs p-1 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 z-10">
           {/* Color pickers */}
           <button
             type="button"
             title="Caneta Preta"
             onClick={() => handlePenColorChange("#0f172a")}
             className={`w-5 h-5 rounded-full bg-slate-900 border-2 transition-transform cursor-pointer ${
-              penColor === "#0f172a" ? "scale-110 border-[#00843D]" : "border-white"
+              penColor === "#0f172a" ? "scale-110 border-[#16845B]" : "border-white"
             }`}
           />
           <button
@@ -478,19 +478,19 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
             title="Caneta Azul Institucional"
             onClick={() => handlePenColorChange("#0047AB")}
             className={`w-5 h-5 rounded-full bg-blue-700 border-2 transition-transform cursor-pointer ${
-              penColor === "#0047AB" ? "scale-110 border-[#00843D]" : "border-white"
+              penColor === "#0047AB" ? "scale-110 border-[#16845B]" : "border-white"
             }`}
           />
           <button
             type="button"
             title="Caneta Verde IFPR"
             onClick={() => handlePenColorChange("#00843D")}
-            className={`w-5 h-5 rounded-full bg-[#00843D] border-2 transition-transform cursor-pointer ${
+            className={`w-5 h-5 rounded-full bg-[#16845B] border-2 transition-transform cursor-pointer ${
               penColor === "#00843D" ? "scale-110 border-white" : "border-white"
             }`}
           />
 
-          <div className="w-[1px] h-4 bg-neutral-300 dark:bg-neutral-700 mx-0.5" />
+          <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
 
           {signatureMode === "draw" && (
             <>
@@ -499,7 +499,7 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
                 onClick={handleUndo}
                 disabled={strokeHistory.length <= 1}
                 title="Desfazer último traço"
-                className="p-1 rounded-lg text-neutral-600 hover:bg-neutral-100 disabled:opacity-30 cursor-pointer"
+                className="p-1 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
@@ -508,7 +508,7 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
                 type="button"
                 onClick={handleClear}
                 title="Limpar assinatura"
-                className="p-1 rounded-lg text-red-600 hover:bg-red-50 cursor-pointer"
+                className="p-1 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
               >
                 <Eraser className="w-3.5 h-3.5" />
               </button>
@@ -517,24 +517,24 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
         </div>
 
         {/* Bottom Signer Info Overlay */}
-        <div className="p-2 bg-neutral-50/90 dark:bg-neutral-900/90 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between text-[10px] text-neutral-600 dark:text-neutral-400">
-          <div className="flex items-center space-x-1.5">
-            <span className="font-bold text-neutral-900 dark:text-white">
+        <div className="p-2.5 bg-[#F8FAFC] dark:bg-slate-900/95 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-600 dark:text-slate-400">
+          <div className="flex items-center space-x-1.5 min-w-0">
+            <span className="font-bold text-[#172B2A] dark:text-white truncate">
               {typedName || signerName || "Proprietário / Receptor"}
             </span>
             <span>•</span>
-            <span>{signerBond}</span>
+            <span className="shrink-0">{signerBond}</span>
             {signerEmail && (
               <>
-                <span>•</span>
-                <span className="hidden sm:inline">{signerEmail}</span>
+                <span className="hidden sm:inline">•</span>
+                <span className="hidden sm:inline truncate">{signerEmail}</span>
               </>
             )}
           </div>
 
-          <div className="flex items-center space-x-1 font-bold">
+          <div className="flex items-center space-x-1 font-semibold shrink-0">
             {hasSignature ? (
-              <span className="text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+              <span className="text-[#16845B] dark:text-emerald-400 flex items-center gap-1">
                 <Check className="w-3.5 h-3.5" /> Assinatura válida
               </span>
             ) : (
@@ -548,11 +548,11 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
       </div>
 
       {/* Legal Declaration */}
-      <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-900 dark:text-emerald-200 leading-snug flex items-start gap-2">
-        <FileText className="w-4 h-4 text-[#00843D] shrink-0 mt-0.5" />
+      <div className="p-3 bg-[#EBF5F0]/70 dark:bg-emerald-950/30 border border-[#16845B]/20 dark:border-emerald-800/50 rounded-xl text-[11px] text-[#064E3B] dark:text-emerald-200 leading-snug flex items-start gap-2.5">
+        <FileText className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0 mt-0.5" />
         <div>
           <span className="font-bold">Termo de Devolução & Recebimento Oficial:</span>
-          <p className="mt-0.5 text-neutral-600 dark:text-neutral-300">
+          <p className="mt-0.5 text-slate-600 dark:text-slate-300">
             Declaro ter recebido o pertence correspondente na Seção de Apoio ao Estudante (SEBAC) / Guarita do IFPR Campus Ivaiporã em perfeitas condições, conferido mediante documento.
           </p>
         </div>

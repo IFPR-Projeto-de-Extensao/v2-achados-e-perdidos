@@ -53,7 +53,19 @@ import {
   Eye,
   Info,
   CameraOff,
+  ChevronLeft,
 } from "lucide-react";
+import {
+  BrandLogo,
+  SurfaceCard,
+  SubtlePanel,
+  UIBadge,
+  UIButton,
+  UIFieldGroup,
+  UIInput,
+  UISelect,
+  UITextarea,
+} from "./ui";
 
 export const getRegisterDraftKey = (uid?: string | null): string | null => {
   if (!uid || uid === "guest" || uid === "guest_visitor" || uid.trim() === "") return null;
@@ -215,23 +227,30 @@ export const RegisterItemView: React.FC = () => {
   if (isUnauthorized) {
     return (
       <div className="min-h-[70vh] flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-2xl p-8 shadow-xl border border-slate-200 dark:border-slate-800 text-center space-y-4">
-          <div className="w-16 h-16 mx-auto rounded-full bg-red-500/10 text-red-500 flex items-center justify-center">
+        <SurfaceCard className="max-w-md w-full p-8 text-center space-y-5">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 text-rose-600 dark:text-rose-400 flex items-center justify-center">
             <ShieldAlert className="w-8 h-8" />
           </div>
-          <h2 className="text-xl font-black text-slate-900 dark:text-white">Acesso Restrito ao Cadastro</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            {currentUser?.role === "SERVIDOR"
-              ? "Sua conta de Servidor/TAE aguarda aprovação institucional pela Secretaria/Diretoria do Campus. O cadastro de objetos será liberado assim que o perfil for aprovado."
-              : "O cadastro de objetos perdidos e encontrados é restrito a Servidores/TAE aprovados e Administradores do IFPR."}
-          </p>
-          <button
+          <div className="space-y-2">
+            <UIBadge tone="rose">Acesso Restrito</UIBadge>
+            <h2 className="text-xl font-bold text-[#172B2A] dark:text-white tracking-tight">
+              Acesso Restrito ao Cadastro
+            </h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              {currentUser?.role === "SERVIDOR"
+                ? "Sua conta de Servidor/TAE aguarda aprovação institucional pela Secretaria/Diretoria do Campus. O cadastro de objetos será liberado assim que o perfil for aprovado."
+                : "O cadastro de objetos perdidos e encontrados é restrito a Servidores/TAE aprovados e Administradores do IFPR."}
+            </p>
+          </div>
+          <UIButton
+            variant="primary"
+            size="lg"
+            fullWidth
             onClick={() => navigate("/")}
-            className="w-full py-3 px-4 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-bold text-sm tracking-wide transition-all shadow-md cursor-pointer"
           >
             Voltar à Página Inicial
-          </button>
-        </div>
+          </UIButton>
+        </SurfaceCard>
       </div>
     );
   }
@@ -943,63 +962,66 @@ export const RegisterItemView: React.FC = () => {
   if (isGuest) {
     return (
       <div className="max-w-2xl mx-auto py-12 px-4 sm:px-6">
-        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-xl p-6 sm:p-10 text-center space-y-6">
-          <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-center text-amber-600 dark:text-amber-400">
+        <SurfaceCard className="p-6 sm:p-10 text-center space-y-6">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 flex items-center justify-center text-amber-600 dark:text-amber-400">
             <Lock className="w-8 h-8 sm:w-10 sm:h-10" />
           </div>
 
           <div className="space-y-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
-              Autenticação Obrigatória
-            </span>
-            <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+            <UIBadge tone="amber">Autenticação Obrigatória</UIBadge>
+            <h1 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
               Identifique-se para Cadastrar
             </h1>
-            <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400 max-w-md mx-auto">
+            <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
               Para garantir a integridade, segurança e rastreabilidade dos registros no IFPR Campus
               Ivaiporã, apenas usuários autenticados podem cadastrar novos pertences.
             </p>
           </div>
 
-          <div className="p-4 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200/80 dark:border-neutral-700/60 text-left space-y-2 text-xs sm:text-sm text-neutral-600 dark:text-neutral-300">
-            <div className="flex items-center gap-2 font-bold text-neutral-800 dark:text-neutral-200">
-              <ShieldCheck className="w-4 h-4 text-[#00843D]" /> O que você pode fazer sem login:
+          <SubtlePanel className="p-4 text-left space-y-2 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+            <div className="flex items-center gap-2 font-bold text-[#172B2A] dark:text-white">
+              <ShieldCheck className="w-4 h-4 text-[#16845B]" /> O que você pode fazer sem login:
             </div>
-            <ul className="list-disc list-inside space-y-1 pl-1 text-neutral-500 dark:text-neutral-400">
+            <ul className="list-disc list-inside space-y-1 pl-1 text-slate-500 dark:text-slate-400">
               <li>Consultar todos os itens perdidos e encontrados</li>
               <li>Fazer buscas por local, cor e categoria</li>
               <li>Escanear QR Codes de etiquetas físicas no campus</li>
               <li>Ver detalhes públicos dos pertences</li>
             </ul>
-          </div>
+          </SubtlePanel>
 
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
-            <button
+            <UIButton
               id="btn-guest-login-to-register"
               type="button"
+              variant="primary"
+              size="lg"
               onClick={() => {
                 vibrateClick();
                 requireAuth(type);
               }}
-              className="flex-1 inline-flex items-center justify-center gap-2 py-3.5 px-6 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-bold text-sm sm:text-base shadow-lg shadow-emerald-700/20 active:scale-[0.98] transition-all cursor-pointer"
+              className="flex-1"
             >
               <LogIn className="w-5 h-5" /> Fazer Login ou Criar Conta
-            </button>
-            <button
+            </UIButton>
+            <UIButton
               id="btn-guest-back-to-lost"
               type="button"
+              variant="secondary"
+              size="lg"
               onClick={() => {
                 vibrateClick();
                 navigate("/perdidos");
               }}
-              className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold text-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
             >
-              <PackageSearch className="w-4 h-4 text-[#00843D]" />
+              <PackageSearch className="w-4 h-4 text-[#16845B]" />
               <span>Explorar Itens</span>
-            </button>
-            <button
+            </UIButton>
+            <UIButton
               id="btn-guest-close-to-home"
               type="button"
+              variant="outline"
+              size="lg"
               onClick={() => {
                 vibrateClick();
                 if (window.history.length > 1) {
@@ -1008,14 +1030,13 @@ export const RegisterItemView: React.FC = () => {
                   navigate("/");
                 }
               }}
-              className="py-3.5 px-4 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-400 font-bold text-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
               title="Fechar e retornar"
             >
               <X className="w-4 h-4" />
               <span>Fechar</span>
-            </button>
+            </UIButton>
           </div>
-        </div>
+        </SurfaceCard>
       </div>
     );
   }
@@ -1031,63 +1052,63 @@ export const RegisterItemView: React.FC = () => {
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-20">
       {/* Top Header Card */}
-      <div className="bg-white dark:bg-[#1E1E1E] p-5 sm:p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-[#00843D]/10 text-[#00843D] dark:text-green-400 flex items-center justify-center shrink-0">
-              <PlusCircle className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#00843D] dark:text-green-400">
-                  IFPR Campus Ivaiporã
-                </span>
-                {draftSavedAt && currentStep < 5 && (
-                  <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md font-medium">
-                    <Save className="w-3 h-3" />
-                    <span>Rascunho salvo</span>
-                  </span>
-                )}
-              </div>
-              <h1 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
-                Cadastro de Objeto
-              </h1>
-            </div>
-          </div>
+      <SurfaceCard className="p-5 sm:p-6 space-y-5">
+        <div className="flex items-center justify-between gap-3">
+          <button
+            id="btn-header-close-register"
+            type="button"
+            onClick={() => {
+              vibrateClick();
+              if (window.history.length > 1) {
+                goBack();
+              } else {
+                navigate("/");
+              }
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            title="Fechar e voltar à tela inicial"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>Voltar</span>
+          </button>
 
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            {/* Clear draft button */}
-            {(title || description || color || brand || locationComplement) && currentStep < 5 && (
+          <BrandLogo size="sm" />
+
+          <div className="flex items-center gap-2">
+            {(title || description || color || brand || locationComplement) && currentStep < 5 ? (
               <button
                 type="button"
                 onClick={handleClearDraft}
                 title="Limpar formulário e apagar rascunho"
-                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-red-600 dark:text-red-400 hover:bg-red-500/10 border border-red-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Limpar</span>
               </button>
+            ) : (
+              <div className="w-16" aria-hidden="true" />
             )}
-
-            {/* Close button */}
-            <button
-              id="btn-header-close-register"
-              type="button"
-              onClick={() => {
-                vibrateClick();
-                if (window.history.length > 1) {
-                  goBack();
-                } else {
-                  navigate("/");
-                }
-              }}
-              className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-bold transition-all border border-neutral-200 dark:border-neutral-700 flex items-center gap-1.5 cursor-pointer"
-              title="Fechar e voltar à tela inicial"
-            >
-              <X className="w-4 h-4" />
-              <span className="hidden sm:inline">Fechar</span>
-            </button>
           </div>
+        </div>
+
+        <div className="text-center space-y-1.5 pt-1">
+          <div className="flex items-center justify-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#16845B] dark:text-emerald-400">
+              IFPR Campus Ivaiporã
+            </span>
+            {draftSavedAt && currentStep < 5 && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-[#064E3B] dark:text-emerald-300 bg-[#EBF5F0] dark:bg-emerald-950/40 px-2 py-0.5 rounded-md font-semibold">
+                <Save className="w-3 h-3 text-[#16845B]" />
+                <span>Rascunho salvo</span>
+              </span>
+            )}
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
+            Registrar Item — Cadastro de Objeto
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-lg mx-auto">
+            Preencha as informações abaixo para cadastrar um novo objeto no sistema institucional.
+          </p>
         </div>
 
         {/* Step Indicator / Stepper (Only visible during steps 1 to 4) */}
@@ -1109,29 +1130,29 @@ export const RegisterItemView: React.FC = () => {
                       }
                     }}
                     disabled={step.number > currentStep}
-                    className={`relative p-2.5 sm:p-3 rounded-2xl border text-left transition-all ${
+                    className={`relative p-2.5 sm:p-3 rounded-xl border text-left transition-all ${
                       isActive
-                        ? "bg-[#00843D]/10 border-[#00843D] text-[#00843D] dark:text-green-400 shadow-xs"
+                        ? "bg-[#EBF5F0] dark:bg-emerald-950/30 border-[#16845B] text-[#064E3B] dark:text-emerald-300 shadow-xs"
                         : isCompleted
-                        ? "bg-neutral-50 dark:bg-neutral-800/60 border-neutral-200 dark:border-neutral-700 hover:border-[#00843D]/50 text-neutral-800 dark:text-neutral-200 cursor-pointer"
-                        : "bg-neutral-50/50 dark:bg-neutral-900/40 border-neutral-200/60 dark:border-neutral-800 text-neutral-400 dark:text-neutral-600 opacity-60 cursor-not-allowed"
+                        ? "bg-[#F8FAFC] dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-[#16845B]/50 text-[#172B2A] dark:text-slate-200 cursor-pointer"
+                        : "bg-slate-50/60 dark:bg-slate-900/40 border-slate-200/60 dark:border-slate-800 text-slate-400 dark:text-slate-600 opacity-60 cursor-not-allowed"
                     }`}
                   >
                     <div className="flex items-center gap-2">
                       <div
-                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shrink-0 ${
+                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
                           isActive
-                            ? "bg-[#00843D] text-white"
+                            ? "bg-[#16845B] text-white"
                             : isCompleted
-                            ? "bg-emerald-600 text-white"
-                            : "bg-neutral-200 dark:bg-neutral-800 text-neutral-500"
+                            ? "bg-[#16845B] text-white"
+                            : "bg-slate-200 dark:bg-slate-800 text-slate-500"
                         }`}
                       >
                         {isCompleted ? <Check className="w-3.5 h-3.5" /> : step.number}
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs font-bold truncate">{step.label}</p>
-                        <p className="text-[10px] text-neutral-500 dark:text-neutral-400 hidden sm:block truncate">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 hidden sm:block truncate">
                           {step.desc}
                         </p>
                       </div>
@@ -1142,26 +1163,26 @@ export const RegisterItemView: React.FC = () => {
             </div>
 
             {/* Linear Progress Bar */}
-            <div className="w-full bg-neutral-100 dark:bg-neutral-800 h-1.5 rounded-full mt-3 overflow-hidden">
+            <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full mt-3 overflow-hidden">
               <div
-                className="bg-[#00843D] h-full transition-all duration-300 rounded-full"
+                className="bg-[#16845B] h-full transition-all duration-300 rounded-full"
                 style={{ width: `${(currentStep / 4) * 100}%` }}
               />
             </div>
           </div>
         )}
-      </div>
+      </SurfaceCard>
 
       {/* Restored Draft Alert Banner */}
       {draftRestored && currentStep < 5 && (
-        <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between gap-3 animate-in fade-in duration-200">
-          <div className="flex items-center space-x-3 text-xs text-emerald-900 dark:text-emerald-200">
-            <div className="p-2 rounded-xl bg-[#00843D] text-white shrink-0">
+        <div className="p-4 rounded-2xl bg-[#EBF5F0] dark:bg-emerald-950/30 border border-[#16845B]/25 flex items-center justify-between gap-3 animate-in fade-in duration-200">
+          <div className="flex items-center space-x-3 text-xs text-[#172B2A] dark:text-emerald-200">
+            <div className="p-2 rounded-xl bg-[#16845B] text-white shrink-0">
               <Save className="w-4 h-4" />
             </div>
             <div>
               <p className="font-bold">Rascunho recuperado!</p>
-              <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+              <p className="text-[11px] text-[#064E3B] dark:text-emerald-400">
                 Seus dados salvos anteriormente foram restaurados para você continuar.
               </p>
             </div>
@@ -1169,7 +1190,7 @@ export const RegisterItemView: React.FC = () => {
           <button
             type="button"
             onClick={handleClearDraft}
-            className="px-3 py-1.5 rounded-xl bg-white dark:bg-neutral-800 border border-emerald-500/30 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 text-xs font-bold text-neutral-700 dark:text-neutral-300 transition-colors shrink-0 flex items-center space-x-1 cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-[#16845B]/25 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 text-xs font-bold text-slate-700 dark:text-slate-300 transition-colors shrink-0 flex items-center space-x-1 cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Descartar</span>
@@ -1181,15 +1202,15 @@ export const RegisterItemView: React.FC = () => {
           ETAPA 1: TIPO DE OCORRÊNCIA
           ========================================================================= */}
       {currentStep === 1 && (
-        <div className="bg-white dark:bg-[#1E1E1E] p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6 animate-in fade-in duration-200">
+        <SurfaceCard className="p-6 sm:p-8 space-y-6 animate-in fade-in duration-200">
           <div className="space-y-1">
-            <span className="text-[11px] font-black uppercase text-[#00843D] tracking-wider">
+            <span className="text-[11px] font-bold uppercase text-[#16845B] dark:text-emerald-400 tracking-wider">
               Etapa 1 de 4 • Tipo de Ocorrência
             </span>
-            <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
+            <h2 className="text-xl sm:text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight">
               O que aconteceu com o objeto?
             </h2>
-            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
               Selecione se você achou um pertence de outra pessoa ou se você perdeu algo seu no
               campus.
             </p>
@@ -1204,44 +1225,36 @@ export const RegisterItemView: React.FC = () => {
                 setType("ENCONTRADO");
                 setRegisterTypeSelection("ENCONTRADO");
               }}
-              className={`p-6 rounded-3xl border-2 text-left transition-all flex flex-col justify-between space-y-4 cursor-pointer ${
+              className={`p-6 rounded-2xl border-2 text-left transition-all flex flex-col justify-between space-y-4 cursor-pointer ${
                 type === "ENCONTRADO"
-                  ? "border-[#00843D] bg-emerald-50/50 dark:bg-emerald-950/20 shadow-md ring-2 ring-[#00843D]/20"
-                  : "border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 bg-white dark:bg-neutral-800/40"
+                  ? "border-[#16845B] bg-[#EBF5F0]/60 dark:bg-emerald-950/20 shadow-sm ring-2 ring-[#16845B]/15"
+                  : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-800/40"
               }`}
             >
               <div className="flex items-start justify-between">
                 <div
-                  className={`w-14 h-14 rounded-2xl flex items-center justify-center ${
+                  className={`w-13 h-13 rounded-2xl flex items-center justify-center ${
                     type === "ENCONTRADO"
-                      ? "bg-[#00843D] text-white"
-                      : "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400"
+                      ? "bg-[#16845B] text-white"
+                      : "bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#16845B] dark:text-emerald-400"
                   }`}
                 >
-                  <PackagePlus className="w-7 h-7" />
+                  <PackagePlus className="w-6 h-6" />
                 </div>
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
-                    type === "ENCONTRADO"
-                      ? "bg-[#00843D] text-white"
-                      : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
-                  }`}
-                >
-                  Achado
-                </span>
+                <UIBadge tone={type === "ENCONTRADO" ? "emerald" : "slate"}>Achado</UIBadge>
               </div>
 
               <div className="space-y-1">
-                <h3 className="text-lg font-black text-neutral-900 dark:text-white">
+                <h3 className="text-lg font-bold text-[#172B2A] dark:text-white">
                   Encontrei um objeto
                 </h3>
-                <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   Achei um pertence esquecido por alguém no IFPR e quero registrá-lo para localizar o
                   dono e providenciar a devolução.
                 </p>
               </div>
 
-              <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#00843D] dark:text-green-400">
+              <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#16845B] dark:text-emerald-400">
                 <span>Selecionar esta opção</span>
                 <ArrowRight className="w-4 h-4" />
               </div>
@@ -1255,90 +1268,78 @@ export const RegisterItemView: React.FC = () => {
                 setType("PERDIDO");
                 setRegisterTypeSelection("PERDIDO");
               }}
-              className={`p-6 rounded-3xl border-2 text-left transition-all flex flex-col justify-between space-y-4 cursor-pointer ${
+              className={`p-6 rounded-2xl border-2 text-left transition-all flex flex-col justify-between space-y-4 cursor-pointer ${
                 type === "PERDIDO"
-                  ? "border-[#EF4444] bg-red-50/50 dark:bg-red-950/20 shadow-md ring-2 ring-[#EF4444]/20"
-                  : "border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 bg-white dark:bg-neutral-800/40"
+                  ? "border-rose-500 bg-rose-50/50 dark:bg-rose-950/20 shadow-sm ring-2 ring-rose-500/15"
+                  : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-800/40"
               }`}
             >
               <div className="flex items-start justify-between">
                 <div
-                  className={`w-14 h-14 rounded-2xl flex items-center justify-center ${
+                  className={`w-13 h-13 rounded-2xl flex items-center justify-center ${
                     type === "PERDIDO"
-                      ? "bg-[#EF4444] text-white"
-                      : "bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400"
+                      ? "bg-rose-600 text-white"
+                      : "bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400"
                   }`}
                 >
-                  <PackageSearch className="w-7 h-7" />
+                  <PackageSearch className="w-6 h-6" />
                 </div>
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
-                    type === "PERDIDO"
-                      ? "bg-[#EF4444] text-white"
-                      : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
-                  }`}
-                >
-                  Perdido
-                </span>
+                <UIBadge tone={type === "PERDIDO" ? "rose" : "slate"}>Perdido</UIBadge>
               </div>
 
               <div className="space-y-1">
-                <h3 className="text-lg font-black text-neutral-900 dark:text-white">
+                <h3 className="text-lg font-bold text-[#172B2A] dark:text-white">
                   Perdi um objeto
                 </h3>
-                <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                   Esqueci ou perdi um pertence meu no campus e quero registrar a ocorrência para que
                   quem encontrá-lo possa me avisar.
                 </p>
               </div>
 
-              <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#EF4444] dark:text-red-400">
+              <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400">
                 <span>Selecionar esta opção</span>
                 <ArrowRight className="w-4 h-4" />
               </div>
             </button>
           </div>
 
-          <div className="pt-6 border-t border-neutral-200 dark:border-neutral-800 flex justify-end">
-            <button
+          <div className="pt-6 border-t border-slate-200/80 dark:border-slate-800 flex justify-end">
+            <UIButton
               id="btn-step1-continue"
               type="button"
+              variant="primary"
+              size="lg"
               onClick={handleNextStep}
-              className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-extrabold text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full sm:w-auto px-8"
             >
               <span>Continuar</span>
               <ArrowRight className="w-4 h-4" />
-            </button>
+            </UIButton>
           </div>
-        </div>
+        </SurfaceCard>
       )}
 
       {/* =========================================================================
           ETAPA 2: INFORMAÇÕES DO OBJETO
           ========================================================================= */}
       {currentStep === 2 && (
-        <div className="bg-white dark:bg-[#1E1E1E] p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6 animate-in fade-in duration-200">
+        <SurfaceCard className="p-6 sm:p-8 space-y-6 animate-in fade-in duration-200">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-black uppercase text-[#00843D] tracking-wider">
+              <span className="text-[11px] font-bold uppercase text-[#16845B] dark:text-emerald-400 tracking-wider">
                 Etapa 2 de 4 • Informações do Objeto
               </span>
-              <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                  type === "ENCONTRADO"
-                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
-                    : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
-                }`}
-              >
+              <UIBadge tone={type === "ENCONTRADO" ? "emerald" : "rose"}>
                 {type === "ENCONTRADO" ? "Objeto Encontrado" : "Objeto Perdido"}
-              </span>
+              </UIBadge>
             </div>
-            <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
+            <h2 className="text-xl sm:text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight">
               {type === "ENCONTRADO"
                 ? "Quais são as características do objeto encontrado?"
                 : "Como é o objeto que você perdeu?"}
             </h2>
-            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
               Preencha os detalhes para facilitar a identificação visual por qualquer pessoa.
             </p>
           </div>
@@ -1346,25 +1347,25 @@ export const RegisterItemView: React.FC = () => {
           <div className="space-y-5">
             {/* Nome do Objeto */}
             <div>
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between mb-1.5">
                 <label
                   htmlFor="title-input"
-                  className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+                  className="block text-xs font-bold text-[#172B2A] dark:text-slate-200"
                 >
-                  Nome do Objeto <span className="text-red-500">*</span>
+                  Nome do Objeto <span className="text-rose-500">*</span>
                 </label>
                 <span
                   id="title-char-counter"
                   className={`text-[10px] font-mono ${
                     title.length >= ITEM_FIELD_LIMITS.TITLE
                       ? "text-amber-600 font-bold"
-                      : "text-neutral-400"
+                      : "text-slate-400"
                   }`}
                 >
                   {title.length} / {ITEM_FIELD_LIMITS.TITLE} caracteres
                 </span>
               </div>
-              <input
+              <UIInput
                 id="title-input"
                 type="text"
                 required
@@ -1372,60 +1373,49 @@ export const RegisterItemView: React.FC = () => {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Ex: Garrafa térmica Kouda azul marinho 750ml"
-                className={`w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all ${
-                  stepErrors.title
-                    ? "border-red-500 bg-red-50/20"
-                    : "border-neutral-300 dark:border-neutral-700"
-                }`}
+                hasError={Boolean(stepErrors.title)}
               />
               {stepErrors.title && (
-                <p className="text-xs text-red-500 mt-1 font-medium">{stepErrors.title}</p>
+                <p className="text-xs text-rose-500 mt-1 font-medium">{stepErrors.title}</p>
               )}
             </div>
 
             {/* Categoria */}
-            <div>
-              <label
-                htmlFor="category-input"
-                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
-              >
-                Categoria do Objeto <span className="text-red-500">*</span>
-              </label>
-              <select
+            <UIFieldGroup label="Categoria do Objeto" htmlFor="category-input" required>
+              <UISelect
                 id="category-input"
                 value={category}
                 onChange={(e) => setCategory(normalizeCategory(e.target.value))}
-                className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all cursor-pointer"
               >
                 {CATEGORIES_LIST.map((cat) => (
                   <option key={cat} value={cat}>
                     {cat}
                   </option>
                 ))}
-              </select>
-            </div>
+              </UISelect>
+            </UIFieldGroup>
 
             {/* Descrição Detalhada */}
             <div>
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between mb-1.5">
                 <label
                   htmlFor="description-input"
-                  className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+                  className="block text-xs font-bold text-[#172B2A] dark:text-slate-200"
                 >
-                  Descrição Detalhada <span className="text-red-500">*</span>
+                  Descrição Detalhada <span className="text-rose-500">*</span>
                 </label>
                 <span
                   id="description-char-counter"
                   className={`text-[10px] font-mono ${
                     description.length >= ITEM_FIELD_LIMITS.DESCRIPTION
                       ? "text-amber-600 font-bold"
-                      : "text-neutral-400"
+                      : "text-slate-400"
                   }`}
                 >
                   {description.length} / {ITEM_FIELD_LIMITS.DESCRIPTION} caracteres
                 </span>
               </div>
-              <textarea
+              <UITextarea
                 id="description-input"
                 required
                 rows={4}
@@ -1433,62 +1423,56 @@ export const RegisterItemView: React.FC = () => {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Descreva características que ajudem a reconhecer o objeto (marcas de uso, arranhões, chaveiros, adesivos, conteúdo interno, etc.)..."
-                className={`w-full p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all ${
-                  stepErrors.description
-                    ? "border-red-500 bg-red-50/20"
-                    : "border-neutral-300 dark:border-neutral-700"
-                }`}
+                hasError={Boolean(stepErrors.description)}
               />
               {stepErrors.description && (
-                <p className="text-xs text-red-500 mt-1 font-medium">{stepErrors.description}</p>
+                <p className="text-xs text-rose-500 mt-1 font-medium">{stepErrors.description}</p>
               )}
             </div>
 
             {/* Cor Predominante e Marca/Modelo (Linha Dupla) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1.5">
                   <label
                     htmlFor="color-input"
-                    className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+                    className="block text-xs font-bold text-[#172B2A] dark:text-slate-200"
                   >
-                    Cor Principal <span className="text-neutral-400 font-normal">(Opcional)</span>
+                    Cor Principal <span className="text-slate-400 font-normal">(Opcional)</span>
                   </label>
-                  <span className="text-[10px] text-neutral-400 font-mono">
+                  <span className="text-[10px] text-slate-400 font-mono">
                     Máx. {ITEM_FIELD_LIMITS.COLOR}
                   </span>
                 </div>
-                <input
+                <UIInput
                   id="color-input"
                   type="text"
                   maxLength={ITEM_FIELD_LIMITS.COLOR}
                   value={color}
                   onChange={(e) => setColor(e.target.value)}
                   placeholder="Ex: Azul marinho, Preto, Prata"
-                  className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all"
                 />
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1.5">
                   <label
                     htmlFor="brand-input"
-                    className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+                    className="block text-xs font-bold text-[#172B2A] dark:text-slate-200"
                   >
-                    Marca ou Modelo <span className="text-neutral-400 font-normal">(Opcional)</span>
+                    Marca ou Modelo <span className="text-slate-400 font-normal">(Opcional)</span>
                   </label>
-                  <span className="text-[10px] text-neutral-400 font-mono">
+                  <span className="text-[10px] text-slate-400 font-mono">
                     Máx. {ITEM_FIELD_LIMITS.BRAND}
                   </span>
                 </div>
-                <input
+                <UIInput
                   id="brand-input"
                   type="text"
                   maxLength={ITEM_FIELD_LIMITS.BRAND}
                   value={brand}
                   onChange={(e) => setBrand(e.target.value)}
                   placeholder="Ex: Dell, Nike, Casio, Faber-Castell"
-                  className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all"
                 />
               </div>
             </div>
@@ -1497,18 +1481,18 @@ export const RegisterItemView: React.FC = () => {
             <div className="space-y-3 pt-2">
               <div className="flex items-center justify-between">
                 <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-200">
-                    Foto do Objeto <span className="text-neutral-400 font-normal">(Opcional)</span>
+                  <label className="block text-xs font-bold text-[#172B2A] dark:text-slate-200">
+                    Adicionar foto (opcional)
                   </label>
-                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                    Uma foto nítida aumenta em até 80% as chances de devolução.
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    PNG, JPG ou WEBP — Uma foto nítida aumenta em até 80% as chances de devolução.
                   </p>
                 </div>
                 {hasCustomImage && (
                   <button
                     type="button"
                     onClick={handleRemoveImage}
-                    className="text-xs text-red-600 hover:text-red-700 dark:text-red-400 font-bold flex items-center gap-1 cursor-pointer"
+                    className="text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400 font-bold flex items-center gap-1 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Remover foto</span>
@@ -1518,8 +1502,8 @@ export const RegisterItemView: React.FC = () => {
 
               {hasCustomImage ? (
                 /* Card com Prévia da Imagem Selecionada */
-                <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 flex flex-col sm:flex-row items-center gap-4">
-                  <div className="w-28 h-28 rounded-2xl overflow-hidden bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 shrink-0 shadow-xs">
+                <SubtlePanel className="p-4 flex flex-col sm:flex-row items-center gap-4">
+                  <div className="w-28 h-28 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shrink-0 shadow-xs">
                     <img
                       src={imageUrl}
                       alt="Prévia do objeto"
@@ -1529,20 +1513,20 @@ export const RegisterItemView: React.FC = () => {
 
                   <div className="space-y-2 flex-1 text-center sm:text-left">
                     <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 text-xs font-bold">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-[#00843D]" />
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#EBF5F0] text-[#064E3B] dark:bg-emerald-950/60 dark:text-emerald-300 text-xs font-bold">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#16845B]" />
                         <span>Foto pronta para envio</span>
                       </span>
                       {compressionStats && (
-                        <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                           Otimizada: {compressionStats.compressed} (-{compressionStats.savings}%)
                         </span>
                       )}
                     </div>
 
                     <div className="flex flex-wrap gap-2 justify-center sm:justify-start pt-1">
-                      <label className="px-3.5 py-2 rounded-xl bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5">
-                        <Upload className="w-3.5 h-3.5" />
+                      <label className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-[#172B2A] dark:text-slate-200 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5">
+                        <Upload className="w-3.5 h-3.5 text-[#16845B]" />
                         <span>Substituir Foto</span>
                         <input
                           type="file"
@@ -1554,33 +1538,32 @@ export const RegisterItemView: React.FC = () => {
                       <button
                         type="button"
                         onClick={handleOpenCamera}
-                        className="px-3.5 py-2 rounded-xl bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                        className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-[#172B2A] dark:text-slate-200 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5"
                       >
-                        <Camera className="w-3.5 h-3.5" />
+                        <Camera className="w-3.5 h-3.5 text-[#16845B]" />
                         <span>Tirar Nova Foto</span>
                       </button>
                     </div>
                   </div>
-                </div>
+                </SubtlePanel>
               ) : (
                 /* Card para Escolher Foto quando ainda não houver */
-                <div className="p-6 rounded-3xl border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-[#00843D] dark:hover:border-[#00843D] bg-neutral-50/50 dark:bg-neutral-800/30 text-center space-y-3 transition-colors">
-                  <div className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 mx-auto flex items-center justify-center">
-                    <Upload className="w-6 h-6 text-[#00843D]" />
+                <div className="p-6 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-[#16845B] dark:hover:border-[#16845B] bg-[#F8FAFC] dark:bg-slate-800/30 text-center space-y-3 transition-colors">
+                  <div className="w-12 h-12 rounded-2xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 mx-auto flex items-center justify-center">
+                    <Upload className="w-6 h-6" />
                   </div>
 
                   <div className="space-y-1">
-                    <p className="text-xs sm:text-sm font-bold text-neutral-800 dark:text-neutral-200">
-                      Adicionar foto do pertence
+                    <p className="text-xs sm:text-sm font-bold text-[#172B2A] dark:text-slate-200">
+                      Adicionar foto (opcional)
                     </p>
-                    <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                      Formatos aceitos: JPG, PNG ou WebP (máx. 15MB). A foto é comprimida
-                      automaticamente.
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      PNG, JPG ou WEBP (máx. 15MB). A foto é comprimida automaticamente.
                     </p>
                   </div>
 
                   <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                    <label className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#007033] text-white text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-2">
+                    <label className="px-5 py-2.5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-2">
                       <Upload className="w-4 h-4" />
                       <span>Escolher do dispositivo</span>
                       <input
@@ -1594,9 +1577,9 @@ export const RegisterItemView: React.FC = () => {
                     <button
                       type="button"
                       onClick={handleOpenCamera}
-                      className="px-4 py-2.5 rounded-xl bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-2"
+                      className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-[#172B2A] dark:text-slate-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-2"
                     >
-                      <Camera className="w-4 h-4" />
+                      <Camera className="w-4 h-4 text-[#16845B]" />
                       <span>Tirar com a câmera</span>
                     </button>
                   </div>
@@ -1604,52 +1587,55 @@ export const RegisterItemView: React.FC = () => {
               )}
 
               {isCompressing && (
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 text-xs font-semibold animate-pulse">
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#064E3B] dark:text-emerald-300 text-xs font-semibold animate-pulse">
+                  <Loader2 className="w-4 h-4 animate-spin text-[#16845B]" />
                   <span>Otimizando e comprimindo imagem para o PWA...</span>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="pt-6 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
-            <button
+          <div className="pt-6 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-3">
+            <UIButton
               type="button"
+              variant="secondary"
+              size="lg"
               onClick={handlePrevStep}
-              className="px-6 py-3.5 rounded-2xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Voltar</span>
-            </button>
+            </UIButton>
 
-            <button
+            <UIButton
               id="btn-step2-continue"
               type="button"
+              variant="primary"
+              size="lg"
               onClick={handleNextStep}
-              className="px-8 py-3.5 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-extrabold text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 cursor-pointer"
+              className="px-8"
             >
               <span>Continuar</span>
               <ArrowRight className="w-4 h-4" />
-            </button>
+            </UIButton>
           </div>
-        </div>
+        </SurfaceCard>
       )}
 
       {/* =========================================================================
           ETAPA 3: LOCAL E DATA
           ========================================================================= */}
       {currentStep === 3 && (
-        <div className="bg-white dark:bg-[#1E1E1E] p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6 animate-in fade-in duration-200">
+        <SurfaceCard className="p-6 sm:p-8 space-y-6 animate-in fade-in duration-200">
           <div className="space-y-1">
-            <span className="text-[11px] font-black uppercase text-[#00843D] tracking-wider">
+            <span className="text-[11px] font-bold uppercase text-[#16845B] dark:text-emerald-400 tracking-wider">
               Etapa 3 de 4 • Local e Data
             </span>
-            <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
+            <h2 className="text-xl sm:text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight">
               {type === "ENCONTRADO"
                 ? "Onde e quando você encontrou o objeto?"
                 : "Onde e quando você viu o objeto pela última vez?"}
             </h2>
-            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
               Essas informações são essenciais para que o dono e a equipe do campus localizem o
               pertence.
             </p>
@@ -1657,99 +1643,79 @@ export const RegisterItemView: React.FC = () => {
 
           <div className="space-y-5">
             {/* Local no Campus */}
-            <div>
-              <label
-                htmlFor="location-input"
-                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
+            <UIFieldGroup label="Local no Campus Ivaiporã" htmlFor="location-input" required>
+              <UISelect
+                id="location-input"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                leftIcon={<MapPin className="w-4 h-4" />}
               >
-                Local no Campus Ivaiporã <span className="text-red-500">*</span>
-              </label>
-              <div className="relative">
-                <MapPin className="w-4 h-4 absolute left-3.5 top-3.5 text-neutral-400 pointer-events-none" />
-                <select
-                  id="location-input"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all cursor-pointer"
-                >
-                  {IFPR_LOCATION_GROUPS.map((group) => (
-                    <optgroup key={group.group} label={group.group}>
-                      {group.locations.map((loc) => (
-                        <option key={loc} value={loc}>
-                          {loc}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                  {location && !IFPR_LOCATIONS.includes(location) && (
-                    <option value={location}>{location} (Legado)</option>
-                  )}
-                </select>
-              </div>
-            </div>
+                {IFPR_LOCATION_GROUPS.map((group) => (
+                  <optgroup key={group.group} label={group.group}>
+                    {group.locations.map((loc) => (
+                      <option key={loc} value={loc}>
+                        {loc}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+                {location && !IFPR_LOCATIONS.includes(location) && (
+                  <option value={location}>{location} (Legado)</option>
+                )}
+              </UISelect>
+            </UIFieldGroup>
 
             {/* Ponto de Referência / Complemento */}
-            <div>
-              <label
-                htmlFor="location-complement-input"
-                className="block text-xs font-bold text-neutral-700 dark:text-neutral-200 mb-1"
-              >
-                Ponto de Referência / Detalhes do Local{" "}
-                <span className="text-neutral-400 font-normal">(Opcional)</span>
-              </label>
-              <input
+            <UIFieldGroup
+              label="Ponto de Referência / Detalhes do Local (Opcional)"
+              htmlFor="location-complement-input"
+            >
+              <UIInput
                 id="location-complement-input"
                 type="text"
                 maxLength={120}
                 value={locationComplement}
                 onChange={(e) => setLocationComplement(e.target.value)}
                 placeholder="Ex: Em cima da mesa 04 da biblioteca, ou próximo aos bebedouros do bloco"
-                className="w-full px-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all"
               />
-            </div>
+            </UIFieldGroup>
 
             {/* Data da Ocorrência */}
             <div>
-              <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center justify-between mb-1.5">
                 <label
                   htmlFor="date-input"
-                  className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
+                  className="block text-xs font-bold text-[#172B2A] dark:text-slate-200"
                 >
-                  Data da Ocorrência <span className="text-red-500">*</span>
+                  Data da Ocorrência <span className="text-rose-500">*</span>
                 </label>
-                <span className="text-[10px] text-neutral-400">Não pode ser data futura</span>
+                <span className="text-[10px] text-slate-400">Não pode ser data futura</span>
               </div>
-              <div className="relative">
-                <Calendar className="w-4 h-4 absolute left-3.5 top-3.5 text-neutral-400 pointer-events-none" />
-                <input
-                  id="date-input"
-                  type="date"
-                  required
-                  max={getTodayDateString()}
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className={`w-full pl-10 pr-4 py-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/80 border text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all cursor-pointer ${
-                    stepErrors.date
-                      ? "border-red-500 bg-red-50/20"
-                      : "border-neutral-300 dark:border-neutral-700"
-                  }`}
-                />
-              </div>
+              <UIInput
+                id="date-input"
+                type="date"
+                required
+                max={getTodayDateString()}
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                leftIcon={<Calendar className="w-4 h-4" />}
+                hasError={Boolean(stepErrors.date)}
+              />
               {stepErrors.date && (
-                <p className="text-xs text-red-500 mt-1 font-medium">{stepErrors.date}</p>
+                <p className="text-xs text-rose-500 mt-1 font-medium">{stepErrors.date}</p>
               )}
             </div>
 
             {/* Informações de Contato / Ponto de Guarda */}
-            <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 space-y-4">
+            <SubtlePanel className="p-4 sm:p-5 space-y-4">
               <div>
-                <h4 className="text-xs font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
-                  <Info className="w-4 h-4 text-[#00843D]" />
+                <h4 className="text-xs font-bold text-[#172B2A] dark:text-slate-200 flex items-center gap-1.5">
+                  <Info className="w-4 h-4 text-[#16845B]" />
                   {type === "ENCONTRADO"
                     ? "Onde o pertence está guardado atualmente?"
                     : "Como podemos falar com você quando o objeto for encontrado?"}
                 </h4>
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   {type === "ENCONTRADO"
                     ? "Informe o ponto institucional onde o objeto foi entregue (ex: Guarita, Secretaria) ou seu e-mail institucional."
                     : "Informe seu e-mail institucional ou número de WhatsApp para receber avisos sobre seu pertence."}
@@ -1758,108 +1724,87 @@ export const RegisterItemView: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 {/* E-mail ou Ponto de Guarda */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label
-                      htmlFor="contact-input"
-                      className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
-                    >
-                      {type === "ENCONTRADO" ? "Ponto de Guarda / E-mail" : "E-mail de Contato"}{" "}
-                      <span className="text-red-500">*</span>
-                    </label>
-                  </div>
-                  <div className="relative">
-                    <Mail className="w-4 h-4 absolute left-3 top-3.5 text-neutral-400" />
-                    <input
-                      id="contact-input"
-                      type="text"
-                      required
-                      maxLength={ITEM_FIELD_LIMITS.CONTACT_INFO}
-                      value={contactInfo}
-                      onChange={(e) => setContactInfo(e.target.value)}
-                      placeholder={
-                        type === "ENCONTRADO"
-                          ? "Ex: Guarita Principal ou meu.email@ifpr.edu.br"
-                          : "seu.email@escola.ifpr.edu.br"
-                      }
-                      className="w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all"
-                    />
-                  </div>
-                </div>
+                <UIFieldGroup
+                  label={type === "ENCONTRADO" ? "Ponto de Guarda / E-mail" : "E-mail de Contato"}
+                  htmlFor="contact-input"
+                  required
+                >
+                  <UIInput
+                    id="contact-input"
+                    type="text"
+                    required
+                    maxLength={ITEM_FIELD_LIMITS.CONTACT_INFO}
+                    value={contactInfo}
+                    onChange={(e) => setContactInfo(e.target.value)}
+                    leftIcon={<Mail className="w-4 h-4" />}
+                    placeholder={
+                      type === "ENCONTRADO"
+                        ? "Ex: Guarita Principal ou meu.email@ifpr.edu.br"
+                        : "seu.email@escola.ifpr.edu.br"
+                    }
+                  />
+                </UIFieldGroup>
 
                 {/* Telefone / WhatsApp */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label
-                      htmlFor="contact-phone-input"
-                      className="block text-xs font-bold text-neutral-700 dark:text-neutral-200"
-                    >
-                      Telefone / WhatsApp{" "}
-                      <span className="text-neutral-400 font-normal">(Opcional)</span>
-                    </label>
-                  </div>
-                  <div className="relative">
-                    <Phone className="w-4 h-4 absolute left-3 top-3.5 text-neutral-400" />
-                    <input
-                      id="contact-phone-input"
-                      type="text"
-                      maxLength={15}
-                      value={contactPhone}
-                      onChange={(e) => setContactPhone(formatPhone(e.target.value))}
-                      placeholder="(43) 99876-5432"
-                      className={`w-full pl-9 pr-3.5 py-2.5 rounded-xl bg-white dark:bg-neutral-800 border text-xs sm:text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] transition-all ${
-                        stepErrors.contactPhone
-                          ? "border-red-500"
-                          : "border-neutral-300 dark:border-neutral-700"
-                      }`}
-                    />
-                  </div>
-                  {stepErrors.contactPhone && (
-                    <p className="text-[11px] text-red-500 mt-1 font-medium">
-                      {stepErrors.contactPhone}
-                    </p>
-                  )}
-                </div>
+                <UIFieldGroup
+                  label="Telefone / WhatsApp (Opcional)"
+                  htmlFor="contact-phone-input"
+                  error={stepErrors.contactPhone}
+                >
+                  <UIInput
+                    id="contact-phone-input"
+                    type="text"
+                    maxLength={15}
+                    value={contactPhone}
+                    onChange={(e) => setContactPhone(formatPhone(e.target.value))}
+                    leftIcon={<Phone className="w-4 h-4" />}
+                    placeholder="(43) 99876-5432"
+                    hasError={Boolean(stepErrors.contactPhone)}
+                  />
+                </UIFieldGroup>
               </div>
-            </div>
+            </SubtlePanel>
           </div>
 
-          <div className="pt-6 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
-            <button
+          <div className="pt-6 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-3">
+            <UIButton
               type="button"
+              variant="secondary"
+              size="lg"
               onClick={handlePrevStep}
-              className="px-6 py-3.5 rounded-2xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Voltar</span>
-            </button>
+            </UIButton>
 
-            <button
+            <UIButton
               id="btn-step3-continue"
               type="button"
+              variant="primary"
+              size="lg"
               onClick={handleNextStep}
-              className="px-8 py-3.5 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-extrabold text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 cursor-pointer"
+              className="px-8"
             >
               <span>Revisar Cadastro</span>
               <ArrowRight className="w-4 h-4" />
-            </button>
+            </UIButton>
           </div>
-        </div>
+        </SurfaceCard>
       )}
 
       {/* =========================================================================
           ETAPA 4: REVISÃO DO CADASTRO
           ========================================================================= */}
       {currentStep === 4 && (
-        <div className="bg-white dark:bg-[#1E1E1E] p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-6 animate-in fade-in duration-200">
+        <SurfaceCard className="p-6 sm:p-8 space-y-6 animate-in fade-in duration-200">
           <div className="space-y-1">
-            <span className="text-[11px] font-black uppercase text-[#00843D] tracking-wider">
+            <span className="text-[11px] font-bold uppercase text-[#16845B] dark:text-emerald-400 tracking-wider">
               Etapa 4 de 4 • Revisão Final
             </span>
-            <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
+            <h2 className="text-xl sm:text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight">
               Revise as informações antes de cadastrar
             </h2>
-            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
               Verifique com atenção se todos os dados estão corretos. Você pode clicar em "Editar"
               em qualquer seção para fazer alterações sem reiniciar o formulário.
             </p>
@@ -1867,51 +1812,45 @@ export const RegisterItemView: React.FC = () => {
 
           <div className="space-y-4">
             {/* Bloco 1: Ocorrência */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 space-y-2">
+            <SubtlePanel className="p-4 sm:p-5 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Tipo de Ocorrência
                 </span>
                 <button
                   type="button"
                   onClick={() => setCurrentStep(1)}
-                  className="text-xs text-[#00843D] dark:text-green-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                  className="text-xs text-[#16845B] dark:text-emerald-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
                   <span>Editar</span>
                 </button>
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-black uppercase ${
-                    type === "ENCONTRADO"
-                      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                      : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
-                  }`}
-                >
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <UIBadge tone={type === "ENCONTRADO" ? "emerald" : "rose"}>
                   {type === "ENCONTRADO"
                     ? "✓ Objeto Encontrado (Achado)"
                     : "⚠️ Objeto Perdido"}
-                </span>
-                <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                </UIBadge>
+                <span className="text-xs text-slate-500 dark:text-slate-400">
                   {type === "ENCONTRADO"
                     ? "Aguardando devolução ao legítimo dono"
                     : "Aguardando localização por alguém do campus"}
                 </span>
               </div>
-            </div>
+            </SubtlePanel>
 
             {/* Bloco 2: Informações do Objeto */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 space-y-3">
-              <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-700 pb-2">
-                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
+            <SubtlePanel className="p-4 sm:p-5 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-700 pb-2">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Dados do Objeto
                 </span>
                 <button
                   type="button"
                   onClick={() => setCurrentStep(2)}
-                  className="text-xs text-[#00843D] dark:text-green-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                  className="text-xs text-[#16845B] dark:text-emerald-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
                   <span>Editar</span>
@@ -1920,7 +1859,7 @@ export const RegisterItemView: React.FC = () => {
 
               <div className="flex flex-col sm:flex-row gap-4 items-start">
                 {hasCustomImage && imageUrl ? (
-                  <div className="w-20 h-20 rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 shrink-0">
+                  <div className="w-20 h-20 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shrink-0">
                     <img
                       src={imageUrl}
                       alt={title}
@@ -1929,52 +1868,52 @@ export const RegisterItemView: React.FC = () => {
                   </div>
                 ) : (
                   <div
-                    className="w-20 h-20 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 flex flex-col items-center justify-center text-neutral-400 p-2 text-center shrink-0"
+                    className="w-20 h-20 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center text-slate-400 p-2 text-center shrink-0"
                     aria-label="Sem foto anexada"
                   >
-                    <CameraOff className="w-5 h-5 mb-1" />
-                    <span className="text-[10px] font-semibold text-neutral-500 leading-tight">
+                    <CameraOff className="w-5 h-5 mb-1 text-[#16845B]" />
+                    <span className="text-[10px] font-semibold text-slate-500 leading-tight">
                       Sem foto
                     </span>
                   </div>
                 )}
 
                 <div className="space-y-1.5 flex-1 min-w-0">
-                  <h4 className="text-base font-black text-neutral-900 dark:text-white truncate">
+                  <h4 className="text-base font-bold text-[#172B2A] dark:text-white truncate">
                     {title || "Nome não informado"}
                   </h4>
                   <div className="flex flex-wrap gap-2 text-xs">
-                    <span className="px-2.5 py-0.5 rounded-md bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-medium">
+                    <span className="px-2.5 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-[#172B2A] dark:text-slate-200 font-medium">
                       Categoria: <strong>{category}</strong>
                     </span>
                     {color && (
-                      <span className="px-2.5 py-0.5 rounded-md bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-medium">
+                      <span className="px-2.5 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-[#172B2A] dark:text-slate-200 font-medium">
                         Cor: <strong>{color}</strong>
                       </span>
                     )}
                     {brand && (
-                      <span className="px-2.5 py-0.5 rounded-md bg-neutral-200 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-medium">
+                      <span className="px-2.5 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-[#172B2A] dark:text-slate-200 font-medium">
                         Marca: <strong>{brand}</strong>
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed pt-1">
+                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed pt-1">
                     {description || "Sem descrição"}
                   </p>
                 </div>
               </div>
-            </div>
+            </SubtlePanel>
 
             {/* Bloco 3: Local, Data e Contato */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 space-y-3">
-              <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-700 pb-2">
-                <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
+            <SubtlePanel className="p-4 sm:p-5 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-700 pb-2">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Local, Data & Contato
                 </span>
                 <button
                   type="button"
                   onClick={() => setCurrentStep(3)}
-                  className="text-xs text-[#00843D] dark:text-green-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                  className="text-xs text-[#16845B] dark:text-emerald-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
                   <span>Editar</span>
@@ -1983,39 +1922,39 @@ export const RegisterItemView: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div>
-                  <span className="text-neutral-500 font-semibold block">Local:</span>
-                  <span className="font-bold text-neutral-900 dark:text-white">
+                  <span className="text-slate-500 font-semibold block">Local:</span>
+                  <span className="font-bold text-[#172B2A] dark:text-white">
                     {location}
                     {locationComplement && ` — ${locationComplement}`}
                   </span>
                 </div>
 
                 <div>
-                  <span className="text-neutral-500 font-semibold block">Data da Ocorrência:</span>
-                  <span className="font-bold text-neutral-900 dark:text-white">
+                  <span className="text-slate-500 font-semibold block">Data da Ocorrência:</span>
+                  <span className="font-bold text-[#172B2A] dark:text-white">
                     {date.split("-").reverse().join("/")}
                   </span>
                 </div>
 
                 <div>
-                  <span className="text-neutral-500 font-semibold block">
+                  <span className="text-slate-500 font-semibold block">
                     {type === "ENCONTRADO" ? "Ponto de Guarda / E-mail:" : "E-mail de Contato:"}
                   </span>
-                  <span className="font-bold text-neutral-900 dark:text-white">{contactInfo}</span>
+                  <span className="font-bold text-[#172B2A] dark:text-white">{contactInfo}</span>
                 </div>
 
                 {contactPhone && (
                   <div>
-                    <span className="text-neutral-500 font-semibold block">
+                    <span className="text-slate-500 font-semibold block">
                       Telefone / WhatsApp:
                     </span>
-                    <span className="font-bold text-neutral-900 dark:text-white">
+                    <span className="font-bold text-[#172B2A] dark:text-white">
                       {contactPhone}
                     </span>
                   </div>
                 )}
               </div>
-            </div>
+            </SubtlePanel>
 
             {/* Offline Alert Advisory if Network is Offline */}
             {!isOnline && (
@@ -2032,16 +1971,16 @@ export const RegisterItemView: React.FC = () => {
             )}
 
             {/* Checkbox de Confirmação do Usuário */}
-            <div className="p-4 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-500/30">
+            <div className="p-4 rounded-2xl bg-[#EBF5F0]/70 dark:bg-emerald-950/20 border border-[#16845B]/25">
               <label className="flex items-start gap-3 cursor-pointer">
                 <input
                   id="confirm-review-checkbox"
                   type="checkbox"
                   checked={hasConfirmedReview}
                   onChange={(e) => setHasConfirmedReview(e.target.checked)}
-                  className="w-5 h-5 mt-0.5 rounded-lg text-[#00843D] focus:ring-[#00843D] border-neutral-300 cursor-pointer"
+                  className="w-5 h-5 mt-0.5 rounded-lg text-[#16845B] focus:ring-[#16845B] border-slate-300 cursor-pointer accent-[#16845B]"
                 />
-                <span className="text-xs sm:text-sm font-semibold text-neutral-800 dark:text-neutral-200 leading-snug">
+                <span className="text-xs sm:text-sm font-semibold text-[#172B2A] dark:text-slate-200 leading-snug">
                   Revisei todas as informações e confirmo que os dados prestados são verdadeiros e
                   condizem com a ocorrência no IFPR Campus Ivaiporã.
                 </span>
@@ -2049,23 +1988,26 @@ export const RegisterItemView: React.FC = () => {
             </div>
           </div>
 
-          <div className="pt-6 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
-            <button
+          <div className="pt-6 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-3">
+            <UIButton
               type="button"
+              variant="secondary"
+              size="lg"
               disabled={isSubmitting}
               onClick={handlePrevStep}
-              className="px-6 py-3.5 rounded-2xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs sm:text-sm transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Voltar</span>
-            </button>
+            </UIButton>
 
-            <button
+            <UIButton
               id="btn-submit-register-form"
               type="button"
+              variant="primary"
+              size="lg"
               disabled={!hasConfirmedReview || isSubmitting}
               onClick={handleFinalSubmit}
-              className="px-8 py-3.5 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-extrabold text-xs sm:text-sm shadow-lg shadow-emerald-700/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-8"
             >
               {isSubmitting ? (
                 <>
@@ -2074,109 +2016,112 @@ export const RegisterItemView: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-                  <span>Cadastrar Objeto</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                  <span>Cadastrar Item</span>
                 </>
               )}
-            </button>
+            </UIButton>
           </div>
-        </div>
+        </SurfaceCard>
       )}
 
       {/* =========================================================================
           ETAPA 5: CONFIRMAÇÃO DE SUCESSO (OU STATUS OFFLINE / ERRO)
           ========================================================================= */}
       {currentStep === 5 && registrationFeedback && (
-        <div className="bg-white dark:bg-[#1E1E1E] p-6 sm:p-10 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-xl space-y-6 text-center animate-in fade-in zoom-in-95 duration-200">
+        <SurfaceCard className="p-6 sm:p-10 space-y-6 text-center animate-in fade-in zoom-in-95 duration-200">
           {registrationFeedback.status === "CONFIRMED" ? (
             <>
-              <div className="w-20 h-20 mx-auto rounded-3xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center text-[#00843D] dark:text-emerald-400">
+              <div className="w-20 h-20 mx-auto rounded-3xl bg-[#EBF5F0] dark:bg-emerald-950/40 border border-[#16845B]/25 flex items-center justify-center text-[#16845B] dark:text-emerald-400">
                 <CheckCircle2 className="w-12 h-12" />
               </div>
 
               <div className="space-y-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300">
-                  <ShieldCheck className="w-3.5 h-3.5" /> Persistência Confirmada no Firestore
-                </span>
-                <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                <UIBadge tone="emerald">
+                  <ShieldCheck className="w-3.5 h-3.5 mr-1" /> Persistência Confirmada no Firestore
+                </UIBadge>
+                <h2 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
                   Objeto Cadastrado com Sucesso!
                 </h2>
-                <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 max-w-lg mx-auto">
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-lg mx-auto">
                   O pertence{" "}
-                  <strong className="text-neutral-900 dark:text-white">
+                  <strong className="text-[#172B2A] dark:text-white">
                     "{registrationFeedback.item.title}"
                   </strong>{" "}
                   foi registrado e autenticado com sucesso no sistema do IFPR Campus Ivaiporã.
                 </p>
               </div>
 
-              <div className="p-4 sm:p-5 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200/80 dark:border-neutral-700/60 text-left space-y-2.5 text-xs text-neutral-600 dark:text-neutral-300 max-w-md mx-auto">
-                <div className="flex justify-between items-center pb-2 border-b border-neutral-200 dark:border-neutral-700">
-                  <span className="text-neutral-500 font-semibold">Identificador (ID):</span>
-                  <span className="font-mono font-bold text-neutral-900 dark:text-white">
+              <SubtlePanel className="p-4 sm:p-5 text-left space-y-2.5 text-xs text-slate-600 dark:text-slate-300 max-w-md mx-auto">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-700">
+                  <span className="text-slate-500 font-semibold">Identificador (ID):</span>
+                  <span className="font-mono font-bold text-[#172B2A] dark:text-white">
                     {registrationFeedback.item.id}
                   </span>
                 </div>
-                <div className="flex justify-between items-center pb-2 border-b border-neutral-200 dark:border-neutral-700">
-                  <span className="text-neutral-500 font-semibold">Código QR da Etiqueta:</span>
-                  <span className="font-mono text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-700">
+                  <span className="text-slate-500 font-semibold">Código QR da Etiqueta:</span>
+                  <span className="font-mono text-[11px] font-semibold text-[#16845B] dark:text-emerald-400">
                     {registrationFeedback.item.qrCodeId}
                   </span>
                 </div>
-                <div className="flex justify-between items-center pb-2 border-b border-neutral-200 dark:border-neutral-700">
-                  <span className="text-neutral-500 font-semibold">Local Registrado:</span>
-                  <span className="font-semibold text-neutral-900 dark:text-white">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-700">
+                  <span className="text-slate-500 font-semibold">Local Registrado:</span>
+                  <span className="font-semibold text-[#172B2A] dark:text-white">
                     {registrationFeedback.item.location}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-neutral-500 font-semibold">Status do Objeto:</span>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400 uppercase">
+                  <span className="text-slate-500 font-semibold">Status do Objeto:</span>
+                  <span className="font-bold text-[#16845B] dark:text-emerald-400 uppercase">
                     {registrationFeedback.item.status}
                   </span>
                 </div>
-              </div>
+              </SubtlePanel>
 
               <div className="flex flex-col sm:flex-row gap-3 pt-4 max-w-md mx-auto">
-                <button
+                <UIButton
                   type="button"
+                  variant="primary"
+                  size="lg"
                   onClick={() => {
                     vibrateClick();
                     navigate(type === "PERDIDO" ? "/perdidos" : "/encontrados");
                   }}
-                  className="flex-1 py-3.5 px-5 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-bold text-xs sm:text-sm shadow-lg shadow-emerald-700/20 transition-all cursor-pointer flex items-center justify-center gap-2"
+                  className="flex-1"
                 >
                   <Eye className="w-4 h-4" />
                   <span>Ver no Mural de {type === "PERDIDO" ? "Perdidos" : "Encontrados"}</span>
-                </button>
+                </UIButton>
 
-                <button
+                <UIButton
                   type="button"
+                  variant="secondary"
+                  size="lg"
                   onClick={handleRegisterAnother}
-                  className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-bold text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  <PlusCircle className="w-4 h-4 text-[#00843D]" />
+                  <PlusCircle className="w-4 h-4 text-[#16845B]" />
                   <span>Cadastrar Outro</span>
-                </button>
+                </UIButton>
               </div>
             </>
           ) : registrationFeedback.status === "ERROR" ? (
             <>
-              <div className="w-20 h-20 mx-auto rounded-3xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 flex items-center justify-center text-red-600 dark:text-red-400">
+              <div className="w-20 h-20 mx-auto rounded-3xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 flex items-center justify-center text-rose-600 dark:text-rose-400">
                 <AlertCircle className="w-12 h-12" />
               </div>
 
               <div className="space-y-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300">
-                  <AlertCircle className="w-3.5 h-3.5" /> Falha no Envio ao Servidor
-                </span>
-                <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                <UIBadge tone="rose">
+                  <AlertCircle className="w-3.5 h-3.5 mr-1" /> Falha no Envio ao Servidor
+                </UIBadge>
+                <h2 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
                   Salvo Localmente no Dispositivo
                 </h2>
-                <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 max-w-lg mx-auto">
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-lg mx-auto">
                   Não foi possível completar o envio para o Firestore em nuvem neste momento. Seu
                   item{" "}
-                  <strong className="text-neutral-900 dark:text-white">
+                  <strong className="text-[#172B2A] dark:text-white">
                     "{registrationFeedback.item.title}"
                   </strong>{" "}
                   foi protegido com segurança no banco local (IndexedDB) para não se perder.
@@ -2184,8 +2129,10 @@ export const RegisterItemView: React.FC = () => {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3 pt-4 max-w-md mx-auto">
-                <button
+                <UIButton
                   type="button"
+                  variant="danger"
+                  size="lg"
                   onClick={async () => {
                     vibrateClick();
                     const taskIdToRetry =
@@ -2193,22 +2140,23 @@ export const RegisterItemView: React.FC = () => {
                       getUploadTaskId(registrationFeedback.item.id);
                     await retryUploadTask(taskIdToRetry);
                   }}
-                  className="flex-1 py-3.5 px-5 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                  className="flex-1"
                 >
                   <RotateCcw className="w-4 h-4" />
                   <span>Tentar Novamente</span>
-                </button>
+                </UIButton>
 
-                <button
+                <UIButton
                   type="button"
+                  variant="secondary"
+                  size="lg"
                   onClick={() => {
                     vibrateClick();
                     navigate("/");
                   }}
-                  className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-bold text-xs sm:text-sm transition-all cursor-pointer"
                 >
                   Voltar ao Início
-                </button>
+                </UIButton>
               </div>
             </>
           ) : (
@@ -2218,15 +2166,15 @@ export const RegisterItemView: React.FC = () => {
               </div>
 
               <div className="space-y-2">
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
-                  <Clock className="w-3.5 h-3.5" /> Aguardando Sincronização
-                </span>
-                <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                <UIBadge tone="amber">
+                  <Clock className="w-3.5 h-3.5 mr-1" /> Aguardando Sincronização
+                </UIBadge>
+                <h2 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
                   Objeto Salvo no Dispositivo
                 </h2>
-                <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 max-w-lg mx-auto">
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-lg mx-auto">
                   O objeto{" "}
-                  <strong className="text-neutral-900 dark:text-white">
+                  <strong className="text-[#172B2A] dark:text-white">
                     "{registrationFeedback.item.title}"
                   </strong>{" "}
                   foi armazenado localmente com segurança no dispositivo. A sincronização com a nuvem
@@ -2235,48 +2183,51 @@ export const RegisterItemView: React.FC = () => {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3 pt-4 max-w-md mx-auto">
-                <button
+                <UIButton
                   type="button"
+                  variant="primary"
+                  size="lg"
                   onClick={() => {
                     vibrateClick();
                     navigate(type === "PERDIDO" ? "/perdidos" : "/encontrados");
                   }}
-                  className="flex-1 py-3.5 px-5 rounded-2xl bg-[#00843D] hover:bg-[#007033] text-white font-bold text-xs sm:text-sm shadow-md transition-all cursor-pointer"
+                  className="flex-1"
                 >
                   Ver no Mural
-                </button>
-                <button
+                </UIButton>
+                <UIButton
                   type="button"
+                  variant="secondary"
+                  size="lg"
                   onClick={() => {
                     vibrateClick();
                     navigate("/");
                   }}
-                  className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-bold text-xs sm:text-sm transition-all cursor-pointer"
                 >
                   Início
-                </button>
+                </UIButton>
               </div>
             </>
           )}
-        </div>
+        </SurfaceCard>
       )}
 
       {/* =========================================================================
           MODAL DA CÂMERA (LIMPO E DIRECIONADO)
           ========================================================================= */}
       {cameraModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
-          <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 max-w-md w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
-              <div className="flex items-center space-x-2">
-                <div className="p-2 rounded-xl bg-[#00843D]/10 text-[#00843D] dark:text-green-400">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+          <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 max-w-md w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400">
                   <Camera className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm text-neutral-900 dark:text-white">
+                  <h3 className="font-bold text-sm text-[#172B2A] dark:text-white">
                     Tirar Foto com a Câmera
                   </h3>
-                  <p className="text-[10px] text-neutral-500">
+                  <p className="text-[11px] text-slate-500">
                     Capture uma foto nítida do pertence cadastrado
                   </p>
                 </div>
@@ -2288,14 +2239,14 @@ export const RegisterItemView: React.FC = () => {
                   stopCamera();
                   setCameraModalOpen(false);
                 }}
-                className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
+                className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             {/* Camera Video Stream */}
-            <div className="relative h-64 rounded-2xl bg-neutral-900 overflow-hidden border-2 border-dashed border-[#00843D] flex flex-col items-center justify-center p-2 text-center">
+            <div className="relative h-64 rounded-2xl bg-slate-900 overflow-hidden border-2 border-dashed border-[#16845B] flex flex-col items-center justify-center p-2 text-center">
               <video
                 ref={videoRef}
                 playsInline
@@ -2308,7 +2259,7 @@ export const RegisterItemView: React.FC = () => {
               {cameraStatus !== "granted" && (
                 <div className="p-4 space-y-2">
                   {cameraStatus === "denied" ? (
-                    <p className="text-xs font-bold text-red-400">
+                    <p className="text-xs font-bold text-rose-400">
                       {cameraError || "Permissão de acesso à câmera negada."}
                     </p>
                   ) : (
@@ -2322,26 +2273,28 @@ export const RegisterItemView: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-between pt-2">
-              <button
+              <UIButton
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => {
                   stopCamera();
                   setCameraModalOpen(false);
                 }}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
               >
                 Cancelar
-              </button>
+              </UIButton>
 
               {cameraStatus === "granted" && (
-                <button
+                <UIButton
                   type="button"
+                  variant="primary"
+                  size="sm"
                   onClick={handleCaptureCamera}
-                  className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#007033] text-white font-extrabold text-xs shadow-md flex items-center gap-2 cursor-pointer"
                 >
-                  <Camera className="w-4 h-4 text-emerald-300" />
+                  <Camera className="w-4 h-4" />
                   <span>Capturar Foto</span>
-                </button>
+                </UIButton>
               )}
             </div>
           </div>

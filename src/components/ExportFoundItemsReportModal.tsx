@@ -4,23 +4,28 @@ import {
   Download,
   Printer,
   X,
-  CheckCircle2,
   Calendar,
-  Filter,
   Building2,
   Tag,
   ShieldCheck,
   FileText,
-  Clock,
   Sparkles,
   Layers,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
-import { CANONICAL_ITEM_CATEGORIES, isCategoryMatch, getCategoryDisplay } from "../lib/categoryUtils";
-import { ItemCategory, LostFoundItem } from "../types";
+import { CANONICAL_ITEM_CATEGORIES, isCategoryMatch } from "../lib/categoryUtils";
 import { downloadFoundItemsReportPdf, generateFoundItemsReportPdf } from "../lib/foundItemsReportPdfGenerator";
 import { safeParseDate, vibrateClick, vibrateSuccess } from "../lib/utils";
-import { IFPR_LOCATIONS, IFPR_LOCATION_GROUPS } from "../data/mockData";
+import { IFPR_LOCATION_GROUPS } from "../data/mockData";
+import {
+  ModalShell,
+  UIButton,
+  UIBadge,
+  SubtlePanel,
+  UIFieldGroup,
+  UIInput,
+  UISelect,
+} from "./ui";
 
 interface ExportFoundItemsReportModalProps {
   isOpen: boolean;
@@ -120,7 +125,12 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
         locationFilter,
         statusFilter,
         issuedByName: currentUser.name,
-        issuedByRole: currentUser.role === "ADMIN" ? "Administrador do Sistema" : currentUser.role === "SERVIDOR" ? "Secretaria Acadêmica / SEBAC" : "Usuário Responsável",
+        issuedByRole:
+          currentUser.role === "ADMIN"
+            ? "Administrador do Sistema"
+            : currentUser.role === "SERVIDOR"
+            ? "Secretaria Acadêmica / SEBAC"
+            : "Usuário Responsável",
         includeSignatures,
       });
 
@@ -163,60 +173,63 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="export-report-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-md transition-all duration-200 animate-in fade-in"
+    <ModalShell
+      isOpen={isOpen}
+      onClose={onClose}
+      maxWidthClass="max-w-2xl"
+      ariaLabel="Exportar Relatório de Achados (PDF)"
     >
-      <div className="bg-white dark:bg-[#1E1E1E] w-full max-w-2xl rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden flex flex-col max-h-[92vh] transition-colors duration-200">
+      <div className="flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="px-6 py-4 bg-gradient-to-r from-[#00843D] to-[#006830] text-white flex items-center justify-between shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="p-2.5 rounded-2xl bg-white/15 backdrop-blur-xs">
-              <FileSpreadsheet className="w-6 h-6 text-white" />
+        <div className="px-5 sm:px-6 py-4 bg-white dark:bg-[#111827] border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/50 border border-[#16845B]/20 text-[#16845B] dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <FileSpreadsheet className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h2 id="export-report-title" className="text-base font-extrabold tracking-tight">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2
+                  id="export-report-title"
+                  className="text-base font-bold text-[#172B2A] dark:text-white tracking-tight truncate"
+                >
                   Exportar Relatório de Achados (PDF)
                 </h2>
-                <span className="px-2 py-0.5 rounded-md bg-white/20 text-[10px] font-bold uppercase tracking-wider">
-                  jsPDF
-                </span>
+                <UIBadge tone="emerald">jsPDF</UIBadge>
               </div>
-              <p className="text-xs text-white/80">
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
                 Prestação de contas institucional da Secretaria do IFPR Campus Ivaiporã
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={() => {
               vibrateClick();
               onClose();
             }}
-            className="p-2 rounded-xl text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-2 rounded-xl text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+            aria-label="Fechar modal"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 overflow-y-auto space-y-5 text-neutral-800 dark:text-neutral-200 text-xs sm:text-sm">
+        <div className="p-5 sm:p-6 overflow-y-auto space-y-5 text-[#172B2A] dark:text-slate-200 text-xs sm:text-sm">
           {/* Quick Info Box */}
-          <div className="p-3.5 rounded-2xl bg-[#00843D]/5 border border-[#00843D]/20 flex items-start space-x-3">
-            <ShieldCheck className="w-5 h-5 text-[#00843D] dark:text-green-400 shrink-0 mt-0.5" />
-            <p className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed">
+          <div className="p-3.5 rounded-xl bg-[#EBF5F0]/70 dark:bg-emerald-950/25 border border-[#16845B]/20 dark:border-emerald-800/50 flex items-start gap-3">
+            <ShieldCheck className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-[#064E3B] dark:text-emerald-200 leading-relaxed">
               Gere um documento PDF oficial em alta fidelidade contendo o inventário dos bens encontrados,
               status de custódia na secretaria, locais do campus, depositários e campos de visto e assinatura regulamentares.
             </p>
           </div>
 
           {/* Period Presets */}
-          <div className="space-y-2">
-            <label className="font-bold text-neutral-900 dark:text-white flex items-center gap-1.5">
-              <Calendar className="w-4 h-4 text-[#00843D]" />
-              <span>Período do Relatório:</span>
+          <div className="space-y-2.5">
+            <label className="text-xs font-semibold text-[#172B2A] dark:text-slate-200 flex items-center gap-1.5">
+              <Calendar className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
+              <span>Período do Relatório</span>
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {[
@@ -234,10 +247,10 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
                     vibrateClick();
                     setPeriodPreset(p.id);
                   }}
-                  className={`px-3 py-2 rounded-xl text-xs font-bold transition-all border text-center ${
+                  className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all border text-center cursor-pointer ${
                     periodPreset === p.id
-                      ? "bg-[#00843D] text-white border-[#00843D] shadow-xs"
-                      : "bg-neutral-50 dark:bg-neutral-800/60 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-800 hover:border-neutral-300"
+                      ? "bg-[#16845B] text-white border-[#16845B] shadow-xs"
+                      : "bg-[#F8FAFC] dark:bg-slate-800/70 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-[#16845B]/40"
                   }`}
                 >
                   {p.label}
@@ -247,56 +260,44 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
 
             {/* Custom Date Inputs */}
             {periodPreset === "CUSTOM" && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 animate-in fade-in">
-                <div>
-                  <span className="text-[11px] font-semibold text-neutral-500">Data Inicial:</span>
-                  <input
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1.5 animate-in fade-in">
+                <UIFieldGroup label="Data Inicial">
+                  <UIInput
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-xs"
                   />
-                </div>
-                <div>
-                  <span className="text-[11px] font-semibold text-neutral-500">Data Final:</span>
-                  <input
+                </UIFieldGroup>
+                <UIFieldGroup label="Data Final">
+                  <UIInput
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full mt-1 px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-xs"
                   />
-                </div>
+                </UIFieldGroup>
               </div>
             )}
           </div>
 
           {/* Filters Grid: Status, Category, Location */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Status Filter */}
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1">
-                <Layers className="w-3.5 h-3.5 text-[#00843D]" /> Status
-              </label>
-              <select
+            <UIFieldGroup label="Status">
+              <UISelect
+                leftIcon={<Layers className="w-3.5 h-3.5 text-[#16845B]" />}
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-xs"
               >
                 <option value="TODOS">Todos os Status</option>
                 <option value="DISPONIVEL">Sob Custódia (Pendente)</option>
                 <option value="DEVOLVIDO">Devolvidos / Entregues</option>
-              </select>
-            </div>
+              </UISelect>
+            </UIFieldGroup>
 
-            {/* Category Filter */}
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1">
-                <Tag className="w-3.5 h-3.5 text-[#00843D]" /> Categoria
-              </label>
-              <select
+            <UIFieldGroup label="Categoria">
+              <UISelect
+                leftIcon={<Tag className="w-3.5 h-3.5 text-[#16845B]" />}
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-xs"
               >
                 <option value="TODAS">Todas as Categorias</option>
                 {CANONICAL_ITEM_CATEGORIES.map((cat) => (
@@ -304,18 +305,14 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
                     {cat}
                   </option>
                 ))}
-              </select>
-            </div>
+              </UISelect>
+            </UIFieldGroup>
 
-            {/* Location Filter */}
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1">
-                <Building2 className="w-3.5 h-3.5 text-[#00843D]" /> Local do Campus
-              </label>
-              <select
+            <UIFieldGroup label="Local do Campus">
+              <UISelect
+                leftIcon={<Building2 className="w-3.5 h-3.5 text-[#16845B]" />}
                 value={locationFilter}
                 onChange={(e) => setLocationFilter(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-xs"
               >
                 <option value="TODOS">Todos os Locais</option>
                 {IFPR_LOCATION_GROUPS.map((group) => (
@@ -327,95 +324,101 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
                     ))}
                   </optgroup>
                 ))}
-              </select>
-            </div>
+              </UISelect>
+            </UIFieldGroup>
           </div>
 
           {/* Options: Include Signatures */}
-          <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <FileText className="w-4 h-4 text-[#00843D]" />
-              <div>
-                <p className="text-xs font-bold text-neutral-900 dark:text-white">
+          <SubtlePanel padding="sm" className="flex items-center justify-between gap-3">
+            <label
+              htmlFor="include-signatures-check"
+              className="flex items-center gap-2.5 cursor-pointer flex-1 min-w-0"
+            >
+              <div className="p-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[#16845B] dark:text-emerald-400 shrink-0">
+                <FileText className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-[#172B2A] dark:text-white">
                   Incluir Bloco de Assinaturas e Termo de Conformidade
                 </p>
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
                   Adiciona campos formais para visto do servidor SEBAC e Chefia de Gabinete.
                 </p>
               </div>
-            </div>
+            </label>
             <input
+              id="include-signatures-check"
               type="checkbox"
               checked={includeSignatures}
               onChange={(e) => setIncludeSignatures(e.target.checked)}
-              className="w-4 h-4 text-[#00843D] rounded border-neutral-300 focus:ring-[#00843D]"
+              className="w-4 h-4 text-[#16845B] rounded border-slate-300 dark:border-slate-600 focus:ring-[#16845B] cursor-pointer shrink-0"
             />
-          </div>
+          </SubtlePanel>
 
           {/* Real-time Summary Card */}
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 border border-emerald-200 dark:border-emerald-800/40">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-emerald-600" />
-                Resumo da Exportação:
+          <SubtlePanel padding="md" className="bg-[#EBF5F0]/55 dark:bg-emerald-950/20 border-[#16845B]/20 dark:border-emerald-900/50 space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="text-xs font-bold text-[#064E3B] dark:text-emerald-300 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
+                Resumo da Exportação
               </span>
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white font-extrabold text-xs">
+              <UIBadge tone="emerald" className="tabular-nums">
                 {filteredFoundItems.length} objeto(s) selecionado(s)
-              </span>
+              </UIBadge>
             </div>
-            <div className="grid grid-cols-3 gap-2 text-center text-xs pt-1">
-              <div className="p-2 rounded-xl bg-white dark:bg-neutral-900 border border-emerald-100 dark:border-emerald-900">
-                <span className="block text-[10px] text-neutral-500 font-semibold">Total Achados</span>
-                <span className="text-base font-extrabold text-emerald-700 dark:text-emerald-400">
+            <div className="grid grid-cols-3 gap-2.5 text-center">
+              <div className="p-2.5 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800">
+                <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wide">
+                  Total Achados
+                </span>
+                <span className="text-lg font-bold text-[#16845B] dark:text-emerald-400 tabular-nums mt-0.5 block">
                   {filteredFoundItems.length}
                 </span>
               </div>
-              <div className="p-2 rounded-xl bg-white dark:bg-neutral-900 border border-emerald-100 dark:border-emerald-900">
-                <span className="block text-[10px] text-neutral-500 font-semibold">Sob Custódia</span>
-                <span className="text-base font-extrabold text-amber-600 dark:text-amber-400">
+              <div className="p-2.5 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800">
+                <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wide">
+                  Sob Custódia
+                </span>
+                <span className="text-lg font-bold text-amber-600 dark:text-amber-400 tabular-nums mt-0.5 block">
                   {custodyCount}
                 </span>
               </div>
-              <div className="p-2 rounded-xl bg-white dark:bg-neutral-900 border border-emerald-100 dark:border-emerald-900">
-                <span className="block text-[10px] text-neutral-500 font-semibold">Restituídos</span>
-                <span className="text-base font-extrabold text-blue-600 dark:text-blue-400">
+              <div className="p-2.5 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800">
+                <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wide">
+                  Restituídos
+                </span>
+                <span className="text-lg font-bold text-sky-600 dark:text-sky-400 tabular-nums mt-0.5 block">
                   {returnedCount}
                 </span>
               </div>
             </div>
-          </div>
+          </SubtlePanel>
         </div>
 
         {/* Footer Actions */}
-        <div className="px-6 py-4 bg-neutral-50 dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-end space-x-3 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-          >
+        <div className="px-5 sm:px-6 py-4 bg-[#F8FAFC] dark:bg-slate-900/70 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-end gap-2.5 shrink-0">
+          <UIButton type="button" variant="ghost" size="md" onClick={onClose}>
             Cancelar
-          </button>
+          </UIButton>
 
-          <button
-            type="button"
-            onClick={handlePrintPdf}
-            className="px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 font-bold text-xs hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors flex items-center space-x-1.5"
-          >
-            <Printer className="w-4 h-4 text-neutral-600 dark:text-neutral-400" />
+          <UIButton type="button" variant="secondary" size="md" onClick={handlePrintPdf}>
+            <Printer className="w-4 h-4 text-slate-500 dark:text-slate-400" />
             <span>Imprimir</span>
-          </button>
+          </UIButton>
 
-          <button
+          <UIButton
             type="button"
+            variant="primary"
+            size="md"
             disabled={isGenerating || filteredFoundItems.length === 0}
             onClick={handleExportPdf}
-            className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006830] text-white font-extrabold text-xs transition-all shadow-md flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Download className="w-4 h-4" />
             <span>{isGenerating ? "Gerando PDF..." : "Baixar Relatório em PDF"}</span>
-          </button>
+          </UIButton>
         </div>
       </div>
-    </div>
+    </ModalShell>
   );
 };
+

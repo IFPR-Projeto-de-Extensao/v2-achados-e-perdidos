@@ -24,12 +24,78 @@ export interface AppVersion {
 
 export const APP_VERSIONS_DATA: AppVersion[] = [
   {
+    version: "v1.10.13",
+    codename: "Redesign Visual Oficial e Modernização da Identidade Clean Minimal",
+    releaseDate: "12/11/2026",
+    releaseDateTime: "12 de Novembro de 2026 • 20:50 BRT",
+    type: "MINOR",
+    isCurrent: true,
+    summary: "LOCALIZA+ v1.10.13 — Implementação da nova identidade visual oficial Clean Minimal (#16845B, #064E3B, #F8FAFC, #172B2A) e estabilização do componente D3.js (DigitalReturnsD3Chart). Blindagem de ponta a ponta do fluxo de devolução formal, separação arquitetural de dados pessoais de devolução em /item_return_records com projeção pública limpa em /items, /found_items e /lost_items, autenticação e anti-spoofing em /api/signature/notify-signed, eliminação do bypass ALREADY_SIGNED no RemoteSignatureModal, keyring versionado AES-256-GCM sem fallback previsível (SIGNATURE_TOKEN_SECRET / SIGNATURE_TOKEN_SECRET_PREVIOUS), consistência de métricas de devolução no DashboardView e endurecimento das regras Firestore.",
+    additions: [
+      {
+        id: "v11013-add-official-clean-minimal-visual-identity",
+        title: "Identidade Visual Oficial Clean Minimal e Institucional (#16845B)",
+        description: "Aplicação da paleta de cores oficial (#16845B, #064E3B, #F8FAFC, #172B2A) com tipografia Inter, bordas arredondadas moderadas (rounded-xl/2xl), sombras suaves e ícones Lucide nos painéis administrativos, tabelas, modais e relatórios.",
+        module: "GERAL",
+        tag: "Identidade Visual & UI/UX",
+      },
+      {
+        id: "v11013-add-d3-digital-returns-chart-engine",
+        title: "Motor Gráfico D3.js de Devoluções Digitais com Auditoria Criptográfica",
+        description: "Reconstrução completa do componente DigitalReturnsD3Chart com curvas temporais (curveMonotoneX), gradiente esmeralda, eixos responsivos via ResizeObserver, tooltip interativo, seletor de modalidade (Presencial/Remota), filtros de período (7d a 60d) e auditoria dos registros assinados.",
+        module: "ADMIN",
+        tag: "D3 Engine & Métricas",
+      },
+    ],
+    bugFixes: [
+      {
+        id: "v11013-fix-digital-returns-d3-chart-syntax-eof",
+        title: "Correção de Integridade Sintática e Fechamento no Componente D3",
+        description: "Eliminação definitiva de erro de Unexpected EOF no DigitalReturnsD3Chart.tsx, restabelecendo a exportação institucional em PDF, renderização SVG e conformidade estrita de tipagem TypeScript.",
+        module: "ADMIN",
+        tag: "Estabilidade & Build",
+      },
+      {
+        id: "v11013-fix-devolution-flow-security-hardening",
+        title: "Blindagem do Fluxo Formal de Devolução, Leitor QR e Firestore Rules",
+        description: "Remoção do atalho direto de baixa para DEVOLVIDO no QRCodeScannerModal, no override do DashboardView e nas ações em lote do ObjectsView; remoção da permissão de autoria para alterar status de itens; criação dos endpoints autoritativos /api/items/register-return e /api/items/reopen-return com transação atômica Admin SDK, conclusão de reivindicações aprovadas e auditoria imutável; proteção das coleções /items, /found_items, /lost_items e /signature_requests em firestore.rules.",
+        module: "FIRESTORE",
+        tag: "Segurança & Fluxo Formal",
+      },
+      {
+        id: "v11013-fix-signature-lifecycle-and-reopen-invalidation",
+        title: "Invalidação Transacional de Tokens na Reabertura e Blindagem dos Endpoints de Assinatura",
+        description: "Invalidação atômica de signature_requests na reabertura administrativa (/api/items/reopen-return) com rejeição HTTP 410 para tokens reabertos, restauração segura de reivindicação única (CONCLUIDO -> APROVADO) e sinalização de revisão manual para múltiplos vínculos; verificação de token antes de idempotência em verify-token e confirm-signature (HTTP 403/503 fail-closed); endurecimento de /api/signature/send-request contra sobrescrita de estado, reuso de link não expirado criptografado com AES-256-GCM e redação de tokens em email_notifications.",
+        module: "ADMIN",
+        tag: "Segurança & Assinatura Remota",
+      },
+      {
+        id: "v11013-fix-signature-ui-pdf-and-metrics-accuracy",
+        title: "Correção da Interface de Assinatura Remota, PDF Browser-Safe e Métricas Reais",
+        description: "Restrição das ações PENDING_REMOTE em ItemDetailModal para servidores/administradores com resolução de link autoritativa via backend (sem signatureToken em /items nem fallback localizamais0@gmail.com); substituição de Buffer.from por TextEncoder/btoa e exibição fiel do status de atestação dupla no PDF de RemoteSignatureModal; exclusão de itens PENDING_REMOTE e não assinados das métricas digitais no DashboardView e DigitalReturnsD3Chart; proteção contra exclusão cliente de itens DEVOLVIDO e verificação de active != false nas regras Firestore.",
+        module: "DOCUMENTOS",
+        tag: "Integridade de Dados & UI",
+      },
+      {
+        id: "v11013-fix-privacy-return-records-crypto-keyring-and-modal-bypass",
+        title: "Segregação de Dados Pessoais (/item_return_records), Autenticação de Notificação, Anti-Bypass no Modal e Rotação AES-256-GCM",
+        description: "Isolamento dos dados pessoais de devolução e assinatura na coleção restrita /item_return_records com projeção pública higienizada em /items, /found_items, /lost_items e caches offline (IndexedDB/localStorage); endurecimento de POST /api/signature/notify-signed com autenticação por token/servidor, verificação transacional de assinatura concluída, anti-spoofing e idempotência; eliminação do bypass ALREADY_SIGNED e do fallback TOK- no RemoteSignatureModal exigindo verify-token antes de exibir comprovante; remoção do fallback previsível em getSignatureLinkEncryptionKey() com keyring versionado (SIGNATURE_TOKEN_SECRET e SIGNATURE_TOKEN_SECRET_PREVIOUS) e recriptografia automática; separação estrita das métricas de devolução no DashboardView.",
+        module: "FIRESTORE",
+        tag: "Privacidade LGPD & Criptografia",
+      },
+    ],
+    stats: {
+      additionsCount: 2,
+      fixesCount: 5,
+    },
+  },
+  {
     version: "v1.10.12",
     codename: "Atualização da Estrutura Geográfica e Espacial de Localizações do IFPR Campus Ivaiporã",
     releaseDate: "10/11/2026",
     releaseDateTime: "10 de Novembro de 2026 • 15:45 BRT",
     type: "MINOR",
-    isCurrent: true,
+    isCurrent: false,
     summary: "LOCALIZA+ v1.10.12 — Atualização completa da estrutura de localizações físicas do IFPR Campus Ivaiporã com base no referencial oficial (Mapa-Site.pdf): organização em 4 grupos estruturados (Blocos 1 a 5, Setores Administrativos, Espaços Acadêmicos e Áreas Comuns, incluindo Refeitório independente), atualização dos filtros de blocos (Blocos 1 a 5), reorganização dos selects de cadastro, edição, relatórios e filtros por local, com garantia absoluta de retrocompatibilidade e preservação de registros legados armazenados no Firestore.",
     additions: [
       {

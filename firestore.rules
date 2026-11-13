@@ -80,6 +80,7 @@ service cloud.firestore {
         isRootAdmin() || (
           userDocExists() &&
           ('status' in getUserData()) &&
+          (!('active' in getUserData()) || getUserData().active != false) &&
           (
             (getUserData().status == 'active' && !isTemporaryBlockActive(getUserData())) ||
             (getUserData().status == 'suspended' && isTemporaryBlockExpired(getUserData()))
@@ -213,6 +214,175 @@ service cloud.firestore {
              (!('contactInfo' in data) || data.contactInfo == null || (data.contactInfo is string && data.contactInfo.size() <= 150)) &&
              (!('contact' in data) || data.contact == null || (data.contact is string && data.contact.size() <= 150)) &&
              (!('aiPrompt' in data) || data.aiPrompt == null || (data.aiPrompt is string && data.aiPrompt.size() <= 500));
+    }
+
+    // ETAPA 11 & ETAPA 15: Strict protection of formal devolution, signature, receipt, PII, and staff-attestation fields.
+    // These fields can ONLY be written by trusted server-side Firebase Admin SDK transactions into /item_return_records,
+    // and can NEVER be injected into or exposed publicly from /items, /found_items, or /lost_items.
+    function hasNoReturnOrSignatureFields(data) {
+      return !('returnedByUserId' in data) &&
+             !('returnedByName' in data) &&
+             !('returnedByRole' in data) &&
+             !('returnDate' in data) &&
+             !('returnTime' in data) &&
+             !('recipientName' in data) &&
+             !('recipientEmail' in data) &&
+             !('recipientBond' in data) &&
+             !('recipientDocument' in data) &&
+             !('recipientUid' in data) &&
+             !('returnObservations' in data) &&
+             !('receiptValidationCode' in data) &&
+             !('recipientSignatureUrl' in data) &&
+             !('recipientSignatureType' in data) &&
+             !('recipientSignatureMethod' in data) &&
+             !('recipientSignatureStatus' in data) &&
+             !('recipientSignatureEmail' in data) &&
+             !('recipientSignatureName' in data) &&
+             !('recipientSignatureBond' in data) &&
+             !('recipientSignatureDate' in data) &&
+             !('staffSignatureStatus' in data) &&
+             !('staffSignatureUrl' in data) &&
+             !('staffSignatureMethod' in data) &&
+             !('staffSignedAt' in data) &&
+             !('staffSignerUid' in data) &&
+             !('staffSignerName' in data) &&
+             !('staffSignerEmail' in data) &&
+             !('signatureToken' in data) &&
+             !('signatureTokenExpiresAt' in data) &&
+             !('signatureTokenUsed' in data) &&
+             !('signedAt' in data) &&
+             !('signatureIpOrDevice' in data) &&
+             !('secretVerificationKey' in data) &&
+             !('requiresAdminClaimReview' in data) &&
+             !('devolutionNotified' in data) &&
+             !('returnEmailNotified' in data) &&
+             !('devolutionNotificationStatus' in data) &&
+             !('devolutionNotifiedAt' in data) &&
+             !('devolutionNotifiedBy' in data);
+    }
+
+    function hasNoProtectedReturnOrSignatureMutation() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'returnedByUserId',
+        'returnedByName',
+        'returnedByRole',
+        'returnDate',
+        'returnTime',
+        'recipientName',
+        'recipientEmail',
+        'recipientBond',
+        'recipientDocument',
+        'recipientUid',
+        'returnObservations',
+        'receiptValidationCode',
+        'recipientSignatureUrl',
+        'recipientSignatureType',
+        'recipientSignatureMethod',
+        'recipientSignatureStatus',
+        'recipientSignatureEmail',
+        'recipientSignatureName',
+        'recipientSignatureBond',
+        'recipientSignatureDate',
+        'staffSignatureStatus',
+        'staffSignatureUrl',
+        'staffSignatureMethod',
+        'staffSignedAt',
+        'staffSignerUid',
+        'staffSignerName',
+        'staffSignerEmail',
+        'signatureToken',
+        'signatureTokenExpiresAt',
+        'signatureTokenUsed',
+        'signedAt',
+        'signatureIpOrDevice',
+        'secretVerificationKey',
+        'requiresAdminClaimReview',
+        'devolutionNotified',
+        'returnEmailNotified',
+        'devolutionNotificationStatus',
+        'devolutionNotifiedAt',
+        'devolutionNotifiedBy'
+      ]);
+    }
+
+    function areItemCoreImmutableFieldsPreserved() {
+      return (!('registeredByUserId' in existing()) || incoming().registeredByUserId == existing().registeredByUserId) &&
+             (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt) &&
+             (!('registeredByRole' in existing()) || incoming().registeredByRole == existing().registeredByRole) &&
+             (!('type' in existing()) || incoming().type == existing().type) &&
+             (!('id' in existing()) || incoming().id == existing().id);
+    }
+
+    function isAuthorSafeMetadataEdit() {
+      return isEmailVerified() &&
+             !isIntruso() &&
+             ('registeredByUserId' in existing()) &&
+             existing().registeredByUserId == request.auth.uid &&
+             areItemCoreImmutableFieldsPreserved() &&
+             hasNoProtectedReturnOrSignatureMutation() &&
+             (!('status' in existing()) || (existing().status != 'DEVOLVIDO' && existing().status != 'ENCERRADO')) &&
+             (!('status' in existing()) ? !('status' in incoming()) : incoming().status == existing().status) &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+               'title',
+               'description',
+               'category',
+               'location',
+               'date',
+               'color',
+               'brand',
+               'contactInfo',
+               'imageUrl',
+               'additionalImages',
+               'secretVerificationHint',
+               'lastEditedByUserId',
+               'lastEditedByName',
+               'lastEditedByRole',
+               'lastEditedAt',
+               'history',
+               'historyLogs'
+             ]);
+    }
+
+    function isStaffOrAdminNonReturnItemUpdate() {
+      return (isDocServidor() || hasAdminClaim() || isRootAdmin() || isDocAdmin()) &&
+             areItemCoreImmutableFieldsPreserved() &&
+             hasNoProtectedReturnOrSignatureMutation() &&
+             (!('status' in existing()) || (existing().status != 'DEVOLVIDO' && existing().status != 'ENCERRADO')) &&
+             (!('status' in incoming()) || incoming().status != 'DEVOLVIDO') &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+               'title',
+               'description',
+               'category',
+               'location',
+               'date',
+               'color',
+               'brand',
+               'contactInfo',
+               'imageUrl',
+               'additionalImages',
+               'secretVerificationHint',
+               'status',
+               'resolutionDate',
+               'destinationType',
+               'destinationReason',
+               'destinationDate',
+               'destinationResponsible',
+               'matchedWithItemId',
+               'lastEditedByUserId',
+               'lastEditedByName',
+               'lastEditedByRole',
+               'lastEditedAt',
+               'history',
+               'historyLogs'
+             ]) &&
+             (!('status' in incoming()) || incoming().status != 'ENCERRADO' || (
+               ('destinationType' in incoming()) &&
+               incoming().destinationType is string &&
+               incoming().destinationType.size() > 0 &&
+               ('destinationReason' in incoming()) &&
+               incoming().destinationReason is string &&
+               incoming().destinationReason.size() > 0
+             ));
     }
 
     // ==========================================
@@ -367,9 +537,11 @@ service cloud.firestore {
     // 2. Lost & Found Items Collection
     // ==========================================
     match /items/{itemId} {
-      // Public catalog read: anyone on campus (including unauthenticated visitors) can view, search, and scan lost & found objects
-      allow get: if true;
-      allow list: if true;
+      // Public catalog read: unauthenticated visitors and general users can ONLY read documents
+      // that are clean public projections (free of personal return data, signatures, and secrets).
+      // Any document containing personal return/signature data can ONLY be read by active SERVIDOR or ADMIN.
+      allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
+      allow list: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
 
       // Creation: ONLY Authenticated users with verified email, real UID and active account standing:
       // - Author ID must match request.auth.uid
@@ -379,6 +551,8 @@ service cloud.firestore {
                     isEmailVerified() && 
                     (incoming().registeredByRole == 'SERVIDOR' || incoming().registeredByRole == 'ADMIN') &&
                     isValidItemTextFields(incoming()) &&
+                    (!('status' in incoming()) || (incoming().status != 'DEVOLVIDO' && incoming().status != 'ENCERRADO')) &&
+                    hasNoReturnOrSignatureFields(incoming()) &&
                     isAccountActive() &&
                     !isIntruso() &&
                     (
@@ -386,33 +560,40 @@ service cloud.firestore {
                       (incoming().registeredByRole == 'ADMIN' && (hasAdminClaim() || isRootAdmin() || isDocAdmin()))
                     );
 
-      // Update: Authenticated author preserving immutable fields, Servidor, or Admin
+      // Update: Formal return (DEVOLVIDO) and reopening are server-authoritative via Admin SDK only.
+      // Authors can ONLY edit safe metadata on unresolved items (no status changes).
+      // Approved/Active Staff & Admins can edit metadata, apply non-return statuses, or register ENCERRADO destination.
       allow update: if isAccountActive() &&
                        isValidItemTextFields(incoming()) &&
                        (
-                         (
-                           existing().registeredByUserId == request.auth.uid && 
-                           incoming().registeredByUserId == existing().registeredByUserId &&
-                           incoming().createdAt == existing().createdAt &&
-                           incoming().registeredByRole == existing().registeredByRole
-                         ) ||
-                         isDocServidor() ||
-                         hasAdminClaim() ||
-                         isRootAdmin() ||
-                         isDocAdmin()
+                         isAuthorSafeMetadataEdit() ||
+                         isStaffOrAdminNonReturnItemUpdate()
                        );
 
-      // Delete: Admin or the authenticated author who registered the item
-      allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && !isIntruso() && existing().registeredByUserId == request.auth.uid);
+      // Delete: Items already marked DEVOLVIDO cannot be deleted via Client SDK (must reopen via Admin backend first).
+      // Author deletion is also blocked for ENCERRADO items.
+      allow delete: if (!('status' in existing()) || existing().status != 'DEVOLVIDO') &&
+                       (
+                         isAdmin() ||
+                         (
+                           isSignedIn() &&
+                           isAccountActive() &&
+                           !isIntruso() &&
+                           existing().registeredByUserId == request.auth.uid &&
+                           (!('status' in existing()) || existing().status != 'ENCERRADO')
+                         )
+                       );
     }
 
     match /found_items/{itemId} {
-      allow get: if true;
-      allow list: if true;
+      allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
+      allow list: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
       allow create: if incoming().registeredByUserId == request.auth.uid && 
                     isEmailVerified() && 
                     (incoming().registeredByRole == 'SERVIDOR' || incoming().registeredByRole == 'ADMIN') &&
                     isValidItemTextFields(incoming()) &&
+                    (!('status' in incoming()) || (incoming().status != 'DEVOLVIDO' && incoming().status != 'ENCERRADO')) &&
+                    hasNoReturnOrSignatureFields(incoming()) &&
                     isAccountActive() &&
                     !isIntruso() &&
                     (
@@ -422,27 +603,31 @@ service cloud.firestore {
       allow update: if isAccountActive() &&
                        isValidItemTextFields(incoming()) &&
                        (
-                         (
-                           existing().registeredByUserId == request.auth.uid && 
-                           incoming().registeredByUserId == existing().registeredByUserId &&
-                           incoming().createdAt == existing().createdAt &&
-                           incoming().registeredByRole == existing().registeredByRole
-                         ) ||
-                         isDocServidor() ||
-                         hasAdminClaim() ||
-                         isRootAdmin() ||
-                         isDocAdmin()
+                         isAuthorSafeMetadataEdit() ||
+                         isStaffOrAdminNonReturnItemUpdate()
                        );
-      allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && !isIntruso() && existing().registeredByUserId == request.auth.uid);
+      allow delete: if (!('status' in existing()) || existing().status != 'DEVOLVIDO') &&
+                       (
+                         isAdmin() ||
+                         (
+                           isSignedIn() &&
+                           isAccountActive() &&
+                           !isIntruso() &&
+                           existing().registeredByUserId == request.auth.uid &&
+                           (!('status' in existing()) || existing().status != 'ENCERRADO')
+                         )
+                       );
     }
 
     match /lost_items/{itemId} {
-      allow get: if true;
-      allow list: if true;
+      allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
+      allow list: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
       allow create: if incoming().registeredByUserId == request.auth.uid && 
                     isEmailVerified() && 
                     (incoming().registeredByRole == 'SERVIDOR' || incoming().registeredByRole == 'ADMIN') &&
                     isValidItemTextFields(incoming()) &&
+                    (!('status' in incoming()) || (incoming().status != 'DEVOLVIDO' && incoming().status != 'ENCERRADO')) &&
+                    hasNoReturnOrSignatureFields(incoming()) &&
                     isAccountActive() &&
                     !isIntruso() &&
                     (
@@ -452,18 +637,51 @@ service cloud.firestore {
       allow update: if isAccountActive() &&
                        isValidItemTextFields(incoming()) &&
                        (
-                         (
-                           existing().registeredByUserId == request.auth.uid && 
-                           incoming().registeredByUserId == existing().registeredByUserId &&
-                           incoming().createdAt == existing().createdAt &&
-                           incoming().registeredByRole == existing().registeredByRole
-                         ) ||
-                         isDocServidor() ||
-                         hasAdminClaim() ||
-                         isRootAdmin() ||
-                         isDocAdmin()
+                         isAuthorSafeMetadataEdit() ||
+                         isStaffOrAdminNonReturnItemUpdate()
                        );
-      allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && !isIntruso() && existing().registeredByUserId == request.auth.uid);
+      allow delete: if (!('status' in existing()) || existing().status != 'DEVOLVIDO') &&
+                       (
+                         isAdmin() ||
+                         (
+                           isSignedIn() &&
+                           isAccountActive() &&
+                           !isIntruso() &&
+                           existing().registeredByUserId == request.auth.uid &&
+                           (!('status' in existing()) || existing().status != 'ENCERRADO')
+                         )
+                       );
+    }
+
+    // ==========================================
+    // 2b. Signature Requests Collection (Server-Only / Admin SDK)
+    // ==========================================
+    match /signature_requests/{itemId} {
+      allow read, write: if false;
+    }
+
+    // ==========================================
+    // 2c. Private Item Return & Signature Records (Restricted PII / Signatures / Receipts)
+    // ==========================================
+    match /item_return_records/{itemId} {
+      // Get: Only active approved SERVIDOR, ADMIN, or the authenticated recipient (matching recipientUid) can read a private return record.
+      allow get: if isSignedIn() && isAccountActive() && (
+        isAdmin() ||
+        isServidor() ||
+        (resource != null && 'recipientUid' in resource.data && resource.data.recipientUid == request.auth.uid)
+      );
+      // List: Only active approved SERVIDOR or ADMIN can list/query private return records.
+      allow list: if isSignedIn() && isAccountActive() && (isAdmin() || isServidor());
+      // Writes are strictly server-authoritative via Firebase Admin SDK.
+      allow create, update, delete: if false;
+    }
+
+    // ==========================================
+    // 2d. Email Notifications Log Collection (Server-Only Writes / Staff & Admin Read)
+    // ==========================================
+    match /email_notifications/{notifId} {
+      allow get, list: if isSignedIn() && isAccountActive() && (isAdmin() || isServidor());
+      allow create, update, delete: if false;
     }
 
     // ==========================================

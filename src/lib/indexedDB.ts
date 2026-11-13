@@ -2,6 +2,7 @@
 // Includes dedicated sync-queue for offline user registration requests
 import { LostFoundItem, SyncQueueEntry } from "../types";
 import { calculatePayloadSizeBytes } from "./payloadSizeGuard";
+import { sanitizePublicItemProjection } from "./itemPrivacyUtils";
 
 const DB_NAME = "IFPRAchadosPerdidosDB";
 const DB_VERSION = 2;
@@ -51,7 +52,7 @@ function openDatabase(): Promise<IDBDatabase> {
 }
 
 // -------------------------------------------------------------
-// ITEMS STORE
+// ITEMS STORE (ETAPA 15: Strictly Sanitized Public Projections Only)
 // -------------------------------------------------------------
 
 export async function saveItemsToIndexedDB(items: LostFoundItem[]): Promise<void> {
@@ -60,10 +61,10 @@ export async function saveItemsToIndexedDB(items: LostFoundItem[]): Promise<void
     const tx = db.transaction(STORE_ITEMS, "readwrite");
     const store = tx.objectStore(STORE_ITEMS);
     
-    // Clear old records and save current snapshot
+    // Clear old records and save current sanitized public snapshot
     store.clear();
     for (const item of items) {
-      store.put(item);
+      store.put(sanitizePublicItemProjection(item));
     }
     
     return new Promise((resolve, reject) => {
@@ -83,7 +84,8 @@ export async function getItemsFromIndexedDB(): Promise<LostFoundItem[]> {
     const request = store.getAll();
 
     return new Promise((resolve, reject) => {
-      request.onsuccess = () => resolve(request.result || []);
+      request.onsuccess = () =>
+        resolve(((request.result || []) as LostFoundItem[]).map((it) => sanitizePublicItemProjection(it)));
       request.onerror = () => reject(request.error);
     });
   } catch (err) {
@@ -97,7 +99,7 @@ export async function saveSingleItemIndexedDB(item: LostFoundItem): Promise<void
     const db = await openDatabase();
     const tx = db.transaction(STORE_ITEMS, "readwrite");
     const store = tx.objectStore(STORE_ITEMS);
-    store.put(item);
+    store.put(sanitizePublicItemProjection(item));
   } catch (err) {
     console.warn("Aviso ao salvar item individual no IndexedDB:", err);
   }

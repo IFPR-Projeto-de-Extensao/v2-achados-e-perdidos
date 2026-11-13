@@ -29,6 +29,8 @@ import {
 import { DEFAULT_DOCUMENT_TEMPLATES } from "../lib/defaultDocumentTemplates";
 import { DEFAULT_PROJECT_SETTINGS } from "../lib/projectSettingsConstants";
 import { sortUsersByCreationDesc, isAccountBlocked } from "../lib/accountStatusUtils";
+import { canOperateFormalReturn, canReopenFormalReturn } from "../lib/devolutionAuth";
+import { sanitizePublicItemProjection, mergeItemWithPrivateRecord } from "../lib/itemPrivacyUtils";
 import { INITIAL_ITEMS, MOCK_NOTIFICATIONS, MOCK_CLAIMS, MOCK_COMMENTS, MOCK_ACTIVITY_LOGS } from "../data/mockData";
 import { safeFetchJson, clientMatchSimilarity, sendMatchEmailAlert } from "../lib/apiHelper";
 import { compressImage } from "../lib/imageCompression";
@@ -532,10 +534,12 @@ interface AppContextType {
   setPrefilledItemFromAI: (data: Partial<LostFoundItem> | null) => void;
   selectedItemForDetail: LostFoundItem | null;
   setSelectedItemForDetail: (item: LostFoundItem | null) => void;
+  returnModalAutoOpen: boolean;
+  setReturnModalAutoOpen: (open: boolean) => void;
   addItem: (
     itemData: Omit<LostFoundItem, "id" | "createdAt" | "qrCodeId" | "registeredByUserId" | "registeredByName" | "registeredByRole">
   ) => Promise<{ newItem: LostFoundItem; matches: AIMatchResult[]; persistenceStatus: RegistrationStatus; isOffline: boolean }>;
-  updateItemStatus: (id: string, status: ItemStatus) => void;
+  updateItemStatus: (id: string, status: ItemStatus) => Promise<void>;
   updateItemData: (id: string, updatedFields: Partial<LostFoundItem>) => Promise<void>;
   registerItemReturn: (
     itemId: string,
@@ -1874,12 +1878,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Bulk Operations com integridade e fidelidade estrita ao Firestore
   const bulkUpdateItemStatus = async (itemIds: string[], status: ItemStatus): Promise<{ succeededIds: string[]; failedIds: string[] }> => {
+    if (status === "DEVOLVIDO") {
+      addToast("Baixa em lote para DEVOLVIDO é proibida. Utilize o procedimento formal com assinatura em cada objeto.", "error");
+      throw new Error("Ação bloqueada: DEVOLVIDO exige procedimento formal individual.");
+    }
+    if (!canOperateFormalReturn(currentUser, auth.currentUser, isGuest)) {
+      addToast("Apenas servidores ou administradores ativos e aprovados podem alterar status em lote.", "error");
+      throw new Error("Permissão negada para atualização de status em lote.");
+    }
     if (itemIds.length === 0) return { succeededIds: [], failedIds: [] };
     const succeededIds: string[] = [];
     const failedIds: string[] = [];
 
     for (const id of itemIds) {
       try {
+        const existingItem = items.find((i) => i.id === id);
+        if (existingItem && (existingItem.status === "DEVOLVIDO" || existingItem.status === "ENCERRADO")) {
+          throw new Error("Item já resolvido não pode ter status alterado diretamente.");
+        }
         await updateDoc(doc(db, "items", id), sanitizeFirestoreData({ status }));
         succeededIds.push(id);
       } catch (err) {
@@ -2188,6 +2204,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [selectedItemForDetail, setSelectedItemForDetail] = useState<LostFoundItem | null>(null);
+  const [returnModalAutoOpen, setReturnModalAutoOpen] = useState(false);
   const [qrScannerOpen, setQrScannerOpen] = useState(false);
   const [aiMatchAlert, setAiMatchAlert] = useState<{
     newItem: LostFoundItem;
@@ -2813,15 +2830,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, [firebaseUser, currentUser?.role]);
 
+  const rawPublicItemsRef = useRef<LostFoundItem[]>([]);
+  const privateReturnRecordsRef = useRef<Record<string, Record<string, any>>>({});
+
   // Sync Items from Firestore with Offline IndexedDB Resilience & Background Queue Processor
   useEffect(() => {
     let isMounted = true;
+
+    const applyPrivacyMerge = (publicList: LostFoundItem[]) => {
+      const sanitizedList = publicList.map((it) => sanitizePublicItemProjection(it));
+      rawPublicItemsRef.current = sanitizedList;
+      const hasStaffAccess = canOperateFormalReturn(currentUser, firebaseUser);
+      const privMap = hasStaffAccess ? privateReturnRecordsRef.current : {};
+      const finalItems = sanitizedList.map((it) =>
+        hasStaffAccess && privMap[it.id] ? mergeItemWithPrivateRecord(it, privMap[it.id]) : it
+      );
+      finalItems.sort(
+        (a, b) =>
+          (safeParseDate(b.createdAt || b.date)?.getTime() || 0) -
+          (safeParseDate(a.createdAt || a.date)?.getTime() || 0)
+      );
+      if (isMounted) {
+        setItems(finalItems);
+        setSelectedItemForDetail((prev) => {
+          if (!prev) return null;
+          const updated = finalItems.find((it) => it.id === prev.id);
+          return updated || sanitizePublicItemProjection(prev);
+        });
+      }
+      // Persist only sanitized public projection in browser offline storage
+      saveItemsToIndexedDB(sanitizedList).catch((e) =>
+        console.warn("Aviso ao persistir itens no IndexedDB:", e)
+      );
+    };
 
     // 1. Instantly load items from IndexedDB offline storage so history is viewable without internet
     getItemsFromIndexedDB()
       .then((cachedItems) => {
         if (isMounted && cachedItems && cachedItems.length > 0) {
-          setItems((curr) => (curr.length === 0 ? cachedItems : curr));
+          const cleanCached = cachedItems.map((it) => sanitizePublicItemProjection(it));
+          rawPublicItemsRef.current = cleanCached;
+          setItems((curr) => (curr.length === 0 ? cleanCached : curr));
         }
       })
       .catch((err) => console.warn("Aviso ao ler cache IndexedDB inicial:", err));
@@ -2831,30 +2880,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       collection(db, "items"),
       async (snapshot) => {
         if (snapshot.empty) {
+          rawPublicItemsRef.current = [];
           if (isMounted) setItems([]);
           saveItemsToIndexedDB([]).catch(() => {});
         } else {
-          const loadedItems: LostFoundItem[] = snapshot.docs.map((d) => d.data() as LostFoundItem);
-          // Sort by creation date safely
-          loadedItems.sort((a, b) => (safeParseDate(b.createdAt || b.date)?.getTime() || 0) - (safeParseDate(a.createdAt || a.date)?.getTime() || 0));
-          if (isMounted) {
-            setItems(loadedItems);
-            setSelectedItemForDetail((prev) => {
-              if (!prev) return null;
-              const updated = loadedItems.find((it) => it.id === prev.id);
-              return updated || prev;
-            });
-          }
-          saveItemsToIndexedDB(loadedItems).catch((e) => console.warn("Aviso ao persistir itens no IndexedDB:", e));
+          const loadedItems: LostFoundItem[] = snapshot.docs.map((d) => ({
+            ...(d.data() as LostFoundItem),
+            id: d.id || (d.data() as any).id,
+          }));
+          applyPrivacyMerge(loadedItems);
         }
       },
       async (error) => {
         handleFirestoreError(error, OperationType.GET, "items");
-        // Fallback to local IndexedDB cache when network is offline
+        // Fallback 1: Sanitized public catalog endpoint (handles legacy unsanitized docs safely)
+        try {
+          const res = await fetch("/api/items/public-catalog");
+          if (res.ok) {
+            const payload = await res.json();
+            if (Array.isArray(payload?.items)) {
+              applyPrivacyMerge(payload.items as LostFoundItem[]);
+              return;
+            }
+          }
+        } catch (_) {}
+
+        // Fallback 2: Local IndexedDB cache when network is offline
         try {
           const cached = await getItemsFromIndexedDB();
           if (isMounted && cached && cached.length > 0) {
-            setItems(cached);
+            applyPrivacyMerge(cached);
           }
         } catch (_) {}
       }
@@ -2864,7 +2919,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isMounted = false;
       unsubscribe();
     };
-  }, []);
+  }, [firebaseUser?.uid, currentUser?.id, currentUser?.role, currentUser?.status, currentUser?.approvalStatus]);
+
+  // Sync Private Return Records (/item_return_records) strictly for active SERVIDOR and ADMIN
+  useEffect(() => {
+    const hasStaffAccess = canOperateFormalReturn(currentUser, firebaseUser);
+    if (!hasStaffAccess) {
+      privateReturnRecordsRef.current = {};
+      if (rawPublicItemsRef.current.length > 0) {
+        const cleanList = rawPublicItemsRef.current.map((it) => sanitizePublicItemProjection(it));
+        setItems(cleanList);
+        setSelectedItemForDetail((prev) => (prev ? sanitizePublicItemProjection(prev) : null));
+      }
+      return;
+    }
+
+    let isMounted = true;
+    const unsubscribe = onSnapshot(
+      collection(db, "item_return_records"),
+      (snapshot) => {
+        if (!isMounted) return;
+        const recordsMap: Record<string, Record<string, any>> = {};
+        snapshot.docs.forEach((docSnap) => {
+          const data = docSnap.data();
+          const key = docSnap.id || data.itemId;
+          if (key) {
+            recordsMap[key] = data;
+          }
+        });
+        privateReturnRecordsRef.current = recordsMap;
+        if (rawPublicItemsRef.current.length > 0) {
+          const merged = rawPublicItemsRef.current.map((it) =>
+            recordsMap[it.id] ? mergeItemWithPrivateRecord(it, recordsMap[it.id]) : it
+          );
+          merged.sort(
+            (a, b) =>
+              (safeParseDate(b.createdAt || b.date)?.getTime() || 0) -
+              (safeParseDate(a.createdAt || a.date)?.getTime() || 0)
+          );
+          setItems(merged);
+          setSelectedItemForDetail((prev) => {
+            if (!prev) return null;
+            const updated = merged.find((it) => it.id === prev.id);
+            return updated || prev;
+          });
+        }
+      },
+      (err) => {
+        console.warn("Aviso ao sincronizar registros privados de devolução:", err);
+      }
+    );
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [firebaseUser, currentUser?.id, currentUser?.role, currentUser?.status, currentUser?.approvalStatus]);
 
   // Sync Claims from Firestore (Strict Least Privilege & RBAC Compliance)
   useEffect(() => {
@@ -4458,8 +4568,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [];
   };
 
-  const updateItemStatus = async (id: string, status: ItemStatus) => {
-    // 🔒 Security Guard: Only authenticated users can change status
+  const updateItemStatus = async (id: string, status: ItemStatus): Promise<void> => {
+    // 🔒 Security Guard 1: Formal devolution can NEVER happen via generic status override
+    if (status === "DEVOLVIDO") {
+      addToast("A devolução oficial exige identificação do receptor e assinatura digital pelo fluxo formal.", "error");
+      throw new Error("Transição direta para DEVOLVIDO bloqueada: utilize o fluxo formal de devolução (registerItemReturn).");
+    }
+
+    // 🔒 Security Guard 2: Only authenticated, verified, active & approved Staff/Admin can change status
     if (isGuest || !auth.currentUser) {
       setAuthModalOpen(true);
       addToast("É necessário fazer login para alterar o status do objeto.", "warning");
@@ -4472,27 +4588,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error("Objeto não encontrado.");
     }
 
-    // 🔒 Authorization Check: Only creator or Staff/Admin can change status
-    const isOwner = Boolean(
-      (auth.currentUser && existing.registeredByUserId === auth.currentUser.uid) ||
-      (currentUser && currentUser.id !== DEFAULT_GUEST_USER.id && existing.registeredByUserId === currentUser.id)
-    );
-    const isStaffOrAdmin =
-      currentUser?.role === "ADMIN" ||
-      currentUser?.role === "SERVIDOR" ||
-      auth.currentUser?.email === "paulocauan39@gmail.com";
+    if (existing.status === "DEVOLVIDO" || existing.status === "ENCERRADO") {
+      addToast("Objetos já devolvidos ou encerrados não podem ter status alterado diretamente.", "error");
+      throw new Error("Item já finalizado não permite alteração direta de status.");
+    }
 
-    if (!isOwner && !isStaffOrAdmin) {
-      addToast("Você não possui permissão para alterar o status deste pertence.", "error");
+    if (!canOperateFormalReturn(currentUser, auth.currentUser, isGuest)) {
+      addToast("Apenas servidores ou administradores ativos e aprovados podem alterar o status de objetos.", "error");
       throw new Error("Permissão negada para alteração de status.");
     }
 
     const effectiveUserId = auth.currentUser.uid;
-    const effectiveUserName = currentUser?.name || auth.currentUser.displayName || "Usuário IFPR";
-    const effectiveUserRole: UserRole = currentUser?.role || (auth.currentUser.email === "paulocauan39@gmail.com" ? "ADMIN" : "ALUNO");
+    const effectiveUserName = currentUser?.name || auth.currentUser.displayName || "Servidor IFPR";
+    const effectiveUserRole: UserRole =
+      currentUser?.role === "ADMIN" || auth.currentUser?.email === "paulocauan39@gmail.com" ? "ADMIN" : "SERVIDOR";
 
     const existingHistory = existing?.history || existing?.historyLogs || [];
-    const isResolved = status === "DEVOLVIDO" || status === "ENCERRADO";
+    const isResolved = status === "ENCERRADO";
 
     const newHistLog: ItemHistoryLog = {
       id: `hist-${Date.now()}`,
@@ -4517,7 +4629,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       await updateDoc(doc(db, "items", id), updates);
 
-      // Immediately update local state
       setItems((prev) =>
         prev.map((it) =>
           it.id === id
@@ -4525,7 +4636,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : it
         )
       );
-      
+
       const statusTxId = `TX-STAT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
       await recordAuditLog({
         objectId: id,
@@ -4539,36 +4650,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         transactionId: statusTxId,
       });
 
-      if (isStaffOrAdmin) {
-        await logAdminAction(
-          "STATUS_OVERRIDE",
-          `Alterou o status do objeto #${id} para '${status}'`
-        );
-      }
+      await logAdminAction(
+        "STATUS_OVERRIDE",
+        `Alterou o status do objeto #${id} para '${status}'`
+      );
       addToast(`Status do objeto atualizado para: ${String(status || "").replace("_", " ")}`, "info");
-
-      // Automated email notification when marked as DEVOLVIDO
-      if (status === "DEVOLVIDO" && existing) {
-        const ownerEmail = (existing as any).registeredByUserEmail || existing.contactInfo || "localizamais0@gmail.com";
-        safeFetchJson(
-          "/api/automation/notify-item-returned",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              itemId: id,
-              itemTitle: existing.title,
-              recipientEmail: ownerEmail,
-              recipientName: existing.registeredByName || "Comunidade IFPR",
-              qrCodeId: existing.qrCodeId,
-              location: existing.location,
-              category: existing.category,
-              resolutionNotes: `Devolução finalizada no sistema por ${effectiveUserName}.`,
-            }),
-          },
-          () => ({ success: true })
-        ).catch(() => {});
-      }
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `items/${id}`);
       throw e;
@@ -4708,207 +4794,100 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     itemId: string,
     returnData: ItemReturnData
   ) => {
-    // 🔒 Security Guard: Only Staff / Admin can register returns
+    // 🔒 Security Guard: Only approved & active Staff / Admin can register formal returns
     if (isGuest || !auth.currentUser) {
       setAuthModalOpen(true);
       addToast("É necessário fazer login como servidor ou administrador para registrar devoluções.", "warning");
       throw new Error("Autenticação necessária.");
     }
 
-    const isStaffOrAdmin =
-      currentUser?.role === "ADMIN" ||
-      currentUser?.role === "SERVIDOR" ||
-      auth.currentUser?.email === "paulocauan39@gmail.com";
-
-    if (!isStaffOrAdmin) {
-      addToast("Apenas servidores ou administradores podem registrar a devolução oficial de itens.", "error");
+    if (!canOperateFormalReturn(currentUser, auth.currentUser, isGuest)) {
+      addToast("Apenas servidores ou administradores ativos e aprovados podem registrar a devolução oficial de itens.", "error");
       throw new Error("Permissão negada para registrar devolução.");
     }
 
-    const existing = items.find((i) => i.id === itemId);
-    const existingHistory = existing?.history || [];
-    const validationCode = "COMP-IFPR-" + Math.random().toString(36).substring(2, 8).toUpperCase();
-    const now = new Date();
-    const returnDate = now.toLocaleDateString("pt-BR");
-    const returnTime = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    const signatureToken = returnData.signatureToken || generateSecureSignatureToken("sig_");
-    const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    if (!returnData.recipientName?.trim() || !returnData.recipientEmail?.trim() || !returnData.identityVerified) {
+      const msg = "Dados obrigatórios do receptor e confirmação presencial de documento com foto são indispensáveis.";
+      addToast(msg, "error");
+      throw new Error(msg);
+    }
 
-    const isDirectlySigned = returnData.signatureType === "IN_PERSON_DEVICE" && !!returnData.signatureDataUrl;
-    const isRemoteEmail = returnData.signatureType === "REMOTE_EMAIL";
+    if (returnData.signatureType !== "IN_PERSON_DEVICE" && returnData.signatureType !== "REMOTE_EMAIL") {
+      const msg = "Selecione a assinatura presencial ou envio de link remoto por e-mail.";
+      addToast(msg, "error");
+      throw new Error(msg);
+    }
 
-    const effectiveUserId = auth.currentUser.uid;
-    const effectiveUserName = currentUser?.name || auth.currentUser.displayName || "Servidor IFPR";
-    const effectiveUserRole: UserRole = currentUser?.role || (auth.currentUser.email === "paulocauan39@gmail.com" ? "ADMIN" : "SERVIDOR");
+    if (returnData.signatureType === "IN_PERSON_DEVICE" && !returnData.signatureDataUrl) {
+      const msg = "A assinatura digital presencial do recebedor é obrigatória.";
+      addToast(msg, "error");
+      throw new Error(msg);
+    }
 
-    const newHistLog: ItemHistoryLog = {
-      id: `hist-${Date.now()}`,
-      action: isDirectlySigned
-        ? "Devolução registrada com Assinatura Presencial"
-        : isRemoteEmail
-        ? "Devolução registrada (Aguardando Assinatura por E-mail)"
-        : "Devolução registrada",
-      actorId: effectiveUserId,
-      actorName: effectiveUserName,
-      actorRole: effectiveUserRole,
-      userId: effectiveUserId,
-      userName: effectiveUserName,
-      userRole: effectiveUserRole,
-      timestamp: now.toISOString(),
-      details: `Devolução concluída para ${returnData.recipientName} (${returnData.recipientBond}). Servidor responsável: ${effectiveUserName}.${
-        isDirectlySigned ? " Assinatura digital colhida no dispositivo." : isRemoteEmail ? " Link de assinatura enviado por e-mail." : ""
-      }`,
-    };
+    const idToken = await auth.currentUser.getIdToken();
+    const originUrl = typeof window !== "undefined" ? window.location.origin : "";
 
-    const updatePayload = sanitizeFirestoreData({
-      status: "DEVOLVIDO" as ItemStatus,
-      resolutionDate: now.toISOString(),
-      returnDate,
-      returnTime,
-      returnedByUserId: effectiveUserId,
-      returnedByName: effectiveUserName,
-      returnedByRole: effectiveUserRole,
-      recipientName: returnData.recipientName,
-      recipientEmail: returnData.recipientEmail,
-      recipientBond: returnData.recipientBond,
-      recipientDocument: returnData.recipientDocument || "",
-      returnObservations: returnData.returnObservations || returnData.observations || "",
-      receiptValidationCode: validationCode,
-      recipientSignatureUrl: returnData.signatureDataUrl || "",
-      recipientSignatureType: returnData.signatureType || (isDirectlySigned ? "IN_PERSON_DEVICE" : isRemoteEmail ? "REMOTE_EMAIL" : "PRE_VERIFIED"),
-      recipientSignatureStatus: isDirectlySigned ? "SIGNED" : isRemoteEmail ? "PENDING_REMOTE" : "NOT_REQUIRED",
-      signatureToken: undefined, // Isolated: Stored exclusively via private signature_requests collection on backend
-      signatureTokenExpiresAt: isRemoteEmail ? expiresAt : undefined,
-      signatureTokenUsed: isRemoteEmail ? false : undefined,
-      signedAt: isDirectlySigned ? now.toISOString() : undefined,
-      history: [...existingHistory, newHistLog],
-      historyLogs: [...existingHistory, newHistLog],
+    const response = await fetch("/api/items/register-return", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        itemId,
+        recipientName: returnData.recipientName.trim(),
+        recipientEmail: returnData.recipientEmail.trim(),
+        recipientBond: returnData.recipientBond || "Aluno",
+        recipientDocument: returnData.recipientDocument?.trim() || "",
+        observations: returnData.returnObservations || returnData.observations || "",
+        identityVerified: returnData.identityVerified === true,
+        signatureType: returnData.signatureType,
+        signatureDataUrl: returnData.signatureType === "IN_PERSON_DEVICE" ? returnData.signatureDataUrl : undefined,
+        originUrl,
+      }),
     });
 
-    try {
-      const batch = writeBatch(db);
-      batch.update(doc(db, "items", itemId), updatePayload);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.success) {
+      const errMsg = data?.error || `Erro HTTP ${response.status} ao registrar devolução formal no servidor.`;
+      addToast(errMsg, "error");
+      throw new Error(errMsg);
+    }
 
-      // Conclude any approved claims associated with this item atomically
-      const linkedApprovedClaims = claims.filter((c) => c.itemId === itemId && c.status === "APROVADO");
-      const completedClaimPayload = {
-        status: "CONCLUIDO" as const,
-        completedAt: now.toISOString(),
-        decisionNotes: `Devolução presencial concluída para ${returnData.recipientName} (${returnData.recipientBond}).`,
-      };
+    const serverItemUpdate = data.itemUpdate || { status: "DEVOLVIDO" as ItemStatus };
+    const completedIds: string[] = Array.isArray(data.completedClaimIds) ? data.completedClaimIds : [];
 
-      for (const clm of linkedApprovedClaims) {
-        batch.update(doc(db, "claims", clm.id), sanitizeFirestoreData(completedClaimPayload));
-      }
+    setItems((prev) =>
+      prev.map((it) =>
+        it.id === itemId
+          ? { ...it, ...serverItemUpdate, status: "DEVOLVIDO" }
+          : it
+      )
+    );
 
-      // Atomic commit: both item and linked claims are committed together or both roll back
-      await batch.commit();
-
-      // Immediately update local state for both items and claims
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === itemId
-            ? { ...it, ...updatePayload, status: "DEVOLVIDO" }
-            : it
+    if (completedIds.length > 0) {
+      setClaims((prev) =>
+        prev.map((c) =>
+          completedIds.includes(c.id) || (c.itemId === itemId && c.status === "APROVADO")
+            ? {
+                ...c,
+                status: "CONCLUIDO",
+                completedAt: serverItemUpdate.resolutionDate || new Date().toISOString(),
+                decisionNotes: `Devolução formal concluída para ${returnData.recipientName} (${returnData.recipientBond}).`,
+              }
+            : c
         )
       );
+    }
 
-      if (linkedApprovedClaims.length > 0) {
-        setClaims((prev) =>
-          prev.map((c) =>
-            c.itemId === itemId && c.status === "APROVADO"
-              ? { ...c, ...completedClaimPayload }
-              : c
-          )
-        );
-      }
-      
-      const returnTxId = `TX-RET-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-      await recordAuditLog({
-        objectId: itemId,
-        objectType: "RETURN",
-        objectTitle: existing?.title || itemId,
-        action: "REGISTRO_DEVOLUCAO",
-        fieldChanged: "status_devolucao",
-        oldValue: existing?.status || "ENCONTRADO",
-        newValue: "DEVOLVIDO",
-        details: `Devolução do item #${itemId} (${existing?.title || ""}) concluída para ${returnData.recipientName} (${returnData.recipientBond}). Código validador: ${validationCode}.${isDirectlySigned ? " Assinatura presencial colhida." : ""}`,
-        transactionId: returnTxId,
-      });
-
-      await logAdminAction(
-        "REGISTRO_DEVOLUCAO",
-        `Registrou a devolução do item #${itemId} (${existing?.title || ""}) para ${returnData.recipientName} (${returnData.recipientBond}). Responsável: ${effectiveUserName}`
-      );
-      addToast(`Devolução do item #${itemId} registrada com sucesso!`, "success");
-
-      // Automated email notification / remote signature link
-      const targetEmail = returnData.recipientEmail || (existing as any)?.registeredByUserEmail || "localizamais0@gmail.com";
-      const originUrl = typeof window !== "undefined" ? window.location.origin : "";
-      const signatureLink = `${originUrl}/?tab=sign-receipt&itemId=${encodeURIComponent(itemId)}&token=${encodeURIComponent(signatureToken)}`;
-
-      if (isRemoteEmail) {
-        // Send email with remote signature request
-        let idToken = "";
-        if (auth.currentUser) {
-          try {
-            idToken = await auth.currentUser.getIdToken();
-          } catch (_) {}
-        }
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (idToken) {
-          headers["Authorization"] = `Bearer ${idToken}`;
-        }
-
-        safeFetchJson(
-          "/api/signature/send-request",
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              itemId,
-              itemTitle: existing?.title || "Pertence",
-              recipientEmail: targetEmail,
-              recipientName: returnData.recipientName,
-              recipientBond: returnData.recipientBond || "Aluno(a)",
-              recipientDocument: returnData.recipientDocument || "",
-              signatureLink,
-              signatureToken,
-              returnedByName: effectiveUserName,
-            }),
-          },
-          () => ({ success: true })
-        ).catch(() => {});
-      } else {
-        // Standard automated return confirmation email
-        safeFetchJson(
-          "/api/automation/notify-item-returned",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              itemId,
-              itemTitle: existing?.title || "Pertence",
-              recipientEmail: targetEmail,
-              recipientName: returnData.recipientName,
-              qrCodeId: existing?.qrCodeId,
-              location: existing?.location,
-              category: existing?.category,
-              resolutionNotes: returnData.returnObservations || returnData.observations || `Devolução concluída por ${effectiveUserName}`,
-            }),
-          },
-          () => ({ success: true })
-        ).catch(() => {});
-      }
-    } catch (e) {
-      handleFirestoreError(e, OperationType.UPDATE, `items/${itemId}`);
-      throw e;
+    if (data.notificationWarning) {
+      addToast(data.notificationWarning, "warning");
     }
   };
 
   const submitItemDigitalSignature = async (
-    itemId: string,
-    signatureData: {
+    _itemId: string,
+    _signatureData: {
       signatureDataUrl: string;
       signerName: string;
       signerEmail?: string;
@@ -4917,41 +4896,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       signatureType?: "IN_PERSON_DEVICE" | "REMOTE_EMAIL";
     }
   ) => {
-    const existing = items.find((i) => i.id === itemId);
-    const existingHistory = existing?.history || [];
-    const now = new Date().toISOString();
-
-    const newHistLog: ItemHistoryLog = {
-      id: `hist-sign-${Date.now()}`,
-      action: "Assinatura Digital Gravada",
-      actorId: currentUser?.id || "remote-user",
-      actorName: signatureData.signerName,
-      actorRole: (signatureData.signerBond === "Servidor" ? "SERVIDOR" : "ALUNO") as any,
-      timestamp: now,
-      details: `Assinatura digital do termo de recebimento concluída (${signatureData.signerName}).`,
-    };
-
-    const updatePayload = sanitizeFirestoreData({
-      recipientSignatureUrl: signatureData.signatureDataUrl,
-      recipientSignatureType: signatureData.signatureType || "IN_PERSON_DEVICE",
-      recipientSignatureStatus: "SIGNED",
-      recipientDocument: signatureData.documentNumber || existing?.recipientDocument || "",
-      signedAt: now,
-      status: "DEVOLVIDO" as ItemStatus,
-      history: [...existingHistory, newHistLog],
-      historyLogs: [...existingHistory, newHistLog],
-    });
-
-    try {
-      await updateDoc(doc(db, "items", itemId), updatePayload);
-      await logAdminAction(
-        "ASSINATURA_DIGITAL_RECEBIDA",
-        `Gravou a assinatura digital da ocorrência #${itemId} para ${signatureData.signerName}`
-      );
-      addToast("Assinatura digital registrada com sucesso!", "success");
-    } catch (e) {
-      handleFirestoreError(e, OperationType.UPDATE, `items/${itemId}`);
-    }
+    const errMsg = "Assinaturas e baixas para DEVOLVIDO devem ser executadas exclusivamente pelos endpoints autoritativos (/api/items/register-return ou /api/signature/confirm-signature).";
+    addToast(errMsg, "error");
+    throw new Error(errMsg);
   };
 
   const updateDocDirectly = async (collectionName: string, docId: string, data: Record<string, any>) => {
@@ -4964,76 +4911,107 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const reopenItemReturn = async (itemId: string, reason: string) => {
-    if (currentUser.role !== "ADMIN") {
-      addToast("Apenas o Administrador pode reabrir devoluções.", "error");
-      return;
+    if (isGuest || !auth.currentUser || !canReopenFormalReturn(currentUser, auth.currentUser, isGuest)) {
+      const msg = "Apenas Administradores ativos e aprovados podem reabrir devoluções.";
+      addToast(msg, "error");
+      throw new Error(msg);
     }
-    const existing = items.find((i) => i.id === itemId);
-    if (!existing) return;
 
-    const existingHistory = existing.history || [];
-    const now = new Date();
-    const previousStatus: ItemStatus = existing.type === "PERDIDO" ? "PERDIDO" : "ENCONTRADO";
+    const cleanReason = reason.trim();
+    if (cleanReason.length < 5) {
+      const msg = "Informe uma justificativa detalhada (mínimo 5 caracteres) para reabrir a devolução.";
+      addToast(msg, "error");
+      throw new Error(msg);
+    }
 
-    const newHistLog: ItemHistoryLog = {
-      id: `hist-${Date.now()}`,
-      action: "Devolução reaberta",
-      actorId: currentUser.id,
-      actorName: currentUser.name,
-      actorRole: currentUser.role,
-      userId: currentUser.id,
-      userName: currentUser.name,
-      userRole: currentUser.role,
-      timestamp: now.toISOString(),
-      details: `Devolução reaberta pelo Admin. Motivo obrigatório: ${reason}`,
-    };
-
-    const updatePayload = sanitizeFirestoreData({
-      status: previousStatus,
-      resolutionDate: deleteField(),
-      returnedByUserId: deleteField(),
-      returnedByName: deleteField(),
-      returnedByRole: deleteField(),
-      returnDate: deleteField(),
-      returnTime: deleteField(),
-      recipientName: deleteField(),
-      recipientEmail: deleteField(),
-      recipientBond: deleteField(),
-      history: [...existingHistory, newHistLog],
-      historyLogs: [...existingHistory, newHistLog],
+    const idToken = await auth.currentUser.getIdToken();
+    const response = await fetch("/api/items/reopen-return", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        itemId,
+        reason: cleanReason,
+      }),
     });
 
-    try {
-      await updateDoc(doc(db, "items", itemId), updatePayload);
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === itemId
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data?.success) {
+      const errMsg = data?.error || `Erro HTTP ${response.status} ao reabrir devolução.`;
+      addToast(errMsg, "error");
+      throw new Error(errMsg);
+    }
+
+    const previousStatus: ItemStatus = data.previousStatus || "ENCONTRADO";
+    const historyEntry = data.historyEntry;
+    const restoredClaimIds: string[] = Array.isArray(data.restoredClaimIds) ? data.restoredClaimIds : [];
+    const requiresAdminClaimReview = Boolean(data.requiresAdminClaimReview);
+
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== itemId) return it;
+        const existingHistory = it.history || it.historyLogs || [];
+        const nextHistory = historyEntry ? [...existingHistory, historyEntry] : existingHistory;
+        return {
+          ...it,
+          status: previousStatus,
+          resolutionDate: undefined,
+          returnedByUserId: undefined,
+          returnedByName: undefined,
+          returnedByRole: undefined,
+          returnDate: undefined,
+          returnTime: undefined,
+          recipientName: undefined,
+          recipientEmail: undefined,
+          recipientBond: undefined,
+          recipientDocument: undefined,
+          returnObservations: undefined,
+          receiptValidationCode: undefined,
+          recipientSignatureUrl: undefined,
+          recipientSignatureType: undefined,
+          recipientSignatureMethod: undefined,
+          recipientSignatureStatus: undefined,
+          staffSignatureStatus: undefined,
+          staffSignatureUrl: undefined,
+          staffSignatureMethod: undefined,
+          staffSignedAt: undefined,
+          staffSignerUid: undefined,
+          staffSignerName: undefined,
+          staffSignerEmail: undefined,
+          signatureToken: undefined,
+          signatureTokenExpiresAt: undefined,
+          signatureTokenUsed: undefined,
+          signedAt: undefined,
+          history: nextHistory,
+          historyLogs: nextHistory,
+        };
+      })
+    );
+
+    if (restoredClaimIds.length > 0) {
+      setClaims((prev) =>
+        prev.map((c) =>
+          restoredClaimIds.includes(c.id)
             ? {
-                ...it,
-                status: previousStatus,
-                resolutionDate: undefined,
-                returnedByUserId: undefined,
-                returnedByName: undefined,
-                returnedByRole: undefined,
-                returnDate: undefined,
-                returnTime: undefined,
-                recipientName: undefined,
-                recipientEmail: undefined,
-                recipientBond: undefined,
-                history: [...existingHistory, newHistLog],
-                historyLogs: [...existingHistory, newHistLog],
+                ...c,
+                status: "APROVADO",
+                completedAt: undefined,
+                decisionNotes: `Reivindicação restaurada para APROVADO após reabertura administrativa da devolução do objeto #${itemId}.`,
               }
-            : it
+            : c
         )
       );
-      await logAdminAction(
-        "REABERTURA_DEVOLUCAO",
-        `Reabriu a devolução do objeto #${itemId} (${existing.title}). Motivo: ${reason}`
+    }
+
+    if (requiresAdminClaimReview) {
+      addToast(
+        `Devolução #${itemId} reaberta! Há múltiplas reivindicações concluídas vinculadas; revise manualmente no painel administrativo.`,
+        "warning"
       );
+    } else {
       addToast(`Devolução do objeto #${itemId} reaberta! O item retornou para a lista de pendentes.`, "success");
-    } catch (e) {
-      handleFirestoreError(e, OperationType.UPDATE, `items/${itemId}`);
-      throw e;
     }
   };
 
@@ -5042,8 +5020,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     destinationTypeOrObj: string | { destinationType: string; destinationReason?: string; destinationNotes?: string },
     destinationNotesParam?: string
   ) => {
+    if (isGuest || !auth.currentUser || !canOperateFormalReturn(currentUser, auth.currentUser, isGuest)) {
+      addToast("Apenas servidores ou administradores ativos e aprovados podem registrar destinação.", "error");
+      throw new Error("Permissão negada para registrar destinação.");
+    }
+
     const existing = items.find((i) => i.id === itemId);
     if (!existing) return;
+    if (existing.status === "DEVOLVIDO" || existing.status === "ENCERRADO") {
+      addToast("Item já finalizado não pode receber nova destinação.", "error");
+      throw new Error("Item já resolvido.");
+    }
 
     let destType = "DOACAO";
     let destReason = "";
@@ -5154,6 +5141,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!existing) {
       addToast("Objeto não encontrado.", "error");
       return;
+    }
+
+    if (existing.status === "DEVOLVIDO") {
+      const msg = "Itens já devolvidos não podem ser excluídos diretamente. Reabra a devolução pelo painel administrativo antes de excluir.";
+      addToast(msg, "error");
+      throw new Error(msg);
     }
 
     // 🔒 Authorization Check: Only creator or Admin can delete
@@ -5761,6 +5754,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setPrefilledItemFromAI,
         selectedItemForDetail,
         setSelectedItemForDetail,
+        returnModalAutoOpen,
+        setReturnModalAutoOpen,
         addItem,
         updateItemStatus,
         updateItemData,

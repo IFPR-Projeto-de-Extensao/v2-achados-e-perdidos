@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { useRouter, Link } from "../context/RouterContext";
 import { useApp } from "../context/AppContext";
+import { UIBadge } from "./ui";
 import {
   Home,
   ChevronRight,
@@ -24,7 +25,6 @@ import {
   SlidersHorizontal,
   Shield,
   FileCheck,
-  AlertCircle,
   ArrowLeft,
   GitBranch,
   Building2,
@@ -40,7 +40,6 @@ interface BreadcrumbSegment {
   isCurrent?: boolean;
 }
 
-// Dictionary mapping known path segments to human-friendly PT-BR labels, icons and badges
 const SEGMENT_CONFIG: Record<
   string,
   {
@@ -88,21 +87,35 @@ const SEGMENT_CONFIG: Record<
   "painel-servidor": { label: "Painel do Servidor", icon: Building2 },
 };
 
-/**
- * Format any raw string segment into capitalized title if not found in dictionary
- */
 function formatSegmentTitle(segment: string): string {
   const decoded = decodeURIComponent(segment).replace(/[-_]/g, " ");
   return decoded.charAt(0).toUpperCase() + decoded.slice(1);
+}
+
+function mapBadgeTone(
+  color?: BreadcrumbSegment["badgeColor"]
+): "emerald" | "rose" | "amber" | "blue" | "slate" {
+  switch (color) {
+    case "green":
+    case "emerald":
+      return "emerald";
+    case "red":
+      return "rose";
+    case "amber":
+      return "amber";
+    case "blue":
+    case "purple":
+      return "blue";
+    default:
+      return "slate";
+  }
 }
 
 export const Breadcrumbs: React.FC = () => {
   const { currentUser } = useApp();
   const { pathname, searchParams, routeKey, navigate } = useRouter();
 
-  // Decompose the current pathname and build breadcrumb path trail
   const breadcrumbItems = useMemo(() => {
-    // Return empty for root home page to keep the hero layout distraction-free
     if (pathname === "/" || pathname === "" || routeKey === "home") {
       return [];
     }
@@ -110,7 +123,7 @@ export const Breadcrumbs: React.FC = () => {
     const segments = pathname.split("/").filter(Boolean);
     const trail: BreadcrumbSegment[] = [
       {
-        label: "Home",
+        label: "Início",
         path: "/",
         icon: Home,
       },
@@ -129,7 +142,6 @@ export const Breadcrumbs: React.FC = () => {
       let itemBadge = config?.badge;
       let itemBadgeColor = config?.badgeColor;
 
-      // Dynamic adjustment for staff role accessing operational panel
       if ((lowerSeg === "admin" || lowerSeg === "servidor") && currentUser?.role === "SERVIDOR") {
         itemLabel = "Painel do Servidor";
         itemIcon = Building2;
@@ -147,7 +159,6 @@ export const Breadcrumbs: React.FC = () => {
       });
     });
 
-    // Support contextual search filter leaves (e.g. /buscar?tipo=perdido)
     if (pathname.startsWith("/buscar") && searchParams.tipo) {
       if (searchParams.tipo === "perdido") {
         trail.push({
@@ -192,13 +203,12 @@ export const Breadcrumbs: React.FC = () => {
     }
 
     return trail;
-  }, [pathname, searchParams, routeKey]);
+  }, [pathname, searchParams, routeKey, currentUser?.role]);
 
   if (breadcrumbItems.length <= 1) {
     return null;
   }
 
-  // Calculate the immediate parent path for the quick back button
   const previousItem = breadcrumbItems[breadcrumbItems.length - 2];
   const backPath = previousItem ? previousItem.path : "/";
 
@@ -210,7 +220,7 @@ export const Breadcrumbs: React.FC = () => {
   return (
     <nav
       aria-label="Navegação estrutural e trilha de localização (Breadcrumbs)"
-      className="mb-4 flex items-center justify-between gap-3 text-xs text-neutral-500 dark:text-neutral-400 bg-white/80 dark:bg-[#1A1A1A]/80 backdrop-blur-md px-3.5 py-2.5 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 shadow-xs"
+      className="mb-4 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 bg-white dark:bg-[#111827] px-3.5 py-2.5 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-[0_1px_2px_rgba(23,43,42,0.03)]"
     >
       {/* Breadcrumb List */}
       <ol className="flex items-center flex-wrap gap-1.5 min-w-0" role="list">
@@ -219,10 +229,10 @@ export const Breadcrumbs: React.FC = () => {
           const Icon = item.icon;
 
           return (
-            <li key={`${item.path}-${index}`} className="flex items-center gap-1.5 shrink-0">
+            <li key={`${item.path}-${index}`} className="flex items-center gap-1.5 min-w-0">
               {index > 0 && (
                 <ChevronRight
-                  className="w-3.5 h-3.5 text-neutral-400 dark:text-neutral-600 shrink-0"
+                  className="w-3.5 h-3.5 text-slate-400 dark:text-slate-600 shrink-0"
                   aria-hidden="true"
                 />
               )}
@@ -230,33 +240,23 @@ export const Breadcrumbs: React.FC = () => {
               {isLast ? (
                 <span
                   aria-current="page"
-                  className="flex items-center gap-1.5 font-bold text-neutral-900 dark:text-white truncate max-w-[200px] sm:max-w-xs"
+                  className="flex items-center gap-1.5 font-semibold text-[#172B2A] dark:text-white min-w-0"
                 >
-                  {Icon && <Icon className="w-3.5 h-3.5 text-[#00843D] dark:text-green-400 shrink-0" />}
-                  <span className="truncate">{item.label}</span>
+                  {Icon && (
+                    <Icon className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400 shrink-0" />
+                  )}
+                  <span className="truncate max-w-[220px] sm:max-w-md">{item.label}</span>
 
                   {item.badge && (
-                    <span
-                      className={`text-[10px] font-black uppercase px-1.5 py-0.2 rounded-md ${
-                        item.badgeColor === "red"
-                          ? "bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300"
-                          : item.badgeColor === "green"
-                          ? "bg-green-100 dark:bg-green-950/80 text-[#00843D] dark:text-green-400"
-                          : item.badgeColor === "amber"
-                          ? "bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300"
-                          : item.badgeColor === "purple"
-                          ? "bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300"
-                          : "bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300"
-                      }`}
-                    >
+                    <UIBadge tone={mapBadgeTone(item.badgeColor)} className="hidden xs:inline-flex">
                       {item.badge}
-                    </span>
+                    </UIBadge>
                   )}
                 </span>
               ) : (
                 <Link
                   to={item.path}
-                  className="flex items-center gap-1.5 hover:text-[#00843D] dark:hover:text-green-400 transition-colors font-medium hover:underline underline-offset-2"
+                  className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 hover:text-[#16845B] dark:hover:text-emerald-400 transition-colors font-medium hover:underline underline-offset-2 shrink-0"
                 >
                   {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
                   <span>{item.label}</span>
@@ -269,13 +269,14 @@ export const Breadcrumbs: React.FC = () => {
 
       {/* Quick Context Back Button */}
       <button
+        type="button"
         onClick={handleBack}
         aria-label="Voltar para a seção anterior"
         title={`Voltar para ${previousItem?.label || "Início"}`}
-        className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors shrink-0 cursor-pointer"
+        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold text-slate-600 dark:text-slate-300 hover:text-[#172B2A] dark:hover:text-white hover:bg-[#F8FAFC] dark:hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
       >
-        <ArrowLeft className="w-3 h-3" />
-        <span>Voltar</span>
+        <ArrowLeft className="w-3.5 h-3.5" />
+        <span className="hidden xs:inline">Voltar</span>
       </button>
     </nav>
   );

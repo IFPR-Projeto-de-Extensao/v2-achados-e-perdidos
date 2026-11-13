@@ -127,8 +127,8 @@ export function withAdminProtection<P extends object>(
     if (isAuthLoading) {
       return (
         <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4 py-12">
-          <div className="w-12 h-12 border-4 border-[#00843D] border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm font-bold text-neutral-600 dark:text-neutral-400">
+          <div className="w-11 h-11 border-3 border-[#16845B] border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-semibold text-slate-600 dark:text-slate-400">
             Verificando credenciais institucionais do IFPR...
           </p>
         </div>

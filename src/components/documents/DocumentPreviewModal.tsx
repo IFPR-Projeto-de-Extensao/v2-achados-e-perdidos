@@ -21,6 +21,7 @@ import {
   Maximize2,
   Sparkles,
 } from "lucide-react";
+import { UIButton, UIBadge } from "../ui";
 
 interface DocumentPreviewModalProps {
   template: DocumentTemplate;
@@ -86,46 +87,50 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   return (
     <div
       id="document-preview-modal-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#172B2A]/45 dark:bg-black/75 modal-backdrop-smooth p-3 sm:p-6 overflow-y-auto animate-fade-in"
     >
       <div
         id="document-preview-modal-container"
-        className="relative w-full max-w-5xl bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-slate-100"
+        className="relative w-full max-w-5xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-[0_20px_60px_rgba(6,78,59,0.16)] dark:shadow-[0_24px_64px_rgba(0,0,0,0.65)] flex flex-col max-h-[92vh] overflow-hidden text-[#172B2A] dark:text-slate-100"
       >
         {/* Modal Top Bar */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/80">
-          <div className="flex items-center space-x-3">
-            <div className="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-400">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-900/80">
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="p-2 bg-[#EBF5F0] dark:bg-[#16845B]/20 border border-[#16845B]/15 rounded-xl text-[#16845B] dark:text-emerald-400 shrink-0">
               <FileText className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h3 className="text-base font-bold text-white tracking-tight">{template.title}</h3>
-                <span className="px-2 py-0.5 text-xs font-semibold bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30">
-                  {template.code}
-                </span>
+            <div className="min-w-0">
+              <div className="flex items-center flex-wrap gap-2">
+                <h3 className="text-base font-bold text-[#172B2A] dark:text-white tracking-tight truncate">
+                  {template.title}
+                </h3>
+                <UIBadge tone="emerald">{template.code}</UIBadge>
               </div>
-              <p className="text-xs text-slate-400">Prévia em folha A4 oficial institucional IFPR</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Prévia em folha A4 oficial institucional IFPR
+              </p>
             </div>
           </div>
 
           {/* Action buttons */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center flex-wrap gap-2 shrink-0">
             {/* Zoom Controls */}
-            <div className="hidden sm:flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700 space-x-1 mr-2">
+            <div className="hidden sm:flex items-center bg-white dark:bg-slate-800 rounded-xl p-1 border border-slate-200 dark:border-slate-700 space-x-1 mr-1">
               <button
                 type="button"
                 onClick={() => setZoomLevel((z) => Math.max(75, z - 10))}
-                className="p-1 text-slate-300 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                className="p-1.5 text-slate-500 dark:text-slate-300 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
                 title="Diminuir Zoom"
               >
                 <ZoomOut className="w-4 h-4" />
               </button>
-              <span className="text-xs font-medium text-slate-300 px-1">{zoomLevel}%</span>
+              <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 px-1.5 tabular-nums">
+                {zoomLevel}%
+              </span>
               <button
                 type="button"
                 onClick={() => setZoomLevel((z) => Math.min(130, z + 10))}
-                className="p-1 text-slate-300 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                className="p-1.5 text-slate-500 dark:text-slate-300 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
                 title="Aumentar Zoom"
               >
                 <ZoomIn className="w-4 h-4" />
@@ -133,40 +138,37 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             </div>
 
             {onProceedToFill && (
-              <button
-                type="button"
-                onClick={onProceedToFill}
-                className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-all shadow-sm flex items-center space-x-1.5"
-              >
+              <UIButton variant="primary" size="sm" onClick={onProceedToFill}>
                 <span>Preencher Dados</span>
-              </button>
+              </UIButton>
             )}
 
-            <button
-              type="button"
+            <UIButton
+              variant="outline"
+              size="sm"
               onClick={handleDownload}
-              className="px-3 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-emerald-500/30 rounded-lg transition-all flex items-center space-x-1.5"
               title="Baixar PDF Vetorial Oficial"
             >
               <Download className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Baixar PDF</span>
-            </button>
+            </UIButton>
 
-            <button
-              type="button"
+            <UIButton
+              variant="secondary"
+              size="sm"
               onClick={handleDownloadVisualPdf}
               disabled={isExportingCanvas}
-              className="hidden md:flex px-3 py-1.5 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-cyan-500/30 rounded-lg transition-all items-center space-x-1.5 disabled:opacity-50"
+              className="hidden md:inline-flex"
               title="Exportar via Renderização HTML Canvas (html2canvas)"
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Sparkles className="w-3.5 h-3.5 text-[#16845B]" />
               <span>{isExportingCanvas ? "Renderizando..." : "Exportar Imagem/Canvas"}</span>
-            </button>
+            </UIButton>
 
             <button
               type="button"
               onClick={handlePrint}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+              className="p-2 text-slate-500 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
               title="Imprimir"
             >
               <Printer className="w-4 h-4" />
@@ -175,7 +177,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors ml-1"
+              className="p-2 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-slate-800 rounded-xl transition-colors ml-0.5 cursor-pointer"
               title="Fechar"
             >
               <X className="w-5 h-5" />
@@ -184,12 +186,12 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         </div>
 
         {/* Modal Body: A4 Paper Preview Container */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-950/60 flex justify-center items-start">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100 dark:bg-slate-950/70 flex justify-center items-start">
           {/* A4 Paper Mockup (Pure CSS Simulation matching jsPDF output) */}
           <div
             ref={paperRef}
             style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: "top center" }}
-            className="w-full max-w-[210mm] min-h-[297mm] bg-white text-slate-900 p-8 sm:p-12 shadow-2xl rounded-sm border border-slate-300 font-sans transition-transform duration-150 relative text-left"
+            className="w-full max-w-[210mm] min-h-[297mm] bg-white text-slate-900 p-8 sm:p-12 shadow-xl rounded-sm border border-slate-200 font-sans transition-transform duration-150 relative text-left"
           >
             {/* Top Institutional Header Line */}
             <div className="w-full h-1.5 bg-[#00843D] mb-1"></div>

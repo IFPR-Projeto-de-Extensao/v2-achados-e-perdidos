@@ -1,8 +1,14 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
-import { useRouter } from "../context/RouterContext";
 import { filterNotificationsForUser } from "../lib/notificationHelper";
 import { formatDateTime, vibrateClick, vibrateSuccess } from "../lib/utils";
+import {
+  PageHeader,
+  SurfaceCard,
+  UIButton,
+  UIBadge,
+  EmptyState,
+} from "./ui";
 import {
   Bell,
   CheckCheck,
@@ -11,10 +17,7 @@ import {
   Smartphone,
   ExternalLink,
   Volume2,
-  Info,
-  PackageSearch,
   CheckCircle2,
-  ShieldAlert,
 } from "lucide-react";
 
 export const NotificationsView: React.FC = () => {
@@ -29,9 +32,7 @@ export const NotificationsView: React.FC = () => {
     testFCMAlert,
     items,
     setSelectedItemForDetail,
-    t,
   } = useApp();
-  const { navigate } = useRouter();
 
   const [filter, setFilter] = useState<"ALL" | "UNREAD" | "READ">("ALL");
 
@@ -60,122 +61,138 @@ export const NotificationsView: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
+    <div className="max-w-4xl mx-auto space-y-5 animate-in fade-in duration-300">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-[#1E1E1E] p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
-        <div>
-          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/10 text-[#00843D] dark:text-green-400 text-xs font-black uppercase tracking-wider mb-2">
-            <Bell className="w-3.5 h-3.5" />
-            <span>Central de Comunicações</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white tracking-tight">
-            Notificações & Alertas
-          </h1>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-            Receba atualizações em tempo real sobre itens encontrados, correspondências inteligentes e devoluções.
-          </p>
-        </div>
+      <PageHeader
+        eyebrow="Central de Comunicações"
+        title="Notificações & Alertas"
+        description="Receba atualizações em tempo real sobre itens encontrados, correspondências inteligentes e devoluções."
+        icon={<Bell className="w-5 h-5" />}
+        badge={
+          unreadCount > 0 ? (
+            <UIBadge tone="emerald">{unreadCount} não lidas</UIBadge>
+          ) : undefined
+        }
+        actions={
+          <>
+            {unreadCount > 0 && (
+              <UIButton
+                variant="outline"
+                size="sm"
+                onClick={handleMarkAllRead}
+              >
+                <CheckCheck className="w-4 h-4" />
+                <span>Marcar todas lidas</span>
+              </UIButton>
+            )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          {unreadCount > 0 && (
-            <button
-              onClick={handleMarkAllRead}
-              className="px-4 py-2.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-[#00843D] dark:text-green-400 font-bold text-xs border border-emerald-300 dark:border-emerald-800 transition-all flex items-center space-x-1.5"
-            >
-              <CheckCheck className="w-4 h-4" />
-              <span>Marcar todas lidas</span>
-            </button>
-          )}
-
-          {userNotifications.length > 0 && (
-            <button
-              onClick={() => {
-                vibrateClick();
-                clearAllNotifications();
-              }}
-              className="px-4 py-2.5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 text-neutral-600 dark:text-neutral-400 font-bold text-xs border border-neutral-200 dark:border-neutral-700 transition-all flex items-center space-x-1.5"
-            >
-              <Trash2 className="w-4 h-4" />
-              <span>Limpar histórico</span>
-            </button>
-          )}
-        </div>
-      </div>
+            {userNotifications.length > 0 && (
+              <UIButton
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  vibrateClick();
+                  clearAllNotifications();
+                }}
+              >
+                <Trash2 className="w-4 h-4 text-rose-500" />
+                <span>Limpar histórico</span>
+              </UIButton>
+            )}
+          </>
+        }
+      />
 
       {/* FCM Web Push Alert Card */}
       {!fcmPermissionGranted && (
-        <div className="bg-gradient-to-r from-[#00843D]/10 via-emerald-500/10 to-transparent p-5 sm:p-6 rounded-3xl border border-[#00843D]/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-start space-x-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-[#00843D] text-white flex items-center justify-center shrink-0 shadow-md">
+        <SurfaceCard
+          padding="md"
+          className="border-[#16845B]/25 dark:border-emerald-800/60 bg-[#EBF5F0]/50 dark:bg-emerald-950/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+        >
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-[#16845B] text-white flex items-center justify-center shrink-0 shadow-2xs">
               <Smartphone className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-sm text-neutral-900 dark:text-white">
+              <h3 className="font-bold text-sm text-[#172B2A] dark:text-white">
                 Ativar Notificações Push do IFPR
               </h3>
-              <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-0.5 max-w-xl">
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 max-w-xl leading-relaxed">
                 Seja avisado instantaneamente no seu navegador ou smartphone quando alguém encontrar um objeto que você perdeu no campus.
               </p>
             </div>
           </div>
 
-          <button
+          <UIButton
+            variant="primary"
+            size="md"
             onClick={() => {
               vibrateClick();
               requestNotificationPermission();
             }}
-            className="px-5 py-2.5 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md transition-all whitespace-nowrap shrink-0"
           >
             Ativar Notificações Push
-          </button>
-        </div>
+          </UIButton>
+        </SurfaceCard>
       )}
 
       {/* Filter Tabs */}
-      <div className="flex items-center justify-between bg-white dark:bg-[#1E1E1E] p-2 rounded-2xl border border-neutral-200 dark:border-neutral-800">
-        <div className="flex items-center space-x-1">
+      <SurfaceCard
+        padding="sm"
+        className="flex flex-wrap items-center justify-between gap-2"
+      >
+        <div className="flex flex-wrap items-center gap-1 p-1 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70">
           <button
+            type="button"
             onClick={() => {
               vibrateClick();
               setFilter("ALL");
             }}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               filter === "ALL"
-                ? "bg-[#00843D] text-white shadow-xs"
-                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                ? "bg-[#16845B] text-white shadow-2xs"
+                : "text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900 hover:text-[#172B2A] dark:hover:text-white"
             }`}
           >
             Todas ({userNotifications.length})
           </button>
 
           <button
+            type="button"
             onClick={() => {
               vibrateClick();
               setFilter("UNREAD");
             }}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
               filter === "UNREAD"
-                ? "bg-[#00843D] text-white shadow-xs"
-                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                ? "bg-[#16845B] text-white shadow-2xs"
+                : "text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900 hover:text-[#172B2A] dark:hover:text-white"
             }`}
           >
             <span>Não Lidas</span>
             {unreadCount > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px] font-black">
+              <span
+                className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                  filter === "UNREAD"
+                    ? "bg-white/20 text-white"
+                    : "bg-rose-600 text-white"
+                }`}
+              >
                 {unreadCount}
               </span>
             )}
           </button>
 
           <button
+            type="button"
             onClick={() => {
               vibrateClick();
               setFilter("READ");
             }}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               filter === "READ"
-                ? "bg-[#00843D] text-white shadow-xs"
-                : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                ? "bg-[#16845B] text-white shadow-2xs"
+                : "text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900 hover:text-[#172B2A] dark:hover:text-white"
             }`}
           >
             Lidas ({readCount})
@@ -183,32 +200,31 @@ export const NotificationsView: React.FC = () => {
         </div>
 
         {/* Test Notification Sound */}
-        <button
+        <UIButton
+          variant="ghost"
+          size="sm"
           onClick={() => {
             vibrateClick();
             testFCMAlert();
           }}
           title="Testar som e sinal de alerta"
-          className="px-3 py-1.5 rounded-xl text-xs font-semibold text-neutral-500 hover:text-neutral-900 dark:hover:text-white flex items-center space-x-1.5"
         >
-          <Volume2 className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Testar Som</span>
-        </button>
-      </div>
+          <Volume2 className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
+          <span>Testar Som</span>
+        </UIButton>
+      </SurfaceCard>
 
       {/* Notifications List */}
       {filteredNotifications.length === 0 ? (
-        <div className="bg-white dark:bg-[#1E1E1E] p-12 rounded-3xl border border-neutral-200 dark:border-neutral-800 text-center">
-          <Bell className="w-12 h-12 text-neutral-300 dark:text-neutral-700 mx-auto mb-3" />
-          <h3 className="text-base font-bold text-neutral-900 dark:text-white mb-1">
-            Nenhuma notificação encontrada
-          </h3>
-          <p className="text-xs text-neutral-500 max-w-sm mx-auto">
-            {filter === "UNREAD"
+        <EmptyState
+          icon={<Bell className="w-7 h-7" />}
+          title="Nenhuma notificação encontrada"
+          description={
+            filter === "UNREAD"
               ? "Você já leu todas as suas notificações!"
-              : "Quando houver novas correspondências de objetos ou mensagens, elas aparecerão aqui."}
-          </p>
-        </div>
+              : "Quando houver novas correspondências de objetos ou mensagens, elas aparecerão aqui."
+          }
+        />
       ) : (
         <div className="space-y-3">
           {filteredNotifications.map((notification) => {
@@ -216,31 +232,43 @@ export const NotificationsView: React.FC = () => {
               ? items.find((i) => i.id === notification.relatedItemId)
               : null;
 
+            const handleNotificationActivate = () => {
+              vibrateClick();
+              if (!notification.read) {
+                markNotificationRead(notification.id);
+              }
+              if (relatedItem) {
+                setSelectedItemForDetail(relatedItem);
+              }
+            };
+
             return (
-              <div
+              <SurfaceCard
                 key={notification.id}
-                onClick={() => {
-                  vibrateClick();
-                  if (!notification.read) {
-                    markNotificationRead(notification.id);
-                  }
-                  if (relatedItem) {
-                    setSelectedItemForDetail(relatedItem);
+                padding="md"
+                interactive
+                role="button"
+                tabIndex={0}
+                onClick={handleNotificationActivate}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleNotificationActivate();
                   }
                 }}
-                className={`p-5 rounded-2xl border transition-all cursor-pointer ${
+                className={`cursor-pointer ${
                   !notification.read
-                    ? "bg-[#00843D]/5 dark:bg-[#00843D]/10 border-[#00843D]/30 shadow-xs"
-                    : "bg-white dark:bg-[#1E1E1E] border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700"
+                    ? "bg-[#EBF5F0]/45 dark:bg-emerald-950/20 border-[#16845B]/30 dark:border-emerald-800/70"
+                    : ""
                 }`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start space-x-3">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div className="flex items-start gap-3 min-w-0">
                     <div
                       className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
                         !notification.read
-                          ? "bg-[#00843D] text-white"
-                          : "bg-neutral-100 dark:bg-neutral-800 text-neutral-500"
+                          ? "bg-[#16845B] text-white"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
                       }`}
                     >
                       {notification.type === "MATCH" ? (
@@ -252,33 +280,35 @@ export const NotificationsView: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="space-y-1">
-                      <div className="flex items-center space-x-2">
-                        <h4 className="text-sm font-bold text-neutral-900 dark:text-white">
+                    <div className="space-y-1.5 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm font-bold text-[#172B2A] dark:text-white">
                           {notification.title}
                         </h4>
                         {!notification.read && (
-                          <span className="w-2 h-2 rounded-full bg-[#00843D]" />
+                          <UIBadge tone="emerald">Nova</UIBadge>
                         )}
                       </div>
-                      <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
+                      <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                         {notification.message}
                       </p>
 
                       {relatedItem && (
-                        <div className="mt-2 inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 text-[#00843D] dark:text-green-400 text-xs font-bold border border-emerald-500/20">
-                          <span>Objeto relacionado: {relatedItem.title}</span>
-                          <ExternalLink className="w-3 h-3" />
+                        <div className="pt-0.5">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#064E3B] dark:text-emerald-300 text-xs font-semibold border border-[#16845B]/20 dark:border-emerald-800/60">
+                            <span>Objeto relacionado: {relatedItem.title}</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </span>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  <span className="text-[11px] text-neutral-400 dark:text-neutral-500 whitespace-nowrap shrink-0">
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 font-mono tabular-nums whitespace-nowrap shrink-0 sm:pt-0.5">
                     {formatDateTime(notification.timestamp || (notification as any).createdAt)}
                   </span>
                 </div>
-              </div>
+              </SurfaceCard>
             );
           })}
         </div>

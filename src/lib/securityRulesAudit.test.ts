@@ -150,4 +150,50 @@ describe("Firestore Security Rules - Audit & Privilege Escalation Hardening", ()
       expect(rulesContent).toMatch(/allow delete: if isAdmin\(\);/);
     });
   });
+
+  describe("Etapa 13 Hardening — Account Active Flag, DEVOLVIDO Delete Guard & Server-Only Signature Requests", () => {
+    it("should enforce active != false inside isAccountActive()", () => {
+      expect(rulesContent).toContain("(!('active' in getUserData()) || getUserData().active != false)");
+    });
+
+    it("should prevent client SDK deletion of DEVOLVIDO items across items, found_items, and lost_items", () => {
+      for (const col of ["items", "found_items", "lost_items"]) {
+        const deleteBlock = rulesContent.match(new RegExp(`match \\/${col}\\/\\{itemId\\}[\\s\\S]*?allow delete: if[\\s\\S]*?;`));
+        expect(deleteBlock).not.toBeNull();
+        expect(deleteBlock![0]).toContain("existing().status != 'DEVOLVIDO'");
+      }
+    });
+
+    it("should explicitly deny client read and write access to /signature_requests", () => {
+      expect(rulesContent).toMatch(/match \/signature_requests\/\{itemId\}[\s\S]*?allow read, write: if false;/);
+    });
+  });
+
+  describe("Etapa 15 Privacy Hardening — Public Catalog Sanitization & /item_return_records RBAC", () => {
+    it("should block public or student get/list on /items, /found_items, and /lost_items if any return/signature/PII fields exist on the document", () => {
+      for (const col of ["items", "found_items", "lost_items"]) {
+        const readBlock = rulesContent.match(
+          new RegExp(`match \\/${col}\\/\\{itemId\\}[\\s\\S]*?allow get, list: if[\\s\\S]*?;`)
+        );
+        expect(readBlock).not.toBeNull();
+        expect(readBlock![0]).toContain("hasNoReturnOrSignatureFields(resource.data)");
+        expect(readBlock![0]).toContain("(isSignedIn() && isAccountActive() && (isAdmin() || isServidor()))");
+      }
+    });
+
+    it("should restrict /item_return_records to active SERVIDOR, ADMIN, or the verified recipientUid (for get only), with client writes denied", () => {
+      expect(rulesContent).toMatch(/match \/item_return_records\/\{itemId\}/);
+      expect(rulesContent).toContain("isAdmin() ||");
+      expect(rulesContent).toContain("isServidor() ||");
+      expect(rulesContent).toContain("resource.data.recipientUid == request.auth.uid");
+      expect(rulesContent).toMatch(/match \/item_return_records\/\{itemId\}[\s\S]*?allow list: if isSignedIn\(\) && isAccountActive\(\) && \(isAdmin\(\) \|\| isServidor\(\)\);/);
+      expect(rulesContent).toMatch(/match \/item_return_records\/\{itemId\}[\s\S]*?allow create, update, delete: if false;/);
+    });
+
+    it("should restrict /email_notifications to active SERVIDOR and ADMIN with client writes denied", () => {
+      expect(rulesContent).toMatch(/match \/email_notifications\/\{notifId\}[\s\S]*?allow get, list: if isSignedIn\(\) && isAccountActive\(\) && \(isAdmin\(\) \|\| isServidor\(\)\);/);
+      expect(rulesContent).toMatch(/match \/email_notifications\/\{notifId\}[\s\S]*?allow create, update, delete: if false;/);
+    });
+  });
 });
+

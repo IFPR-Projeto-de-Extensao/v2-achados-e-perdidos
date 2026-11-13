@@ -27,6 +27,7 @@ import {
   Sparkles,
   HelpCircle,
 } from "lucide-react";
+import { SurfaceCard, SubtlePanel, UIButton, UIBadge, UIInput, UISelect, UITextarea } from "../ui";
 
 interface DocumentTemplateEditorProps {
   initialTemplate?: DocumentTemplate | null;
@@ -302,60 +303,63 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
   };
 
   return (
-    <div id="document-template-editor-view" className="space-y-6 animate-fade-in text-slate-100">
+    <div id="document-template-editor-view" className="space-y-6 animate-fade-in text-[#172B2A] dark:text-slate-100">
       {/* Top Bar Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-sm">
-        <div className="flex items-center space-x-3">
-          <button
-            type="button"
+      <SurfaceCard padding="md" className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center space-x-3 min-w-0">
+          <UIButton
+            variant="secondary"
+            size="sm"
             onClick={onBack}
-            className="p-2.5 rounded-xl bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700 transition-colors border border-slate-700"
+            className="!p-2.5"
             title="Voltar"
           >
             <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <div className="flex items-center space-x-2">
-              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                {isEditing ? "Edição de Modelo" : "Novo Modelo"}
-              </span>
-              <h2 className="text-lg font-bold text-white tracking-tight">{template.title || "Sem Título"}</h2>
+          </UIButton>
+          <div className="min-w-0">
+            <div className="flex items-center flex-wrap gap-2">
+              <UIBadge tone="emerald">{isEditing ? "Edição de Modelo" : "Novo Modelo"}</UIBadge>
+              <h2 className="text-lg font-bold text-[#172B2A] dark:text-white tracking-tight truncate">
+                {template.title || "Sem Título"}
+              </h2>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">Configure cabeçalho, seções dinâmicas, variáveis e assinaturas</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Configure cabeçalho, seções dinâmicas, variáveis e assinaturas
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-2">
-          <button
-            type="button"
+        <div className="flex items-center space-x-2 shrink-0">
+          <UIButton
+            variant="outline"
+            size="sm"
             onClick={() => setIsPreviewOpen(true)}
-            className="px-3.5 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-xl border border-emerald-500/30 transition-colors flex items-center space-x-1.5"
           >
             <Eye className="w-4 h-4" />
             <span>Ver Prévia A4</span>
-          </button>
+          </UIButton>
 
-          <button
-            type="button"
+          <UIButton
+            variant="primary"
+            size="sm"
             onClick={handleSave}
             disabled={isSaving}
-            className="px-5 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-md transition-all flex items-center space-x-2 disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
             <span>{isSaving ? "Salvando..." : "Salvar Modelo"}</span>
-          </button>
+          </UIButton>
         </div>
-      </div>
+      </SurfaceCard>
 
       {/* Editor Navigation Tabs */}
-      <div className="flex border-b border-slate-800 space-x-2 overflow-x-auto pb-1">
+      <div className="flex border-b border-slate-200 dark:border-slate-800 space-x-2 overflow-x-auto pb-1">
         <button
           type="button"
           onClick={() => setActiveEditorTab("sections")}
-          className={`px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-colors flex items-center space-x-2 border-b-2 whitespace-nowrap ${
+          className={`px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-colors flex items-center space-x-2 border-b-2 whitespace-nowrap cursor-pointer ${
             activeEditorTab === "sections"
-              ? "bg-slate-800/80 text-emerald-400 border-emerald-500"
-              : "text-slate-400 hover:text-slate-200 border-transparent"
+              ? "bg-[#EBF5F0] dark:bg-slate-800/80 text-[#16845B] dark:text-emerald-400 border-[#16845B]"
+              : "text-slate-500 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-slate-200 border-transparent"
           }`}
         >
           <Layers className="w-4 h-4" />
@@ -365,10 +369,10 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
         <button
           type="button"
           onClick={() => setActiveEditorTab("fields")}
-          className={`px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-colors flex items-center space-x-2 border-b-2 whitespace-nowrap ${
+          className={`px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-colors flex items-center space-x-2 border-b-2 whitespace-nowrap cursor-pointer ${
             activeEditorTab === "fields"
-              ? "bg-slate-800/80 text-emerald-400 border-emerald-500"
-              : "text-slate-400 hover:text-slate-200 border-transparent"
+              ? "bg-[#EBF5F0] dark:bg-slate-800/80 text-[#16845B] dark:text-emerald-400 border-[#16845B]"
+              : "text-slate-500 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-slate-200 border-transparent"
           }`}
         >
           <Tag className="w-4 h-4" />
@@ -378,10 +382,10 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
         <button
           type="button"
           onClick={() => setActiveEditorTab("signatures")}
-          className={`px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-colors flex items-center space-x-2 border-b-2 whitespace-nowrap ${
+          className={`px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-colors flex items-center space-x-2 border-b-2 whitespace-nowrap cursor-pointer ${
             activeEditorTab === "signatures"
-              ? "bg-slate-800/80 text-emerald-400 border-emerald-500"
-              : "text-slate-400 hover:text-slate-200 border-transparent"
+              ? "bg-[#EBF5F0] dark:bg-slate-800/80 text-[#16845B] dark:text-emerald-400 border-[#16845B]"
+              : "text-slate-500 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-slate-200 border-transparent"
           }`}
         >
           <PenTool className="w-4 h-4" />
@@ -391,10 +395,10 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
         <button
           type="button"
           onClick={() => setActiveEditorTab("general")}
-          className={`px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-colors flex items-center space-x-2 border-b-2 whitespace-nowrap ${
+          className={`px-4 py-2.5 text-xs font-semibold rounded-t-xl transition-colors flex items-center space-x-2 border-b-2 whitespace-nowrap cursor-pointer ${
             activeEditorTab === "general"
-              ? "bg-slate-800/80 text-emerald-400 border-emerald-500"
-              : "text-slate-400 hover:text-slate-200 border-transparent"
+              ? "bg-[#EBF5F0] dark:bg-slate-800/80 text-[#16845B] dark:text-emerald-400 border-[#16845B]"
+              : "text-slate-500 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-slate-200 border-transparent"
           }`}
         >
           <Settings className="w-4 h-4" />
@@ -405,53 +409,46 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
       {/* Tab 1: SECTIONS OF DOCUMENT */}
       {activeEditorTab === "sections" && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+          <SubtlePanel padding="sm" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-bold text-white">Estrutura de Conteúdo e Parágrafos</h3>
-              <p className="text-xs text-slate-400">
-                Organize os blocos de texto. Você pode clicar nas pílulas de variáveis abaixo para inseri-las no texto.
+              <h3 className="text-sm font-bold text-[#172B2A] dark:text-white">Estrutura de Conteúdo e Parágrafos</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Organize os blocos de texto. Você pode clicar nos botões de variáveis abaixo para inseri-las no texto.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleAddSection}
-              className="px-3.5 py-1.5 text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 rounded-lg transition-colors flex items-center space-x-1.5"
-            >
+            <UIButton variant="outline" size="sm" onClick={handleAddSection}>
               <Plus className="w-4 h-4" />
               <span>Adicionar Seção</span>
-            </button>
-          </div>
+            </UIButton>
+          </SubtlePanel>
 
           {/* Quick Insertion Palette */}
           {template.fields && template.fields.length > 0 && (
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-3.5 space-y-2">
-              <span className="text-[11px] font-semibold text-slate-400 flex items-center space-x-1">
-                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            <SurfaceCard padding="sm" className="space-y-2">
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center space-x-1">
+                <Sparkles className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
                 <span>Variáveis disponíveis para inserção no texto:</span>
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {template.fields.map((fld) => (
                   <span
                     key={fld.id}
-                    className="px-2 py-0.5 text-xs bg-slate-800 text-emerald-300 rounded border border-slate-700 font-mono select-all"
+                    className="px-2 py-0.5 text-xs bg-[#EBF5F0] dark:bg-slate-800 text-[#064E3B] dark:text-emerald-300 rounded-md border border-[#16845B]/20 dark:border-slate-700 font-mono select-all"
                   >
                     {`{{${fld.name}}}`}
                   </span>
                 ))}
               </div>
-            </div>
+            </SurfaceCard>
           )}
 
           {/* Sections List */}
           <div className="space-y-4">
             {template.sections.map((section, idx) => (
-              <div
-                key={section.id}
-                className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 relative shadow-sm"
-              >
-                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                  <div className="flex items-center space-x-2">
-                    <span className="w-6 h-6 rounded-full bg-slate-800 text-slate-300 text-xs font-bold flex items-center justify-center border border-slate-700">
+              <SurfaceCard key={section.id} padding="md" className="space-y-4 relative">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <div className="flex items-center space-x-2 flex-1 min-w-0">
+                    <span className="w-6 h-6 rounded-full bg-[#EBF5F0] dark:bg-slate-800 text-[#064E3B] dark:text-slate-300 text-xs font-bold flex items-center justify-center border border-[#16845B]/20 dark:border-slate-700 shrink-0">
                       {idx + 1}
                     </span>
                     <input
@@ -459,16 +456,16 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                       value={section.title}
                       onChange={(e) => handleUpdateSection(section.id, { title: e.target.value })}
                       placeholder="Título da Seção (ex: 1. Dados do Parceiro)"
-                      className="bg-transparent border-none text-sm font-bold text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 rounded px-1.5 py-0.5"
+                      className="bg-transparent border-none text-sm font-bold text-[#172B2A] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#16845B] rounded-lg px-2 py-1 w-full"
                     />
                   </div>
 
-                  <div className="flex items-center space-x-1">
+                  <div className="flex items-center space-x-1 shrink-0">
                     <button
                       type="button"
                       onClick={() => handleMoveSection(idx, "up")}
                       disabled={idx === 0}
-                      className="p-1 text-slate-400 hover:text-white disabled:opacity-30 rounded hover:bg-slate-800 transition-colors"
+                      className="p-1.5 text-slate-400 hover:text-[#172B2A] dark:hover:text-white disabled:opacity-30 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                       title="Mover para cima"
                     >
                       <MoveUp className="w-4 h-4" />
@@ -477,7 +474,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                       type="button"
                       onClick={() => handleMoveSection(idx, "down")}
                       disabled={idx === template.sections.length - 1}
-                      className="p-1 text-slate-400 hover:text-white disabled:opacity-30 rounded hover:bg-slate-800 transition-colors"
+                      className="p-1.5 text-slate-400 hover:text-[#172B2A] dark:hover:text-white disabled:opacity-30 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                       title="Mover para baixo"
                     >
                       <MoveDown className="w-4 h-4" />
@@ -485,7 +482,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                     <button
                       type="button"
                       onClick={() => handleRemoveSection(section.id)}
-                      className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-slate-800 transition-colors ml-2"
+                      className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-slate-800 transition-colors ml-1 cursor-pointer"
                       title="Excluir seção"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -495,54 +492,52 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                   <div>
-                    <label className="block text-slate-400 mb-1">Tipo de Seção</label>
-                    <select
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Tipo de Seção</label>
+                    <UISelect
                       value={section.type}
                       onChange={(e) =>
                         handleUpdateSection(section.id, { type: e.target.value as DocumentSectionType })
                       }
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-emerald-500"
                     >
                       <option value="paragraph">Parágrafo Padrão</option>
                       <option value="numbered_section">Seção Numerada / Caixa de Dados</option>
                       <option value="declarations_list">Lista de Declarações (I, II, III...)</option>
                       <option value="heading">Título Destacado</option>
-                    </select>
+                    </UISelect>
                   </div>
 
                   <div>
-                    <label className="block text-slate-400 mb-1">Alinhamento do Texto</label>
-                    <select
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Alinhamento do Texto</label>
+                    <UISelect
                       value={section.align || "justify"}
                       onChange={(e) =>
                         handleUpdateSection(section.id, { align: e.target.value as any })
                       }
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-emerald-500"
                     >
                       <option value="justify">Justificado</option>
                       <option value="left">Alinhado à Esquerda</option>
                       <option value="center">Centralizado</option>
                       <option value="right">Alinhado à Direita</option>
-                    </select>
+                    </UISelect>
                   </div>
 
-                  <div className="flex items-center space-x-3 pt-5">
-                    <label className="flex items-center space-x-1.5 text-slate-300 cursor-pointer">
+                  <div className="flex items-center space-x-4 pt-5">
+                    <label className="flex items-center space-x-1.5 text-[#172B2A] dark:text-slate-300 cursor-pointer font-medium">
                       <input
                         type="checkbox"
                         checked={Boolean(section.isBold)}
                         onChange={(e) => handleUpdateSection(section.id, { isBold: e.target.checked })}
-                        className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                        className="rounded border-slate-300 dark:border-slate-700 text-[#16845B] focus:ring-[#16845B]"
                       />
                       <span>Negrito</span>
                     </label>
 
-                    <label className="flex items-center space-x-1.5 text-slate-300 cursor-pointer">
+                    <label className="flex items-center space-x-1.5 text-[#172B2A] dark:text-slate-300 cursor-pointer font-medium">
                       <input
                         type="checkbox"
                         checked={Boolean(section.isItalic)}
                         onChange={(e) => handleUpdateSection(section.id, { isItalic: e.target.checked })}
-                        className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                        className="rounded border-slate-300 dark:border-slate-700 text-[#16845B] focus:ring-[#16845B]"
                       />
                       <span>Itálico</span>
                     </label>
@@ -551,16 +546,18 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
 
                 <div>
                   <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
-                    <label className="text-xs text-slate-400">Conteúdo do Texto (Suporta tags dinâmicas)</label>
+                    <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      Conteúdo do Texto (Suporta tags dinâmicas)
+                    </label>
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className="text-[10px] text-slate-500 font-semibold mr-1">Inserir:</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold mr-1">Inserir:</span>
                       {/* Project quick tags */}
                       {["nome_equipe", "integrantes_com_matricula", "professor_responsavel", "instituicao", "endereco_completo"].map((tag) => (
                         <button
                           key={tag}
                           type="button"
                           onClick={() => insertTagIntoSection(section.id, tag)}
-                          className="text-[10px] px-1.5 py-0.5 bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 rounded border border-emerald-700/50 transition-colors"
+                          className="text-[10px] px-1.5 py-0.5 bg-[#EBF5F0] dark:bg-emerald-950/60 hover:bg-[#16845B]/15 text-[#064E3B] dark:text-emerald-300 rounded border border-[#16845B]/20 dark:border-emerald-700/50 transition-colors cursor-pointer"
                           title={`Inserir tag do projeto {{${tag}}}`}
                         >
                           + {tag}
@@ -572,7 +569,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                           key={f.id}
                           type="button"
                           onClick={() => insertTagIntoSection(section.id, f.name)}
-                          className="text-[10px] px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-blue-400 rounded border border-slate-700 transition-colors"
+                          className="text-[10px] px-1.5 py-0.5 bg-sky-50 dark:bg-slate-800 hover:bg-sky-100 dark:hover:bg-slate-700 text-sky-700 dark:text-sky-400 rounded border border-sky-200 dark:border-slate-700 transition-colors cursor-pointer"
                           title={`Inserir {{${f.name}}}`}
                         >
                           + {f.name}
@@ -580,15 +577,15 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                       ))}
                     </div>
                   </div>
-                  <textarea
+                  <UITextarea
                     rows={4}
                     value={section.content}
                     onChange={(e) => handleUpdateSection(section.id, { content: e.target.value })}
                     placeholder="Conteúdo do texto..."
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs sm:text-sm text-slate-200 focus:outline-none focus:border-emerald-500 leading-relaxed font-sans"
+                    className="leading-relaxed font-sans"
                   />
                 </div>
-              </div>
+              </SurfaceCard>
             ))}
           </div>
         </div>
@@ -597,41 +594,34 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
       {/* Tab 2: DYNAMIC FIELDS & VARIABLES */}
       {activeEditorTab === "fields" && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+          <SubtlePanel padding="sm" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-bold text-white">Campos Dinâmicos e Formulário</h3>
-              <p className="text-xs text-slate-400">
+              <h3 className="text-sm font-bold text-[#172B2A] dark:text-white">Campos Dinâmicos e Formulário</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Campos que o administrador preencherá ao gerar o PDF. Cada campo cria uma tag `&#123;&#123;nome_tag&#125;&#125;`.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleAddField}
-              className="px-3.5 py-1.5 text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 rounded-lg transition-colors flex items-center space-x-1.5"
-            >
+            <UIButton variant="outline" size="sm" onClick={handleAddField}>
               <Plus className="w-4 h-4" />
               <span>Novo Campo</span>
-            </button>
-          </div>
+            </UIButton>
+          </SubtlePanel>
 
           <div className="space-y-3">
             {template.fields.map((field) => (
-              <div
-                key={field.id}
-                className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3 shadow-sm"
-              >
+              <SurfaceCard key={field.id} padding="sm" className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <span className="text-xs font-mono px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">
+                    <span className="text-xs font-mono px-2 py-0.5 bg-[#EBF5F0] dark:bg-emerald-500/10 text-[#064E3B] dark:text-emerald-400 border border-[#16845B]/20 dark:border-emerald-500/20 rounded-md">
                       {`{{${field.name}}}`}
                     </span>
-                    <span className="text-xs font-bold text-slate-200">{field.label}</span>
+                    <span className="text-xs font-bold text-[#172B2A] dark:text-slate-200">{field.label}</span>
                   </div>
 
                   <button
                     type="button"
                     onClick={() => handleRemoveField(field.id)}
-                    className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-slate-800 transition-colors"
+                    className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                     title="Remover campo"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -640,8 +630,8 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
                   <div>
-                    <label className="block text-slate-400 mb-1">Nome da Tag (sem espaços)</label>
-                    <input
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Nome da Tag (sem espaços)</label>
+                    <UIInput
                       type="text"
                       value={field.name}
                       onChange={(e) =>
@@ -649,73 +639,69 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                           name: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"),
                         })
                       }
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 font-mono focus:outline-none focus:border-emerald-500"
+                      className="font-mono"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-400 mb-1">Rótulo / Label no Formulário</label>
-                    <input
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Rótulo / Label no Formulário</label>
+                    <UIInput
                       type="text"
                       value={field.label}
                       onChange={(e) => handleUpdateField(field.id, { label: e.target.value })}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-emerald-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-400 mb-1">Tipo de Campo</label>
-                    <select
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Tipo de Campo</label>
+                    <UISelect
                       value={field.type}
                       onChange={(e) =>
                         handleUpdateField(field.id, { type: e.target.value as DocumentFieldType })
                       }
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-emerald-500"
                     >
                       <option value="text">Texto Curto</option>
                       <option value="textarea">Texto Longo (Parágrafo)</option>
                       <option value="number">Número</option>
                       <option value="date">Data</option>
-                    </select>
+                    </UISelect>
                   </div>
 
                   <div>
-                    <label className="block text-slate-400 mb-1">Seção de Agrupamento</label>
-                    <input
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Seção de Agrupamento</label>
+                    <UIInput
                       type="text"
                       value={field.section || ""}
                       onChange={(e) => handleUpdateField(field.id, { section: e.target.value })}
                       placeholder="Ex: 1. Dados do Parceiro"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-emerald-500"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
                   <div>
-                    <label className="block text-slate-400 mb-1">Valor Padrão Inicial</label>
-                    <input
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Valor Padrão Inicial</label>
+                    <UIInput
                       type="text"
                       value={field.defaultValue || ""}
                       onChange={(e) => handleUpdateField(field.id, { defaultValue: e.target.value })}
                       placeholder="Texto pré-preenchido no formulário"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-emerald-500"
                     />
                   </div>
 
                   <div className="flex items-center space-x-4 pt-4">
-                    <label className="flex items-center space-x-1.5 text-slate-300 cursor-pointer">
+                    <label className="flex items-center space-x-1.5 text-[#172B2A] dark:text-slate-300 cursor-pointer font-medium">
                       <input
                         type="checkbox"
                         checked={Boolean(field.required)}
                         onChange={(e) => handleUpdateField(field.id, { required: e.target.checked })}
-                        className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                        className="rounded border-slate-300 dark:border-slate-700 text-[#16845B] focus:ring-[#16845B]"
                       />
                       <span>Preenchimento Obrigatório</span>
                     </label>
                   </div>
                 </div>
-              </div>
+              </SurfaceCard>
             ))}
           </div>
         </div>
@@ -724,86 +710,77 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
       {/* Tab 3: SIGNATURES */}
       {activeEditorTab === "signatures" && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+          <SubtlePanel padding="sm" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-bold text-white">Blocos de Assinatura</h3>
-              <p className="text-xs text-slate-400">
+              <h3 className="text-sm font-bold text-[#172B2A] dark:text-white">Blocos de Assinatura</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Configure as linhas de assinatura e os cargos institucionais ao final do documento.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleAddSignature}
-              className="px-3.5 py-1.5 text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 rounded-lg transition-colors flex items-center space-x-1.5"
-            >
+            <UIButton variant="outline" size="sm" onClick={handleAddSignature}>
               <Plus className="w-4 h-4" />
               <span>Adicionar Assinatura</span>
-            </button>
-          </div>
+            </UIButton>
+          </SubtlePanel>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {template.signatures.map((sig, idx) => (
-              <div
-                key={sig.id}
-                className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3 shadow-sm"
-              >
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                  <span className="text-xs font-bold text-slate-200">Assinatura #{idx + 1}</span>
+              <SurfaceCard key={sig.id} padding="sm" className="space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                  <span className="text-xs font-bold text-[#172B2A] dark:text-slate-200">Assinatura #{idx + 1}</span>
                   <button
                     type="button"
                     onClick={() => handleRemoveSignature(sig.id)}
-                    className="p-1 text-slate-400 hover:text-rose-400 rounded hover:bg-slate-800 transition-colors"
+                    className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
 
-                <div className="space-y-2 text-xs">
+                <div className="space-y-2.5 text-xs">
                   <div>
-                    <label className="block text-slate-400 mb-1">Título do Signatário</label>
-                    <input
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Título do Signatário</label>
+                    <UIInput
                       type="text"
                       value={sig.title}
                       onChange={(e) => handleUpdateSignature(sig.id, { title: e.target.value })}
                       placeholder="Ex: Representante do Parceiro"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-emerald-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-400 mb-1">Nome / Tag Dinâmica</label>
-                    <input
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Nome / Tag Dinâmica</label>
+                    <UIInput
                       type="text"
                       value={sig.nameTag || ""}
                       onChange={(e) => handleUpdateSignature(sig.id, { nameTag: e.target.value })}
                       placeholder="Ex: {{responsavel}} ou Nome Fixo"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 font-mono focus:outline-none focus:border-emerald-500"
+                      className="font-mono"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-400 mb-1">Cargo / Função / Tag</label>
-                    <input
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Cargo / Função / Tag</label>
+                    <UIInput
                       type="text"
                       value={sig.roleTag || ""}
                       onChange={(e) => handleUpdateSignature(sig.id, { roleTag: e.target.value })}
                       placeholder="Ex: {{cargo_responsavel}} ou Diretor Geral"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-emerald-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-400 mb-1">Documento / Vínculo / Tag</label>
-                    <input
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Documento / Vínculo / Tag</label>
+                    <UIInput
                       type="text"
                       value={sig.cpfOrDocTag || ""}
                       onChange={(e) => handleUpdateSignature(sig.id, { cpfOrDocTag: e.target.value })}
                       placeholder="Ex: CPF: {{cpf}} ou IFPR Campus Ivaiporã"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 font-mono focus:outline-none focus:border-emerald-500"
+                      className="font-mono"
                     />
                   </div>
                 </div>
-              </div>
+              </SurfaceCard>
             ))}
           </div>
         </div>
@@ -811,21 +788,21 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
 
       {/* Tab 4: GENERAL & HEADER */}
       {activeEditorTab === "general" && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-sm">
+        <SurfaceCard padding="md" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div>
-              <label className="block text-slate-300 font-medium mb-1.5">Título do Modelo</label>
-              <input
+              <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5">Título do Modelo</label>
+              <UIInput
                 type="text"
                 value={template.title}
                 onChange={(e) => setTemplate((prev) => ({ ...prev, title: e.target.value }))}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 font-semibold"
+                className="font-semibold"
               />
             </div>
 
             <div>
-              <label className="block text-slate-300 font-medium mb-1.5">Código Identificador</label>
-              <input
+              <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5">Código Identificador</label>
+              <UIInput
                 type="text"
                 value={template.code}
                 onChange={(e) =>
@@ -834,108 +811,104 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                     code: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ""),
                   }))
                 }
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-200 font-mono focus:outline-none focus:border-emerald-500"
+                className="font-mono"
               />
             </div>
 
             <div>
-              <label className="block text-slate-300 font-medium mb-1.5">Categoria</label>
-              <select
+              <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5">Categoria</label>
+              <UISelect
                 value={template.category}
                 onChange={(e) => setTemplate((prev) => ({ ...prev, category: e.target.value as any }))}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
               >
                 <option value="EXTENSAO">Extensão Universitária</option>
                 <option value="ACHADOS_PERDIDOS">Achados e Perdidos / Custódia</option>
                 <option value="INSTITUCIONAL">Institucional / Direção</option>
                 <option value="ESTAGIO">Estágio & Carreira</option>
                 <option value="OUTRO">Outros</option>
-              </select>
+              </UISelect>
             </div>
 
             <div>
-              <label className="block text-slate-300 font-medium mb-1.5">Status do Modelo</label>
-              <select
+              <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5">Status do Modelo</label>
+              <UISelect
                 value={template.status}
                 onChange={(e) => setTemplate((prev) => ({ ...prev, status: e.target.value as any }))}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
               >
                 <option value="ATIVO">ATIVO (Disponível para emissão)</option>
                 <option value="INATIVO">INATIVO (Oculto na listagem padrão)</option>
-              </select>
+              </UISelect>
             </div>
           </div>
 
           <div>
-            <label className="block text-slate-300 font-medium mb-1.5 text-xs">
+            <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5 text-xs">
               Descrição da Finalidade
             </label>
-            <textarea
+            <UITextarea
               rows={2}
               value={template.description}
               onChange={(e) => setTemplate((prev) => ({ ...prev, description: e.target.value }))}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
             />
           </div>
 
           <div>
-            <label className="block text-slate-300 font-medium mb-1.5 text-xs">
+            <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5 text-xs">
               Texto do Cabeçalho Oficial (Linhas separadas por Enter)
             </label>
-            <textarea
+            <UITextarea
               rows={4}
               value={template.headerText}
               onChange={(e) => setTemplate((prev) => ({ ...prev, headerText: e.target.value }))}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:border-emerald-500"
+              className="font-mono"
             />
           </div>
 
           <div>
-            <label className="block text-slate-300 font-medium mb-1.5 text-xs">
+            <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5 text-xs">
               Texto do Rodapé Oficial
             </label>
-            <input
+            <UIInput
               type="text"
               value={template.footerText}
               onChange={(e) => setTemplate((prev) => ({ ...prev, footerText: e.target.value }))}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
             />
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-2">
-            <label className="flex items-center space-x-2 text-slate-300 cursor-pointer">
+            <label className="flex items-center space-x-2 text-[#172B2A] dark:text-slate-300 cursor-pointer font-medium">
               <input
                 type="checkbox"
                 checked={template.includeHeader}
                 onChange={(e) => setTemplate((prev) => ({ ...prev, includeHeader: e.target.checked }))}
-                className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                className="rounded border-slate-300 dark:border-slate-700 text-[#16845B] focus:ring-[#16845B]"
               />
               <span>Exibir Cabeçalho</span>
             </label>
 
-            <label className="flex items-center space-x-2 text-slate-300 cursor-pointer">
+            <label className="flex items-center space-x-2 text-[#172B2A] dark:text-slate-300 cursor-pointer font-medium">
               <input
                 type="checkbox"
                 checked={template.includeDocNumber}
                 onChange={(e) =>
                   setTemplate((prev) => ({ ...prev, includeDocNumber: e.target.checked }))
                 }
-                className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                className="rounded border-slate-300 dark:border-slate-700 text-[#16845B] focus:ring-[#16845B]"
               />
               <span>Número de Controle</span>
             </label>
 
-            <label className="flex items-center space-x-2 text-slate-300 cursor-pointer">
+            <label className="flex items-center space-x-2 text-[#172B2A] dark:text-slate-300 cursor-pointer font-medium">
               <input
                 type="checkbox"
                 checked={template.includeFooter}
                 onChange={(e) => setTemplate((prev) => ({ ...prev, includeFooter: e.target.checked }))}
-                className="rounded border-slate-700 text-emerald-600 focus:ring-emerald-500"
+                className="rounded border-slate-300 dark:border-slate-700 text-[#16845B] focus:ring-[#16845B]"
               />
               <span>Exibir Rodapé</span>
             </label>
           </div>
-        </div>
+        </SurfaceCard>
       )}
 
       {/* Preview Modal */}

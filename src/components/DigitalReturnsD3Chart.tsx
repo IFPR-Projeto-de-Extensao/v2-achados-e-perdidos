@@ -1,26 +1,28 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import * as d3 from "d3";
-import { LostFoundItem, ActivityLog } from "../types";
-import {
-  FileCheck2,
-  TrendingUp,
-  Calendar,
-  Filter,
-  Download,
-  ShieldCheck,
-  Smartphone,
-  Mail,
-  CheckCircle2,
-  Layers,
-  ArrowUpRight,
-  Sparkles,
-  Info,
-} from "lucide-react";
-import { safeParseDate } from "../lib/utils";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import {
+  FileCheck2,
+  Calendar,
+  TrendingUp,
+  Download,
+  Mail,
+  Smartphone,
+  ShieldCheck,
+  CheckCircle2,
+  ExternalLink,
+  ChevronRight,
+  Search,
+  Filter,
+  Eye,
+  Info,
+} from "lucide-react";
+import type { LostFoundItem, ActivityLog } from "../types";
+import { safeParseDate, formatDateTime } from "../lib/utils";
+import { SurfaceCard, SubtlePanel, UIBadge, UIButton, UIInput, EmptyState } from "./ui";
 
-interface DigitalReturnsD3ChartProps {
+export interface DigitalReturnsD3ChartProps {
   items: LostFoundItem[];
   activityLogs?: ActivityLog[];
   darkMode?: boolean;
@@ -29,204 +31,222 @@ interface DigitalReturnsD3ChartProps {
 
 interface DayMetric {
   date: Date;
-  dateKey: string; // YYYY-MM-DD
-  formattedDate: string; // "24/08"
-  fullDateLabel: string; // "24 de Agosto de 2026"
-  totalReturns: number;
-  remoteReturns: number;
-  inPersonReturns: number;
+  dateStr: string;
+  formattedDate: string;
+  count: number;
+  remoteCount: number;
+  inPersonCount: number;
   items: LostFoundItem[];
 }
 
-export const DigitalReturnsD3Chart: React.FC<DigitalReturnsD3ChartProps> = ({
-  items = [],
+export function DigitalReturnsD3Chart({
+  items,
   activityLogs = [],
   darkMode = false,
   onSelectItem,
-}) => {
+}: DigitalReturnsD3ChartProps) {
+  const [selectedRange, setSelectedRange] = useState<"7" | "14" | "30" | "60">("30");
+  const [selectedModality, setSelectedModality] = useState<"ALL" | "REMOTE" | "IN_PERSON">("ALL");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [hoveredPoint, setHoveredPoint] = useState<DayMetric | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState<number>(800);
 
-  const [dimensions, setDimensions] = useState<{ width: number; height: number }>({
-    width: 0,
-    height: 320,
-  });
+  // ResizeObserver for responsive SVG
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const updateWidth = () => {
+      if (containerRef.current) {
+        const w = containerRef.current.clientWidth;
+        if (w > 0) setContainerWidth(w);
+      }
+    };
+    updateWidth();
+    const observer = new ResizeObserver(() => updateWidth());
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
 
-  const [selectedRange, setSelectedRange] = useState<"7" | "14" | "30" | "60" | "90" | "all">("14");
-  const [selectedModality, setSelectedModality] = useState<"ALL" | "REMOTE" | "IN_PERSON">("ALL");
-  const [hoveredDay, setHoveredDay] = useState<DayMetric | null>(null);
+  // Filter ONLY completed digitally signed returns (exclude PENDING_REMOTE and unsigned returns)
+  const returnedItems = useMemo(() => {
+    return items.filter((item) => {
+      if (!item || item.status !== "DEVOLVIDO") return false;
+      if (item.recipientSignatureStatus === "PENDING_REMOTE") return false;
 
-  // Filter and identify all digitally returned items based on real criteria
-  const digitalReturnedItems = useMemo(() => {
-    return (items || []).filter((it) => {
-      if (!it || it.status !== "DEVOLVIDO") return false;
+      const isDigitallySigned =
+        item.recipientSignatureStatus === "SIGNED" ||
+        Boolean(item.recipientSignatureUrl) ||
+        Boolean(item.signedAt) ||
+        Boolean(item.signatureTokenUsed);
 
-      const hasDigitalSignature =
-        it.recipientSignatureStatus === "SIGNED" ||
-        Boolean(it.recipientSignatureUrl) ||
-        Boolean(it.signedAt) ||
-        Boolean(it.receiptValidationCode) ||
-        it.recipientSignatureType === "REMOTE_EMAIL" ||
-        it.recipientSignatureType === "IN_PERSON_DEVICE" ||
-        Boolean(it.signatureTokenUsed);
+      if (!isDigitallySigned) return false;
 
-      const hasSignatureHistory =
-        Array.isArray(it.history || (it as any).historyLogs) &&
-        (it.history || (it as any).historyLogs).some((h: any) => {
-          const act = (h.action || "").toLowerCase();
-          const det = (h.details || "").toLowerCase();
-          return act.includes("assinatura") || det.includes("assinatura") || act.includes("token") || det.includes("token");
-        });
+      // Filter by modality
+      if (selectedModality === "REMOTE") {
+        return (
+          item.recipientSignatureType === "REMOTE_EMAIL" ||
+          item.recipientSignatureType === "PRE_VERIFIED" ||
+          (Boolean(item.signatureTokenUsed) && !item.recipientSignatureType)
+        );
+      }
+      if (selectedModality === "IN_PERSON") {
+        return (
+          item.recipientSignatureType === "IN_PERSON_DEVICE" ||
+          (!item.recipientSignatureType && !item.signatureTokenUsed)
+        );
+      }
 
-      return hasDigitalSignature || hasSignatureHistory;
+      return true;
     });
+  }, [items, selectedModality]);
+
+  const pendingCounts = useMemo(() => {
+    let pendingRemote = 0;
+    let pendingStaffAttestation = 0;
+    for (const item of items) {
+      if (!item || item.status !== "DEVOLVIDO") continue;
+      if (item.recipientSignatureStatus === "PENDING_REMOTE" && !item.recipientSignatureUrl) {
+        pendingRemote += 1;
+      } else if (
+        (item.recipientSignatureStatus === "SIGNED" || Boolean(item.recipientSignatureUrl)) &&
+        item.staffSignatureStatus !== "SIGNED"
+      ) {
+        pendingStaffAttestation += 1;
+      }
+    }
+    return { pendingRemote, pendingStaffAttestation };
   }, [items]);
 
-  // Aggregate daily metrics
-  const chartData = useMemo<DayMetric[]>(() => {
-    const daysCount = selectedRange === "all" ? 60 : parseInt(selectedRange, 10);
-    const dayMap = new Map<string, DayMetric>();
-
+  // Aggregate daily metrics for the selected time range
+  const dailyMetrics = useMemo<DayMetric[]>(() => {
+    const daysCount = parseInt(selectedRange, 10);
     const now = new Date();
-    now.setHours(23, 59, 59, 999);
+    const metrics: DayMetric[] = [];
 
-    // Build chronological slots for the chosen range
+    // Build day buckets from (now - N + 1 days) up to today
     for (let i = daysCount - 1; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
       const year = d.getFullYear();
       const month = String(d.getMonth() + 1).padStart(2, "0");
       const day = String(d.getDate()).padStart(2, "0");
-      const key = `${year}-${month}-${day}`;
+      const dateStr = `${year}-${month}-${day}`;
+      const formattedDate = `${day}/${month}`;
 
-      dayMap.set(key, {
-        date: new Date(year, d.getMonth(), d.getDate()),
-        dateKey: key,
-        formattedDate: `${day}/${month}`,
-        fullDateLabel: d.toLocaleDateString("pt-BR", {
-          weekday: "long",
-          day: "2-digit",
-          month: "long",
-          year: "numeric",
-        }),
-        totalReturns: 0,
-        remoteReturns: 0,
-        inPersonReturns: 0,
+      metrics.push({
+        date: d,
+        dateStr,
+        formattedDate,
+        count: 0,
+        remoteCount: 0,
+        inPersonCount: 0,
         items: [],
       });
     }
 
-    // Populate with real items
-    digitalReturnedItems.forEach((item) => {
-      // Modality filter check
-      const isRemote =
-        item.recipientSignatureType === "REMOTE_EMAIL" ||
-        (item.signatureTokenUsed && item.recipientSignatureType !== "IN_PERSON_DEVICE");
-      const isPresencial = item.recipientSignatureType === "IN_PERSON_DEVICE" || (!isRemote && Boolean(item.recipientSignatureUrl));
+    const metricMap = new Map<string, DayMetric>();
+    metrics.forEach((m) => metricMap.set(m.dateStr, m));
 
-      if (selectedModality === "REMOTE" && !isRemote) return;
-      if (selectedModality === "IN_PERSON" && !isPresencial) return;
-
-      // Extract effective date of return/signature
-      const effectiveDateStr =
+    returnedItems.forEach((item) => {
+      const rawDate =
+        item.returnDate ||
+        item.recipientSignatureDate ||
         item.signedAt ||
         item.resolutionDate ||
-        item.returnDate ||
-        item.date ||
         item.createdAt;
 
-      const parsed = safeParseDate(effectiveDateStr);
+      const parsed = safeParseDate(rawDate);
       if (!parsed) return;
 
       const year = parsed.getFullYear();
       const month = String(parsed.getMonth() + 1).padStart(2, "0");
       const day = String(parsed.getDate()).padStart(2, "0");
-      const key = `${year}-${month}-${day}`;
+      const itemDateStr = `${year}-${month}-${day}`;
 
-      if (dayMap.has(key)) {
-        const slot = dayMap.get(key)!;
-        slot.totalReturns += 1;
-        if (isRemote) slot.remoteReturns += 1;
-        else slot.inPersonReturns += 1;
-        slot.items.push(item);
-      } else if (selectedRange === "all") {
-        // Dynamic expansion for 'all' range
-        dayMap.set(key, {
-          date: new Date(year, parsed.getMonth(), parsed.getDate()),
-          dateKey: key,
-          formattedDate: `${day}/${month}`,
-          fullDateLabel: parsed.toLocaleDateString("pt-BR", {
-            weekday: "long",
-            day: "2-digit",
-            month: "long",
-            year: "numeric",
-          }),
-          totalReturns: 1,
-          remoteReturns: isRemote ? 1 : 0,
-          inPersonReturns: isPresencial ? 1 : 0,
-          items: [item],
-        });
+      const bucket = metricMap.get(itemDateStr);
+      if (bucket) {
+        bucket.count += 1;
+        bucket.items.push(item);
+        const isRemote =
+          item.recipientSignatureType === "REMOTE_EMAIL" ||
+          item.recipientSignatureType === "PRE_VERIFIED" ||
+          (item.signatureTokenUsed && !item.recipientSignatureType);
+
+        if (isRemote) {
+          bucket.remoteCount += 1;
+        } else {
+          bucket.inPersonCount += 1;
+        }
       }
     });
 
-    // Sort chronologically
-    return Array.from(dayMap.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [digitalReturnedItems, selectedRange, selectedModality]);
+    return metrics;
+  }, [returnedItems, selectedRange]);
 
-  // Global KPIs computed from the filtered chartData
+  // KPIs
   const kpis = useMemo(() => {
-    const total = chartData.reduce((acc, curr) => acc + curr.totalReturns, 0);
-    const remote = chartData.reduce((acc, curr) => acc + curr.remoteReturns, 0);
-    const inPerson = chartData.reduce((acc, curr) => acc + curr.inPersonReturns, 0);
-    const peak = chartData.reduce((max, curr) => (curr.totalReturns > max.val ? { val: curr.totalReturns, date: curr.formattedDate } : max), { val: 0, date: "-" });
-    const avgDaily = chartData.length > 0 ? (total / chartData.length).toFixed(1) : "0.0";
-    const remotePercentage = total > 0 ? Math.round((remote / total) * 100) : 0;
+    const total = dailyMetrics.reduce((acc, m) => acc + m.count, 0);
+    const totalRemote = dailyMetrics.reduce((acc, m) => acc + m.remoteCount, 0);
+    const totalInPerson = dailyMetrics.reduce((acc, m) => acc + m.inPersonCount, 0);
+    const days = dailyMetrics.length || 1;
+    const avgDaily = (total / days).toFixed(1);
+
+    let peak = { val: 0, date: "--" };
+    dailyMetrics.forEach((m) => {
+      if (m.count > peak.val) {
+        peak = { val: m.count, date: m.formattedDate };
+      }
+    });
+
+    const remotePercentage = total > 0 ? Math.round((totalRemote / total) * 100) : 0;
 
     return {
       total,
-      remote,
-      inPerson,
-      peak,
+      totalRemote,
+      totalInPerson,
       avgDaily,
+      peak,
       remotePercentage,
+      pendingRemote: pendingCounts.pendingRemote,
+      pendingStaffAttestation: pendingCounts.pendingStaffAttestation,
     };
-  }, [chartData]);
+  }, [dailyMetrics, pendingCounts]);
 
-  // ResizeObserver for responsive chart dimensions
+  // D3 Chart Rendering
   useEffect(() => {
-    if (!containerRef.current) return;
-    const observer = new ResizeObserver((entries) => {
-      if (!entries || entries.length === 0) return;
-      const { width } = entries[0].contentRect;
-      if (width > 0) {
-        setDimensions({ width, height: 320 });
-      }
-    });
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  // Render D3 Line Chart with area gradient, smooth curve and interactive tracking
-  useEffect(() => {
-    if (!svgRef.current || dimensions.width === 0) return;
+    if (!svgRef.current || containerWidth <= 0 || dailyMetrics.length === 0) return;
 
     const svg = d3.select(svgRef.current);
-    svg.selectAll("*").remove(); // Clean previous render
+    svg.selectAll("*").remove();
 
-    const margin = { top: 30, right: 30, bottom: 45, left: 45 };
-    const width = dimensions.width - margin.left - margin.right;
-    const height = dimensions.height - margin.top - margin.bottom;
+    const height = 280;
+    const margin = { top: 20, right: 24, bottom: 35, left: 40 };
+    const innerWidth = Math.max(100, containerWidth - margin.left - margin.right);
+    const innerHeight = Math.max(80, height - margin.top - margin.bottom);
 
-    if (width <= 0 || height <= 0) return;
+    svg.attr("width", containerWidth).attr("height", height);
 
-    // Define defs & gradient
+    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+    // X Scale
+    const xScale = d3
+      .scaleTime()
+      .domain(d3.extent(dailyMetrics, (d) => d.date) as [Date, Date])
+      .range([0, innerWidth]);
+
+    // Y Scale
+    const maxVal = d3.max(dailyMetrics, (d) => d.count) || 0;
+    const yMax = Math.max(4, Math.ceil(maxVal * 1.2));
+    const yScale = d3.scaleLinear().domain([0, yMax]).range([innerHeight, 0]).nice();
+
+    // Defs & Gradients
     const defs = svg.append("defs");
 
-    // Area fill gradient
     const areaGradient = defs
       .append("linearGradient")
-      .attr("id", "digitalReturnsAreaGradient")
+      .attr("id", "emerald-area-gradient")
       .attr("x1", "0%")
       .attr("y1", "0%")
       .attr("x2", "0%")
@@ -235,330 +255,264 @@ export const DigitalReturnsD3Chart: React.FC<DigitalReturnsD3ChartProps> = ({
     areaGradient
       .append("stop")
       .attr("offset", "0%")
-      .attr("stop-color", "#00843D")
-      .attr("stop-opacity", 0.35);
+      .attr("stop-color", "#16845B")
+      .attr("stop-opacity", darkMode ? 0.45 : 0.28);
 
     areaGradient
       .append("stop")
       .attr("offset", "100%")
-      .attr("stop-color", "#00843D")
+      .attr("stop-color", "#16845B")
       .attr("stop-opacity", 0.0);
 
-    // Line stroke gradient
-    const lineGradient = defs
-      .append("linearGradient")
-      .attr("id", "digitalReturnsLineGradient")
-      .attr("x1", "0%")
-      .attr("y1", "0%")
-      .attr("x2", "100%")
-      .attr("y2", "0%");
-
-    lineGradient.append("stop").attr("offset", "0%").attr("stop-color", "#00843D");
-    lineGradient.append("stop").attr("offset", "100%").attr("stop-color", "#10B981");
-
-    const g = svg
-      .attr("width", dimensions.width)
-      .attr("height", dimensions.height)
-      .append("g")
-      .attr("transform", `translate(${margin.left},${margin.top})`);
-
-    // X Scale
-    const x = d3
-      .scalePoint()
-      .domain(chartData.map((d) => d.formattedDate))
-      .range([0, width])
-      .padding(0.2);
-
-    // Y Scale
-    const maxVal = d3.max(chartData, (d) => d.totalReturns) || 0;
-    const y = d3
-      .scaleLinear()
-      .domain([0, Math.max(maxVal + 1, 4)])
-      .nice()
-      .range([height, 0]);
-
-    // Horizontal Grid Lines
+    // Grid lines (Horizontal)
+    const yTicks = yScale.ticks(4);
     g.append("g")
       .attr("class", "grid")
-      .call(
-        d3
-          .axisLeft(y)
-          .ticks(5)
-          .tickSize(-width)
-          .tickFormat(() => "")
-      )
-      .selectAll(".tick line")
-      .attr("stroke", darkMode ? "#27272a" : "#f1f5f9")
-      .attr("stroke-dasharray", "3,3");
+      .selectAll("line")
+      .data(yTicks)
+      .enter()
+      .append("line")
+      .attr("x1", 0)
+      .attr("x2", innerWidth)
+      .attr("y1", (d) => yScale(d))
+      .attr("y2", (d) => yScale(d))
+      .attr("stroke", darkMode ? "#1E293B" : "#E2E8F0")
+      .attr("stroke-dasharray", "3,3")
+      .attr("stroke-width", 1);
 
-    // X Axis
-    const tickInterval = Math.ceil(chartData.length / 10);
-    g.append("g")
-      .attr("transform", `translate(0,${height})`)
-      .call(
-        d3
-          .axisBottom(x)
-          .tickValues(
-            chartData
-              .map((d) => d.formattedDate)
-              .filter((_, idx) => idx % tickInterval === 0 || idx === chartData.length - 1)
-          )
-      )
-      .selectAll("text")
-      .attr("fill", darkMode ? "#a1a1aa" : "#64748b")
-      .attr("font-size", "10px")
-      .attr("font-weight", "600");
-
-    g.select(".domain").attr("stroke", darkMode ? "#3f3f46" : "#e2e8f0");
-
-    // Y Axis
-    g.append("g")
-      .call(
-        d3
-          .axisLeft(y)
-          .ticks(5)
-          .tickFormat(d3.format("d"))
-      )
-      .selectAll("text")
-      .attr("fill", darkMode ? "#a1a1aa" : "#64748b")
-      .attr("font-size", "10px")
-      .attr("font-weight", "600");
-
-    // Y Axis Label
-    g.append("text")
-      .attr("transform", "rotate(-90)")
-      .attr("y", -32)
-      .attr("x", -height / 2)
-      .attr("text-anchor", "middle")
-      .attr("fill", darkMode ? "#71717a" : "#94a3b8")
-      .attr("font-size", "9px")
-      .attr("font-weight", "700")
-      .text("DEVOLUÇÕES / DIA");
-
-    // D3 Area generator
+    // Area Generator
     const area = d3
       .area<DayMetric>()
-      .x((d) => x(d.formattedDate) || 0)
-      .y0(height)
-      .y1((d) => y(d.totalReturns))
+      .x((d) => xScale(d.date))
+      .y0(innerHeight)
+      .y1((d) => yScale(d.count))
       .curve(d3.curveMonotoneX);
 
-    // D3 Line generator
-    const line = d3
-      .line<DayMetric>()
-      .x((d) => x(d.formattedDate) || 0)
-      .y((d) => y(d.totalReturns))
-      .curve(d3.curveMonotoneX);
-
-    // Draw Area under curve
     g.append("path")
-      .datum(chartData)
-      .attr("fill", "url(#digitalReturnsAreaGradient)")
+      .datum(dailyMetrics)
+      .attr("fill", "url(#emerald-area-gradient)")
       .attr("d", area);
 
-    // Draw Line
-    const path = g
-      .append("path")
-      .datum(chartData)
+    // Line Generator
+    const line = d3
+      .line<DayMetric>()
+      .x((d) => xScale(d.date))
+      .y((d) => yScale(d.count))
+      .curve(d3.curveMonotoneX);
+
+    g.append("path")
+      .datum(dailyMetrics)
       .attr("fill", "none")
-      .attr("stroke", "url(#digitalReturnsLineGradient)")
-      .attr("stroke-width", 3)
-      .attr("stroke-linecap", "round")
-      .attr("stroke-linejoin", "round")
+      .attr("stroke", "#16845B")
+      .attr("stroke-width", 2.5)
       .attr("d", line);
 
-    // Animate line entry
-    const totalLength = (path.node() as SVGPathElement)?.getTotalLength?.() || 1000;
-    path
-      .attr("stroke-dasharray", `${totalLength} ${totalLength}`)
-      .attr("stroke-dashoffset", totalLength)
-      .transition()
-      .duration(750)
-      .ease(d3.easeCubicOut)
-      .attr("stroke-dashoffset", 0);
+    // X Axis
+    const maxTicks = Math.min(dailyMetrics.length, containerWidth > 600 ? 10 : 5);
+    const xAxis = d3
+      .axisBottom(xScale)
+      .ticks(maxTicks)
+      .tickFormat((d) => {
+        const dt = d as Date;
+        const day = String(dt.getDate()).padStart(2, "0");
+        const month = String(dt.getMonth() + 1).padStart(2, "0");
+        return `${day}/${month}`;
+      })
+      .tickSize(0)
+      .tickPadding(10);
 
-    // Interactive group: Dots for each data point
-    const dotsGroup = g.append("g").attr("class", "dots-group");
+    const xAxisG = g
+      .append("g")
+      .attr("transform", `translate(0,${innerHeight})`)
+      .call(xAxis);
 
-    chartData.forEach((d) => {
-      const cx = x(d.formattedDate) || 0;
-      const cy = y(d.totalReturns);
+    xAxisG.select(".domain").attr("stroke", darkMode ? "#334155" : "#CBD5E1");
+    xAxisG
+      .selectAll("text")
+      .attr("fill", darkMode ? "#94A3B8" : "#64748B")
+      .attr("font-size", "10px")
+      .attr("font-weight", "500");
 
-      if (d.totalReturns > 0) {
-        // Outer halo
-        dotsGroup
-          .append("circle")
-          .attr("cx", cx)
-          .attr("cy", cy)
-          .attr("r", 6)
-          .attr("fill", "#00843D")
-          .attr("fill-opacity", 0.25);
+    // Y Axis
+    const yAxis = d3
+      .axisLeft(yScale)
+      .ticks(4)
+      .tickFormat(d3.format("d"))
+      .tickSize(0)
+      .tickPadding(8);
 
-        // Inner solid dot
-        dotsGroup
-          .append("circle")
-          .attr("cx", cx)
-          .attr("cy", cy)
-          .attr("r", 3.5)
-          .attr("fill", "#00843D")
-          .attr("stroke", "#ffffff")
-          .attr("stroke-width", 2);
-      } else {
-        // Subtle dot for zero days
-        dotsGroup
-          .append("circle")
-          .attr("cx", cx)
-          .attr("cy", cy)
-          .attr("r", 1.8)
-          .attr("fill", darkMode ? "#52525b" : "#cbd5e1");
-      }
-    });
+    const yAxisG = g.append("g").call(yAxis);
+    yAxisG.select(".domain").remove();
+    yAxisG
+      .selectAll("text")
+      .attr("fill", darkMode ? "#94A3B8" : "#64748B")
+      .attr("font-size", "10px")
+      .attr("font-weight", "500");
 
-    // Crosshair hover elements
-    const focusLine = g
-      .append("line")
-      .attr("class", "focus-line")
-      .attr("y1", 0)
-      .attr("y2", height)
-      .attr("stroke", darkMode ? "#a1a1aa" : "#475569")
-      .attr("stroke-width", 1.5)
-      .attr("stroke-dasharray", "4,4")
-      .style("opacity", 0);
+    // Interactive Points & Overlay
+    const pointsGroup = g.append("g").attr("class", "points");
 
-    const focusCircle = g
+    pointsGroup
+      .selectAll("circle")
+      .data(dailyMetrics)
+      .enter()
       .append("circle")
-      .attr("class", "focus-circle")
-      .attr("r", 6.5)
-      .attr("fill", "#00843D")
-      .attr("stroke", "#ffffff")
-      .attr("stroke-width", 2.5)
-      .style("opacity", 0);
+      .attr("cx", (d) => xScale(d.date))
+      .attr("cy", (d) => yScale(d.count))
+      .attr("r", (d) => (d.count > 0 ? 4 : 2))
+      .attr("fill", (d) => (d.count > 0 ? "#16845B" : darkMode ? "#334155" : "#CBD5E1"))
+      .attr("stroke", darkMode ? "#0F172A" : "#FFFFFF")
+      .attr("stroke-width", 2)
+      .attr("class", "transition-all duration-150 cursor-pointer");
 
-    // Overlay for mouse tracking
-    const bisectDate = d3.bisector<DayMetric, string>((d) => d.formattedDate).left;
+    // Transparent overlay for mouse tracking
+    const bisectDate = d3.bisector((d: DayMetric) => d.date).center;
 
     svg
       .append("rect")
+      .attr("width", innerWidth)
+      .attr("height", innerHeight)
       .attr("transform", `translate(${margin.left},${margin.top})`)
-      .attr("width", width)
-      .attr("height", height)
       .attr("fill", "transparent")
       .attr("cursor", "crosshair")
       .on("mousemove", (event) => {
         const [mx] = d3.pointer(event);
-        // Find closest point by dividing width evenly
-        const pointWidth = width / (chartData.length - 1 || 1);
-        const index = Math.min(
-          Math.max(0, Math.round(mx / pointWidth)),
-          chartData.length - 1
-        );
-        const selected = chartData[index];
-
-        if (selected) {
-          const cx = x(selected.formattedDate) || 0;
-          const cy = y(selected.totalReturns);
-
-          focusLine
-            .attr("x1", cx)
-            .attr("x2", cx)
-            .style("opacity", 0.75);
-
-          focusCircle
-            .attr("cx", cx)
-            .attr("cy", cy)
-            .style("opacity", 1);
-
-          setHoveredDay(selected);
+        const xDate = xScale.invert(mx);
+        const index = bisectDate(dailyMetrics, xDate);
+        const d = dailyMetrics[index];
+        if (d) {
+          setHoveredPoint(d);
+          const px = xScale(d.date) + margin.left;
+          const py = yScale(d.count) + margin.top;
+          setTooltipPos({ x: px, y: py });
         }
       })
       .on("mouseleave", () => {
-        focusLine.style("opacity", 0);
-        focusCircle.style("opacity", 0);
-        setHoveredDay(null);
+        setHoveredPoint(null);
+        setTooltipPos(null);
       });
-  }, [chartData, dimensions, darkMode]);
+  }, [dailyMetrics, containerWidth, darkMode]);
 
-  // Export Daily Returns Summary PDF
-  const handleExportPDF = () => {
-    try {
-      const doc = new jsPDF("p", "mm", "a4");
-
-      // Banner IFPR
-      doc.setFillColor(0, 132, 61);
-      doc.rect(0, 0, 210, 22, "F");
-      doc.setFillColor(200, 30, 30);
-      doc.rect(0, 22, 210, 2.5, "F");
-
-      doc.setTextColor(255, 255, 255);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.text("INSTITUTO FEDERAL DO PARANÁ - CAMPUS IVAIPORÃ", 14, 11);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-      doc.text("SISTEMA LOCALIZA+ • RELATÓRIO DE MÉTRICAS DE DEVOLUÇÕES DIGITAIS", 14, 17);
-
-      doc.setTextColor(15, 23, 42);
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.text("VOLUME DIÁRIO DE DEVOLUÇÕES VALIDADAS DIGITALMENTE", 14, 32);
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
-      doc.setTextColor(71, 85, 105);
-      doc.text(`Período Selecionado: Últimos ${selectedRange === "all" ? "60+" : selectedRange} dias`, 14, 38);
-      doc.text(`Total de Devoluções no Período: ${kpis.total}`, 14, 43);
-      doc.text(`Assinaturas Remotas: ${kpis.remote} (${kpis.remotePercentage}%) • Presenciais: ${kpis.inPerson}`, 14, 48);
-      doc.text(`Data de Emissão: ${new Date().toLocaleString("pt-BR")}`, 14, 53);
-
-      const tableData = chartData
-        .filter((d) => d.totalReturns > 0)
-        .map((d) => [
-          d.formattedDate,
-          d.totalReturns.toString(),
-          d.remoteReturns.toString(),
-          d.inPersonReturns.toString(),
-          d.items.map((i) => `${i.title} (${i.receiptValidationCode || i.id})`).join(", "),
-        ]);
-
-      autoTable(doc, {
-        startY: 58,
-        head: [["Data", "Total Devoluções", "Remotas (E-mail)", "Presenciais", "Itens e Protocolos"]],
-        body:
-          tableData.length > 0
-            ? tableData
-            : [["-", "0", "0", "0", "Nenhuma devolução com assinatura no período"]],
-        theme: "grid",
-        headStyles: { fillColor: [0, 132, 61], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
-        styles: { fontSize: 7, cellPadding: 2 },
-      });
-
-      doc.save(`Metricas_Devolucoes_Digitais_IFPR_${new Date().toISOString().slice(0, 10)}.pdf`);
-    } catch (err) {
-      console.error("Erro ao gerar relatório PDF:", err);
+  // Filter items in audit list
+  const filteredAuditItems = useMemo(() => {
+    let list = returnedItems;
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      list = list.filter(
+        (it) =>
+          it.title.toLowerCase().includes(q) ||
+          it.recipientName?.toLowerCase().includes(q) ||
+          it.recipientEmail?.toLowerCase().includes(q) ||
+          it.receiptValidationCode?.toLowerCase().includes(q) ||
+          it.category.toLowerCase().includes(q)
+      );
     }
+    return list.slice(0, 50); // limit for performance
+  }, [returnedItems, searchTerm]);
+
+  // Export PDF with institutional Localiza+ styling
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    const primaryColor = [22, 132, 91] as [number, number, number]; // #16845B
+    const darkColor = [23, 43, 42] as [number, number, number]; // #172B2A
+
+    // Institutional Header
+    doc.setFillColor(...primaryColor);
+    doc.rect(0, 0, 210, 24, "F");
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("LOCALIZA+ | IFPR CAMPUS IVAIPORÃ", 14, 11);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text("Relatório de Devoluções Validadas Digitalmente (D3 Engine)", 14, 18);
+
+    // Report Metadata
+    doc.setTextColor(...darkColor);
+    doc.setFontSize(9);
+    doc.text(`Emissão: ${new Date().toLocaleString("pt-BR")}`, 14, 32);
+    doc.text(`Período analisado: Últimos ${selectedRange} dias | Modalidade: ${selectedModality}`, 14, 37);
+
+    // KPIs summary box
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(14, 42, 182, 18, 2, 2, "F");
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text(
+      `TOTAL VALIDADAS: ${kpis.total} | PENDENTES REMOTA: ${kpis.pendingRemote} | ATESTAÇÃO PENDENTE: ${kpis.pendingStaffAttestation}`,
+      20,
+      50
+    );
+    doc.text(
+      `MÉDIA DIÁRIA: ${kpis.avgDaily} | PICO DIÁRIO: ${kpis.peak.val} (${kpis.peak.date}) | TAXA REMOTA: ${kpis.remotePercentage}%`,
+      20,
+      56
+    );
+
+    // Audit Table of items
+    const tableRows = filteredAuditItems.map((it) => {
+      const isRemote =
+        it.recipientSignatureType === "REMOTE_EMAIL" ||
+        it.recipientSignatureType === "PRE_VERIFIED" ||
+        (Boolean(it.signatureTokenUsed) && !it.recipientSignatureType);
+      const staffAttested = it.staffSignatureStatus === "SIGNED";
+
+      return [
+        it.title,
+        it.category,
+        it.recipientName || "Não informado",
+        isRemote ? "Remota (E-mail)" : "Presencial",
+        staffAttested ? "Dupla Assinatura" : "Atestação Pendente",
+        it.receiptValidationCode || "Validado",
+        it.signedAt || it.returnDate || it.createdAt || "--",
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 66,
+      head: [["Objeto", "Categoria", "Recebedor", "Modalidade", "Atestação", "Cód. Validação", "Data/Hora"]],
+      body: tableRows,
+      headStyles: {
+        fillColor: primaryColor,
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        fontSize: 8,
+      },
+      styles: {
+        fontSize: 8,
+        cellPadding: 2.5,
+      },
+      alternateRowStyles: {
+        fillColor: [248, 250, 252],
+      },
+    });
+
+    doc.save(`localiza-devolucoes-digitais-${selectedRange}d.pdf`);
   };
 
   return (
-    <div
+    <SurfaceCard
       id="digital-returns-dashboard"
-      className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-8 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6"
+      padding="lg"
+      className="space-y-6"
     >
       {/* Header & Controls */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-neutral-100 dark:border-neutral-800 pb-5">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-5">
         <div className="flex items-center space-x-3">
-          <div className="p-3 rounded-2xl bg-[#00843D]/10 text-[#00843D] dark:text-[#00c75c] shrink-0">
-            <FileCheck2 className="w-6 h-6" />
+          <div className="p-2.5 rounded-xl bg-[#EBF5F0] dark:bg-[#16845B]/20 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/15 shrink-0">
+            <FileCheck2 className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg sm:text-xl font-black text-neutral-900 dark:text-white">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-lg sm:text-xl font-bold text-[#172B2A] dark:text-white tracking-tight">
                 Métricas de Devoluções Validadas Digitalmente
               </h2>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-[#00843D]/10 text-[#00843D] border border-[#00843D]/20">
-                D3 Engine
-              </span>
+              <UIBadge tone="emerald">D3 Engine</UIBadge>
             </div>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Volume diário de termos de restituição e quitação validados via token criptográfico no Firestore
             </p>
           </div>
@@ -567,33 +521,36 @@ export const DigitalReturnsD3Chart: React.FC<DigitalReturnsD3ChartProps> = ({
         {/* Action Buttons & Filters */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Modality Filter */}
-          <div className="flex items-center bg-neutral-100 dark:bg-neutral-800 p-1 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs">
+          <div className="flex items-center bg-[#F8FAFC] dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
             <button
+              type="button"
               onClick={() => setSelectedModality("ALL")}
-              className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+              className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer ${
                 selectedModality === "ALL"
-                  ? "bg-white dark:bg-neutral-900 text-[#00843D] shadow-xs"
-                  : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
+                  ? "bg-white dark:bg-[#111827] text-[#16845B] dark:text-emerald-400 shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
               Todas
             </button>
             <button
+              type="button"
               onClick={() => setSelectedModality("REMOTE")}
-              className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 transition-all ${
+              className={`px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1 transition-all cursor-pointer ${
                 selectedModality === "REMOTE"
-                  ? "bg-white dark:bg-neutral-900 text-[#00843D] shadow-xs"
-                  : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
+                  ? "bg-white dark:bg-[#111827] text-[#16845B] dark:text-emerald-400 shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
               <Mail className="w-3 h-3" /> Remotas
             </button>
             <button
+              type="button"
               onClick={() => setSelectedModality("IN_PERSON")}
-              className={`px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 transition-all ${
+              className={`px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1 transition-all cursor-pointer ${
                 selectedModality === "IN_PERSON"
-                  ? "bg-white dark:bg-neutral-900 text-[#00843D] shadow-xs"
-                  : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
+                  ? "bg-white dark:bg-[#111827] text-[#16845B] dark:text-emerald-400 shadow-xs"
+                  : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
               <Smartphone className="w-3 h-3" /> Presenciais
@@ -601,15 +558,16 @@ export const DigitalReturnsD3Chart: React.FC<DigitalReturnsD3ChartProps> = ({
           </div>
 
           {/* Time range selector */}
-          <div className="flex items-center bg-neutral-100 dark:bg-neutral-800 p-1 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs">
+          <div className="flex items-center bg-[#F8FAFC] dark:bg-slate-800/80 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
             {(["7", "14", "30", "60"] as const).map((range) => (
               <button
+                type="button"
                 key={range}
                 onClick={() => setSelectedRange(range)}
-                className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                className={`px-2.5 py-1 rounded-lg font-semibold tabular-nums transition-all cursor-pointer ${
                   selectedRange === range
-                    ? "bg-white dark:bg-neutral-900 text-[#00843D] shadow-xs"
-                    : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
+                    ? "bg-white dark:bg-[#111827] text-[#16845B] dark:text-emerald-400 shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
                 }`}
               >
                 {range}d
@@ -618,225 +576,263 @@ export const DigitalReturnsD3Chart: React.FC<DigitalReturnsD3ChartProps> = ({
           </div>
 
           {/* Export PDF */}
-          <button
+          <UIButton
+            variant="primary"
+            size="sm"
             onClick={handleExportPDF}
-            className="p-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white rounded-xl text-neutral-700 dark:text-neutral-300 font-bold transition-all text-xs flex items-center gap-1.5 cursor-pointer"
             title="Exportar Relatório em PDF"
           >
             <Download className="w-4 h-4" />
             <span className="hidden sm:inline">Exportar PDF</span>
-          </button>
+          </UIButton>
         </div>
       </div>
 
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-        <div className="bg-neutral-50 dark:bg-neutral-900/60 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-1">
-          <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5 text-[#00843D]" /> Total Validadas
+        <SubtlePanel padding="sm" className="space-y-1">
+          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5 text-[#16845B]" /> Total Validadas
           </span>
-          <div className="text-2xl font-black text-neutral-900 dark:text-white flex items-baseline gap-2">
+          <div className="text-2xl font-bold text-[#172B2A] dark:text-white flex items-baseline gap-2 tabular-nums">
             <span>{kpis.total}</span>
-            <span className="text-[10px] text-neutral-400 font-medium">no período</span>
+            <span className="text-[10px] text-slate-400 font-medium">assinadas no período</span>
           </div>
-        </div>
+        </SubtlePanel>
 
-        <div className="bg-neutral-50 dark:bg-neutral-900/60 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-1">
-          <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider flex items-center gap-1">
-            <TrendingUp className="w-3.5 h-3.5 text-emerald-500" /> Pico Diário
+        <SubtlePanel padding="sm" className="space-y-1">
+          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+            <TrendingUp className="w-3.5 h-3.5 text-[#16845B]" /> Pico Diário
           </span>
-          <div className="text-2xl font-black text-neutral-900 dark:text-white flex items-baseline gap-2">
+          <div className="text-2xl font-bold text-[#172B2A] dark:text-white flex items-baseline gap-2 tabular-nums">
             <span>{kpis.peak.val}</span>
-            <span className="text-[10px] text-neutral-400 font-medium">({kpis.peak.date})</span>
+            <span className="text-[10px] text-slate-400 font-medium">({kpis.peak.date})</span>
           </div>
-        </div>
+        </SubtlePanel>
 
-        <div className="bg-neutral-50 dark:bg-neutral-900/60 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-1">
-          <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider flex items-center gap-1">
-            <Calendar className="w-3.5 h-3.5 text-blue-500" /> Média Diária
+        <SubtlePanel padding="sm" className="space-y-1">
+          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+            <Calendar className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" /> Média Diária
           </span>
-          <div className="text-2xl font-black text-neutral-900 dark:text-white flex items-baseline gap-2">
+          <div className="text-2xl font-bold text-[#172B2A] dark:text-white flex items-baseline gap-2 tabular-nums">
             <span>{kpis.avgDaily}</span>
-            <span className="text-[10px] text-neutral-400 font-medium">por dia</span>
+            <span className="text-[10px] text-slate-400 font-medium">por dia</span>
           </div>
-        </div>
+        </SubtlePanel>
 
-        <div className="bg-neutral-50 dark:bg-neutral-900/60 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-1">
-          <span className="text-[11px] font-bold text-neutral-500 uppercase tracking-wider flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-purple-500" /> Taxa Remota
+        <SubtlePanel padding="sm" className="space-y-1">
+          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+            <ShieldCheck className="w-3.5 h-3.5 text-[#064E3B] dark:text-emerald-400" /> Taxa Remota
           </span>
-          <div className="text-2xl font-black text-neutral-900 dark:text-white flex items-baseline gap-2">
+          <div className="text-2xl font-bold text-[#172B2A] dark:text-white flex items-baseline gap-2 tabular-nums">
             <span>{kpis.remotePercentage}%</span>
-            <span className="text-[10px] text-neutral-400 font-medium">via link/e-mail</span>
+            <span className="text-[10px] text-slate-400 font-medium">via link/e-mail</span>
           </div>
-        </div>
+        </SubtlePanel>
       </div>
 
-      {/* D3 Line Chart Container */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-xs text-neutral-500 px-1">
-          <span className="font-bold flex items-center gap-1">
-            <Layers className="w-3.5 h-3.5 text-[#00843D]" /> Gráfico Interativo de Linhas (D3.js)
+      {(kpis.pendingRemote > 0 || kpis.pendingStaffAttestation > 0) && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {kpis.pendingRemote > 0 && (
+            <UIBadge tone="amber">
+              <Mail className="w-3 h-3" />
+              <span>{kpis.pendingRemote} aguardando assinatura remota (fora da contagem assinada)</span>
+            </UIBadge>
+          )}
+          {kpis.pendingStaffAttestation > 0 && (
+            <UIBadge tone="blue">
+              <ShieldCheck className="w-3 h-3" />
+              <span>{kpis.pendingStaffAttestation} com assinatura do receptor e atestação do atendente pendente</span>
+            </UIBadge>
+          )}
+        </div>
+      )}
+
+      {/* D3 Graph Area */}
+      <SubtlePanel padding="md" className="relative">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+            Tendência Temporal de Devoluções Concluídas
           </span>
-          <span>Passe o cursor sobre os pontos para inspecionar</span>
-        </div>
-
-        <div
-          ref={containerRef}
-          className="relative w-full rounded-2xl bg-neutral-50/70 dark:bg-neutral-900/40 border border-neutral-200/80 dark:border-neutral-800 p-2 overflow-hidden"
-        >
-          <svg ref={svgRef} className="w-full overflow-visible" />
-
-          {/* Interactive Hover Tooltip */}
-          {hoveredDay && (
-            <div className="absolute top-3 right-3 p-3.5 rounded-2xl bg-white/95 dark:bg-neutral-900/95 border border-neutral-200 dark:border-neutral-800 shadow-xl backdrop-blur-xs text-xs space-y-1.5 max-w-xs animate-in fade-in duration-150 z-20">
-              <div className="flex items-center justify-between gap-2 border-b border-neutral-100 dark:border-neutral-800 pb-1">
-                <span className="font-extrabold text-neutral-900 dark:text-white capitalize">
-                  {hoveredDay.fullDateLabel}
-                </span>
-                <span className="px-1.5 py-0.5 rounded-md font-black bg-[#00843D]/10 text-[#00843D] text-[10px]">
-                  {hoveredDay.totalReturns} devoluç{hoveredDay.totalReturns === 1 ? "ão" : "ões"}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-[11px] text-neutral-500 pt-0.5">
-                <span>Assinaturas Remotas:</span>
-                <strong className="text-neutral-900 dark:text-white">{hoveredDay.remoteReturns}</strong>
-              </div>
-              <div className="flex items-center justify-between text-[11px] text-neutral-500">
-                <span>Assinaturas Presenciais:</span>
-                <strong className="text-neutral-900 dark:text-white">{hoveredDay.inPersonReturns}</strong>
-              </div>
-
-              {hoveredDay.items.length > 0 && (
-                <div className="pt-1.5 border-t border-neutral-100 dark:border-neutral-800 space-y-1">
-                  <span className="text-[10px] font-bold text-neutral-400 uppercase">Pertences Devolvidos:</span>
-                  <div className="max-h-24 overflow-y-auto space-y-1 pr-1">
-                    {hoveredDay.items.map((it) => (
-                      <div
-                        key={it.id}
-                        onClick={() => onSelectItem && onSelectItem(it)}
-                        className="p-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800/80 hover:bg-[#00843D]/10 text-[10px] cursor-pointer transition-colors flex items-center justify-between"
-                      >
-                        <span className="font-bold text-neutral-800 dark:text-neutral-200 truncate max-w-[140px]">
-                          {it.title}
-                        </span>
-                        <span className="font-mono text-neutral-400 text-[9px] shrink-0">
-                          {it.receiptValidationCode ? it.receiptValidationCode.slice(0, 12) : it.id.slice(0, 8)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+          <div className="flex items-center gap-4 text-[11px] text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-0.5 bg-[#16845B] rounded-full inline-block" />
+              <span>Devoluções</span>
             </div>
-          )}
-
-          {/* Empty State when zero total returns */}
-          {kpis.total === 0 && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/60 dark:bg-black/40 backdrop-blur-2xs p-4 text-center">
-              <div className="w-10 h-10 rounded-2xl bg-neutral-100 dark:bg-neutral-800 text-neutral-400 flex items-center justify-center mb-2">
-                <Info className="w-5 h-5" />
-              </div>
-              <p className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                Nenhuma devolução com validação digital registrada nos últimos {selectedRange} dias
-              </p>
-              <p className="text-[11px] text-neutral-500 max-w-sm mt-0.5">
-                Os dados serão plotados automaticamente conforme novos termos de restituição forem assinados presencialmente ou via e-mail.
-              </p>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#16845B]/20 border border-[#16845B] inline-block" />
+              <span>Volume</span>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* Audit List of Digitally Validated Returns */}
-      <div className="space-y-3 pt-2 border-t border-neutral-100 dark:border-neutral-800">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 tracking-wider flex items-center gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-[#00843D]" />
-            Últimas Devoluções Validadas Digitalmente ({digitalReturnedItems.length})
-          </h3>
-          <span className="text-[11px] text-neutral-400 font-medium">Trilha Criptográfica Firestore</span>
-        </div>
-
-        {digitalReturnedItems.length === 0 ? (
-          <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-900/50 text-center text-xs text-neutral-400 italic">
-            Nenhum pertence devolvido via assinatura digital localizado no banco de dados.
           </div>
+        </div>
+
+        <div ref={containerRef} className="w-full relative">
+          <svg ref={svgRef} className="overflow-visible block w-full" />
+
+          {/* Interactive D3 Tooltip */}
+          {hoveredPoint && tooltipPos && (
+            <div
+              className="absolute z-20 pointer-events-none -translate-x-1/2 -translate-y-full mb-3 bg-[#172B2A] text-white text-xs rounded-xl px-3 py-2 shadow-xl border border-slate-700/60 space-y-1 min-w-[130px] backdrop-blur-sm"
+              style={{
+                left: `${tooltipPos.x}px`,
+                top: `${tooltipPos.y}px`,
+              }}
+            >
+              <div className="font-semibold text-emerald-300 flex items-center justify-between border-b border-white/10 pb-1">
+                <span>{hoveredPoint.formattedDate}</span>
+                <span className="text-[10px] text-slate-300 font-normal">{hoveredPoint.date.getFullYear()}</span>
+              </div>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-slate-300">Total:</span>
+                <span className="font-bold text-white tabular-nums">{hoveredPoint.count}</span>
+              </div>
+              <div className="flex justify-between items-center text-[10px] text-slate-300">
+                <span>Remotas:</span>
+                <span className="tabular-nums text-emerald-400 font-semibold">{hoveredPoint.remoteCount}</span>
+              </div>
+              <div className="flex justify-between items-center text-[10px] text-slate-300">
+                <span>Presenciais:</span>
+                <span className="tabular-nums text-blue-300 font-semibold">{hoveredPoint.inPersonCount}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </SubtlePanel>
+
+      {/* Audit Trail List of Digitally Validated Returns */}
+      <div className="space-y-3 pt-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-[#172B2A] dark:text-white flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-[#16845B]" />
+              Registros com Validação Criptográfica e Assinatura
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Objetos cuja quitação foi formalizada via termo digital nos registros do sistema
+            </p>
+          </div>
+
+          {/* Search bar inside chart */}
+          <div className="w-full sm:w-64">
+            <UIInput
+              type="text"
+              leftIcon={<Search className="w-4 h-4" />}
+              placeholder="Buscar por objeto ou recebedor..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Table / List */}
+        {filteredAuditItems.length === 0 ? (
+          <EmptyState
+            icon={<Info className="w-6 h-6" />}
+            title="Nenhuma devolução encontrada"
+            description="Nenhuma devolução validada digitalmente encontrada com os filtros selecionados."
+          />
         ) : (
-          <div className="overflow-x-auto rounded-2xl border border-neutral-200 dark:border-neutral-800">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-neutral-100 dark:bg-neutral-800/80 text-neutral-600 dark:text-neutral-400 font-bold border-b border-neutral-200 dark:border-neutral-800">
-                  <th className="p-3">Objeto / Categoria</th>
-                  <th className="p-3">Receptor / Vínculo</th>
-                  <th className="p-3">Data / Hora</th>
-                  <th className="p-3">Modalidade</th>
-                  <th className="p-3">Protocolo de Validação</th>
-                  <th className="p-3 text-right">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                {digitalReturnedItems.slice(0, 6).map((item) => (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-neutral-50 dark:hover:bg-neutral-900/40 transition-colors"
-                  >
-                    <td className="p-3 font-bold text-neutral-900 dark:text-white whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <span>{item.title}</span>
-                        <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-neutral-100 dark:bg-neutral-800 text-neutral-500">
-                          {item.category}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-3 text-neutral-700 dark:text-neutral-300 whitespace-nowrap">
-                      <div>
-                        <span className="font-bold">{item.recipientName || "Receptor"}</span>
-                        <span className="text-[10px] text-neutral-400 block font-normal">
-                          {item.recipientBond || "Aluno/Servidor"}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-3 text-neutral-600 dark:text-neutral-400 whitespace-nowrap">
-                      {new Date(item.signedAt || item.resolutionDate || item.date || Date.now()).toLocaleDateString("pt-BR")}
-                    </td>
-                    <td className="p-3 whitespace-nowrap">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-black flex items-center gap-1 w-max ${
-                          item.recipientSignatureType === "REMOTE_EMAIL"
-                            ? "bg-purple-500/10 text-purple-600 dark:text-purple-400"
-                            : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
-                        }`}
-                      >
-                        {item.recipientSignatureType === "REMOTE_EMAIL" ? (
-                          <>
-                            <Mail className="w-3 h-3" /> Remota (E-mail)
-                          </>
-                        ) : (
-                          <>
-                            <Smartphone className="w-3 h-3" /> Presencial (Dispositivo)
-                          </>
-                        )}
-                      </span>
-                    </td>
-                    <td className="p-3 font-mono text-[11px] font-bold text-neutral-700 dark:text-neutral-300 whitespace-nowrap">
-                      {item.receiptValidationCode || `REC-IFPR-${item.id.slice(0, 8)}`}
-                    </td>
-                    <td className="p-3 text-right whitespace-nowrap">
-                      <button
-                        onClick={() => onSelectItem && onSelectItem(item)}
-                        className="px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D] hover:text-white text-neutral-700 dark:text-neutral-300 font-bold transition-all text-[11px] cursor-pointer"
-                      >
-                        Ver Detalhes
-                      </button>
-                    </td>
+          <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-[#111827]">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[#F8FAFC] dark:bg-slate-900 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-100 dark:border-slate-800">
+                  <tr>
+                    <th className="py-2.5 px-4">Objeto</th>
+                    <th className="py-2.5 px-4">Categoria</th>
+                    <th className="py-2.5 px-4">Recebedor</th>
+                    <th className="py-2.5 px-4">Modalidade</th>
+                    <th className="py-2.5 px-4">Atestação</th>
+                    <th className="py-2.5 px-4">Cód. Validação</th>
+                    <th className="py-2.5 px-4 text-right">Ação</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filteredAuditItems.map((item) => {
+                    const isRemote =
+                      item.recipientSignatureType === "REMOTE_EMAIL" ||
+                      item.recipientSignatureType === "PRE_VERIFIED" ||
+                      (Boolean(item.signatureTokenUsed) && !item.recipientSignatureType);
+                    const isStaffSigned = item.staffSignatureStatus === "SIGNED";
+
+                    return (
+                      <tr
+                        key={item.id}
+                        className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors"
+                      >
+                        <td className="py-3 px-4 font-semibold text-[#172B2A] dark:text-white">
+                          <div className="flex items-center gap-2">
+                            {item.imageUrl ? (
+                              <img
+                                src={item.imageUrl}
+                                alt={item.title}
+                                className="w-7 h-7 rounded-lg object-cover border border-slate-200 dark:border-slate-700"
+                              />
+                            ) : (
+                              <div className="w-7 h-7 rounded-lg bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 flex items-center justify-center font-bold text-[10px]">
+                                {item.title.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <span className="truncate max-w-[160px] sm:max-w-[220px]" title={item.title}>
+                              {item.title}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[11px] text-slate-600 dark:text-slate-300 font-medium">
+                            {item.category}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-700 dark:text-slate-300">
+                          <div className="font-medium text-[#172B2A] dark:text-white">
+                            {item.recipientName || "Não registrado"}
+                          </div>
+                          {item.recipientBond && (
+                            <div className="text-[10px] text-slate-400">{item.recipientBond}</div>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          {isRemote ? (
+                            <UIBadge tone="emerald">
+                              <Mail className="w-3 h-3" /> Remota
+                            </UIBadge>
+                          ) : (
+                            <UIBadge tone="blue">
+                              <Smartphone className="w-3 h-3" /> Presencial
+                            </UIBadge>
+                          )}
+                        </td>
+                        <td className="py-3 px-4">
+                          {isStaffSigned ? (
+                            <UIBadge tone="emerald">Dupla Assinatura</UIBadge>
+                          ) : (
+                            <UIBadge tone="amber">Atestação Pendente</UIBadge>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 font-mono text-[11px] text-slate-500 dark:text-slate-400">
+                          {item.receiptValidationCode || "Validado"}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          {onSelectItem && (
+                            <UIButton
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => onSelectItem(item)}
+                              className="text-[#16845B] dark:text-emerald-400 hover:bg-[#EBF5F0] dark:hover:bg-[#16845B]/20"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Ver</span>
+                            </UIButton>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>
-    </div>
+    </SurfaceCard>
   );
-};
+}

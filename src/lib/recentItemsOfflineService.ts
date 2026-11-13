@@ -1,9 +1,12 @@
 import { LostFoundItem } from "../types";
+import { sanitizePublicItemProjection } from "./itemPrivacyUtils";
 
 /**
  * Service for caching and retrieving recently searched items for offline preview.
  * Integrates with Service Worker (sw-custom.js) via postMessage / MessageChannel
  * and maintains a robust localStorage fallback.
+ * ETAPA 15: All cached items are strictly sanitized via sanitizePublicItemProjection
+ * so personal return data, signatures, and validation codes are never stored in browser caches.
  */
 
 const STORAGE_KEY_RECENT_ITEMS = "localiza_recent_searched_items";
@@ -39,20 +42,20 @@ export async function cacheSearchedItems(
     // 1. Load existing items from localStorage
     const existing = getLocalCachedRecentItems();
 
-    // 2. Merge items by ID, placing the newest items first
+    // 2. Merge items by ID, placing the newest items first (strictly sanitized)
     const itemMap = new Map<string, LostFoundItem>();
 
     // Add new items first
     newItems.forEach((item) => {
       if (item && item.id) {
-        itemMap.set(item.id, item);
+        itemMap.set(item.id, sanitizePublicItemProjection(item));
       }
     });
 
     // Add previous items
     existing.forEach((item) => {
       if (item && item.id && !itemMap.has(item.id)) {
-        itemMap.set(item.id, item);
+        itemMap.set(item.id, sanitizePublicItemProjection(item));
       }
     });
 
@@ -98,10 +101,10 @@ export function getLocalCachedRecentItems(): LostFoundItem[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      return parsed;
+      return parsed.map((it) => sanitizePublicItemProjection(it));
     }
     if (parsed && Array.isArray(parsed.items)) {
-      return parsed.items;
+      return parsed.items.map((it: LostFoundItem) => sanitizePublicItemProjection(it));
     }
     return [];
   } catch (err) {
@@ -134,9 +137,10 @@ export async function getOfflineRecentItems(): Promise<OfflineRecentItemsResult>
           if (event.data && event.data.type === "OFFLINE_RECENT_ITEMS_RESPONSE") {
             const data = event.data.data;
             if (data && Array.isArray(data.items)) {
+              const sanitizedItems = data.items.map((it: LostFoundItem) => sanitizePublicItemProjection(it));
               resolve({
-                items: data.items,
-                count: data.items.length,
+                items: sanitizedItems,
+                count: sanitizedItems.length,
                 source: "service-worker",
                 cachedAt: data.cachedAt || Date.now(),
               });
@@ -174,7 +178,8 @@ export async function getOfflineRecentItems(): Promise<OfflineRecentItemsResult>
  */
 export function cacheSingleItemPreview(item: LostFoundItem): void {
   if (!item || !item.id) return;
-  cacheSearchedItems([item]);
+  const sanitized = sanitizePublicItemProjection(item);
+  cacheSearchedItems([sanitized]);
 
   if (
     typeof navigator !== "undefined" &&
@@ -183,8 +188,9 @@ export function cacheSingleItemPreview(item: LostFoundItem): void {
   ) {
     navigator.serviceWorker.controller.postMessage({
       type: "CACHE_SINGLE_ITEM_PREVIEW",
-      item,
+      item: sanitized,
       timestamp: Date.now(),
     });
   }
 }
+

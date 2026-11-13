@@ -120,23 +120,23 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="manage-status-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in duration-150"
     >
       <div
         id="manage-status-modal-container"
-        className="relative w-full max-w-lg bg-white dark:bg-[#1E1E1E] rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden flex flex-col max-h-[90vh]"
+        className="relative w-full max-w-lg bg-white dark:bg-[#111827] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/30">
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-900/40">
           <div className="flex items-center space-x-3">
-            <div className="p-3 rounded-2xl bg-[#00843D]/10 text-[#00843D] dark:bg-[#00843D]/20">
-              <ShieldAlert className="w-6 h-6" />
+            <div className="p-2.5 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/15">
+              <ShieldAlert className="w-5 h-5" />
             </div>
             <div>
-              <h3 id="manage-status-modal-title" className="text-base font-black text-neutral-900 dark:text-white">
+              <h3 id="manage-status-modal-title" className="text-base font-bold text-[#172B2A] dark:text-white">
                 Gerenciar Status da Conta
               </h3>
-              <p className="text-xs text-neutral-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Controle de acesso, suspensão temporária e banimento
               </p>
             </div>
@@ -147,7 +147,7 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
               vibrateClick();
               onClose();
             }}
-            className="p-2 rounded-xl text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+            className="p-2 rounded-xl text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             aria-label="Fechar modal"
           >
             <X className="w-5 h-5" />
@@ -157,23 +157,23 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
         {/* Content Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto flex-1">
           {/* Target User Info Summary */}
-          <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
+          <div className="p-4 rounded-xl bg-[#F8FAFC] dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
             <div className="flex items-center space-x-3 min-w-0">
               <img
                 src={getSafeAvatarUrl(user.avatarUrl, user.name)}
                 alt=""
                 referrerPolicy="no-referrer"
                 onError={(e) => handleAvatarError(e, user.name)}
-                className="w-10 h-10 rounded-full object-cover shrink-0 border border-neutral-200 dark:border-neutral-700"
+                className="w-10 h-10 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700"
               />
               <div className="min-w-0">
-                <p className="text-xs font-bold text-neutral-900 dark:text-white truncate">
+                <p className="text-xs font-bold text-[#172B2A] dark:text-white truncate">
                   {user.name}
                 </p>
-                <p className="text-[11px] font-mono text-neutral-500 truncate">
+                <p className="text-[11px] font-mono text-slate-500 truncate">
                   {user.email}
                 </p>
-                <p className="text-[10px] text-neutral-400">
+                <p className="text-[10px] text-slate-400 tabular-nums">
                   {user.courseOrDept} • Matrícula: {user.registrationNumber || "N/A"}
                 </p>
               </div>
@@ -181,13 +181,13 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
 
             <div className="text-right shrink-0">
               <span
-                className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-extrabold border ${currentStatusDisplay.badgeClass}`}
+                className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border whitespace-nowrap shrink-0 ${currentStatusDisplay.badgeClass}`}
               >
                 <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${currentStatusDisplay.dotClass}`} />
                 {currentStatusDisplay.label}
               </span>
               {user.role && (
-                <p className="text-[9px] text-neutral-400 font-bold uppercase mt-1">
+                <p className="text-[9px] text-slate-400 font-semibold uppercase mt-1">
                   Função: {user.role}
                 </p>
               )}
@@ -335,7 +335,7 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
           {/* Reason Input (Mandatory for suspension and ban) */}
           {(selectedStatus === "suspended" || selectedStatus === "banned") && (
             <div className="space-y-1.5 animate-in fade-in duration-150">
-              <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
                 Motivo / Justificativa Institucional <span className="text-red-500">*</span>
               </label>
               <textarea
@@ -347,10 +347,10 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
                     ? "Descreva a justificativa para o banimento permanente desta conta..."
                     : "Descreva a justificativa para a suspensão temporária do usuário..."
                 }
-                className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D] placeholder-neutral-400 resize-none shadow-xs"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-[#172B2A] dark:text-white outline-none focus:ring-2 focus:ring-[#16845B] placeholder-slate-400 resize-none"
                 required
               />
-              <p className="text-[10px] text-neutral-400">
+              <p className="text-[10px] text-slate-400">
                 Este motivo ficará registrado permanentemente na auditoria do sistema e será comunicado ao usuário.
               </p>
             </div>
@@ -358,14 +358,14 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
 
           {/* Error Message if any */}
           {errorMessage && (
-            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 text-xs font-medium flex items-center space-x-2">
+            <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 text-xs font-medium flex items-center space-x-2">
               <AlertTriangle className="w-4 h-4 shrink-0" />
               <span>{errorMessage}</span>
             </div>
           )}
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-end space-x-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+          <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
               onClick={() => {
@@ -373,19 +373,19 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
                 onClose();
               }}
               disabled={isSubmitting}
-              className="px-4 py-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 text-xs font-bold hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors cursor-pointer"
+              className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={isSubmitting || isSelf}
-              className={`px-5 py-2.5 rounded-xl text-white text-xs font-black transition-all flex items-center space-x-1.5 shadow-md cursor-pointer ${
+              className={`px-5 py-2.5 rounded-xl text-white text-xs font-semibold transition-all flex items-center space-x-1.5 shadow-sm cursor-pointer ${
                 selectedStatus === "banned"
                   ? "bg-red-600 hover:bg-red-700"
                   : selectedStatus === "suspended"
                   ? "bg-amber-600 hover:bg-amber-700 text-white"
-                  : "bg-[#00843D] hover:bg-[#006e33]"
+                  : "bg-[#16845B] hover:bg-[#064E3B]"
               } ${isSubmitting || isSelf ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               {isSubmitting ? (

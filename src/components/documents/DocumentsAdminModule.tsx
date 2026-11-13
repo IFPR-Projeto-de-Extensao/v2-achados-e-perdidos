@@ -7,6 +7,15 @@ import { DocumentTemplateEditor } from "./DocumentTemplateEditor";
 import { ProjectConfigView } from "./ProjectConfigView";
 import { generateDocumentPdf } from "../../lib/documentPdfGenerator";
 import {
+  SurfaceCard,
+  SubtlePanel,
+  UIButton,
+  UIBadge,
+  EmptyState,
+  UIInput,
+  UISelect,
+} from "../ui";
+import {
   FileText,
   Plus,
   Search,
@@ -256,43 +265,24 @@ export const DocumentsAdminModule: React.FC = () => {
   };
 
   // Helpers for category badges
-  const getCategoryBadge = (category: string) => {
+  const getCategoryBadge = (
+    category: string
+  ): { label: string; tone: "emerald" | "darkEmerald" | "blue" | "amber" | "slate" } => {
     switch (category) {
       case "EXTENSAO":
-        return {
-          label: "Extensão",
-          className: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-        };
+        return { label: "Extensão", tone: "emerald" };
       case "RESPONSABILIDADE":
-        return {
-          label: "Responsabilidade",
-          className: "bg-purple-500/20 text-purple-300 border-purple-500/30",
-        };
+        return { label: "Responsabilidade", tone: "darkEmerald" };
       case "DECLARACOES":
-        return {
-          label: "Declaração",
-          className: "bg-cyan-500/20 text-cyan-300 border-cyan-500/30",
-        };
+        return { label: "Declaração", tone: "blue" };
       case "RELATORIOS":
-        return {
-          label: "Relatório",
-          className: "bg-amber-500/20 text-amber-300 border-amber-500/30",
-        };
+        return { label: "Relatório", tone: "amber" };
       case "ACHADOS_PERDIDOS":
-        return {
-          label: "Achados e Perdidos",
-          className: "bg-blue-500/20 text-blue-300 border-blue-500/30",
-        };
+        return { label: "Achados e Perdidos", tone: "blue" };
       case "INSTITUCIONAL":
-        return {
-          label: "Institucional",
-          className: "bg-slate-700 text-slate-300 border-slate-600",
-        };
+        return { label: "Institucional", tone: "slate" };
       default:
-        return {
-          label: category,
-          className: "bg-slate-800 text-slate-400 border-slate-700",
-        };
+        return { label: category, tone: "slate" };
     }
   };
 
@@ -323,24 +313,22 @@ export const DocumentsAdminModule: React.FC = () => {
   }
 
   return (
-    <div id="documents-admin-module" className="space-y-6 animate-fade-in text-slate-100">
+    <div id="documents-admin-module" className="space-y-6 animate-fade-in text-[#172B2A] dark:text-slate-100">
       {/* Top Banner Header */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start sm:items-center space-x-3.5">
-            <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl text-emerald-400">
+      <SurfaceCard padding="md">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="p-3 bg-[#EBF5F0] dark:bg-emerald-950/60 border border-[#16845B]/20 dark:border-emerald-800/60 rounded-2xl text-[#16845B] dark:text-emerald-400 shrink-0">
               <FileText className="w-7 h-7" />
             </div>
             <div>
-              <div className="flex items-center space-x-2">
-                <h2 className="text-xl font-bold text-white tracking-tight">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl font-bold text-[#172B2A] dark:text-white tracking-tight">
                   Biblioteca de Modelos e Gerador de Documentos
                 </h2>
-                <span className="px-2.5 py-0.5 text-xs font-semibold bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
-                  IFPR A4
-                </span>
+                <UIBadge tone="emerald">IFPR A4</UIBadge>
               </div>
-              <p className="text-xs sm:text-sm text-slate-400 mt-1">
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
                 Selecione um modelo pré-pronto, personalize os dados específicos e gere PDFs institucionais oficiais com histórico completo de emissões.
               </p>
             </div>
@@ -348,167 +336,175 @@ export const DocumentsAdminModule: React.FC = () => {
 
           {/* Primary View Switcher Navigation */}
           <div className="flex flex-wrap items-center gap-2">
-            <button
+            <UIButton
               type="button"
               id="tab-modelos-preprontos"
               onClick={() => setViewMode("gallery")}
-              className={`px-3.5 py-2 text-xs font-semibold rounded-xl border transition-colors flex items-center space-x-1.5 ${
-                viewMode === "gallery"
-                  ? "bg-slate-800 text-emerald-400 border-emerald-500/30 shadow-xs"
-                  : "bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700"
-              }`}
+              variant={viewMode === "gallery" ? "primary" : "outline"}
+              size="sm"
             >
               <FileText className="w-4 h-4" />
               <span>Modelos Pré-prontos ({activeModelsCount})</span>
-            </button>
+            </UIButton>
 
-            <button
+            <UIButton
               type="button"
               id="tab-meus-documentos"
               onClick={() => setViewMode("history")}
-              className={`px-3.5 py-2 text-xs font-semibold rounded-xl border transition-colors flex items-center space-x-1.5 ${
-                viewMode === "history"
-                  ? "bg-slate-800 text-emerald-400 border-emerald-500/30 shadow-xs"
-                  : "bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700"
-              }`}
+              variant={viewMode === "history" ? "primary" : "outline"}
+              size="sm"
             >
               <History className="w-4 h-4" />
               <span>Meus Documentos ({generatedDocuments.length})</span>
-            </button>
+            </UIButton>
 
-            <button
+            <UIButton
               type="button"
               id="tab-dados-projeto"
               onClick={() => setViewMode("project_settings")}
-              className={`px-3.5 py-2 text-xs font-semibold rounded-xl border transition-colors flex items-center space-x-1.5 ${
-                viewMode === "project_settings"
-                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-xs"
-                  : "bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700"
-              }`}
+              variant={viewMode === "project_settings" ? "primary" : "outline"}
+              size="sm"
             >
-              <Sparkles className="w-4 h-4 text-emerald-400" />
+              <Sparkles className="w-4 h-4" />
               <span>Dados do Projeto</span>
-            </button>
+            </UIButton>
 
             {isAdmin && (
-              <button
+              <UIButton
                 type="button"
                 id="btn-novo-modelo"
                 onClick={handleOpenCreate}
-                className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-md transition-all flex items-center space-x-1.5"
+                variant="dark"
+                size="sm"
               >
                 <Plus className="w-4 h-4" />
                 <span>Novo Modelo</span>
-              </button>
+              </UIButton>
             )}
           </div>
         </div>
 
         {/* Metric Badges */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-slate-800 text-xs">
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
-            <span className="text-slate-400 block text-[11px]">Modelos Disponíveis</span>
-            <span className="text-lg font-bold text-white mt-0.5 block">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-xs">
+          <SubtlePanel padding="sm">
+            <span className="text-slate-500 dark:text-slate-400 block text-[11px] font-medium">
+              Modelos Disponíveis
+            </span>
+            <span className="text-lg font-bold text-[#172B2A] dark:text-white mt-0.5 block">
               {documentTemplates.length}
             </span>
-          </div>
+          </SubtlePanel>
 
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
-            <span className="text-slate-400 block text-[11px]">Modelos Ativos</span>
-            <span className="text-lg font-bold text-emerald-400 mt-0.5 block">
+          <SubtlePanel padding="sm">
+            <span className="text-slate-500 dark:text-slate-400 block text-[11px] font-medium">
+              Modelos Ativos
+            </span>
+            <span className="text-lg font-bold text-[#16845B] dark:text-emerald-400 mt-0.5 block">
               {documentTemplates.filter((t) => t.status === "ATIVO").length}
             </span>
-          </div>
+          </SubtlePanel>
 
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
-            <span className="text-slate-400 block text-[11px]">Documentos Gerados</span>
-            <span className="text-lg font-bold text-cyan-400 mt-0.5 block">
+          <SubtlePanel padding="sm">
+            <span className="text-slate-500 dark:text-slate-400 block text-[11px] font-medium">
+              Documentos Gerados
+            </span>
+            <span className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-0.5 block">
               {generatedDocuments.length}
             </span>
-          </div>
+          </SubtlePanel>
 
-          <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3">
-            <span className="text-slate-400 block text-[11px]">Campus IFPR</span>
-            <span className="text-xs font-bold text-emerald-300 mt-1 block">
+          <SubtlePanel padding="sm">
+            <span className="text-slate-500 dark:text-slate-400 block text-[11px] font-medium">
+              Campus IFPR
+            </span>
+            <span className="text-xs font-bold text-[#064E3B] dark:text-emerald-300 mt-1 block truncate">
               {projectSettings.institution.campus}
             </span>
-          </div>
+          </SubtlePanel>
         </div>
-      </div>
+      </SurfaceCard>
 
       {/* VIEW: PROJECT SETTINGS */}
       {viewMode === "project_settings" ? (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <button
+            <UIButton
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setViewMode("gallery")}
-              className="text-xs font-semibold text-emerald-400 hover:text-emerald-300 flex items-center space-x-1"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
               <span>Voltar para Modelos Pré-prontos</span>
-            </button>
+            </UIButton>
           </div>
           <ProjectConfigView />
         </div>
       ) : viewMode === "history" ? (
         /* VIEW 2: MEUS DOCUMENTOS (HISTÓRICO DE DOCUMENTOS GERADOS) */
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
-            {/* Search Input for History */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={historySearchQuery}
-                onChange={(e) => setHistorySearchQuery(e.target.value)}
-                placeholder="Buscar por protocolo, título, parceiro ou usuário..."
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs sm:text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
-              />
-            </div>
+          <SurfaceCard padding="sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {/* Search Input for History */}
+              <div className="flex-1 max-w-md">
+                <UIInput
+                  type="text"
+                  leftIcon={<Search className="w-4 h-4" />}
+                  value={historySearchQuery}
+                  onChange={(e) => setHistorySearchQuery(e.target.value)}
+                  placeholder="Buscar por protocolo, título, parceiro ou usuário..."
+                />
+              </div>
 
-            <div className="flex items-center space-x-3 text-xs text-slate-400">
-              <span>{filteredHistory.length} documento(s) encontrado(s)</span>
-              <button
-                type="button"
-                onClick={() => setViewMode("gallery")}
-                className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-xl font-semibold transition-colors flex items-center space-x-1"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Emitir Novo</span>
-              </button>
+              <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                <span className="font-medium">{filteredHistory.length} documento(s) encontrado(s)</span>
+                <UIButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setViewMode("gallery")}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Emitir Novo</span>
+                </UIButton>
+              </div>
             </div>
-          </div>
+          </SurfaceCard>
 
           {filteredHistory.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-3">
-              <FileCheck className="w-12 h-12 text-slate-600 mx-auto" />
-              <h3 className="text-base font-bold text-slate-300">
-                {generatedDocuments.length === 0
-                  ? "Nenhum documento emitido ainda"
-                  : "Nenhum documento corresponde à busca"}
-              </h3>
-              <p className="text-xs text-slate-500 max-w-md mx-auto">
-                {generatedDocuments.length === 0
-                  ? "Na aba 'Modelos Pré-prontos', selecione um modelo e clique em 'Usar modelo' para gerar seu primeiro documento oficial em PDF."
-                  : "Tente buscar com outros termos de protocolo, nome ou destinatário."}
-              </p>
-              {generatedDocuments.length === 0 && (
-                <button
-                  type="button"
-                  onClick={() => setViewMode("gallery")}
-                  className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-md transition-all inline-flex items-center space-x-1.5 mt-2"
-                >
-                  <FileText className="w-4 h-4" />
-                  <span>Explorar Modelos Disponíveis</span>
-                </button>
-              )}
-            </div>
+            <SurfaceCard padding="lg">
+              <EmptyState
+                icon={<FileCheck className="w-7 h-7" />}
+                title={
+                  generatedDocuments.length === 0
+                    ? "Nenhum documento emitido ainda"
+                    : "Nenhum documento corresponde à busca"
+                }
+                description={
+                  generatedDocuments.length === 0
+                    ? "Na aba 'Modelos Pré-prontos', selecione um modelo e clique em 'Usar modelo' para gerar seu primeiro documento oficial em PDF."
+                    : "Tente buscar com outros termos de protocolo, nome ou destinatário."
+                }
+                action={
+                  generatedDocuments.length === 0 ? (
+                    <UIButton
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={() => setViewMode("gallery")}
+                    >
+                      <FileText className="w-4 h-4" />
+                      <span>Explorar Modelos Disponíveis</span>
+                    </UIButton>
+                  ) : undefined
+                }
+              />
+            </SurfaceCard>
           ) : (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+            <SurfaceCard padding="none" className="overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-300">
-                  <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider text-[10px] border-b border-slate-800">
+                <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
+                  <thead className="bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-500 dark:text-slate-300 uppercase tracking-wider text-[10px] border-b border-slate-200 dark:border-slate-800">
                     <tr>
                       <th className="px-4 py-3.5 font-semibold">Nº Protocolo</th>
                       <th className="px-4 py-3.5 font-semibold">Documento / Modelo</th>
@@ -519,21 +515,21 @@ export const DocumentsAdminModule: React.FC = () => {
                       <th className="px-4 py-3.5 font-semibold text-right">Ações</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
                     {filteredHistory.map((doc) => (
-                      <tr key={doc.id} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="px-4 py-3.5 font-mono text-emerald-400 font-bold whitespace-nowrap">
+                      <tr key={doc.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
+                        <td className="px-4 py-3.5 font-mono text-[#16845B] dark:text-emerald-400 font-bold whitespace-nowrap">
                           {doc.documentNumber}
                         </td>
-                        <td className="px-4 py-3.5 font-medium text-white max-w-xs truncate">
+                        <td className="px-4 py-3.5 font-semibold text-[#172B2A] dark:text-white max-w-xs truncate">
                           {doc.templateTitle}
                         </td>
-                        <td className="px-4 py-3.5 text-slate-300 max-w-xs truncate">
+                        <td className="px-4 py-3.5 text-slate-600 dark:text-slate-300 max-w-xs truncate">
                           {doc.recipientOrOrg}
                         </td>
-                        <td className="px-4 py-3.5 text-slate-400 whitespace-nowrap">
+                        <td className="px-4 py-3.5 text-slate-500 dark:text-slate-400 whitespace-nowrap">
                           <div className="flex items-center space-x-1">
-                            <Clock className="w-3.5 h-3.5 text-slate-500" />
+                            <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
                             <span>
                               {new Date(doc.generatedAt).toLocaleString("pt-BR", {
                                 day: "2-digit",
@@ -545,58 +541,64 @@ export const DocumentsAdminModule: React.FC = () => {
                             </span>
                           </div>
                         </td>
-                        <td className="px-4 py-3.5 text-slate-400 whitespace-nowrap">
+                        <td className="px-4 py-3.5 text-slate-600 dark:text-slate-400 whitespace-nowrap">
                           <div className="flex items-center space-x-1.5">
-                            <div className="w-5 h-5 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-300">
+                            <div className="w-5 h-5 rounded-full bg-[#EBF5F0] dark:bg-slate-800 border border-[#16845B]/20 dark:border-slate-700 flex items-center justify-center text-[10px] font-bold text-[#16845B] dark:text-slate-300">
                               {doc.generatedByName?.charAt(0) || "U"}
                             </div>
                             <span className="truncate max-w-[130px]">{doc.generatedByName}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap">
-                          <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
-                            {doc.status || "Emitido"}
-                          </span>
+                          <UIBadge tone="emerald">{doc.status || "Emitido"}</UIBadge>
                         </td>
                         <td className="px-4 py-3.5 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end space-x-1.5">
-                            <button
+                            <UIButton
                               type="button"
+                              variant="outline"
+                              size="sm"
                               onClick={() => setDetailsRecord(doc)}
-                              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition-colors"
+                              className="!px-2 !py-1.5"
                               title="Ver detalhes do preenchimento"
                             >
                               <Eye className="w-3.5 h-3.5" />
-                            </button>
+                            </UIButton>
 
-                            <button
+                            <UIButton
                               type="button"
+                              variant="outline"
+                              size="sm"
                               onClick={() => handleReuseHistoryDocument(doc)}
-                              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-amber-200 rounded-lg border border-amber-500/30 transition-colors"
+                              className="!px-2 !py-1.5 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/50 hover:bg-amber-50 dark:hover:bg-amber-950/30"
                               title="Reutilizar / Editar no Gerador"
                             >
                               <RotateCcw className="w-3.5 h-3.5" />
-                            </button>
+                            </UIButton>
 
-                            <button
+                            <UIButton
                               type="button"
+                              variant="secondary"
+                              size="sm"
                               onClick={() => handleReDownloadHistory(doc)}
-                              className="px-2.5 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 rounded-lg border border-emerald-500/30 text-xs font-semibold transition-colors inline-flex items-center space-x-1"
+                              className="!px-2.5 !py-1.5"
                               title="Baixar PDF novamente"
                             >
                               <Download className="w-3.5 h-3.5" />
                               <span>PDF</span>
-                            </button>
+                            </UIButton>
 
                             {isAdmin && (
-                              <button
+                              <UIButton
                                 type="button"
+                                variant="danger"
+                                size="sm"
                                 onClick={() => handleDeleteHistory(doc)}
-                                className="p-1.5 bg-slate-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 rounded-lg border border-slate-700 transition-colors"
+                                className="!px-2 !py-1.5"
                                 title="Excluir do histórico"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              </UIButton>
                             )}
                           </div>
                         </td>
@@ -605,115 +607,118 @@ export const DocumentsAdminModule: React.FC = () => {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </SurfaceCard>
           )}
         </div>
       ) : (
         /* VIEW 1: MODELOS PRÉ-PRONTOS (BIBLIOTECA DE MODELOS REUTILIZÁVEIS) */
         <div className="space-y-6">
           {/* Section Sub-banner with Workflow Steps */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm space-y-3">
+          <SurfaceCard padding="md" className="space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center space-x-2">
-                <div className="p-1.5 bg-emerald-500/20 text-emerald-400 rounded-lg">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="p-1.5 bg-[#EBF5F0] dark:bg-emerald-950/60 text-[#16845B] dark:text-emerald-400 rounded-lg border border-[#16845B]/20 dark:border-emerald-800/50">
                   <FileText className="w-4 h-4" />
                 </div>
-                <h3 className="text-base font-bold text-white">Modelos pré-prontos</h3>
-                <span className="text-xs text-slate-400 font-medium">
+                <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
+                  Modelos pré-prontos
+                </h3>
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                   ({activeModelsCount} {activeModelsCount === 1 ? "modelo disponível" : "modelos disponíveis"})
                 </span>
               </div>
-              <span className="text-[11px] text-emerald-400/90 font-medium">
+              <span className="text-[11px] text-[#16845B] dark:text-emerald-400 font-semibold">
                 Imutabilidade garantida · Os templates originais são preservados
               </span>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Selecione um dos modelos institucionais abaixo e clique em <strong className="text-white">"Usar modelo"</strong>. O gerador será aberto com os dados cadastrais do projeto já preenchidos, permitindo que você revise apenas os campos variáveis antes de exportar o PDF oficial.
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              Selecione um dos modelos institucionais abaixo e clique em <strong className="text-[#172B2A] dark:text-white">"Usar modelo"</strong>. O gerador será aberto com os dados cadastrais do projeto já preenchidos, permitindo que você revise apenas os campos variáveis antes de exportar o PDF oficial.
             </p>
 
             {/* Workflow steps chip track */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-slate-800/80 text-[11px]">
-              <div className="flex items-center space-x-2 text-slate-300 bg-slate-950/60 px-2.5 py-1.5 rounded-lg border border-slate-800/60">
-                <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px] flex items-center justify-center">1</span>
-                <span className="truncate">Selecionar modelo</span>
-              </div>
-              <div className="flex items-center space-x-2 text-slate-300 bg-slate-950/60 px-2.5 py-1.5 rounded-lg border border-slate-800/60">
-                <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px] flex items-center justify-center">2</span>
-                <span className="truncate">Clicar "Usar modelo"</span>
-              </div>
-              <div className="flex items-center space-x-2 text-slate-300 bg-slate-950/60 px-2.5 py-1.5 rounded-lg border border-slate-800/60">
-                <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px] flex items-center justify-center">3</span>
-                <span className="truncate">Editar campos necessários</span>
-              </div>
-              <div className="flex items-center space-x-2 text-slate-300 bg-slate-950/60 px-2.5 py-1.5 rounded-lg border border-slate-800/60">
-                <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px] flex items-center justify-center">4</span>
-                <span className="truncate">Gerar e baixar PDF</span>
-              </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px]">
+              <SubtlePanel padding="sm" className="!py-2 !px-2.5 flex items-center space-x-2 text-slate-700 dark:text-slate-300">
+                <span className="w-4 h-4 rounded-full bg-[#EBF5F0] dark:bg-emerald-500/20 text-[#16845B] dark:text-emerald-300 font-bold text-[10px] flex items-center justify-center shrink-0">1</span>
+                <span className="truncate font-medium">Selecionar modelo</span>
+              </SubtlePanel>
+              <SubtlePanel padding="sm" className="!py-2 !px-2.5 flex items-center space-x-2 text-slate-700 dark:text-slate-300">
+                <span className="w-4 h-4 rounded-full bg-[#EBF5F0] dark:bg-emerald-500/20 text-[#16845B] dark:text-emerald-300 font-bold text-[10px] flex items-center justify-center shrink-0">2</span>
+                <span className="truncate font-medium">Clicar "Usar modelo"</span>
+              </SubtlePanel>
+              <SubtlePanel padding="sm" className="!py-2 !px-2.5 flex items-center space-x-2 text-slate-700 dark:text-slate-300">
+                <span className="w-4 h-4 rounded-full bg-[#EBF5F0] dark:bg-emerald-500/20 text-[#16845B] dark:text-emerald-300 font-bold text-[10px] flex items-center justify-center shrink-0">3</span>
+                <span className="truncate font-medium">Editar campos necessários</span>
+              </SubtlePanel>
+              <SubtlePanel padding="sm" className="!py-2 !px-2.5 flex items-center space-x-2 text-slate-700 dark:text-slate-300">
+                <span className="w-4 h-4 rounded-full bg-[#EBF5F0] dark:bg-emerald-500/20 text-[#16845B] dark:text-emerald-300 font-bold text-[10px] flex items-center justify-center shrink-0">4</span>
+                <span className="truncate font-medium">Gerar e baixar PDF</span>
+              </SubtlePanel>
             </div>
-          </div>
+          </SurfaceCard>
 
           {/* Search and Category Filters */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800">
-            {/* Search Input */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar modelo por título, código ou finalidade..."
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs sm:text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
-              />
-            </div>
+          <SurfaceCard padding="sm">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              {/* Search Input */}
+              <div className="flex-1 max-w-md">
+                <UIInput
+                  type="text"
+                  leftIcon={<Search className="w-4 h-4" />}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Buscar modelo por título, código ou finalidade..."
+                />
+              </div>
 
-            {/* Category Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-              {[
-                { id: "TODOS", label: "Todos" },
-                { id: "EXTENSAO", label: "Extensão" },
-                { id: "RESPONSABILIDADE", label: "Responsabilidade" },
-                { id: "DECLARACOES", label: "Declarações" },
-                { id: "RELATORIOS", label: "Relatórios" },
-                { id: "ACHADOS_PERDIDOS", label: "Achados & Perdidos" },
-                { id: "INSTITUCIONAL", label: "Institucional" },
-              ].map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  onClick={() => setCategoryFilter(cat.id)}
-                  className={`px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-colors ${
-                    categoryFilter === cat.id
-                      ? "bg-emerald-600 text-white shadow-sm"
-                      : "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
-                  }`}
-                >
-                  {cat.label}
-                </button>
-              ))}
+              {/* Category Pills & Status Filter */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 text-xs">
+                {[
+                  { id: "TODOS", label: "Todos" },
+                  { id: "EXTENSAO", label: "Extensão" },
+                  { id: "RESPONSABILIDADE", label: "Responsabilidade" },
+                  { id: "DECLARACOES", label: "Declarações" },
+                  { id: "RELATORIOS", label: "Relatórios" },
+                  { id: "ACHADOS_PERDIDOS", label: "Achados & Perdidos" },
+                  { id: "INSTITUCIONAL", label: "Institucional" },
+                ].map((cat) => (
+                  <UIButton
+                    key={cat.id}
+                    type="button"
+                    size="sm"
+                    variant={categoryFilter === cat.id ? "primary" : "outline"}
+                    onClick={() => setCategoryFilter(cat.id)}
+                    className="whitespace-nowrap !py-1.5"
+                  >
+                    {cat.label}
+                  </UIButton>
+                ))}
 
-              {/* Status Filter */}
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as any)}
-                className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-emerald-500 ml-2"
-              >
-                <option value="TODOS">Status: Todos</option>
-                <option value="ATIVO">Apenas Ativos</option>
-                <option value="INATIVO">Apenas Inativos</option>
-              </select>
+                {/* Status Filter */}
+                <div className="min-w-[140px] ml-1 shrink-0">
+                  <UISelect
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value as any)}
+                    className="!py-1.5 !text-xs"
+                  >
+                    <option value="TODOS">Status: Todos</option>
+                    <option value="ATIVO">Apenas Ativos</option>
+                    <option value="INATIVO">Apenas Inativos</option>
+                  </UISelect>
+                </div>
+              </div>
             </div>
-          </div>
+          </SurfaceCard>
 
           {/* Templates Grid Cards */}
           {filteredTemplates.length === 0 ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-3">
-              <FileText className="w-12 h-12 text-slate-600 mx-auto" />
-              <h3 className="text-base font-bold text-slate-300">Nenhum modelo encontrado</h3>
-              <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                Tente ajustar os termos de pesquisa ou os filtros de categoria.
-              </p>
-            </div>
+            <SurfaceCard padding="lg">
+              <EmptyState
+                icon={<FileText className="w-7 h-7" />}
+                title="Nenhum modelo encontrado"
+                description="Tente ajustar os termos de pesquisa ou os filtros de categoria."
+              />
+            </SurfaceCard>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {filteredTemplates.map((template) => {
@@ -728,45 +733,35 @@ export const DocumentsAdminModule: React.FC = () => {
                   : "Padrão Sistema";
 
                 return (
-                  <div
+                  <SurfaceCard
                     key={template.id}
                     id={`template-card-${template.id}`}
-                    className={`bg-slate-900 border rounded-2xl p-5 flex flex-col justify-between space-y-4 transition-all hover:border-slate-700 shadow-sm relative group ${
-                      template.status === "ATIVO"
-                        ? "border-slate-800"
-                        : "border-slate-800/50 opacity-75"
+                    padding="md"
+                    interactive
+                    className={`flex flex-col justify-between space-y-4 relative group ${
+                      template.status === "ATIVO" ? "" : "opacity-75"
                     }`}
                   >
                     {/* Top Card Header */}
                     <div className="space-y-2.5">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center space-x-1.5">
-                          <span className="px-2 py-0.5 text-[11px] font-mono font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="px-2 py-0.5 text-[11px] font-mono font-bold bg-[#EBF5F0] dark:bg-emerald-500/10 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/20 dark:border-emerald-500/20 rounded-md">
                             {template.code}
                           </span>
-                          <span
-                            className={`px-2 py-0.5 text-[10px] font-semibold rounded border ${catBadge.className}`}
-                          >
-                            {catBadge.label}
-                          </span>
+                          <UIBadge tone={catBadge.tone}>{catBadge.label}</UIBadge>
                         </div>
 
-                        <div className="flex items-center space-x-1.5">
-                          <span
-                            className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
-                              template.status === "ATIVO"
-                                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                                : "bg-slate-800 text-slate-400 border border-slate-700"
-                            }`}
-                          >
+                        <div className="flex items-center space-x-1.5 shrink-0">
+                          <UIBadge tone={template.status === "ATIVO" ? "emerald" : "slate"}>
                             {template.status}
-                          </span>
+                          </UIBadge>
 
                           {isAdmin && (
                             <button
                               type="button"
                               onClick={() => handleToggleStatus(template)}
-                              className="text-slate-400 hover:text-emerald-400 transition-colors"
+                              className="text-slate-400 hover:text-[#16845B] dark:hover:text-emerald-400 transition-colors cursor-pointer"
                               title={
                                 template.status === "ATIVO"
                                   ? "Desativar modelo"
@@ -774,36 +769,36 @@ export const DocumentsAdminModule: React.FC = () => {
                               }
                             >
                               {template.status === "ATIVO" ? (
-                                <ToggleRight className="w-5 h-5 text-emerald-400" />
+                                <ToggleRight className="w-5 h-5 text-[#16845B] dark:text-emerald-400" />
                               ) : (
-                                <ToggleLeft className="w-5 h-5 text-slate-500" />
+                                <ToggleLeft className="w-5 h-5 text-slate-400 dark:text-slate-500" />
                               )}
                             </button>
                           )}
                         </div>
                       </div>
 
-                      <h3 className="text-base font-bold text-white tracking-tight line-clamp-2 leading-snug">
+                      <h3 className="text-base font-bold text-[#172B2A] dark:text-white tracking-tight line-clamp-2 leading-snug">
                         {template.title}
                       </h3>
 
-                      <p className="text-xs text-slate-400 line-clamp-3 leading-relaxed">
+                      <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-3 leading-relaxed">
                         {template.description}
                       </p>
                     </div>
 
                     {/* Metadata Details (Seções, Campos, Assinaturas, Última Atualização) */}
-                    <div className="space-y-2 pt-3 border-t border-slate-800/80 text-[11px] text-slate-400">
-                      <div className="flex items-center justify-between">
+                    <div className="space-y-2 pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400">
+                      <div className="flex items-center justify-between font-medium">
                         <span>{template.sections?.length || 0} seções</span>
                         <span>•</span>
                         <span>{template.fields?.length || 0} campos padrão</span>
                         <span>•</span>
                         <span>{template.signatures?.length || 0} assinaturas</span>
                       </div>
-                      <div className="flex items-center justify-between text-[10px] text-slate-500">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500">
                         <span className="flex items-center space-x-1">
-                          <Clock className="w-3 h-3 text-slate-500" />
+                          <Clock className="w-3 h-3" />
                           <span>Atualizado: {lastUpdatedFormatted}</span>
                         </span>
                         <span>Versão {template.version}.0</span>
@@ -811,61 +806,70 @@ export const DocumentsAdminModule: React.FC = () => {
                     </div>
 
                     {/* Action Buttons Bar */}
-                    <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
+                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
                       <div className="flex items-center space-x-1">
-                        <button
+                        <UIButton
                           type="button"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => handleOpenPreview(template)}
-                          className="p-2 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-colors"
+                          className="!p-2 text-slate-500 hover:text-[#16845B] dark:hover:text-emerald-400"
                           title="Visualizar prévia A4"
                         >
                           <Eye className="w-4 h-4" />
-                        </button>
+                        </UIButton>
 
                         {isAdmin && (
                           <>
-                            <button
+                            <UIButton
                               type="button"
+                              variant="ghost"
+                              size="sm"
                               onClick={() => handleOpenEdit(template)}
-                              className="p-2 text-slate-400 hover:text-blue-400 hover:bg-slate-800 rounded-lg transition-colors"
+                              className="!p-2 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400"
                               title="Editar modelo (Estrutura, Campos e Textos)"
                             >
                               <Edit3 className="w-4 h-4" />
-                            </button>
+                            </UIButton>
 
-                            <button
+                            <UIButton
                               type="button"
+                              variant="ghost"
+                              size="sm"
                               onClick={() => handleDuplicate(template)}
-                              className="p-2 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-colors"
+                              className="!p-2 text-slate-500 hover:text-amber-600 dark:hover:text-amber-400"
                               title="Duplicar modelo (Criar nova versão)"
                             >
                               <Copy className="w-4 h-4" />
-                            </button>
+                            </UIButton>
 
-                            <button
+                            <UIButton
                               type="button"
+                              variant="ghost"
+                              size="sm"
                               onClick={() => handleDelete(template)}
-                              className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
+                              className="!p-2 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400"
                               title="Excluir modelo"
                             >
                               <Trash2 className="w-4 h-4" />
-                            </button>
+                            </UIButton>
                           </>
                         )}
                       </div>
 
                       {/* Primary "Usar modelo" Button */}
-                      <button
+                      <UIButton
                         type="button"
                         id={`btn-usar-modelo-${template.id}`}
+                        variant="primary"
+                        size="sm"
                         onClick={() => handleUseTemplate(template)}
-                        className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-md transition-all flex items-center space-x-1.5 group-hover:shadow-emerald-950/50"
                       >
                         <FilePlus className="w-4 h-4" />
                         <span>Usar modelo</span>
-                      </button>
+                      </UIButton>
                     </div>
-                  </div>
+                  </SurfaceCard>
                 );
               })}
             </div>
@@ -890,80 +894,91 @@ export const DocumentsAdminModule: React.FC = () => {
       {detailsRecord && (
         <div
           id="modal-document-details"
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#172B2A]/45 dark:bg-black/75 modal-backdrop-smooth animate-fade-in"
         >
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
-            <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950">
+          <div className="bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl modal-panel-smooth">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-900/70">
               <div className="flex items-center space-x-3">
-                <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                <div className="p-2 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/60 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/20 dark:border-emerald-800/50">
                   <FileText className="w-5 h-5" />
                 </div>
                 <div>
                   <div className="flex items-center space-x-2">
-                    <span className="text-xs font-mono font-bold text-emerald-400">
+                    <span className="text-xs font-mono font-bold text-[#16845B] dark:text-emerald-400">
                       {detailsRecord.documentNumber}
                     </span>
-                    <span className="text-[10px] px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30 font-semibold">
-                      {detailsRecord.status || "Emitido"}
-                    </span>
+                    <UIBadge tone="emerald">{detailsRecord.status || "Emitido"}</UIBadge>
                   </div>
-                  <h3 className="text-sm font-bold text-white mt-0.5">
+                  <h3 className="text-sm font-bold text-[#172B2A] dark:text-white mt-0.5">
                     {detailsRecord.templateTitle}
                   </h3>
                 </div>
               </div>
-              <button
+              <UIButton
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setDetailsRecord(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+                className="!p-1.5"
+                aria-label="Fechar detalhes"
               >
                 <X className="w-5 h-5" />
-              </button>
+              </UIButton>
             </div>
 
             <div className="p-5 overflow-y-auto space-y-4 text-xs">
               {/* Metadata Info Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950 p-4 rounded-xl border border-slate-800">
-                <div>
-                  <span className="text-slate-500 block text-[10px]">Destinatário / Parte</span>
-                  <span className="font-semibold text-slate-200 text-xs mt-0.5 block">
-                    {detailsRecord.recipientOrOrg}
-                  </span>
+              <SubtlePanel padding="md">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-slate-500 dark:text-slate-400 block text-[10px] font-semibold uppercase tracking-wide">
+                      Destinatário / Parte
+                    </span>
+                    <span className="font-semibold text-[#172B2A] dark:text-slate-200 text-xs mt-0.5 block">
+                      {detailsRecord.recipientOrOrg}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 dark:text-slate-400 block text-[10px] font-semibold uppercase tracking-wide">
+                      Data e Hora da Emissão
+                    </span>
+                    <span className="font-semibold text-[#172B2A] dark:text-slate-200 text-xs mt-0.5 block">
+                      {new Date(detailsRecord.generatedAt).toLocaleString("pt-BR")}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 dark:text-slate-400 block text-[10px] font-semibold uppercase tracking-wide">
+                      Emitido Por
+                    </span>
+                    <span className="font-semibold text-[#172B2A] dark:text-slate-200 text-xs mt-0.5 block">
+                      {detailsRecord.generatedByName}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 dark:text-slate-400 block text-[10px] font-semibold uppercase tracking-wide">
+                      E-mail do Emissor
+                    </span>
+                    <span className="font-semibold text-[#172B2A] dark:text-slate-200 text-xs mt-0.5 block">
+                      {detailsRecord.generatedByEmail || "Sistema Institucional"}
+                    </span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-slate-500 block text-[10px]">Data e Hora da Emissão</span>
-                  <span className="font-semibold text-slate-200 text-xs mt-0.5 block">
-                    {new Date(detailsRecord.generatedAt).toLocaleString("pt-BR")}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[10px]">Emitido Por</span>
-                  <span className="font-semibold text-slate-200 text-xs mt-0.5 block">
-                    {detailsRecord.generatedByName}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-500 block text-[10px]">E-mail do Emissor</span>
-                  <span className="font-semibold text-slate-200 text-xs mt-0.5 block">
-                    {detailsRecord.generatedByEmail || "Sistema Institucional"}
-                  </span>
-                </div>
-              </div>
+              </SubtlePanel>
 
               {/* Saved Fields List */}
               <div className="space-y-2">
-                <h4 className="font-bold text-slate-300 text-xs flex items-center space-x-1.5">
-                  <Info className="w-3.5 h-3.5 text-emerald-400" />
+                <h4 className="font-bold text-[#172B2A] dark:text-slate-200 text-xs flex items-center space-x-1.5">
+                  <Info className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
                   <span>Dados e Campos Registrados na Emissão:</span>
                 </h4>
-                <div className="bg-slate-950 border border-slate-800 rounded-xl divide-y divide-slate-800/80 max-h-60 overflow-y-auto">
+                <div className="bg-[#F8FAFC] dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl divide-y divide-slate-200/70 dark:divide-slate-800 max-h-60 overflow-y-auto">
                   {Object.entries(detailsRecord.fieldsData || {}).map(([key, val]) => (
                     <div key={key} className="p-3 text-xs flex flex-col sm:flex-row sm:items-start justify-between gap-1">
-                      <span className="font-mono text-emerald-400/90 text-[11px] min-w-[160px]">
+                      <span className="font-mono text-[#16845B] dark:text-emerald-400 font-semibold text-[11px] min-w-[160px]">
                         {`{{${key}}}`}
                       </span>
-                      <span className="text-slate-300 font-sans whitespace-pre-line flex-1 text-right sm:text-left">
-                        {val || <em className="text-slate-600">(vazio)</em>}
+                      <span className="text-slate-700 dark:text-slate-300 font-sans whitespace-pre-line flex-1 text-right sm:text-left">
+                        {val || <em className="text-slate-400 dark:text-slate-600">(vazio)</em>}
                       </span>
                     </div>
                   ))}
@@ -972,31 +987,35 @@ export const DocumentsAdminModule: React.FC = () => {
             </div>
 
             {/* Modal Actions Footer */}
-            <div className="p-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
-              <button
+            <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-[#F8FAFC] dark:bg-slate-900/70 flex flex-wrap items-center justify-between gap-2">
+              <UIButton
                 type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setDetailsRecord(null)}
-                className="px-3.5 py-2 text-xs font-semibold text-slate-400 hover:text-white transition-colors"
               >
                 Fechar
-              </button>
+              </UIButton>
               <div className="flex items-center space-x-2">
-                <button
+                <UIButton
                   type="button"
+                  variant="outline"
+                  size="sm"
                   onClick={() => handleReuseHistoryDocument(detailsRecord)}
-                  className="px-3.5 py-2 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-xl border border-amber-500/30 transition-colors flex items-center space-x-1.5"
+                  className="text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60 hover:bg-amber-50 dark:hover:bg-amber-950/30"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Reutilizar / Editar no Gerador</span>
-                </button>
-                <button
+                </UIButton>
+                <UIButton
                   type="button"
+                  variant="primary"
+                  size="sm"
                   onClick={() => handleReDownloadHistory(detailsRecord)}
-                  className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl shadow-md transition-all flex items-center space-x-1.5"
                 >
                   <Download className="w-4 h-4" />
                   <span>Baixar PDF</span>
-                </button>
+                </UIButton>
               </div>
             </div>
           </div>

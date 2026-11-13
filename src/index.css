@@ -2,44 +2,112 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme {
+  --font-sans: 'Inter', 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --color-localiza-primary: #16845B;
+  --color-localiza-primary-hover: #064E3B;
+  --color-localiza-primary-tint: #EBF5F0;
+  --color-localiza-bg: #F8FAFC;
+  --color-localiza-surface: #FFFFFF;
+  --color-localiza-text: #172B2A;
+  --color-localiza-dark-surface: #111827;
+  --color-localiza-dark-bg: #0B0F17;
+}
+
+:root {
+  --localiza-primary: #16845B;
+  --localiza-primary-hover: #064E3B;
+  --localiza-primary-tint: #EBF5F0;
+  --localiza-bg: #F8FAFC;
+  --localiza-surface: #FFFFFF;
+  --localiza-surface-subtle: #F8FAFC;
+  --localiza-text: #172B2A;
+  --localiza-text-muted: #475569;
+  --localiza-border: #E2E8F0;
+  --localiza-focus-ring: rgba(22, 132, 91, 0.25);
+  --localiza-shadow-card: 0 1px 3px rgba(23, 43, 42, 0.04), 0 1px 2px rgba(23, 43, 42, 0.02);
+  --localiza-shadow-elevated: 0 10px 30px rgba(23, 43, 42, 0.08);
+}
+
+html.dark {
+  --localiza-bg: #0B0F17;
+  --localiza-surface: #111827;
+  --localiza-surface-subtle: #1E293B;
+  --localiza-text: #F8FAFC;
+  --localiza-text-muted: #94A3B8;
+  --localiza-border: #1E293B;
+  --localiza-focus-ring: rgba(52, 211, 153, 0.28);
+  --localiza-shadow-card: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --localiza-shadow-elevated: 0 16px 40px rgba(0, 0, 0, 0.55);
+}
+
 @layer base {
   html {
     color-scheme: light dark;
+    font-family: 'Inter', 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
+
   html, body {
-    background-color: #f8fafc;
-    color: #0f172a;
+    background-color: #F8FAFC;
+    color: #172B2A;
     transition: background-color 0.2s ease, color 0.2s ease;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
   html.dark, html.dark body {
-    background-color: #0c1017;
-    color: #f1f5f9;
+    background-color: #0B0F17;
+    color: #F8FAFC;
   }
+
   body {
-    font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Inter', 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     min-height: 100vh;
+  }
+
+  /* Fallback tipográfico seguro preservado para compatibilidade de auditoria CSP */
+  .font-legacy-fallback {
+    font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   }
 
   /* Form components smooth transitions and WCAG AA contrast */
   input, select, textarea, button {
+    font-family: inherit;
     transition: background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #94A3B8;
   }
 
   /* Dark mode modal & form element contrast refinement */
   html.dark input::placeholder,
   html.dark textarea::placeholder {
-    color: #64748b;
+    color: #64748B;
+  }
+
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    border-color: #16845B;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(22, 132, 91, 0.22);
   }
 
   html.dark input:focus,
   html.dark select:focus,
   html.dark textarea:focus {
-    border-color: #00843D !important;
+    border-color: #16845B !important;
     outline: none;
-    box-shadow: 0 0 0 2px rgba(0, 132, 61, 0.25);
+    box-shadow: 0 0 0 2px rgba(22, 132, 91, 0.28);
+  }
+
+  button:focus-visible,
+  a:focus-visible {
+    outline: 2px solid #16845B;
+    outline-offset: 2px;
   }
 }
 
@@ -48,6 +116,20 @@
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   transition: background-color 0.25s ease, backdrop-filter 0.25s ease;
+}
+
+/* Reusable Clean Minimal Design System Primitives */
+.localiza-surface {
+  background-color: var(--localiza-surface);
+  border: 1px solid var(--localiza-border);
+  box-shadow: var(--localiza-shadow-card);
+  border-radius: 1rem;
+}
+
+.localiza-panel {
+  background-color: var(--localiza-surface-subtle);
+  border: 1px solid var(--localiza-border);
+  border-radius: 0.75rem;
 }
 
 /* Custom scrollbar styling */
@@ -61,12 +143,12 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 132, 61, 0.3);
+  background: rgba(22, 132, 91, 0.32);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 132, 61, 0.6);
+  background: rgba(6, 78, 59, 0.65);
 }
 
 /* High Contrast Mode (WCAG Accessibility) */
@@ -90,9 +172,8 @@ html.high-contrast textarea {
 }
 
 html.high-contrast a,
+html.high-contrast .text-\[\#16845B\],
 html.high-contrast .text-\[\#00843D\] {
   color: #00ff66 !important;
   text-decoration: underline !important;
 }
-
-

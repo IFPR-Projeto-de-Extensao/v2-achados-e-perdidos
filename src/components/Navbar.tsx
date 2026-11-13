@@ -1,12 +1,13 @@
 import React, { useState } from "react";
 import { useApp } from "../context/AppContext";
 import { useRouter, Link } from "../context/RouterContext";
-import { triggerVibration, vibrateClick, vibrateSuccess } from "../lib/utils";
+import { vibrateClick } from "../lib/utils";
 import { filterNotificationsForUser } from "../lib/notificationHelper";
 import { usePWA } from "../hooks/usePWA";
 import { ThemeToggle } from "./ThemeToggle";
 import { ContactSupportModal } from "./ContactSupportModal";
 import { getSafeAvatarUrl, handleAvatarError } from "../lib/avatarUtils";
+import { BrandLogo, UIButton, UIBadge } from "./ui";
 import {
   Search,
   PlusCircle,
@@ -15,24 +16,17 @@ import {
   CheckCircle2,
   LayoutDashboard,
   UserCheck,
-  Moon,
-  Sun,
   Bell,
   QrCode,
   Menu,
   X,
-  ShieldAlert,
-  GraduationCap,
   Building2,
   LogIn,
   LogOut,
-  Sparkles,
   Smartphone,
   Download,
   WifiOff,
-  Wifi,
   RefreshCw,
-  CloudOff,
   LifeBuoy,
   Settings,
   Layers,
@@ -43,26 +37,19 @@ import {
 export const Navbar: React.FC = () => {
   const {
     currentUser,
-    switchUserRole,
     notifications,
     markNotificationRead,
     fcmPermissionGranted,
     requestNotificationPermission,
     setQrScannerOpen,
-    clearAllNotifications,
-    setRegisterTypeSelection,
     setAuthModalOpen,
     firebaseUser,
     logout,
-    t,
-    language,
     isOnline,
     pendingSyncCount,
     syncOfflineQueue,
     items,
     setSelectedItemForDetail,
-    isGuest,
-    isAuthenticated,
     requestAuthForRegistration,
   } = useApp();
 
@@ -80,6 +67,10 @@ export const Navbar: React.FC = () => {
   );
 
   const unreadCount = userNotifications.filter((n) => !n.read).length;
+
+  const canRegister =
+    (currentUser?.role === "SERVIDOR" && currentUser?.approvalStatus === "APROVADO") ||
+    currentUser?.role === "ADMIN";
 
   const handleNavClick = (path: string) => {
     vibrateClick();
@@ -100,39 +91,20 @@ export const Navbar: React.FC = () => {
   };
 
   return (
-    <header role="banner" className="navbar-main-container sticky top-0 z-40 w-full border-b border-slate-200/80 dark:border-slate-800/80 bg-white/90 dark:bg-[#0a0f18]/90 backdrop-blur-xl transition-colors duration-200 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
-      {/* Top Emerald Accent Line IFPR */}
-      <div className="h-[2.5px] w-full bg-gradient-to-r from-[#00843D] via-emerald-400 to-[#00843D]" />
-
+    <header
+      role="banner"
+      className="navbar-main-container sticky top-0 z-40 w-full border-b border-slate-200/90 dark:border-slate-800 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-md transition-colors duration-200 shadow-[0_1px_2px_rgba(23,43,42,0.03)]"
+    >
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-15 sm:h-16 gap-2 sm:gap-4">
-          {/* Brand Lockup */}
-          <div className="flex items-center space-x-3 shrink-0">
+        <div className="flex items-center justify-between h-16 gap-2 sm:gap-4">
+          {/* Brand Lockup + Sync Status */}
+          <div className="flex items-center gap-2.5 shrink-0 min-w-0">
             <Link
               to="/"
-              className="flex items-center space-x-2.5 cursor-pointer select-none group"
+              className="flex items-center cursor-pointer select-none group focus-visible:outline-none rounded-xl"
               title="Ir para a página inicial do Localiza+ IFPR"
             >
-              <div className="relative flex items-center justify-center w-9 h-9 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 group-hover:scale-105 transition-all shrink-0">
-                <img
-                  src="/ifpr-logo.svg"
-                  alt="IFPR Logo"
-                  className="w-5 h-5 object-contain select-none drop-shadow-xs"
-                />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center space-x-1.5">
-                  <span className="font-black text-base sm:text-lg tracking-tight text-slate-900 dark:text-white uppercase">
-                    Localiza<span className="text-[#00843D] dark:text-emerald-400">+</span>
-                  </span>
-                  <span className="px-1.5 py-0.5 text-[9px] font-black rounded-md bg-[#00843D] text-white tracking-widest uppercase">
-                    IFPR
-                  </span>
-                </div>
-                <p className="text-[10px] font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider hidden sm:block">
-                  Campus Ivaiporã
-                </p>
-              </div>
+              <BrandLogo size="md" showSubtitle showIfprBadge />
             </Link>
 
             {/* Offline Sync Status Badge */}
@@ -145,16 +117,16 @@ export const Navbar: React.FC = () => {
                     ? `Modo Offline ativado. ${pendingSyncCount} ocorrência(s) salva(s) aguardando sincronização.`
                     : "Modo Offline: Registros salvos localmente com segurança."
                 }
-                className="hidden md:flex items-center space-x-1.5 px-2 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-[10px] font-extrabold shrink-0"
+                className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/70 text-amber-800 dark:text-amber-300 text-[11px] font-semibold shrink-0"
               >
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
                 </span>
                 <WifiOff className="w-3 h-3" />
                 <span>Offline</span>
                 {pendingSyncCount > 0 && (
-                  <span className="px-1.5 rounded-full bg-amber-500 text-white text-[9px]">
+                  <span className="px-1.5 rounded-full bg-amber-500 text-white text-[10px] font-bold">
                     {pendingSyncCount}
                   </span>
                 )}
@@ -166,7 +138,7 @@ export const Navbar: React.FC = () => {
                   syncOfflineQueue(true);
                 }}
                 title="Sincronizar dados pendentes do IndexedDB com o Firestore"
-                className="hidden md:flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-[#00843D]/10 hover:bg-[#00843D]/20 border border-[#00843D]/30 text-[#00843D] dark:text-emerald-400 text-[10px] font-extrabold transition-colors animate-pulse shrink-0 cursor-pointer"
+                className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EBF5F0] hover:bg-[#16845B]/15 border border-[#16845B]/25 text-[#16845B] dark:bg-emerald-950/50 dark:text-emerald-300 text-[11px] font-semibold transition-colors shrink-0 cursor-pointer"
               >
                 <RefreshCw className="w-3 h-3" />
                 <span>Sincronizar ({pendingSyncCount})</span>
@@ -174,14 +146,19 @@ export const Navbar: React.FC = () => {
             ) : null}
           </div>
 
-          {/* Segmented Desktop Navigation */}
-          <nav role="navigation" aria-label="Navegação Principal do Sistema" className="hidden lg:flex items-center p-1 rounded-xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 shrink-0 space-x-0.5">
+          {/* Clean Minimal Desktop Navigation */}
+          <nav
+            role="navigation"
+            aria-label="Navegação Principal do Sistema"
+            className="hidden lg:flex items-center p-1 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70 shrink-0 gap-0.5"
+          >
             <Link
               to="/"
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+              aria-current={routeKey === "home" ? "page" : undefined}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
                 routeKey === "home"
-                  ? "bg-white dark:bg-slate-900 text-[#00843D] dark:text-emerald-400 shadow-xs"
-                  : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
+                  ? "bg-white dark:bg-slate-900 text-[#16845B] dark:text-emerald-400 shadow-2xs"
+                  : "text-slate-600 dark:text-slate-300 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
               <Home className="w-3.5 h-3.5" />
@@ -190,10 +167,11 @@ export const Navbar: React.FC = () => {
 
             <Link
               to="/buscar"
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                routeKey === "search"
-                  ? "bg-white dark:bg-slate-900 text-[#00843D] dark:text-emerald-400 shadow-xs"
-                  : "text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
+              aria-current={routeKey === "search" && pathname === "/buscar" ? "page" : undefined}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                routeKey === "search" && pathname === "/buscar"
+                  ? "bg-white dark:bg-slate-900 text-[#16845B] dark:text-emerald-400 shadow-2xs"
+                  : "text-slate-600 dark:text-slate-300 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
               <Search className="w-3.5 h-3.5" />
@@ -202,39 +180,38 @@ export const Navbar: React.FC = () => {
 
             <Link
               to="/perdidos"
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+              aria-current={pathname === "/perdidos" ? "page" : undefined}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
                 pathname === "/perdidos"
-                  ? "bg-red-500/15 text-red-600 dark:text-red-400 shadow-xs"
-                  : "text-slate-600 dark:text-slate-300 hover:text-red-600"
+                  ? "bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 shadow-2xs"
+                  : "text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400"
               }`}
             >
-              <PackageSearch className="w-3.5 h-3.5 text-red-500" />
+              <PackageSearch className="w-3.5 h-3.5 text-rose-500" />
               <span>Perdidos</span>
             </Link>
 
             <Link
               to="/encontrados"
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+              aria-current={pathname === "/encontrados" ? "page" : undefined}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
                 pathname === "/encontrados"
-                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shadow-xs"
-                  : "text-slate-600 dark:text-slate-300 hover:text-emerald-600"
+                  ? "bg-[#EBF5F0] dark:bg-emerald-950/60 text-[#064E3B] dark:text-emerald-300 shadow-2xs"
+                  : "text-slate-600 dark:text-slate-300 hover:text-[#16845B] dark:hover:text-emerald-400"
               }`}
             >
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+              <CheckCircle2 className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
               <span>Achados</span>
             </Link>
 
             {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && (
               <Link
                 to="/admin"
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                aria-current={routeKey === "admin" ? "page" : undefined}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
                   routeKey === "admin"
-                    ? currentUser.role === "ADMIN"
-                      ? "bg-purple-600 text-white shadow-xs"
-                      : "bg-[#00843D] text-white shadow-xs"
-                    : currentUser.role === "ADMIN"
-                    ? "text-purple-600 dark:text-purple-400 hover:bg-purple-500/10"
-                    : "text-[#00843D] dark:text-emerald-400 hover:bg-[#00843D]/10"
+                    ? "bg-[#16845B] text-white shadow-2xs"
+                    : "text-[#16845B] dark:text-emerald-400 hover:bg-[#EBF5F0] dark:hover:bg-emerald-950/50"
                 }`}
               >
                 {currentUser.role === "ADMIN" ? (
@@ -253,29 +230,31 @@ export const Navbar: React.FC = () => {
           </nav>
 
           {/* Right Action Cluster */}
-          <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
-            {/* Primary Action CTA: Novo Registro */}
-            {((currentUser?.role === "SERVIDOR" && currentUser?.approvalStatus === "APROVADO") || currentUser?.role === "ADMIN") && (
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            {/* Primary Action CTA: Novo Registro (Restricted to Approved SERVIDOR or ADMIN) */}
+            {canRegister && (
               <Link
                 to="/cadastrar"
                 title="Cadastrar Novo Objeto Perdido ou Encontrado"
-                className="hidden sm:inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-black tracking-wide uppercase shadow-[0_2px_10px_rgba(0,132,61,0.28)] transition-all cursor-pointer active:scale-95"
+                className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-semibold shadow-2xs transition-all cursor-pointer active:scale-[0.98]"
               >
                 <PlusCircle className="w-4 h-4" />
-                <span>Novo Registro</span>
+                <span className="hidden md:inline">Registrar Item</span>
+                <span className="md:hidden">Registrar</span>
               </Link>
             )}
+
             {/* Quick Action Icons Group (Suporte, QR Code, Notificações, Tema) */}
-            <div className="navbar-icons-group flex items-center space-x-1 sm:space-x-1.5 shrink-0">
+            <div className="navbar-icons-group flex items-center gap-1 shrink-0">
               {/* Quick Support Link to /suporte - Desktop only */}
               <Link
                 to="/suporte"
                 id="navbar-quick-support-btn"
                 title="Central de Suporte & Dúvidas"
-                className={`hidden sm:inline-flex w-7 h-7 sm:w-8 sm:h-8 items-center justify-center rounded-lg transition-colors shrink-0 ${
+                className={`hidden sm:inline-flex w-8 h-8 items-center justify-center rounded-xl transition-colors shrink-0 ${
                   routeKey === "support" || routeKey === "support_feedback" || routeKey === "support_bug"
-                    ? "bg-[#00843D]/15 text-[#00843D] dark:text-green-400"
-                    : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                    ? "bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/50 dark:text-emerald-400"
+                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                 }`}
               >
                 <LifeBuoy className="w-4 h-4" />
@@ -284,12 +263,12 @@ export const Navbar: React.FC = () => {
               {/* Quick QR Code Scanner Shortcut - Desktop only */}
               <button
                 onClick={handleQrScannerClick}
-                role="button"
+                type="button"
                 aria-label="Abrir Scanner de QR Code de Devolução"
                 title="Escanear QR Code de Devolução"
-                className="hidden sm:inline-flex w-7 h-7 sm:w-8 sm:h-8 items-center justify-center rounded-lg text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors shrink-0"
+                className="hidden sm:inline-flex w-8 h-8 items-center justify-center rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
               >
-                <QrCode className="w-4 h-4 text-[#00843D] dark:text-green-400" />
+                <QrCode className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
               </button>
 
               {/* Notifications Button & Dropdown */}
@@ -299,19 +278,19 @@ export const Navbar: React.FC = () => {
                     vibrateClick();
                     setNotificationsOpen(!notificationsOpen);
                   }}
-                  role="button"
+                  type="button"
                   aria-label={`Notificações: ${unreadCount} não lidas`}
                   aria-expanded={notificationsOpen}
                   aria-haspopup="dialog"
-                  className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg transition-colors relative shrink-0 ${
-                    routeKey === "notifications"
-                      ? "bg-[#00843D]/15 text-[#00843D] dark:text-green-400"
-                      : "text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  className={`w-8 h-8 flex items-center justify-center rounded-xl transition-colors relative shrink-0 cursor-pointer ${
+                    routeKey === "notifications" || notificationsOpen
+                      ? "bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/50 dark:text-emerald-400"
+                      : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
                   }`}
                 >
                   <Bell className="w-4 h-4" />
                   {unreadCount > 0 && (
-                    <span className="absolute top-0.5 right-0.5 w-3.5 h-3.5 bg-[#C8102E] text-white text-[9px] font-bold rounded-full flex items-center justify-center animate-pulse">
+                    <span className="absolute top-0.5 right-0.5 min-w-[15px] h-[15px] px-1 bg-rose-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
                       {unreadCount}
                     </span>
                   )}
@@ -319,29 +298,32 @@ export const Navbar: React.FC = () => {
 
                 {/* Notifications Dropdown Drawer */}
                 {notificationsOpen && (
-                  <div role="dialog" aria-label="Painel de Notificações do IFPR" className="absolute right-0 top-full mt-2 w-72 xs:w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-white dark:bg-[#1E1E1E] rounded-2xl shadow-xl border border-neutral-200 dark:border-neutral-800 z-50 p-3.5 xs:p-4">
-                    <div className="flex items-center justify-between pb-2.5 xs:pb-3 border-b border-neutral-200 dark:border-neutral-800">
-                      <h3 className="font-bold text-xs xs:text-sm text-neutral-900 dark:text-white flex items-center gap-1.5 xs:gap-2">
-                        <Bell className="w-3.5 h-3.5 xs:w-4 xs:h-4 text-[#00843D]" /> Notificações IFPR
+                  <div
+                    role="dialog"
+                    aria-label="Painel de Notificações do IFPR"
+                    className="absolute right-0 top-full mt-2 w-72 xs:w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-white dark:bg-[#111827] rounded-2xl shadow-[0_12px_36px_rgba(23,43,42,0.12)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.6)] border border-slate-200 dark:border-slate-800 z-50 p-4"
+                  >
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                      <h3 className="font-bold text-xs sm:text-sm text-[#172B2A] dark:text-white flex items-center gap-2">
+                        <Bell className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
+                        <span>Notificações</span>
                       </h3>
-                      <div className="flex items-center space-x-2">
-                        <button
-                          onClick={() => {
-                            vibrateClick();
-                            setNotificationsOpen(false);
-                            navigate("/notificacoes");
-                          }}
-                          className="text-[11px] xs:text-xs text-[#00843D] dark:text-green-400 hover:underline font-bold"
-                        >
-                          Ver todas
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => {
+                          vibrateClick();
+                          setNotificationsOpen(false);
+                          navigate("/notificacoes");
+                        }}
+                        className="text-xs text-[#16845B] dark:text-emerald-400 hover:underline font-semibold cursor-pointer"
+                      >
+                        Ver todas
+                      </button>
                     </div>
 
                     {/* FCM Push Notification Request Button */}
                     {!fcmPermissionGranted && (
-                      <div className="mt-2.5 xs:mt-3 p-2 xs:p-2.5 rounded-xl bg-[#00843D]/10 border border-[#00843D]/20 flex items-center justify-between gap-2">
-                        <div className="text-[10px] xs:text-[11px] text-[#00843D] dark:text-green-400 font-medium">
+                      <div className="mt-3 p-2.5 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 border border-[#16845B]/20 flex items-center justify-between gap-2">
+                        <div className="text-[11px] text-[#064E3B] dark:text-emerald-300 font-medium">
                           Ative alertas em tempo real no navegador.
                         </div>
                         <button
@@ -349,16 +331,16 @@ export const Navbar: React.FC = () => {
                             vibrateClick();
                             requestNotificationPermission();
                           }}
-                          className="px-2 py-1 rounded-lg bg-[#00843D] text-white font-bold text-[9px] xs:text-[10px] shrink-0 hover:bg-[#006830]"
+                          className="px-2.5 py-1 rounded-lg bg-[#16845B] hover:bg-[#064E3B] text-white font-semibold text-[10px] shrink-0 transition-colors cursor-pointer"
                         >
                           Ativar Push
                         </button>
                       </div>
                     )}
 
-                    <div className="mt-2.5 xs:mt-3 space-y-2 max-h-64 sm:max-h-72 overflow-y-auto pr-1">
+                    <div className="mt-3 space-y-2 max-h-64 sm:max-h-72 overflow-y-auto pr-1">
                       {userNotifications.length === 0 ? (
-                        <p className="text-xs text-center py-6 text-neutral-500">
+                        <p className="text-xs text-center py-6 text-slate-500 dark:text-slate-400">
                           Nenhuma notificação recente.
                         </p>
                       ) : (
@@ -375,19 +357,19 @@ export const Navbar: React.FC = () => {
                                 if (it) setSelectedItemForDetail(it);
                               }
                             }}
-                            className={`p-2.5 xs:p-3 rounded-xl text-xs transition-colors border cursor-pointer ${
+                            className={`p-3 rounded-xl text-xs transition-colors border cursor-pointer ${
                               !n.read
-                                ? "bg-[#00843D]/5 border-[#00843D]/20 dark:bg-[#00843D]/10 hover:bg-[#00843D]/10"
-                                : "bg-neutral-50 dark:bg-neutral-800/50 border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                                ? "bg-[#EBF5F0]/60 border-[#16845B]/25 dark:bg-emerald-950/30 dark:border-emerald-800/60 hover:bg-[#EBF5F0]"
+                                : "bg-[#F8FAFC] dark:bg-slate-800/50 border-slate-200/80 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800"
                             }`}
                           >
-                            <div className="flex justify-between items-start font-semibold text-neutral-900 dark:text-white mb-1">
+                            <div className="flex justify-between items-start font-semibold text-[#172B2A] dark:text-white mb-1">
                               <span className="truncate pr-2">{n.title}</span>
                               {!n.read && (
-                                <span className="w-2 h-2 rounded-full bg-[#00843D] shrink-0 mt-1" />
+                                <span className="w-2 h-2 rounded-full bg-[#16845B] shrink-0 mt-1" />
                               )}
                             </div>
-                            <p className="text-[11px] xs:text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed line-clamp-2">
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed line-clamp-2">
                               {n.message}
                             </p>
                           </div>
@@ -395,11 +377,11 @@ export const Navbar: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="pt-2.5 xs:pt-3 border-t border-neutral-100 dark:border-neutral-800 mt-2.5 text-center">
+                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 mt-3 text-center">
                       <Link
                         to="/notificacoes"
                         onClick={() => setNotificationsOpen(false)}
-                        className="text-[11px] xs:text-xs font-bold text-[#00843D] dark:text-green-400 hover:underline inline-flex items-center gap-1"
+                        className="text-xs font-semibold text-[#16845B] dark:text-emerald-400 hover:underline inline-flex items-center gap-1"
                       >
                         <span>Abrir Central de Notificações Completa</span>
                         <ExternalLink className="w-3 h-3" />
@@ -415,33 +397,39 @@ export const Navbar: React.FC = () => {
 
             {/* Login / Cadastro or User Profile & Logout */}
             {currentUser.id === "guest_visitor" && !firebaseUser ? (
-              <button
+              <UIButton
+                variant="primary"
+                size="sm"
                 onClick={() => {
                   vibrateClick();
                   setAuthModalOpen(true);
                 }}
-                role="button"
                 aria-label="Entrar ou cadastrar conta"
-                className="px-2.5 py-1.5 rounded-lg bg-[#00843D] hover:bg-[#006830] text-white text-xs font-bold transition-all shadow-xs flex items-center space-x-1 shrink-0 whitespace-nowrap"
               >
                 <LogIn className="w-3.5 h-3.5" />
                 <span>Entrar</span>
-              </button>
+              </UIButton>
             ) : (
-              <div className="user-profile-widget flex items-center space-x-0.5 sm:space-x-1 shrink-0">
+              <div className="user-profile-widget flex items-center gap-1 shrink-0">
                 <Link
                   to="/perfil"
-                  title={`Perfil: ${currentUser.name} • Cargo: ${currentUser.role === 'ADMIN' ? 'Administrador' : currentUser.role === 'SERVIDOR' ? 'Servidor / TAE' : 'Aluno'} • Campus Ivaiporã`}
-                  className="flex items-center space-x-1.5 p-1 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors shrink-0 group"
+                  title={`Perfil: ${currentUser.name} • Cargo: ${
+                    currentUser.role === "ADMIN"
+                      ? "Administrador"
+                      : currentUser.role === "SERVIDOR"
+                      ? "Servidor / TAE"
+                      : "Aluno"
+                  } • Campus Ivaiporã`}
+                  className="flex items-center gap-1.5 p-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0 group"
                 >
                   <img
                     src={getSafeAvatarUrl(currentUser.avatarUrl, currentUser.name)}
                     alt={currentUser.name}
                     referrerPolicy="no-referrer"
                     onError={(e) => handleAvatarError(e, currentUser.name)}
-                    className="w-7 h-7 rounded-full object-cover border border-[#00843D] shrink-0"
+                    className="w-7 h-7 rounded-full object-cover border border-[#16845B]/50 shrink-0"
                   />
-                  <span className="hidden md:inline text-xs font-semibold text-neutral-700 dark:text-neutral-300 max-w-[80px] xl:max-w-[105px] truncate whitespace-nowrap group-hover:text-[#00843D] dark:group-hover:text-green-400">
+                  <span className="hidden xl:inline text-xs font-semibold text-[#172B2A] dark:text-slate-200 max-w-[96px] truncate whitespace-nowrap group-hover:text-[#16845B] dark:group-hover:text-emerald-400">
                     {currentUser.name.split(" ")[0]}
                   </span>
                 </Link>
@@ -450,10 +438,10 @@ export const Navbar: React.FC = () => {
                     vibrateClick();
                     logout();
                   }}
-                  role="button"
+                  type="button"
                   aria-label="Sair da Conta"
                   title="Sair da Conta (Logout)"
-                  className="w-7 h-7 flex items-center justify-center rounded-lg text-neutral-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors shrink-0 cursor-pointer"
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors shrink-0 cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
@@ -466,10 +454,10 @@ export const Navbar: React.FC = () => {
                 vibrateClick();
                 setMobileMenuOpen(!mobileMenuOpen);
               }}
-              role="button"
+              type="button"
               aria-label={mobileMenuOpen ? "Fechar menu móvel" : "Abrir menu móvel"}
               aria-expanded={mobileMenuOpen}
-              className="lg:hidden p-1.5 rounded-lg text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 shrink-0"
+              className="lg:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0 cursor-pointer"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
@@ -482,7 +470,7 @@ export const Navbar: React.FC = () => {
         <>
           {/* Backdrop */}
           <div
-            className="fixed inset-0 top-[57px] bg-slate-900/40 dark:bg-black/60 backdrop-blur-xs z-30 lg:hidden animate-in fade-in duration-150"
+            className="fixed inset-0 top-16 bg-[#172B2A]/40 dark:bg-black/60 backdrop-blur-xs z-30 lg:hidden animate-in fade-in duration-150"
             onClick={() => setMobileMenuOpen(false)}
             aria-hidden="true"
           />
@@ -490,23 +478,23 @@ export const Navbar: React.FC = () => {
           <div
             role="navigation"
             aria-label="Menu Móvel de Navegação"
-            className="lg:hidden fixed top-[57px] right-0 left-0 max-h-[calc(100vh-4.25rem)] overflow-y-auto bg-white/98 dark:bg-[#0c121e]/98 backdrop-blur-xl border-b border-slate-200/90 dark:border-slate-800/90 z-40 shadow-2xl animate-in slide-in-from-top-2 duration-200 p-4 space-y-3.5"
+            className="lg:hidden fixed top-16 right-0 left-0 max-h-[calc(100vh-4rem)] overflow-y-auto bg-white dark:bg-[#111827] border-b border-slate-200 dark:border-slate-800 z-40 shadow-xl animate-in slide-in-from-top-2 duration-200 p-4 space-y-4"
           >
             {/* User Session Row */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800/80">
-              <div className="flex items-center space-x-2.5 min-w-0">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <img
                   src={getSafeAvatarUrl(currentUser.avatarUrl, currentUser.name)}
                   alt={currentUser.name}
                   referrerPolicy="no-referrer"
                   onError={(e) => handleAvatarError(e, currentUser.name)}
-                  className="w-9 h-9 rounded-full object-cover border border-[#00843D]/50 shrink-0"
+                  className="w-9 h-9 rounded-full object-cover border border-[#16845B]/50 shrink-0"
                 />
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                  <p className="text-xs font-bold text-[#172B2A] dark:text-white truncate">
                     {currentUser.name}
                   </p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate">
                     {currentUser.role === "ADMIN"
                       ? "Administrador TI • IFPR"
                       : currentUser.role === "SERVIDOR"
@@ -517,16 +505,17 @@ export const Navbar: React.FC = () => {
               </div>
 
               {currentUser.id === "guest_visitor" && !firebaseUser ? (
-                <button
+                <UIButton
+                  variant="primary"
+                  size="sm"
                   onClick={() => {
                     vibrateClick();
                     setAuthModalOpen(true);
                     setMobileMenuOpen(false);
                   }}
-                  className="px-3 py-1.5 rounded-lg bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold shadow-xs shrink-0 cursor-pointer transition-colors"
                 >
-                  Entrar
-                </button>
+                  <span>Entrar</span>
+                </UIButton>
               ) : (
                 <button
                   onClick={() => {
@@ -536,59 +525,61 @@ export const Navbar: React.FC = () => {
                   }}
                   title="Sair da conta"
                   aria-label="Sair da conta"
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors shrink-0 cursor-pointer"
+                  className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors shrink-0 cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />
                 </button>
               )}
             </div>
 
-            {/* Quick Registration Row: Compact dual-action */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => handleRegisterClick("PERDIDO")}
-                className="flex items-center justify-center space-x-2 px-3 py-2 rounded-xl text-xs font-bold text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/15 border border-red-500/20 transition-all cursor-pointer"
-              >
-                <PlusCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>Perdi um Objeto</span>
-              </button>
+            {/* Quick Registration Row: Visible only to profiles authorized to register items */}
+            {canRegister && (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => handleRegisterClick("PERDIDO")}
+                  className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/50 hover:bg-rose-100 border border-rose-200 dark:border-rose-800/60 transition-all cursor-pointer"
+                >
+                  <PlusCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Perdi um Objeto</span>
+                </button>
 
-              <button
-                onClick={() => handleRegisterClick("ENCONTRADO")}
-                className="flex items-center justify-center space-x-2 px-3 py-2 rounded-xl text-xs font-bold text-[#00843D] dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/15 border border-[#00843D]/25 transition-all cursor-pointer"
-              >
-                <PlusCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>Achei um Objeto</span>
-              </button>
-            </div>
+                <button
+                  onClick={() => handleRegisterClick("ENCONTRADO")}
+                  className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold text-[#064E3B] dark:text-emerald-300 bg-[#EBF5F0] dark:bg-emerald-950/50 hover:bg-[#16845B]/15 border border-[#16845B]/25 transition-all cursor-pointer"
+                >
+                  <PlusCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Achei um Objeto</span>
+                </button>
+              </div>
+            )}
 
             {/* Group 1: Navegação Principal */}
-            <div className="space-y-0.5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2.5 pb-1">
+            <div className="space-y-1">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block px-2.5 pb-1">
                 Navegação
               </span>
 
               <button
                 onClick={() => handleNavClick("/buscar")}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
                   routeKey === "search"
-                    ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                    ? "bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#16845B] dark:text-emerald-400 font-semibold"
+                    : "text-[#172B2A] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
                 }`}
               >
-                <div className="flex items-center space-x-2.5">
+                <div className="flex items-center gap-2.5">
                   <Search className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                   <span>Catálogo de Achados & Perdidos</span>
                 </div>
-                <span className="text-[10px] text-slate-400 font-mono">{items.length} itens</span>
+                <span className="text-[11px] text-slate-400 tabular-nums">{items.length} itens</span>
               </button>
 
               <button
                 onClick={() => handleNavClick("/meus-registros")}
-                className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
                   routeKey === "my_items"
-                    ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                    ? "bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#16845B] dark:text-emerald-400 font-semibold"
+                    : "text-[#172B2A] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
                 }`}
               >
                 <Layers className="w-4 h-4 text-slate-500 dark:text-slate-400" />
@@ -596,9 +587,9 @@ export const Navbar: React.FC = () => {
               </button>
             </div>
 
-            {/* Group 2: Ferramentas Inteligentes */}
-            <div className="space-y-0.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2.5 pb-1">
+            {/* Group 2: Ferramentas do Campus */}
+            <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block px-2.5 pb-1">
                 Ferramentas do Campus
               </span>
 
@@ -607,29 +598,29 @@ export const Navbar: React.FC = () => {
                   setMobileMenuOpen(false);
                   handleQrScannerClick();
                 }}
-                className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors"
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-[#172B2A] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60 transition-colors cursor-pointer"
               >
-                <QrCode className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                <QrCode className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
                 <span>Leitor de QR Code</span>
               </button>
             </div>
 
             {/* Group 3: Administração & Gestão (Restricted) */}
             {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && (
-              <div className="space-y-0.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2.5 pb-1">
+              <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block px-2.5 pb-1">
                   {currentUser.role === "ADMIN" ? "Administração & TI" : "Gestão do Servidor"}
                 </span>
 
                 <button
                   onClick={() => handleNavClick("/admin")}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-bold transition-colors ${
+                  className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
                     routeKey === "admin"
-                      ? "bg-[#00843D] text-white"
-                      : "text-[#00843D] dark:text-emerald-400 hover:bg-emerald-500/10"
+                      ? "bg-[#16845B] text-white"
+                      : "text-[#16845B] dark:text-emerald-400 hover:bg-[#EBF5F0] dark:hover:bg-emerald-950/40"
                   }`}
                 >
-                  <div className="flex items-center space-x-2.5">
+                  <div className="flex items-center gap-2.5">
                     {currentUser.role === "SERVIDOR" ? (
                       <Building2 className="w-4 h-4" />
                     ) : (
@@ -641,25 +632,23 @@ export const Navbar: React.FC = () => {
                         : "Painel Administrativo Institucional"}
                     </span>
                   </div>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-700/20 dark:bg-emerald-400/20">
-                    {currentUser.role}
-                  </span>
+                  <UIBadge tone="emerald">{currentUser.role}</UIBadge>
                 </button>
               </div>
             )}
 
             {/* Group 4: Conta, Suporte & Sistema */}
-            <div className="space-y-0.5 pt-2 border-t border-slate-100 dark:border-slate-800/80">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block px-2.5 pb-1">
+            <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block px-2.5 pb-1">
                 Conta & Apoio
               </span>
 
               <button
                 onClick={() => handleNavClick("/perfil")}
-                className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
                   routeKey === "profile"
-                    ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                    ? "bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#16845B] dark:text-emerald-400 font-semibold"
+                    : "text-[#172B2A] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
                 }`}
               >
                 <UserCheck className="w-4 h-4 text-slate-500 dark:text-slate-400" />
@@ -668,10 +657,10 @@ export const Navbar: React.FC = () => {
 
               <button
                 onClick={() => handleNavClick("/configuracoes")}
-                className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
                   routeKey === "settings"
-                    ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                    ? "bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#16845B] dark:text-emerald-400 font-semibold"
+                    : "text-[#172B2A] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
                 }`}
               >
                 <Settings className="w-4 h-4 text-slate-500 dark:text-slate-400" />
@@ -680,10 +669,10 @@ export const Navbar: React.FC = () => {
 
               <button
                 onClick={() => handleNavClick("/suporte")}
-                className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
                   routeKey === "support"
-                    ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                    ? "bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#16845B] dark:text-emerald-400 font-semibold"
+                    : "text-[#172B2A] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
                 }`}
               >
                 <LifeBuoy className="w-4 h-4 text-slate-500 dark:text-slate-400" />
@@ -692,10 +681,10 @@ export const Navbar: React.FC = () => {
 
               <button
                 onClick={() => handleNavClick("/versoes")}
-                className={`w-full flex items-center space-x-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
                   pathname === "/versoes" || routeKey === "versions"
-                    ? "bg-emerald-500/10 text-[#00843D] dark:text-emerald-400 font-bold border-l-2 border-[#00843D]"
-                    : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                    ? "bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#16845B] dark:text-emerald-400 font-semibold"
+                    : "text-[#172B2A] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
                 }`}
               >
                 <GitBranch className="w-4 h-4 text-slate-500 dark:text-slate-400" />
@@ -708,10 +697,10 @@ export const Navbar: React.FC = () => {
                     promptInstall();
                     setMobileMenuOpen(false);
                   }}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold text-[#00843D] dark:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/15 transition-colors cursor-pointer"
+                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-[#064E3B] dark:text-emerald-300 bg-[#EBF5F0] dark:bg-emerald-950/40 hover:bg-[#16845B]/15 transition-colors cursor-pointer mt-1"
                 >
-                  <div className="flex items-center space-x-2.5">
-                    <Smartphone className="w-4 h-4" />
+                  <div className="flex items-center gap-2.5">
+                    <Smartphone className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
                     <span>Instalar Aplicativo (PWA)</span>
                   </div>
                   <Download className="w-3.5 h-3.5" />

@@ -26,15 +26,17 @@ export const AccountStatusBanner: React.FC<AccountStatusBannerProps> = ({ user }
       aria-label="Aviso de restrição da conta"
       className={`w-full border-b px-4 py-3 sm:px-6 transition-all animate-in fade-in duration-200 ${
         isBanned
-          ? "bg-red-600 text-white border-red-700 shadow-md"
-          : "bg-amber-500 text-neutral-950 border-amber-600 shadow-sm"
+          ? "bg-rose-600 text-white border-rose-700 shadow-xs"
+          : "bg-amber-50 dark:bg-amber-950/60 text-[#172B2A] dark:text-amber-100 border-amber-200 dark:border-amber-800/70"
       }`}
     >
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-start sm:items-center space-x-3">
+        <div className="flex items-start sm:items-center gap-3">
           <div
             className={`p-2 rounded-xl shrink-0 ${
-              isBanned ? "bg-red-800/60 text-white" : "bg-amber-600/30 text-neutral-950"
+              isBanned
+                ? "bg-rose-700/70 text-white"
+                : "bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200"
             }`}
           >
             {isBanned ? (
@@ -45,17 +47,17 @@ export const AccountStatusBanner: React.FC<AccountStatusBannerProps> = ({ user }
           </div>
 
           <div className="space-y-0.5">
-            <h4 className="text-xs sm:text-sm font-black flex items-center gap-2">
-              <span>{isBanned ? "🚨 CONTA BANIDA INSTITUCIONALMENTE" : "⚠️ CONTA TEMPORARIAMENTE SUSPENSA"}</span>
+            <h4 className="text-xs sm:text-sm font-bold flex flex-wrap items-center gap-2">
+              <span>{isBanned ? "Conta Banida Institucionalmente" : "Conta Temporariamente Suspensa"}</span>
               {!isBanned && (
-                <span className="px-2 py-0.5 rounded-full bg-neutral-950/15 text-[10px] font-extrabold uppercase">
+                <span className="px-2 py-0.5 rounded-full bg-amber-200/80 dark:bg-amber-900/70 text-amber-900 dark:text-amber-200 text-[10px] font-semibold uppercase tracking-wide">
                   {untilStr}
                 </span>
               )}
             </h4>
             <p
-              className={`text-xs ${
-                isBanned ? "text-red-100" : "text-neutral-900"
+              className={`text-xs leading-relaxed ${
+                isBanned ? "text-rose-100" : "text-amber-900/90 dark:text-amber-200/90"
               }`}
             >
               {resolved.statusReason
@@ -68,13 +70,13 @@ export const AccountStatusBanner: React.FC<AccountStatusBannerProps> = ({ user }
           </div>
         </div>
 
-        <div className="flex items-center space-x-2 shrink-0 self-end sm:self-auto">
+        <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
           <a
             href="mailto:localizamais0@gmail.com"
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all inline-flex items-center space-x-1.5 ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all inline-flex items-center gap-1.5 ${
               isBanned
-                ? "bg-white text-red-700 hover:bg-neutral-100 shadow-xs"
-                : "bg-neutral-950 text-white hover:bg-neutral-800 shadow-xs"
+                ? "bg-white text-rose-700 hover:bg-rose-50 shadow-2xs"
+                : "bg-[#172B2A] dark:bg-amber-500 text-white dark:text-slate-950 hover:opacity-90 shadow-2xs"
             }`}
           >
             <Mail className="w-3.5 h-3.5" />
