@@ -184,19 +184,42 @@ export const DashboardView: React.FC = () => {
   const [tableCategory, setTableCategory] = useState("TODAS");
   const [serverFilterStatus, setServerFilterStatus] = useState<string>("TODOS");
 
-  // Admin Sub-Tab State
+  // Admin & Server Sub-Tab State
   const [adminSubTab, setAdminSubTab] = useState<
-    "users" | "accounts" | "audit" | "health" | "approvals" | "backups" | "documents" | "project_settings" | "versions" | "test_batteries" | "test_distribution" | "custody_reminders" | "digital_returns" | "pending_signatures" | "claims"
-  >("users");
+    | "server_overview"
+    | "server_analytics"
+    | "users"
+    | "accounts"
+    | "audit"
+    | "health"
+    | "approvals"
+    | "backups"
+    | "documents"
+    | "project_settings"
+    | "versions"
+    | "test_batteries"
+    | "test_distribution"
+    | "custody_reminders"
+    | "digital_returns"
+    | "pending_signatures"
+    | "claims"
+  >(currentUser.role === "SERVIDOR" ? "server_overview" : "users");
 
   useEffect(() => {
-    if (currentUser.role === "SERVIDOR") {
-      const allowedTabs = ["claims", "pending_signatures", "custody_reminders", "digital_returns"];
+    if (currentUser.role === "SERVIDOR" || activeDashboardRole === "SERVIDOR") {
+      const allowedTabs = [
+        "server_overview",
+        "server_analytics",
+        "claims",
+        "pending_signatures",
+        "custody_reminders",
+        "digital_returns",
+      ];
       if (!allowedTabs.includes(adminSubTab)) {
-        setAdminSubTab("claims");
+        setAdminSubTab("server_overview");
       }
     }
-  }, [currentUser.role, adminSubTab]);
+  }, [currentUser.role, activeDashboardRole, adminSubTab]);
 
   // Claim Management State (Secretaria / SEBAC)
   const [claimSearchText, setClaimSearchText] = useState("");
@@ -885,113 +908,208 @@ export const DashboardView: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-300">
-      {/* Compact Operational Header & Role Segmented Control */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#111827] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)]">
-        <div className="flex items-center space-x-3 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 flex items-center justify-center shrink-0">
-            {currentUser.role === "SERVIDOR" ? (
-              <Building2 className="w-4.5 h-4.5" />
+      {/* CABEÇALHO PRINCIPAL DO PAINEL (ADMINISTRATIVO / SERVIDOR / DISCENTE) */}
+      <SurfaceCard padding="lg" className="space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start gap-3.5 min-w-0">
+            <div className="p-2.5 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/15 shrink-0 mt-0.5">
+              {activeDashboardRole === "SERVIDOR" ? (
+                <Building2 className="w-5 h-5" />
+              ) : activeDashboardRole === "ADMIN" ? (
+                <ShieldCheck className="w-5 h-5" />
+              ) : (
+                <GraduationCap className="w-5 h-5" />
+              )}
+            </div>
+            <div className="space-y-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-[#16845B] dark:text-emerald-400">
+                <span>
+                  {activeDashboardRole === "SERVIDOR"
+                    ? "Atendimento Operacional & Portaria"
+                    : activeDashboardRole === "ADMIN"
+                    ? "Administração Institucional & TI"
+                    : "Acompanhamento Discente"}
+                </span>
+                <span>•</span>
+                <span>IFPR Campus Ivaiporã</span>
+              </div>
+              <h1 className="text-xl sm:text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight">
+                {activeDashboardRole === "SERVIDOR"
+                  ? "Painel do Servidor — Atendimento, Custódia e Devoluções"
+                  : activeDashboardRole === "ADMIN"
+                  ? "Painel Administrativo — Gestão Institucional Localiza+"
+                  : "Painel do Discente — Minhas Ocorrências e Solicitações"}
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-3xl">
+                {activeDashboardRole === "SERVIDOR"
+                  ? "Visão geral das pendências prioritárias, solicitações de recuperação, confirmações de entrega, objetos sob custódia na Guarita/SEPAE e relatórios."
+                  : activeDashboardRole === "ADMIN"
+                  ? "Gerenciamento centralizado de usuários, permissões, aprovações institucionais, objetos, reivindicações, auditoria, backups, saúde do sistema e configurações."
+                  : "Acompanhe seus relatos registrados, solicitações de recuperação enviadas e pontuação de cidadania no campus."}
+              </p>
+            </div>
+          </div>
+
+          {/* Controles Superiores: Alternador de Visão (Admin) e Ações Rápidas */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {currentUser.role === "ADMIN" ? (
+              <div className="bg-[#F8FAFC] dark:bg-slate-800/90 p-1 rounded-xl flex items-center border border-slate-200 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => setActiveDashboardRole("ALUNO")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeDashboardRole === "ALUNO"
+                      ? "bg-white dark:bg-slate-900 text-[#16845B] dark:text-emerald-400 shadow-2xs font-bold"
+                      : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
+                  }`}
+                >
+                  <GraduationCap className="w-3.5 h-3.5" />
+                  <span>Aluno</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveDashboardRole("SERVIDOR");
+                    setAdminSubTab("server_overview");
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeDashboardRole === "SERVIDOR"
+                      ? "bg-white dark:bg-slate-900 text-[#16845B] dark:text-emerald-400 shadow-2xs font-bold"
+                      : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
+                  }`}
+                >
+                  <Building2 className="w-3.5 h-3.5" />
+                  <span>Painel Servidor</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveDashboardRole("ADMIN");
+                    if (adminSubTab === "server_overview" || adminSubTab === "server_analytics") {
+                      setAdminSubTab("users");
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeDashboardRole === "ADMIN"
+                      ? "bg-[#16845B] text-white shadow-2xs"
+                      : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
+                  }`}
+                >
+                  <Shield className="w-3.5 h-3.5" />
+                  <span>Painel Admin</span>
+                </button>
+              </div>
             ) : (
-              <ShieldCheck className="w-4.5 h-4.5" />
+              <UIBadge tone="emerald">
+                {currentUser.role === "SERVIDOR"
+                  ? "Servidor Autorizado • Portaria / SEPAE"
+                  : `Perfil: ${currentUser.role}`}
+              </UIBadge>
+            )}
+
+            {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && (
+              <>
+                <UIButton
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setQrScannerOpen(true)}
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>Ler QR Code</span>
+                </UIButton>
+
+                <UIButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleExportItemsCSV}
+                  aria-label="Exportar relatório completo de itens em CSV"
+                  title="Download do Relatório Completo de Achados & Perdidos (CSV)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-[#16845B]" />
+                  <span>Exportar CSV</span>
+                </UIButton>
+              </>
             )}
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center space-x-1.5 text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-              <span>{currentUser.role === "SERVIDOR" ? "Atendimento & Portaria" : "Gestão Institucional"}</span>
-              <span>•</span>
-              <span>IFPR Campus Ivaiporã</span>
+        </div>
+
+        {/* INDICADORES PRINCIPAIS (Títulos completos, números legíveis, zero truncamento) */}
+        {(activeDashboardRole === "ADMIN" || activeDashboardRole === "SERVIDOR") && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <div className="bg-[#F8FAFC] dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 leading-snug">
+                  Total de Objetos no Acervo
+                </span>
+                <PackageSearch className="w-4 h-4 text-[#16845B] shrink-0" />
+              </div>
+              <p className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight tabular-nums">
+                {totalItems}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed tabular-nums">
+                {foundCount} encontrados • {lostCount} perdidos
+              </p>
             </div>
-            <h1 className="text-base sm:text-lg font-bold text-[#172B2A] dark:text-white tracking-tight truncate">
-              {currentUser.role === "SERVIDOR" ? "Painel do Servidor & Gestão" : "Painel de Operações & Gestão"}
-            </h1>
+
+            <div className="bg-[#F8FAFC] dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 leading-snug">
+                  Em Análise / Sob Custódia
+                </span>
+                <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              </div>
+              <p className="text-2xl sm:text-3xl font-bold text-amber-600 dark:text-amber-400 tracking-tight tabular-nums">
+                {inAnalysisCount}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed tabular-nums">
+                {pendingClaimsCount} solicitações de recuperação pendentes
+              </p>
+            </div>
+
+            <div className="bg-[#F8FAFC] dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 leading-snug">
+                  Devoluções Concluídas (Receptor)
+                </span>
+                <FileCheck2 className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
+              </div>
+              <p className="text-2xl sm:text-3xl font-bold text-sky-600 dark:text-sky-400 tracking-tight tabular-nums">
+                {returnedCount}
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed tabular-nums">
+                {registeredReturnsCount} registradas • {pendingRemoteSignaturesCount} pend. remota • {dualSignedReturnsCount} dupla assin.
+              </p>
+            </div>
+
+            <div className="bg-[#F8FAFC] dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 leading-snug">
+                  Taxa de Restituição (Concluídas)
+                </span>
+                <CheckCircle2 className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0" />
+              </div>
+              <p className="text-2xl sm:text-3xl font-bold text-[#16845B] dark:text-emerald-400 tracking-tight tabular-nums">
+                {successRate}%
+              </p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed tabular-nums">
+                {pendingStaffAttestationCount} aguardando atestação do servidor
+              </p>
+            </div>
           </div>
-        </div>
-
-        {/* Role Panel Segmented Control & Actions */}
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {currentUser.role === "ADMIN" ? (
-            <div className="bg-[#F8FAFC] dark:bg-slate-800/90 p-1 rounded-xl flex items-center border border-slate-200 dark:border-slate-700">
-              <button
-                onClick={() => setActiveDashboardRole("ALUNO")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1 cursor-pointer ${
-                  activeDashboardRole === "ALUNO"
-                    ? "bg-white dark:bg-slate-900 text-[#16845B] dark:text-emerald-400 shadow-xs font-bold"
-                    : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
-                }`}
-              >
-                <GraduationCap className="w-3.5 h-3.5" />
-                <span>Aluno</span>
-              </button>
-
-              <button
-                onClick={() => setActiveDashboardRole("SERVIDOR")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1 cursor-pointer ${
-                  activeDashboardRole === "SERVIDOR"
-                    ? "bg-white dark:bg-slate-900 text-[#16845B] dark:text-emerald-400 shadow-xs font-bold"
-                    : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
-                }`}
-              >
-                <Building2 className="w-3.5 h-3.5" />
-                <span>Servidor</span>
-              </button>
-
-              <button
-                onClick={() => setActiveDashboardRole("ADMIN")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center space-x-1 cursor-pointer ${
-                  activeDashboardRole === "ADMIN"
-                    ? "bg-[#16845B] text-white shadow-xs"
-                    : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
-                }`}
-              >
-                <Shield className="w-3.5 h-3.5" />
-                <span>Admin TI</span>
-              </button>
-            </div>
-          ) : (
-            <div className="px-3 py-1 rounded-lg bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium flex items-center space-x-2 border border-slate-200 dark:border-slate-700">
-              {currentUser.role === "SERVIDOR" ? (
-                <Building2 className="w-3.5 h-3.5 text-[#16845B]" />
-              ) : (
-                <UserCheck className="w-3.5 h-3.5 text-[#16845B]" />
-              )}
-              <span>{currentUser.role === "SERVIDOR" ? "Painel: Servidor / Portaria" : `Painel: ${currentUser.role}`}</span>
-            </div>
-          )}
-
-          {/* Administrative CSV Export Report Button */}
-          {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && (
-            <button
-              onClick={handleExportItemsCSV}
-              type="button"
-              aria-label="Exportar relatório completo de itens em CSV"
-              title="Download do Relatório Completo de Achados & Perdidos (CSV)"
-              className="px-3 py-1.5 rounded-lg bg-[#F8FAFC] hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-[#172B2A] dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-[#16845B]" />
-              <span>Exportar CSV</span>
-            </button>
-          )}
-        </div>
-      </div>
+        )}
+      </SurfaceCard>
 
       {/* ========================================================================= */}
       {/* 1. MÓDULO ALUNO (Discente) */}
       {/* ========================================================================= */}
       {activeDashboardRole === "ALUNO" && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          <div className="bg-[#EBF5F0] dark:bg-emerald-950/30 border border-[#16845B]/20 rounded-2xl p-4 flex items-center space-x-3 text-xs text-[#064E3B] dark:text-emerald-300">
-            <GraduationCap className="w-5 h-5 shrink-0 text-[#16845B]" />
-            <div>
-              <p className="font-bold">Visão do Discente (Aluno)</p>
-              <p className="text-[11px] opacity-90">
-                Acompanhe os itens que você registrou, solicitações de devolução e selo de reputação no campus.
-              </p>
-            </div>
-          </div>
-
-          {/* Student Stats Cards (Responsive CSS Grid) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-w-0">
-            <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-0">
+            <SurfaceCard padding="md" className="space-y-2">
               <div className="flex items-center justify-between text-slate-500">
                 <span className="text-xs font-bold uppercase tracking-wider">Minhas Ocorrências</span>
                 <PackageSearch className="w-5 h-5 text-[#16845B]" />
@@ -999,21 +1117,21 @@ export const DashboardView: React.FC = () => {
               <p className="text-3xl font-bold text-[#172B2A] dark:text-white tabular-nums">
                 {items.filter((i) => i.registeredByUserId === currentUser.id).length}
               </p>
-              <p className="text-[11px] text-slate-500">Itens cadastrados por você</p>
-            </div>
+              <p className="text-xs text-slate-500">Itens cadastrados por você</p>
+            </SurfaceCard>
 
-            <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-2">
+            <SurfaceCard padding="md" className="space-y-2">
               <div className="flex items-center justify-between text-slate-500">
-                <span className="text-xs font-bold uppercase tracking-wider">Reclamações Enviadas</span>
+                <span className="text-xs font-bold uppercase tracking-wider">Solicitações Enviadas</span>
                 <Clock className="w-5 h-5 text-amber-500" />
               </div>
               <p className="text-3xl font-bold text-[#172B2A] dark:text-white tabular-nums">
                 {claims.filter((c) => c.claimerId === currentUser.id).length}
               </p>
-              <p className="text-[11px] text-slate-500">Solicitações de dono verdadeiro</p>
-            </div>
+              <p className="text-xs text-slate-500">Reivindicações de titularidade</p>
+            </SurfaceCard>
 
-            <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-2">
+            <SurfaceCard padding="md" className="space-y-2">
               <div className="flex items-center justify-between text-slate-500">
                 <span className="text-xs font-bold uppercase tracking-wider">Selo de Cidadania</span>
                 <CheckCircle2 className="w-5 h-5 text-[#16845B]" />
@@ -1021,12 +1139,11 @@ export const DashboardView: React.FC = () => {
               <p className="text-3xl font-bold text-[#16845B] tabular-nums">
                 {currentUser.reputationScore || 10} pts
               </p>
-              <p className="text-[11px] text-slate-500">Nível: Aluno Cidadão Exemplar</p>
-            </div>
+              <p className="text-xs text-slate-500">Nível: Aluno Cidadão Exemplar</p>
+            </SurfaceCard>
           </div>
 
-          {/* Student My Registered Items Table */}
-          <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-4">
+          <SurfaceCard padding="lg" className="space-y-4">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <h2 className="text-base font-bold text-[#172B2A] dark:text-white">
                 Seus Objetos e Ocorrências Vinculadas
@@ -1040,22 +1157,20 @@ export const DashboardView: React.FC = () => {
                   + Registrar Novo Item
                 </button>
               ) : (
-                <span className="px-3 py-1 rounded-lg bg-[#EBF5F0] dark:bg-[#16845B]/20 text-[#16845B] dark:text-emerald-400 text-xs font-semibold border border-[#16845B]/20">
-                  Acompanhamento Discente
-                </span>
+                <UIBadge tone="emerald">Acompanhamento Discente</UIBadge>
               )}
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
               <table className="w-full text-left text-xs">
-                <thead className="bg-[#F8FAFC] dark:bg-slate-800 text-slate-500 uppercase font-bold text-[10px]">
+                <thead className="bg-[#F8FAFC] dark:bg-slate-800 text-slate-500 uppercase font-bold text-[10px] border-b border-slate-200 dark:border-slate-800">
                   <tr>
-                    <th className="p-3 rounded-l-xl">Objeto</th>
-                    <th className="p-3">Categoria</th>
-                    <th className="p-3">Tipo</th>
-                    <th className="p-3">Status</th>
-                    <th className="p-3">Data</th>
-                    <th className="p-3 rounded-r-xl text-right">Ação</th>
+                    <th className="p-3.5">Objeto</th>
+                    <th className="p-3.5">Categoria</th>
+                    <th className="p-3.5">Tipo</th>
+                    <th className="p-3.5">Status</th>
+                    <th className="p-3.5">Data</th>
+                    <th className="p-3.5 text-right">Ação</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -1070,19 +1185,19 @@ export const DashboardView: React.FC = () => {
                       .filter((i) => i.registeredByUserId === currentUser.id)
                       .map((item) => (
                         <tr key={item.id} className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/50">
-                          <td className="p-3 font-bold text-[#172B2A] dark:text-white">{item.title}</td>
-                          <td className="p-3">{item.category}</td>
-                          <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap shrink-0 ${item.type === "PERDIDO" ? "bg-red-500/10 text-red-600" : "bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400"}`}>
+                          <td className="p-3.5 font-bold text-[#172B2A] dark:text-white">{item.title}</td>
+                          <td className="p-3.5">{item.category}</td>
+                          <td className="p-3.5">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap shrink-0 ${item.type === "PERDIDO" ? "bg-rose-500/10 text-rose-600" : "bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400"}`}>
                               {item.type}
                             </span>
                           </td>
-                          <td className="p-3 font-bold">{item.status}</td>
-                          <td className="p-3 text-slate-500 tabular-nums">{formatDate(item.date)}</td>
-                          <td className="p-3 text-right">
+                          <td className="p-3.5 font-bold">{item.status}</td>
+                          <td className="p-3.5 text-slate-500 tabular-nums">{formatDate(item.date)}</td>
+                          <td className="p-3.5 text-right">
                             <button
                               onClick={() => setSelectedItemForDetail(item)}
-                              className="px-3 py-1 rounded-lg bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-[#16845B] hover:text-white hover:border-[#16845B] text-[11px] font-bold transition-colors"
+                              className="px-3 py-1.5 rounded-lg bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-[#16845B] hover:text-white hover:border-[#16845B] text-[11px] font-bold transition-colors cursor-pointer"
                             >
                               Ver Detalhes
                             </button>
@@ -1093,610 +1208,15 @@ export const DashboardView: React.FC = () => {
                 </tbody>
               </table>
             </div>
-          </div>
+          </SurfaceCard>
         </div>
       )}
 
       {/* ========================================================================= */}
-      {/* 2. MÓDULO SERVIDOR (Docente / TAE / Portaria) */}
+      {/* 2 & 3. WORKSPACE UNIFICADO COM SIDEBAR: PAINEL DO SERVIDOR & PAINEL ADMIN */}
       {/* ========================================================================= */}
-      {activeDashboardRole === "SERVIDOR" && (
-        <div className="space-y-8 animate-in fade-in duration-200">
-          <div className="bg-[#EBF5F0] dark:bg-emerald-950/30 border border-[#16845B]/20 rounded-2xl p-4 flex items-center justify-between text-xs text-[#064E3B] dark:text-emerald-200">
-            <div className="flex items-center space-x-3">
-              <Building2 className="w-5 h-5 shrink-0 text-[#16845B] dark:text-emerald-400" />
-              <div>
-                <p className="font-bold">Painel do Servidor / Portaria e Achados & Perdidos</p>
-                <p className="text-[11px] opacity-90">
-                  Acesso para conferência de itens, leitor QR Code na recepção e análise de tendências de objetos no campus.
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setQrScannerOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold flex items-center space-x-1.5 text-xs shadow-xs shrink-0"
-            >
-              <QrCode className="w-4 h-4" />
-              <span>Escanear Etiqueta QR</span>
-            </button>
-          </div>
-
-          {/* Servidor Summary Metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-white dark:bg-[#111827] p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-1">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total de Itens</span>
-              <p className="text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight tabular-nums">{totalItems}</p>
-              <p className="text-[11px] text-slate-400">Acervo acumulado</p>
-            </div>
-            <div className="bg-white dark:bg-[#111827] p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-1">
-              <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">Em Análise / Recepção</span>
-              <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 tracking-tight tabular-nums">{inAnalysisCount}</p>
-              <p className="text-[11px] text-slate-400">Guarda na guarita</p>
-            </div>
-            <div className="bg-white dark:bg-[#111827] p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-1">
-              <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">Devoluções Concluídas (Receptor)</span>
-              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 tracking-tight tabular-nums">{returnedCount}</p>
-              <p className="text-[10px] text-slate-400 tabular-nums">
-                {registeredReturnsCount} registradas • {pendingRemoteSignaturesCount} pend. remota • {dualSignedReturnsCount} dupla assin.
-              </p>
-            </div>
-            <div className="bg-white dark:bg-[#111827] p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-1">
-              <span className="text-[10px] font-bold text-[#16845B] dark:text-emerald-400 uppercase tracking-wider block">Taxa de Sucesso (Concluídas)</span>
-              <p className="text-2xl font-bold text-[#16845B] dark:text-emerald-400 tracking-tight tabular-nums">{successRate}%</p>
-              <p className="text-[10px] text-slate-400 tabular-nums">
-                {pendingStaffAttestationCount} aguardando atestação do servidor
-              </p>
-            </div>
-          </div>
-
-          {/* SPECIALIZED REPORTING COMPONENT WITH RECHARTS */}
-          <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
-              <div>
-                <div className="flex items-center space-x-2">
-                  <TrendingUp className="w-5 h-5 text-[#16845B]" />
-                  <h2 className="text-lg font-bold text-[#172B2A] dark:text-white tracking-tight">
-                    Relatório Analítico & Gráficos do Servidor
-                  </h2>
-                </div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Análise temporal, estatísticas por categoria e contagem de análises pendentes no IFPR Campus Ivaiporã.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-                <button
-                  onClick={() => {
-                    vibrateClick();
-                    setIsExportFoundModalOpen(true);
-                  }}
-                  role="button"
-                  aria-label="Abrir modal para emitir Relatório de Prestação de Contas de Itens Encontrados em PDF"
-                  className="px-4 py-2 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold text-xs shadow-xs transition-colors flex items-center space-x-2 cursor-pointer"
-                >
-                  <FileText className="w-4 h-4 text-white" />
-                  <span>Prestação de Contas SEBAC (PDF)</span>
-                </button>
-
-                <button
-                  onClick={handleExportPendingItemsPDF}
-                  role="button"
-                  aria-label="Exportar Relatório em PDF contendo a listagem de objetos pendentes"
-                  className="px-4 py-2 rounded-xl bg-[#064E3B] hover:bg-[#16845B] text-white font-bold text-xs shadow-xs transition-colors flex items-center space-x-2 cursor-pointer"
-                >
-                  <FileText className="w-4 h-4 text-white" />
-                  <span>Exportar Pendentes (PDF)</span>
-                </button>
-
-                <button
-                  onClick={handleExportItemsCSV}
-                  role="button"
-                  aria-label="Exportar todos os dados em formato CSV para a Secretaria"
-                  className="px-4 py-2 rounded-xl bg-[#F8FAFC] dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 font-bold text-xs text-slate-700 dark:text-slate-300 transition-colors flex items-center space-x-2 cursor-pointer border border-slate-200 dark:border-slate-700 shadow-xs"
-                >
-                  <FileSpreadsheet className="w-4 h-4 text-[#16845B]" />
-                  <span>Exportar Base Completa (CSV)</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Gráfico de Linhas Recharts: Tendência Mensal de Itens Perdidos vs. Recuperados no Campus Ivaiporã */}
-            <div className="bg-[#F8FAFC] dark:bg-slate-900/50 p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-slate-800/80 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider flex items-center space-x-1.5">
-                    <TrendingUp className="w-4 h-4 text-[#16845B]" />
-                    <span>Tendência Mensal: Itens Perdidos vs. Recuperados (Campus Ivaiporã)</span>
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Comparativo em linha da evolução temporal entre perdas registradas e devoluções bem-sucedidas no campus
-                  </p>
-                </div>
-                <div className="flex items-center space-x-3 text-[11px] font-bold">
-                  <span className="flex items-center space-x-1 text-red-600">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-600 inline-block"></span>
-                    <span>Perdidos</span>
-                  </span>
-                  <span className="flex items-center space-x-1 text-[#16845B]">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#16845B] inline-block"></span>
-                    <span>Recuperados</span>
-                  </span>
-                  <span className="flex items-center space-x-1 text-[#3B82F6]">
-                    <span className="w-2.5 h-2.5 rounded-full bg-[#3B82F6] inline-block"></span>
-                    <span>Encontrados</span>
-                  </span>
-                </div>
-              </div>
-
-              <div className="h-64 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={monthlyData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                    <XAxis dataKey="month" stroke="#64748B" fontSize={11} />
-                    <YAxis stroke="#64748B" fontSize={11} allowDecimals={false} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "#111827",
-                        borderColor: "#334155",
-                        borderRadius: "12px",
-                        color: "#fff",
-                        fontSize: "12px",
-                      }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
-                    <Line
-                      type="monotone"
-                      dataKey="perdidos"
-                      name="Itens Perdidos"
-                      stroke="#DC2626"
-                      strokeWidth={3}
-                      dot={{ r: 4, stroke: "#DC2626", fill: "#fff", strokeWidth: 2 }}
-                      activeDot={{ r: 7 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="devolvidos"
-                      name="Itens Recuperados / Devolvidos"
-                      stroke="#16845B"
-                      strokeWidth={3}
-                      dot={{ r: 4, stroke: "#16845B", fill: "#fff", strokeWidth: 2 }}
-                      activeDot={{ r: 7 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="encontrados"
-                      name="Itens Encontrados"
-                      stroke="#3B82F6"
-                      strokeWidth={2}
-                      strokeDasharray="4 4"
-                      dot={{ r: 3, stroke: "#3B82F6", fill: "#fff" }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* D3.js Weekly Flow Chart Component (Fluxo por Dia da Semana & Categoria) */}
-            <WeeklyFlowD3Chart items={items} darkMode={darkMode} />
-
-            {/* D3.js Monthly Evolution Chart Component */}
-            <MonthlyItemsD3Chart items={items} darkMode={darkMode} />
-
-            {/* Charts Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              {/* Chart 1: Categorias Mais Comuns */}
-              <div className="bg-white dark:bg-[#111827] p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3 shadow-[0_1px_3px_rgba(23,43,42,0.04)]">
-                <div>
-                  <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider flex items-center justify-between">
-                    <span>Categorias de Objetos</span>
-                    <span className="text-[10px] text-slate-400 font-mono font-normal tabular-nums">
-                      {Object.keys(categoryCounts).length} tipos mapeados
-                    </span>
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Proporção e contagem no acervo do campus
-                  </p>
-                </div>
-
-                {/* Compact category breakdown list + mini donut */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-                  <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
-                    {pieCategoryData.map((cat, idx) => {
-                      const totalCount = items.length || 1;
-                      const pct = Math.round((cat.value / totalCount) * 100);
-                      return (
-                        <div key={cat.name} className="flex items-center justify-between text-xs py-1 px-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                          <div className="flex items-center space-x-2 min-w-0">
-                            <span
-                              className="w-2 h-2 rounded-full shrink-0"
-                              style={{ backgroundColor: COLORS[idx % COLORS.length] }}
-                            />
-                            <span className="text-slate-700 dark:text-slate-300 truncate text-[11px] font-medium">
-                              {cat.name}
-                            </span>
-                          </div>
-                          <div className="flex items-center space-x-2 shrink-0 tabular-nums">
-                            <span className="font-bold text-[#172B2A] dark:text-white text-xs">{cat.value}</span>
-                            <span className="text-[10px] text-slate-400 font-mono w-7 text-right">{pct}%</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="h-44 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={pieCategoryData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={40}
-                          outerRadius={65}
-                          paddingAngle={3}
-                          dataKey="value"
-                        >
-                          {pieCategoryData.map((_, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: "#111827",
-                            borderColor: "#334155",
-                            borderRadius: "8px",
-                            color: "#fff",
-                            fontSize: "11px",
-                          }}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </div>
-
-              {/* Chart 2: Análise de Tendência Mensal */}
-              <div className="bg-[#F8FAFC] dark:bg-slate-900/50 p-5 rounded-2xl border border-slate-200 dark:border-slate-800/80 space-y-4">
-                <div>
-                  <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
-                    Análise de Tendência Mensal
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Evolução dos registros de Perdidos, Encontrados e Devolvidos no semestre
-                  </p>
-                </div>
-
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={monthlyData}>
-                      <defs>
-                        <linearGradient id="colorPerdidos" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#DC2626" stopOpacity={0.8} />
-                          <stop offset="95%" stopColor="#DC2626" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="colorEncontrados" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#16845B" stopOpacity={0.8} />
-                          <stop offset="95%" stopColor="#16845B" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="month" stroke="#64748B" fontSize={11} />
-                      <YAxis stroke="#64748B" fontSize={11} />
-                      <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "#111827",
-                          borderColor: "#334155",
-                          borderRadius: "12px",
-                          color: "#fff",
-                          fontSize: "12px",
-                        }}
-                      />
-                      <Area type="monotone" dataKey="perdidos" stroke="#DC2626" fillOpacity={1} fill="url(#colorPerdidos)" name="Perdidos" />
-                      <Area type="monotone" dataKey="encontrados" stroke="#16845B" fillOpacity={1} fill="url(#colorEncontrados)" name="Encontrados" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            </div>
-
-            {/* Chart 3: Contagem de Ocorrências em Análise por Categoria */}
-            <div className="bg-[#F8FAFC] dark:bg-slate-900/50 p-5 rounded-2xl border border-slate-200 dark:border-slate-800/80 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
-                    Contagem de Revisões Pendentes por Categoria
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Objetos aguardando comprovação presencial ou validação na recepção
-                  </p>
-                </div>
-                <span className="px-3 py-1 rounded-full bg-amber-500/10 text-amber-600 text-xs font-bold border border-amber-500/20 tabular-nums whitespace-nowrap shrink-0">
-                  {inAnalysisCount + pendingClaimsCount} Pendentes Total
-                </span>
-              </div>
-
-              <div className="h-56 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={barPendingData}>
-                    <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                    <XAxis dataKey="category" stroke="#64748B" fontSize={10} />
-                    <YAxis stroke="#64748B" fontSize={11} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "#111827",
-                        borderColor: "#334155",
-                        borderRadius: "12px",
-                        color: "#fff",
-                        fontSize: "12px",
-                      }}
-                    />
-                    <Bar dataKey="pendentes" fill="#F59E0B" radius={[6, 6, 0, 0]} name="Aguardando Revisão" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Storage Deadline Alert Card (Controle de Prazo de Armazenamento - 90 Dias) */}
-            <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-amber-500/30 dark:border-amber-500/30 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
-                <div className="flex items-center space-x-3">
-                  <div className="p-3 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400">
-                    <Clock className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-[#172B2A] dark:text-white flex items-center gap-2">
-                      <span>Controle de Prazo de Armazenamento</span>
-                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 text-[10px] font-bold uppercase tracking-wide whitespace-nowrap shrink-0">
-                        Portaria IFPR 90 Dias
-                      </span>
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                      Monitoramento preventivo de objetos guardados no acervo prestes a vencer o prazo regulamentar.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  <span className="px-3 py-1.5 rounded-xl bg-red-500/10 text-red-600 dark:text-red-400 font-bold text-xs border border-red-500/20 flex items-center gap-1 tabular-nums whitespace-nowrap shrink-0">
-                    <AlertTriangle className="w-3.5 h-3.5" /> {expiredItems.length} Expirados
-                  </span>
-                  <span className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-xs border border-amber-500/20 flex items-center gap-1 tabular-nums whitespace-nowrap shrink-0">
-                    <Clock className="w-3.5 h-3.5" /> {nearExpirationItems.length} Próximos do Vencimento
-                  </span>
-                </div>
-              </div>
-
-              {deadlineAlertItems.length === 0 ? (
-                <div className="p-4 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/30 border border-[#16845B]/20 text-[#064E3B] dark:text-emerald-300 text-xs flex items-center space-x-2">
-                  <CheckCircle2 className="w-4 h-4 text-[#16845B] shrink-0" />
-                  <span>Todos os objetos guardados no acervo do IFPR estão dentro do prazo de guarda de 90 dias. Nenhuma destinação necessária no momento.</span>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
-                          <th className="py-2 px-3">Objeto</th>
-                          <th className="py-2 px-3">Categoria</th>
-                          <th className="py-2 px-3">Data Cadastro</th>
-                          <th className="py-2 px-3">Data Limite</th>
-                          <th className="py-2 px-3 text-center">Status do Prazo</th>
-                          <th className="py-2 px-3 text-right">Ação</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                        {deadlineAlertItems.slice(0, 6).map((item) => (
-                          <tr key={item.id} className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/40">
-                            <td className="py-2.5 px-3 font-bold text-[#172B2A] dark:text-white flex items-center gap-2">
-                              {item.imageUrl ? (
-                                <img src={item.imageUrl} alt={item.title} className="w-7 h-7 rounded-lg object-cover" />
-                              ) : (
-                                <div className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold">IF</div>
-                              )}
-                              <span className="truncate max-w-[160px]">{item.title}</span>
-                            </td>
-                            <td className="py-2.5 px-3 text-slate-600 dark:text-slate-400">{item.category}</td>
-                            <td className="py-2.5 px-3 text-slate-500 font-mono text-[11px] tabular-nums">{formatDate(item.createdAt)}</td>
-                            <td className="py-2.5 px-3 font-mono font-bold text-slate-800 dark:text-slate-200 text-[11px] tabular-nums">
-                              {item.data_limite ? formatDate(item.data_limite) : (item.storageDeadlineDate ? formatDate(item.storageDeadlineDate) : "—")}
-                            </td>
-                            <td className="py-2.5 px-3 text-center">
-                              {item.isExpired ? (
-                                <span className="px-2.5 py-0.5 rounded-full bg-red-500/10 text-red-600 dark:text-red-400 font-bold text-[10px] border border-red-500/20 inline-block whitespace-nowrap shrink-0">
-                                  🚨 Prazo Vencido ({Math.abs(item.daysRemaining)}d atrás)
-                                </span>
-                              ) : (
-                                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-[10px] border border-amber-500/20 inline-block whitespace-nowrap shrink-0">
-                                  ⚠️ Vence em {item.daysRemaining} dias
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3 text-right">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedItemForDetail(item)}
-                                className="px-3 py-1 rounded-xl bg-[#064E3B] hover:bg-[#16845B] text-white font-bold text-[11px] shadow-xs cursor-pointer"
-                              >
-                                Destinar / Gerenciar
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Painel Operacional de Recepção e Custódia de Objetos no Campus */}
-            <div className="bg-white dark:bg-[#111827] p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-                <div className="flex items-center space-x-3">
-                  <div className="p-3 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400">
-                    <PackageCheck className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-[#172B2A] dark:text-white flex items-center gap-2">
-                      <span>Gerenciamento & Recepção de Objetos na Guarita / Secretaria</span>
-                      <span className="px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 text-[10px] font-bold tabular-nums whitespace-nowrap shrink-0">
-                        {items.length} Registros
-                      </span>
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                      Confirmação presencial de chegada, guarda física, custódia e baixa de devoluções no campus.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Filtros e Busca Rápida */}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  {["TODOS", "PERDIDO", "ENCONTRADO", "EM_ANALISE", "DEVOLVIDO"].map((st) => (
-                    <button
-                      key={st}
-                      onClick={() => setServerFilterStatus(st)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        serverFilterStatus === st
-                          ? "bg-[#16845B] text-white shadow-xs"
-                          : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                      }`}
-                    >
-                      {st === "TODOS" ? "Todos os Objetos" : st === "EM_ANALISE" ? "Em Análise / Custódia" : st}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="relative min-w-[220px]">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={tableSearch}
-                    onChange={(e) => setTableSearch(e.target.value)}
-                    placeholder="Buscar objeto ou local..."
-                    className="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:ring-2 focus:ring-[#16845B]"
-                  />
-                </div>
-              </div>
-
-              {/* Tabela de Objetos com Ações de Servidor */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 uppercase text-[10px] font-bold">
-                      <th className="py-2.5 px-3">Objeto</th>
-                      <th className="py-2.5 px-3">Tipo</th>
-                      <th className="py-2.5 px-3">Localização</th>
-                      <th className="py-2.5 px-3 text-center">Status</th>
-                      <th className="py-2.5 px-3">Data</th>
-                      <th className="py-2.5 px-3 text-right">Ações Operacionais</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
-                    {items
-                      .filter((it) => {
-                        if (serverFilterStatus !== "TODOS" && it.status !== serverFilterStatus) return false;
-                        if (tableSearch) {
-                          const s = tableSearch.toLowerCase();
-                          return (
-                            (it.title || "").toLowerCase().includes(s) ||
-                            (it.location || "").toLowerCase().includes(s) ||
-                            (it.category || "").toLowerCase().includes(s)
-                          );
-                        }
-                        return true;
-                      })
-                      .slice(0, 15)
-                      .map((it) => (
-                        <tr key={it.id} className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/40">
-                          <td className="py-3 px-3">
-                            <div className="flex items-center gap-2.5">
-                              {it.imageUrl ? (
-                                <img src={it.imageUrl} alt={it.title} className="w-8 h-8 rounded-lg object-cover border border-slate-200 dark:border-slate-700" />
-                              ) : (
-                                <div className="w-8 h-8 rounded-lg bg-[#F1F5F9] dark:bg-slate-800 flex items-center justify-center font-bold text-slate-400 text-[10px]">
-                                  IF
-                                </div>
-                              )}
-                              <div>
-                                <span className="font-bold text-[#172B2A] dark:text-white block truncate max-w-[180px]">
-                                  {it.title}
-                                </span>
-                                <span className="text-[10px] text-slate-400 font-mono">
-                                  {it.category} {it.color ? `• ${it.color}` : ""}
-                                </span>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3 px-3">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase whitespace-nowrap shrink-0 ${
-                              it.type === "ENCONTRADO" ? "bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400" : "bg-red-500/10 text-red-600"
-                            }`}>
-                              {it.type}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 text-slate-600 dark:text-slate-400 font-medium">
-                            {it.location || "Campus IFPR"}
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase inline-block whitespace-nowrap shrink-0 ${
-                              it.status === "ENCONTRADO"
-                                ? "bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/20"
-                                : it.status === "EM_ANALISE"
-                                ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
-                                : it.status === "DEVOLVIDO"
-                                ? "bg-blue-500/10 text-blue-600 border border-blue-500/20"
-                                : "bg-red-500/10 text-red-600 border border-red-500/20"
-                            }`}>
-                              {it.status}
-                            </span>
-                          </td>
-                          <td className="py-3 px-3 text-slate-400 font-mono text-[11px] tabular-nums">
-                            {formatDate(it.createdAt)}
-                          </td>
-                          <td className="py-3 px-3 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {it.status !== "EM_ANALISE" && it.status !== "DEVOLVIDO" && (
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    try {
-                                      await updateItemStatus(it.id, "EM_ANALISE");
-                                      addToast(`Chegada do objeto "${it.title}" confirmada sob custódia na Guarita!`, "success");
-                                    } catch (_) {}
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500 text-amber-700 hover:text-white border border-amber-500/30 text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap"
-                                  title="Confirmar que o objeto foi recebido fisicamente na guarita / secretaria"
-                                >
-                                  📥 Confirmar Chegada
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => setSelectedItemForDetail(it)}
-                                className="px-2.5 py-1 rounded-lg bg-[#16845B] hover:bg-[#064E3B] text-white text-[10px] font-bold transition-all cursor-pointer shadow-xs whitespace-nowrap"
-                              >
-                                Ver / Devolver
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* 3. MÓDULO ADMINISTRADOR & OPERACIONAL DE CUSTÓDIA */}
-      {/* ========================================================================= */}
-      {(activeDashboardRole === "ADMIN" || currentUser.role === "SERVIDOR") && (
-        <div className="space-y-8 animate-in fade-in duration-200">
+      {(activeDashboardRole === "ADMIN" || activeDashboardRole === "SERVIDOR") && (
+        <div className="animate-in fade-in duration-200">
           {currentUser.role !== "ADMIN" && currentUser.role !== "SERVIDOR" ? (
             <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-8 text-center space-y-4">
               <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-500 flex items-center justify-center mx-auto">
@@ -1712,361 +1232,1012 @@ export const DashboardView: React.FC = () => {
               </div>
             </div>
           ) : (
-            <>
-              {/* Admin Navigation Cohesive Toolbar */}
-              <div className="bg-white dark:bg-[#111827] rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-3">
-                {/* Level 1: Context Categories */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {[
-                      {
-                        id: "users_access",
-                        label: "Usuários & Acesso",
-                        icon: Users,
-                        tabs: ["accounts", "users", "approvals"],
-                        badge: (allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length,
-                      },
-                      {
-                        id: "security_audit",
-                        label: "Segurança & Auditoria",
-                        icon: Shield,
-                        tabs: ["audit", "health", "backups"],
-                      },
-                      {
-                        id: "custody_returns",
-                        label: "Custódia & Devoluções",
-                        icon: PackageCheck,
-                        tabs: ["claims", "pending_signatures", "custody_reminders", "digital_returns"],
-                        badge: pendingClaimsCount > 0 ? pendingClaimsCount : (pendingSignaturesCount > 0 ? pendingSignaturesCount : itemsOver90DaysCount),
-                      },
-                      {
-                        id: "quality_tests",
-                        label: "Qualidade & Testes",
-                        icon: ShieldCheck,
-                        tabs: ["test_batteries", "test_distribution"],
-                      },
-                      {
-                        id: "system_docs",
-                        label: "Sistema & Relatórios",
-                        icon: Settings,
-                        tabs: ["documents", "project_settings", "versions"],
-                      },
-                    ]
-                      .filter((cat) => currentUser.role === "ADMIN" || cat.id === "custody_returns")
-                      .map((cat) => {
-                        const Icon = cat.icon;
-                        const isCatActive = cat.tabs.includes(adminSubTab);
-                        return (
+            <div className="flex flex-col lg:flex-row gap-6 items-start">
+              {/* NAVEGAÇÃO LATERAL (SIDEBAR DESKTOP + BARRA MOBILE ADAPTADA) */}
+              <aside
+                aria-label={
+                  activeDashboardRole === "SERVIDOR"
+                    ? "Navegação do Painel do Servidor"
+                    : "Navegação do Painel Administrativo"
+                }
+                className="w-full lg:w-64 shrink-0 lg:sticky lg:top-20 space-y-4"
+              >
+                <SurfaceCard padding="sm" className="space-y-4">
+                  {activeDashboardRole === "SERVIDOR" ? (
+                    /* MENU DO PAINEL DO SERVIDOR (Operacional, rápido e claro) */
+                    <div className="space-y-3">
+                      <div className="px-2.5 pt-1 flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                          Módulos do Servidor
+                        </span>
+                        <UIBadge tone="emerald">Portaria / SEPAE</UIBadge>
+                      </div>
+
+                      <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
+                        {[
+                          {
+                            id: "server_overview",
+                            label: "Visão Geral & Custódia",
+                            icon: PackageCheck,
+                            badge: inAnalysisCount,
+                          },
+                          {
+                            id: "claims",
+                            label: "Solicitações de Recuperação",
+                            icon: ShieldCheck,
+                            badge: pendingClaimsCount,
+                          },
+                          {
+                            id: "pending_signatures",
+                            label: "Confirmações de Entrega",
+                            icon: FileSignature,
+                            badge: pendingSignaturesCount,
+                          },
+                          {
+                            id: "custody_reminders",
+                            label: "Prazos de Guarda (+90d)",
+                            icon: Clock,
+                            badge: itemsOver90DaysCount,
+                          },
+                          {
+                            id: "digital_returns",
+                            label: "Devoluções Digitais (D3)",
+                            icon: FileCheck2,
+                            badge: digitalReturnedItemsCount,
+                          },
+                          {
+                            id: "server_analytics",
+                            label: "Relatórios & Estatísticas",
+                            icon: TrendingUp,
+                            badge: 0,
+                          },
+                        ].map((item) => {
+                          const Icon = item.icon;
+                          const isActive = adminSubTab === item.id;
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              onClick={() => {
+                                vibrateClick();
+                                setAdminSubTab(item.id as any);
+                              }}
+                              className={`px-3 py-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-between gap-2 cursor-pointer whitespace-nowrap lg:whitespace-normal text-left ${
+                                isActive
+                                  ? "bg-[#16845B] text-white shadow-2xs font-bold"
+                                  : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-[#F8FAFC] dark:hover:bg-slate-800/70"
+                              }`}
+                            >
+                              <span className="flex items-center gap-2.5 min-w-0">
+                                <Icon className="w-4 h-4 shrink-0" />
+                                <span className="leading-snug">{item.label}</span>
+                              </span>
+                              {item.badge > 0 && (
+                                <span
+                                  className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold tabular-nums shrink-0 ${
+                                    isActive
+                                      ? "bg-white/20 text-white"
+                                      : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                                  }`}
+                                >
+                                  {item.badge}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </nav>
+
+                      {/* Ações Rápidas de Atendimento na Sidebar do Servidor */}
+                      <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2 hidden lg:block">
+                        <span className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Atendimento Rápido
+                        </span>
+                        <UIButton
+                          type="button"
+                          variant="primary"
+                          size="sm"
+                          onClick={() => setQrScannerOpen(true)}
+                          className="w-full justify-start"
+                        >
+                          <QrCode className="w-3.5 h-3.5" />
+                          <span>Escanear Etiqueta QR</span>
+                        </UIButton>
+                        <UIButton
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => requestAuthForRegistration()}
+                          className="w-full justify-start"
+                        >
+                          <PackageSearch className="w-3.5 h-3.5 text-[#16845B]" />
+                          <span>Registrar Novo Item</span>
+                        </UIButton>
+                      </div>
+                    </div>
+                  ) : (
+                    /* MENU DO PAINEL ADMINISTRATIVO (Agrupado com hierarquia clara) */
+                    <div className="space-y-4">
+                      {[
+                        {
+                          groupTitle: "Usuários & Acesso",
+                          items: [
+                            {
+                              id: "users",
+                              label: "Usuários, Permissões & Objetos",
+                              icon: Users,
+                              badge: allUsers.length,
+                            },
+                            {
+                              id: "accounts",
+                              label: "Status de Contas",
+                              icon: ShieldAlert,
+                              badge: 0,
+                            },
+                            {
+                              id: "approvals",
+                              label: "Aprovações (@ifpr)",
+                              icon: GraduationCap,
+                              badge: (allUsers || []).filter(
+                                (u) => u && u.approvalStatus === "PENDENTE"
+                              ).length,
+                            },
+                          ],
+                        },
+                        {
+                          groupTitle: "Custódia & Devoluções",
+                          items: [
+                            {
+                              id: "claims",
+                              label: "Solicitações de Devolução",
+                              icon: ShieldCheck,
+                              badge: pendingClaimsCount,
+                            },
+                            {
+                              id: "pending_signatures",
+                              label: "Assinaturas Pendentes",
+                              icon: FileSignature,
+                              badge: pendingSignaturesCount,
+                            },
+                            {
+                              id: "custody_reminders",
+                              label: "Lembretes (+90 Dias)",
+                              icon: AlertTriangle,
+                              badge: itemsOver90DaysCount,
+                            },
+                            {
+                              id: "digital_returns",
+                              label: "Devoluções Digitais (D3)",
+                              icon: FileCheck2,
+                              badge: digitalReturnedItemsCount,
+                            },
+                            {
+                              id: "server_overview",
+                              label: "Recepção & Guarita",
+                              icon: PackageCheck,
+                              badge: inAnalysisCount,
+                            },
+                          ],
+                        },
+                        {
+                          groupTitle: "Auditoria, Saúde & Backups",
+                          items: [
+                            {
+                              id: "audit",
+                              label: "Logs de Auditoria",
+                              icon: History,
+                              badge: 0,
+                            },
+                            {
+                              id: "health",
+                              label: "Saúde do Sistema",
+                              icon: Activity,
+                              badge: 0,
+                            },
+                            {
+                              id: "backups",
+                              label: "Backups & Segurança",
+                              icon: HardDrive,
+                              badge: 0,
+                            },
+                          ],
+                        },
+                        {
+                          groupTitle: "Relatórios, Config & QA",
+                          items: [
+                            {
+                              id: "server_analytics",
+                              label: "Relatórios & Estatísticas",
+                              icon: TrendingUp,
+                              badge: 0,
+                            },
+                            {
+                              id: "documents",
+                              label: "Documentos PDF",
+                              icon: FileText,
+                              badge: 0,
+                            },
+                            {
+                              id: "project_settings",
+                              label: "Configurações do Sistema",
+                              icon: Settings,
+                              badge: 0,
+                            },
+                            {
+                              id: "test_batteries",
+                              label: "Bateria de Testes QA",
+                              icon: ShieldCheck,
+                              badge: 0,
+                            },
+                            {
+                              id: "test_distribution",
+                              domId: "btn-tab-test-distribution",
+                              label: "Distribuição de Testes",
+                              icon: Shuffle,
+                              badge: 0,
+                            },
+                            {
+                              id: "versions",
+                              label: "Versões & Changelog",
+                              icon: GitBranch,
+                              badge: 0,
+                            },
+                          ],
+                        },
+                      ].map((group) => (
+                        <div key={group.groupTitle} className="space-y-1">
+                          <span className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                            {group.groupTitle}
+                          </span>
+                          <div className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-1 lg:pb-0">
+                            {group.items.map((navItem) => {
+                              const Icon = navItem.icon;
+                              const isActive = adminSubTab === navItem.id;
+                              return (
+                                <button
+                                  key={navItem.id}
+                                  id={(navItem as any).domId}
+                                  type="button"
+                                  onClick={() => {
+                                    vibrateClick();
+                                    setAdminSubTab(navItem.id as any);
+                                  }}
+                                  className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-between gap-2 cursor-pointer whitespace-nowrap lg:whitespace-normal text-left ${
+                                    isActive
+                                      ? "bg-[#16845B] text-white shadow-2xs font-bold"
+                                      : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-[#F8FAFC] dark:hover:bg-slate-800/70"
+                                  }`}
+                                >
+                                  <span className="flex items-center gap-2 min-w-0">
+                                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                                    <span className="leading-snug">{navItem.label}</span>
+                                  </span>
+                                  {navItem.badge > 0 && (
+                                    <span
+                                      className={`px-1.5 py-0.2 rounded-md text-[10px] font-bold tabular-nums shrink-0 ${
+                                        isActive
+                                          ? "bg-white/20 text-white"
+                                          : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                                      }`}
+                                    >
+                                      {navItem.badge}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Ações Administrativas Rápidas na Sidebar */}
+                      <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+                        <span className="px-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                          Ações Administrativas
+                        </span>
+                        <div className="flex flex-wrap lg:flex-col gap-1.5">
                           <button
-                            key={cat.id}
+                            type="button"
+                            onClick={() => setIsAddingUserOpen(true)}
+                            className="px-3 py-2 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer"
+                          >
+                            <UserCheck className="w-3.5 h-3.5" />
+                            <span>+ Cadastrar Usuário</span>
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={() => {
                               vibrateClick();
-                              if (!isCatActive) {
-                                setAdminSubTab(cat.tabs[0] as any);
-                              }
+                              const firstStudent =
+                                (allUsers || []).find((u) => u && u.role === "ALUNO") ||
+                                allUsers[0];
+                              setNotifyModalUser(firstStudent || null);
+                              setIsBroadcastNotification(false);
+                              setNotifyTitle("Aviso Institucional - Achados e Perdidos");
+                              setNotifyMessage(
+                                "Olá! Informamos que há uma atualização referente aos seus registros no sistema do IFPR."
+                              );
+                              setNotifyRelatedItemId("");
                             }}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                              isCatActive
-                                ? "bg-[#064E3B] text-white dark:bg-[#16845B] dark:text-white shadow-xs font-bold"
-                                : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                            className="px-3 py-2 rounded-xl bg-[#F8FAFC] dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-[#172B2A] dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer"
+                          >
+                            <Send className="w-3.5 h-3.5 text-[#16845B]" />
+                            <span>Notificar Alunos</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={toggleMaintenanceMode}
+                            className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer border ${
+                              maintenanceMode
+                                ? "bg-amber-500 text-black border-amber-600 font-bold"
+                                : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
                             }`}
                           >
-                            <Icon className="w-3.5 h-3.5" />
-                            <span>{cat.label}</span>
-                            {cat.badge && cat.badge > 0 ? (
-                              <span className="ml-1 px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold tabular-nums">
-                                {cat.badge}
-                              </span>
-                            ) : null}
+                            <ShieldAlert className="w-3.5 h-3.5" />
+                            <span>
+                              {maintenanceMode
+                                ? "Manutenção Ativa"
+                                : "Modo Manutenção"}
+                            </span>
                           </button>
-                        );
-                      })}
-                  </div>
-
-                  {/* System Maintenance Control (Admin Only) */}
-                  {currentUser.role === "ADMIN" && (
-                    <div className="flex items-center space-x-2 shrink-0">
-                      <button
-                        onClick={toggleMaintenanceMode}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer border ${
-                          maintenanceMode
-                            ? "bg-amber-500 text-black border-amber-600 font-bold"
-                            : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                        }`}
-                      >
-                        <ShieldAlert className="w-3.5 h-3.5" />
-                        <span>{maintenanceMode ? "Manutenção Ativa" : "Modo Manutenção"}</span>
-                      </button>
+                        </div>
+                      </div>
                     </div>
                   )}
-                </div>
+                </SurfaceCard>
+              </aside>
 
-                {/* Level 2: Specific Sub-Tabs of Active Category */}
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {/* Category: Users & Access */}
-                    {(adminSubTab === "accounts" || adminSubTab === "users" || adminSubTab === "approvals") && (
-                      <>
-                        <button
-                          onClick={() => setAdminSubTab("accounts")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "accounts"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <ShieldAlert className="w-3.5 h-3.5" />
-                          <span>Gestão de Contas (Status)</span>
-                        </button>
+              {/* ÁREA PRINCIPAL DE CONTEÚDO DO PAINEL */}
+              <div className="flex-1 min-w-0 w-full space-y-6">
+                {/* SEÇÃO: PAINEL DO SERVIDOR — VISÃO GERAL, PENDÊNCIAS PRIORITÁRIAS E OBJETOS SOB CUSTÓDIA */}
+                {adminSubTab === "server_overview" && (
+                  <div className="space-y-6 animate-in fade-in duration-200">
+                    {/* 1. Pendências Prioritárias & Ferramentas Rápidas de Atendimento */}
+                    <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+                      {/* Pendências Prioritárias */}
+                      <SurfaceCard padding="md" className="xl:col-span-7 space-y-4">
+                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                          <div>
+                            <h2 className="text-base font-bold text-[#172B2A] dark:text-white">
+                              Pendências Prioritárias do Atendimento
+                            </h2>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              Tarefas operacionais que aguardam conferência ou assinatura da equipe
+                            </p>
+                          </div>
+                          <UIBadge tone="emerald">Tempo Real</UIBadge>
+                        </div>
 
-                        <button
-                          onClick={() => setAdminSubTab("users")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "users"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <Users className="w-3.5 h-3.5" />
-                          <span>Usuários & Permissões</span>
-                        </button>
+                        <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                          <div className="py-3 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200/70 dark:border-amber-800/50 shrink-0">
+                                <ShieldCheck className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <p className="font-bold text-[#172B2A] dark:text-white">
+                                  Solicitações de Recuperação Pendentes ({pendingClaimsCount})
+                                </p>
+                                <p className="text-[11px] text-slate-500">
+                                  Reivindicações aguardando análise documental de titularidade
+                                </p>
+                              </div>
+                            </div>
+                            <UIButton
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => setAdminSubTab("claims")}
+                            >
+                              <span>Analisar</span>
+                            </UIButton>
+                          </div>
 
-                        <button
-                          onClick={() => setAdminSubTab("approvals")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "approvals"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <GraduationCap className="w-3.5 h-3.5" />
-                          <span>Aprovação (@ifpr)</span>
-                          {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-bold tabular-nums">
-                              {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length}
-                            </span>
-                          )}
-                        </button>
-                      </>
-                    )}
+                          <div className="py-3 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="p-2 rounded-lg bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/20 shrink-0">
+                                <FileSignature className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <p className="font-bold text-[#172B2A] dark:text-white">
+                                  Confirmações de Entrega / Assinatura ({pendingSignaturesCount})
+                                </p>
+                                <p className="text-[11px] text-slate-500">
+                                  Termos assinados pelo recebedor que aguardam atestação do servidor
+                                </p>
+                              </div>
+                            </div>
+                            <UIButton
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => setAdminSubTab("pending_signatures")}
+                            >
+                              <span>Atestar</span>
+                            </UIButton>
+                          </div>
 
-                    {/* Category: Security & Audit */}
-                    {(adminSubTab === "audit" || adminSubTab === "health" || adminSubTab === "backups") && (
-                      <>
-                        <button
-                          onClick={() => setAdminSubTab("audit")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "audit"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <History className="w-3.5 h-3.5" />
-                          <span>Auditoria & Logs</span>
-                        </button>
+                          <div className="py-3 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="p-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border border-rose-200/70 dark:border-rose-800/50 shrink-0">
+                                <Clock className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <p className="font-bold text-[#172B2A] dark:text-white">
+                                  Alertas de Prazo de Armazenamento ({deadlineAlertItems.length})
+                                </p>
+                                <p className="text-[11px] text-slate-500">
+                                  {expiredItems.length} vencidos (+90 dias) • {nearExpirationItems.length} próximos do vencimento
+                                </p>
+                              </div>
+                            </div>
+                            <UIButton
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => setAdminSubTab("custody_reminders")}
+                            >
+                              <span>Ver Prazos</span>
+                            </UIButton>
+                          </div>
+                        </div>
+                      </SurfaceCard>
 
-                        <button
-                          onClick={() => setAdminSubTab("health")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "health"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <Activity className="w-3.5 h-3.5" />
-                          <span>Saúde do Sistema</span>
-                        </button>
+                      {/* Ferramentas Rápidas de Atendimento */}
+                      <SurfaceCard padding="md" className="xl:col-span-5 space-y-4">
+                        <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
+                          <h2 className="text-base font-bold text-[#172B2A] dark:text-white">
+                            Ferramentas Rápidas de Atendimento
+                          </h2>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Ações diretas para balcão da Portaria Principal e SEPAE/SEBAC
+                          </p>
+                        </div>
 
-                        <button
-                          onClick={() => setAdminSubTab("backups")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "backups"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <HardDrive className="w-3.5 h-3.5" />
-                          <span>Backups & Segurança</span>
-                        </button>
-                      </>
-                    )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <UIButton
+                            type="button"
+                            variant="primary"
+                            size="md"
+                            onClick={() => setQrScannerOpen(true)}
+                            className="justify-start"
+                          >
+                            <QrCode className="w-4 h-4 shrink-0" />
+                            <span>Ler Etiqueta QR</span>
+                          </UIButton>
 
-                    {/* Category: Custody & Returns */}
-                    {(adminSubTab === "claims" || adminSubTab === "pending_signatures" || adminSubTab === "custody_reminders" || adminSubTab === "digital_returns") && (
-                      <>
-                        <button
-                          onClick={() => setAdminSubTab("claims")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "claims"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          <span>Solicitações de Devolução</span>
-                          {pendingClaimsCount > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-bold tabular-nums">
-                              {pendingClaimsCount}
-                            </span>
-                          )}
-                        </button>
+                          <UIButton
+                            type="button"
+                            variant="secondary"
+                            size="md"
+                            onClick={() => requestAuthForRegistration()}
+                            className="justify-start"
+                          >
+                            <PackageSearch className="w-4 h-4 text-[#16845B] shrink-0" />
+                            <span>Registrar Objeto</span>
+                          </UIButton>
 
-                        <button
-                          onClick={() => setAdminSubTab("pending_signatures")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "pending_signatures"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <FileSignature className="w-3.5 h-3.5" />
-                          <span>Assinaturas Pendentes</span>
-                          {pendingSignaturesCount > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-bold tabular-nums">
-                              {pendingSignaturesCount}
-                            </span>
-                          )}
-                        </button>
+                          <UIButton
+                            type="button"
+                            variant="secondary"
+                            size="md"
+                            onClick={() => {
+                              vibrateClick();
+                              setIsExportFoundModalOpen(true);
+                            }}
+                            aria-label="Abrir modal para emitir Relatório de Prestação de Contas de Itens Encontrados em PDF"
+                            className="justify-start"
+                          >
+                            <FileText className="w-4 h-4 text-[#16845B] shrink-0" />
+                            <span>Relatório SEBAC (PDF)</span>
+                          </UIButton>
 
-                        <button
-                          onClick={() => setAdminSubTab("custody_reminders")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "custody_reminders"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                          <span>Lembretes (+90 Dias)</span>
-                          {itemsOver90DaysCount > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full bg-red-500 text-white text-[10px] font-bold tabular-nums">
-                              {itemsOver90DaysCount}
-                            </span>
-                          )}
-                        </button>
+                          <UIButton
+                            type="button"
+                            variant="secondary"
+                            size="md"
+                            onClick={handleExportPendingItemsPDF}
+                            aria-label="Exportar Relatório em PDF contendo a listagem de objetos pendentes"
+                            className="justify-start"
+                          >
+                            <Download className="w-4 h-4 text-[#16845B] shrink-0" />
+                            <span>Pendentes (PDF)</span>
+                          </UIButton>
 
-                        <button
-                          onClick={() => setAdminSubTab("digital_returns")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "digital_returns"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <FileCheck2 className="w-3.5 h-3.5" />
-                          <span>Métricas Devoluções (D3)</span>
-                          {digitalReturnedItemsCount > 0 && (
-                            <span className="px-1.5 py-0.2 rounded-full bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#064E3B] dark:text-emerald-300 text-[10px] font-bold tabular-nums">
-                              {digitalReturnedItemsCount}
-                            </span>
-                          )}
-                        </button>
-                      </>
-                    )}
-
-                    {/* Category: Quality & Tests */}
-                    {(adminSubTab === "test_batteries" || adminSubTab === "test_distribution") && (
-                      <>
-                        <button
-                          onClick={() => setAdminSubTab("test_batteries")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "test_batteries"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5" />
-                          <span>Bateria de Testes QA</span>
-                        </button>
-
-                        <button
-                          id="btn-tab-test-distribution"
-                          onClick={() => setAdminSubTab("test_distribution")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "test_distribution"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <Shuffle className="w-3.5 h-3.5" />
-                          <span>Distribuição de Testes</span>
-                        </button>
-                      </>
-                    )}
-
-                    {/* Category: System & Reports */}
-                    {(adminSubTab === "documents" || adminSubTab === "project_settings" || adminSubTab === "versions") && (
-                      <>
-                        <button
-                          onClick={() => setAdminSubTab("documents")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "documents"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                          <span>Documentos PDF</span>
-                        </button>
-
-                        <button
-                          onClick={() => setAdminSubTab("project_settings")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "project_settings"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>Dados do Projeto</span>
-                        </button>
-
-
-                        <button
-                          onClick={() => setAdminSubTab("versions")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 cursor-pointer ${
-                            adminSubTab === "versions"
-                              ? "bg-[#16845B] text-white shadow-xs font-bold"
-                              : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700"
-                          }`}
-                        >
-                          <GitBranch className="w-3.5 h-3.5" />
-                          <span>Versões & Changelog</span>
-                        </button>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Contextual Actions (only when in Users & Access) */}
-                  {(adminSubTab === "users" || adminSubTab === "approvals") && (
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={() => {
-                          vibrateClick();
-                          const firstStudent = (allUsers || []).find((u) => u && u.role === "ALUNO") || allUsers[0];
-                          setNotifyModalUser(firstStudent || null);
-                          setIsBroadcastNotification(false);
-                          setNotifyTitle("Aviso Institucional - Achados e Perdidos");
-                          setNotifyMessage("Olá! Informamos que há uma atualização referente aos seus registros no sistema do IFPR.");
-                          setNotifyRelatedItemId("");
-                        }}
-                        className="px-3 py-1.5 rounded-lg bg-[#064E3B] hover:bg-[#16845B] text-white text-xs font-semibold transition-all flex items-center space-x-1.5 shadow-xs cursor-pointer"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                        <span>Notificar Alunos</span>
-                      </button>
-
-                      <button
-                        onClick={() => setIsAddingUserOpen(true)}
-                        className="px-3 py-1.5 rounded-lg bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-bold transition-all flex items-center space-x-1 shadow-xs cursor-pointer"
-                      >
-                        <UserCheck className="w-3.5 h-3.5" />
-                        <span>+ Usuário</span>
-                      </button>
+                          <UIButton
+                            type="button"
+                            variant="outline"
+                            size="md"
+                            onClick={handleExportItemsCSV}
+                            aria-label="Exportar todos os dados em formato CSV para a Secretaria"
+                            className="sm:col-span-2 justify-center"
+                          >
+                            <FileSpreadsheet className="w-4 h-4 text-[#16845B] shrink-0" />
+                            <span>Exportar Base Completa para Secretaria (CSV)</span>
+                          </UIButton>
+                        </div>
+                      </SurfaceCard>
                     </div>
-                  )}
-                </div>
-              </div>
+
+                    {/* 2. Objetos sob Responsabilidade — Recepção e Custódia na Guarita / Secretaria */}
+                    <SurfaceCard padding="lg" className="space-y-5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/15">
+                            <PackageCheck className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-base font-bold text-[#172B2A] dark:text-white flex items-center gap-2">
+                              <span>Objetos sob Responsabilidade (Guarita / Secretaria)</span>
+                              <UIBadge tone="blue">{items.length} Registros</UIBadge>
+                            </h3>
+                            <p className="text-xs text-slate-500">
+                              Confirmação presencial de chegada, guarda física, custódia e formalização de devoluções no campus.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Filtros e Busca Rápida */}
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {["TODOS", "PERDIDO", "ENCONTRADO", "EM_ANALISE", "DEVOLVIDO"].map((st) => (
+                            <button
+                              key={st}
+                              type="button"
+                              onClick={() => setServerFilterStatus(st)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
+                                serverFilterStatus === st
+                                  ? "bg-[#16845B] text-white border-[#16845B] shadow-2xs"
+                                  : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100"
+                              }`}
+                            >
+                              {st === "TODOS"
+                                ? "Todos os Objetos"
+                                : st === "EM_ANALISE"
+                                ? "Em Análise / Custódia"
+                                : st}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="relative min-w-[240px]">
+                          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            value={tableSearch}
+                            onChange={(e) => setTableSearch(e.target.value)}
+                            placeholder="Buscar objeto, categoria ou local..."
+                            className="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:ring-2 focus:ring-[#16845B]"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Tabela Limpa de Objetos */}
+                      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-[#F8FAFC] dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 uppercase text-[10px] font-bold">
+                            <tr>
+                              <th className="py-3 px-4">Objeto</th>
+                              <th className="py-3 px-4">Tipo</th>
+                              <th className="py-3 px-4">Localização</th>
+                              <th className="py-3 px-4 text-center">Situação</th>
+                              <th className="py-3 px-4">Data</th>
+                              <th className="py-3 px-4 text-right">Ações Operacionais</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {items
+                              .filter((it) => {
+                                if (serverFilterStatus !== "TODOS" && it.status !== serverFilterStatus)
+                                  return false;
+                                if (tableSearch) {
+                                  const s = tableSearch.toLowerCase();
+                                  return (
+                                    (it.title || "").toLowerCase().includes(s) ||
+                                    (it.location || "").toLowerCase().includes(s) ||
+                                    (it.category || "").toLowerCase().includes(s)
+                                  );
+                                }
+                                return true;
+                              })
+                              .slice(0, 15)
+                              .map((it) => (
+                                <tr key={it.id} className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/40">
+                                  <td className="py-3 px-4">
+                                    <div className="flex items-center gap-3">
+                                      {it.imageUrl ? (
+                                        <img
+                                          src={it.imageUrl}
+                                          alt={it.title}
+                                          className="w-9 h-9 rounded-lg object-cover border border-slate-200 dark:border-slate-700"
+                                        />
+                                      ) : (
+                                        <div className="w-9 h-9 rounded-lg bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-400 text-[10px]">
+                                          IF
+                                        </div>
+                                      )}
+                                      <div>
+                                        <span className="font-bold text-[#172B2A] dark:text-white block">
+                                          {it.title}
+                                        </span>
+                                        <span className="text-[11px] text-slate-400 font-mono">
+                                          #{it.id} • {it.category} {it.color ? `• ${it.color}` : ""}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <UIBadge tone={it.type === "ENCONTRADO" ? "emerald" : "rose"}>
+                                      {it.type}
+                                    </UIBadge>
+                                  </td>
+                                  <td className="py-3 px-4 text-slate-600 dark:text-slate-300 font-medium">
+                                    {it.location || "Campus IFPR"}
+                                  </td>
+                                  <td className="py-3 px-4 text-center">
+                                    <UIBadge
+                                      tone={
+                                        it.status === "ENCONTRADO"
+                                          ? "emerald"
+                                          : it.status === "EM_ANALISE"
+                                          ? "amber"
+                                          : it.status === "DEVOLVIDO"
+                                          ? "blue"
+                                          : "rose"
+                                      }
+                                    >
+                                      {it.status}
+                                    </UIBadge>
+                                  </td>
+                                  <td className="py-3 px-4 text-slate-500 font-mono text-[11px] tabular-nums">
+                                    {formatDate(it.createdAt)}
+                                  </td>
+                                  <td className="py-3 px-4 text-right">
+                                    <div className="flex items-center justify-end gap-1.5">
+                                      {it.status !== "EM_ANALISE" && it.status !== "DEVOLVIDO" && (
+                                        <button
+                                          type="button"
+                                          onClick={async () => {
+                                            try {
+                                              await updateItemStatus(it.id, "EM_ANALISE");
+                                              addToast(
+                                                `Chegada do objeto "${it.title}" confirmada sob custódia na Guarita!`,
+                                                "success"
+                                              );
+                                            } catch (_) {}
+                                          }}
+                                          className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-600 text-amber-800 hover:text-white dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap"
+                                          title="Confirmar que o objeto foi recebido fisicamente na guarita / secretaria"
+                                        >
+                                          Confirmar Chegada
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedItemForDetail(it)}
+                                        className="px-3 py-1.5 rounded-lg bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-semibold transition-all cursor-pointer whitespace-nowrap"
+                                      >
+                                        Ver / Devolver
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </SurfaceCard>
+
+                    {/* 3. Controle de Prazo de Armazenamento (Portaria IFPR 90 Dias) */}
+                    <SurfaceCard padding="lg" className="space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/70 dark:border-amber-800/50">
+                            <Clock className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-base font-bold text-[#172B2A] dark:text-white flex items-center gap-2">
+                              <span>Controle de Prazo de Armazenamento</span>
+                              <UIBadge tone="amber">Portaria IFPR 90 Dias</UIBadge>
+                            </h3>
+                            <p className="text-xs text-slate-500">
+                              Monitoramento preventivo de objetos guardados no acervo próximos ou acima do prazo regulamentar.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <UIBadge tone="rose">{expiredItems.length} Expirados</UIBadge>
+                          <UIBadge tone="amber">
+                            {nearExpirationItems.length} Próximos do Vencimento
+                          </UIBadge>
+                        </div>
+                      </div>
+
+                      {deadlineAlertItems.length === 0 ? (
+                        <div className="p-4 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/30 border border-[#16845B]/20 text-[#064E3B] dark:text-emerald-300 text-xs flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-[#16845B] shrink-0" />
+                          <span>
+                            Todos os objetos guardados no acervo do IFPR estão dentro do prazo de guarda de 90 dias. Nenhuma destinação necessária no momento.
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-[#F8FAFC] dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 uppercase text-[10px] font-bold">
+                              <tr>
+                                <th className="py-3 px-4">Objeto</th>
+                                <th className="py-3 px-4">Categoria</th>
+                                <th className="py-3 px-4">Data Cadastro</th>
+                                <th className="py-3 px-4">Data Limite</th>
+                                <th className="py-3 px-4 text-center">Status do Prazo</th>
+                                <th className="py-3 px-4 text-right">Ação</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                              {deadlineAlertItems.slice(0, 6).map((item) => (
+                                <tr key={item.id} className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/40">
+                                  <td className="py-3 px-4 font-bold text-[#172B2A] dark:text-white">
+                                    {item.title}
+                                  </td>
+                                  <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                                    {item.category}
+                                  </td>
+                                  <td className="py-3 px-4 text-slate-500 font-mono text-[11px] tabular-nums">
+                                    {formatDate(item.createdAt)}
+                                  </td>
+                                  <td className="py-3 px-4 font-mono font-bold text-slate-800 dark:text-slate-200 text-[11px] tabular-nums">
+                                    {item.data_limite
+                                      ? formatDate(item.data_limite)
+                                      : item.storageDeadlineDate
+                                      ? formatDate(item.storageDeadlineDate)
+                                      : "—"}
+                                  </td>
+                                  <td className="py-3 px-4 text-center">
+                                    {item.isExpired ? (
+                                      <UIBadge tone="rose">
+                                        Prazo Vencido ({Math.abs(item.daysRemaining)}d atrás)
+                                      </UIBadge>
+                                    ) : (
+                                      <UIBadge tone="amber">
+                                        Vence em {item.daysRemaining} dias
+                                      </UIBadge>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-4 text-right">
+                                    <UIButton
+                                      type="button"
+                                      variant="primary"
+                                      size="sm"
+                                      onClick={() => setSelectedItemForDetail(item)}
+                                    >
+                                      <span>Destinar / Gerenciar</span>
+                                    </UIButton>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </SurfaceCard>
+                  </div>
+                )}
+
+                {/* SEÇÃO: RELATÓRIOS ANALÍTICOS E HISTÓRICO DE ATIVIDADES (SERVIDOR & ADMIN) */}
+                {adminSubTab === "server_analytics" && (
+                  <div className="space-y-6 animate-in fade-in duration-200">
+                    <SurfaceCard padding="lg" className="space-y-6">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <TrendingUp className="w-5 h-5 text-[#16845B]" />
+                            <h2 className="text-lg font-bold text-[#172B2A] dark:text-white tracking-tight">
+                              Relatórios Analíticos & Histórico Temporal
+                            </h2>
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            Análise temporal, estatísticas por categoria e exportações oficiais do IFPR Campus Ivaiporã.
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <UIButton
+                            type="button"
+                            variant="primary"
+                            size="sm"
+                            onClick={() => {
+                              vibrateClick();
+                              setIsExportFoundModalOpen(true);
+                            }}
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>Prestação de Contas SEBAC (PDF)</span>
+                          </UIButton>
+
+                          <UIButton
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={handleExportPendingItemsPDF}
+                          >
+                            <FileText className="w-3.5 h-3.5 text-[#16845B]" />
+                            <span>Exportar Pendentes (PDF)</span>
+                          </UIButton>
+
+                          <UIButton
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleExportItemsCSV}
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5 text-[#16845B]" />
+                            <span>Base Completa (CSV)</span>
+                          </UIButton>
+                        </div>
+                      </div>
+
+                      {/* Tendência Mensal Recharts */}
+                      <div className="bg-[#F8FAFC] dark:bg-slate-900/50 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
+                              Tendência Mensal: Itens Perdidos vs. Recuperados (Campus Ivaiporã)
+                            </h3>
+                            <p className="text-[11px] text-slate-500">
+                              Evolução temporal entre perdas registradas, itens encontrados e devoluções concluídas
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="h-64 w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={monthlyData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                              <XAxis dataKey="month" stroke="#64748B" fontSize={11} />
+                              <YAxis stroke="#64748B" fontSize={11} allowDecimals={false} />
+                              <Tooltip
+                                contentStyle={{
+                                  backgroundColor: "#111827",
+                                  borderColor: "#334155",
+                                  borderRadius: "12px",
+                                  color: "#fff",
+                                  fontSize: "12px",
+                                }}
+                              />
+                              <Legend wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
+                              <Line
+                                type="monotone"
+                                dataKey="perdidos"
+                                name="Itens Perdidos"
+                                stroke="#DC2626"
+                                strokeWidth={3}
+                                dot={{ r: 4, stroke: "#DC2626", fill: "#fff", strokeWidth: 2 }}
+                                activeDot={{ r: 7 }}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="devolvidos"
+                                name="Itens Recuperados / Devolvidos"
+                                stroke="#16845B"
+                                strokeWidth={3}
+                                dot={{ r: 4, stroke: "#16845B", fill: "#fff", strokeWidth: 2 }}
+                                activeDot={{ r: 7 }}
+                              />
+                              <Line
+                                type="monotone"
+                                dataKey="encontrados"
+                                name="Itens Encontrados"
+                                stroke="#3B82F6"
+                                strokeWidth={2}
+                                strokeDasharray="4 4"
+                                dot={{ r: 3, stroke: "#3B82F6", fill: "#fff" }}
+                              />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      <WeeklyFlowD3Chart items={items} darkMode={darkMode} />
+                      <MonthlyItemsD3Chart items={items} darkMode={darkMode} />
+
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-[#F8FAFC] dark:bg-slate-900/50 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
+                              Categorias de Objetos
+                            </h3>
+                            <span className="text-[11px] text-slate-400 font-mono tabular-nums">
+                              {Object.keys(categoryCounts).length} categorias
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                            <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                              {pieCategoryData.map((cat, idx) => {
+                                const totalCount = items.length || 1;
+                                const pct = Math.round((cat.value / totalCount) * 100);
+                                return (
+                                  <div
+                                    key={cat.name}
+                                    className="flex items-center justify-between text-xs py-1 px-1.5 rounded-lg"
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span
+                                        className="w-2 h-2 rounded-full shrink-0"
+                                        style={{ backgroundColor: COLORS[idx % COLORS.length] }}
+                                      />
+                                      <span className="text-slate-700 dark:text-slate-300 text-[11px] font-medium">
+                                        {cat.name}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0 tabular-nums">
+                                      <span className="font-bold text-[#172B2A] dark:text-white text-xs">
+                                        {cat.value}
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 font-mono w-7 text-right">
+                                        {pct}%
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div className="h-44 w-full">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                  <Pie
+                                    data={pieCategoryData}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={40}
+                                    outerRadius={65}
+                                    paddingAngle={3}
+                                    dataKey="value"
+                                  >
+                                    {pieCategoryData.map((_, index) => (
+                                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                    ))}
+                                  </Pie>
+                                  <Tooltip />
+                                </PieChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-[#F8FAFC] dark:bg-slate-900/50 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
+                              Revisões Pendentes por Categoria
+                            </h3>
+                            <UIBadge tone="amber">
+                              {inAnalysisCount + pendingClaimsCount} Pendentes
+                            </UIBadge>
+                          </div>
+                          <div className="h-44 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={barPendingData}>
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                                <XAxis dataKey="category" stroke="#64748B" fontSize={10} />
+                                <YAxis stroke="#64748B" fontSize={11} />
+                                <Tooltip />
+                                <Bar
+                                  dataKey="pendentes"
+                                  fill="#F59E0B"
+                                  radius={[6, 6, 0, 0]}
+                                  name="Aguardando Revisão"
+                                />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </div>
+                      </div>
+                    </SurfaceCard>
+                  </div>
+                )}
 
               {/* TAB 0: ACCOUNT STATUS MANAGEMENT */}
               {adminSubTab === "accounts" && (
@@ -2079,13 +2250,13 @@ export const DashboardView: React.FC = () => {
               {adminSubTab === "users" && (
                 <div className="space-y-6">
                   {/* Maintenance Message Input Box */}
-                  <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-6 space-y-4 shadow-xs">
+                  <SurfaceCard padding="md" className="space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <span className="text-xs font-bold uppercase text-amber-700 dark:text-amber-400 flex items-center space-x-2">
-                        <SlidersHorizontal className="w-4 h-4 text-amber-500" />
+                      <span className="text-xs font-bold uppercase text-[#172B2A] dark:text-slate-200 flex items-center gap-2">
+                        <SlidersHorizontal className="w-4 h-4 text-[#16845B]" />
                         <span>Mensagem do Banner de Manutenção Global (Tempo Real)</span>
                       </span>
-                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold">
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
                         Sincronização instantânea no Firestore para todos os usuários
                       </span>
                     </div>
@@ -2095,51 +2266,54 @@ export const DashboardView: React.FC = () => {
                         value={customMsgInput}
                         onChange={(e) => setCustomMsgInput(e.target.value)}
                         placeholder="Escreva a mensagem personalizada que aparecerá no banner de manutenção global..."
-                        className="flex-1 w-full px-4 py-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-xs font-medium outline-none focus:ring-2 focus:ring-amber-500 text-[#172B2A] dark:text-slate-100 shadow-xs"
+                        className="flex-1 w-full px-4 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-[#16845B] text-[#172B2A] dark:text-slate-100"
                       />
-                      <button
+                      <UIButton
+                        type="button"
+                        variant="primary"
+                        size="md"
                         onClick={handleSaveCustomMsg}
-                        className="w-full sm:w-auto px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs transition-all shadow-sm flex items-center justify-center space-x-1.5 cursor-pointer shrink-0"
+                        className="w-full sm:w-auto shrink-0"
                       >
                         <CheckCircle2 className="w-4 h-4" />
-                        <span>Salvar</span>
-                      </button>
+                        <span>Salvar Mensagem</span>
+                      </UIButton>
                     </div>
-                  </div>
+                  </SurfaceCard>
 
-                  {/* Telemetry Overview Cards */}
+                  {/* Resumo de Usuários e Aprovações (Sem truncamento) */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center space-x-4 shadow-[0_1px_3px_rgba(23,43,42,0.04)]">
-                      <div className="p-3 rounded-xl bg-purple-500/10 text-purple-600">
-                        <Users className="w-6 h-6" />
+                    <SurfaceCard padding="md" className="flex items-center gap-3.5">
+                      <div className="p-2.5 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/15">
+                        <Users className="w-5 h-5" />
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Total de Usuários</p>
-                        <p className="text-xl font-bold text-[#172B2A] dark:text-white tabular-nums">{allUsers.length}</p>
+                        <p className="text-xs font-semibold text-slate-500">Total de Usuários Cadastrados</p>
+                        <p className="text-2xl font-bold text-[#172B2A] dark:text-white tabular-nums">{allUsers.length}</p>
                       </div>
-                    </div>
+                    </SurfaceCard>
 
-                    <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center space-x-4 shadow-[0_1px_3px_rgba(23,43,42,0.04)]">
-                      <div className="p-3 rounded-xl bg-blue-500/10 text-blue-600">
-                        <GraduationCap className="w-6 h-6" />
+                    <SurfaceCard padding="md" className="flex items-center gap-3.5">
+                      <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/70 dark:border-amber-800/50">
+                        <GraduationCap className="w-5 h-5" />
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Aprovações Pendentes</p>
-                        <p className="text-xl font-bold text-amber-600 dark:text-amber-400 tabular-nums">
+                        <p className="text-xs font-semibold text-slate-500">Aprovações Institucionais Pendentes</p>
+                        <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 tabular-nums">
                           {allUsers.filter((u) => u.approvalStatus === "PENDENTE").length}
                         </p>
                       </div>
-                    </div>
+                    </SurfaceCard>
 
-                    <div className="bg-white dark:bg-[#111827] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center space-x-4 shadow-[0_1px_3px_rgba(23,43,42,0.04)]">
-                      <div className="p-3 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400">
-                        <Activity className="w-6 h-6" />
+                    <SurfaceCard padding="md" className="flex items-center gap-3.5">
+                      <div className="p-2.5 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/15">
+                        <Activity className="w-5 h-5" />
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">Servidor e Firestore</p>
-                        <p className="text-xl font-bold text-[#16845B] dark:text-emerald-400">100% Operacional</p>
+                        <p className="text-xs font-semibold text-slate-500">Status do Servidor e Firestore</p>
+                        <p className="text-lg font-bold text-[#16845B] dark:text-emerald-400">100% Operacional</p>
                       </div>
-                    </div>
+                    </SurfaceCard>
                   </div>
 
                   {/* USER MANAGEMENT & PERMISSIONS TABLE */}
@@ -3840,7 +4014,8 @@ export const DashboardView: React.FC = () => {
               />
             </div>
           )}
-        </>
+          </div>
+        </div>
       )}
     </div>
   )}

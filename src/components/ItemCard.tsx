@@ -253,21 +253,21 @@ export const ItemCard: React.FC<ItemCardProps> = ({
 
         {/* Card Body */}
         <div className="p-4 sm:p-5 space-y-2.5">
-          {/* Category & Color Pill Row */}
+          {/* Category & Color Row */}
           <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
-            <span className="inline-flex items-center gap-1 font-semibold text-[#16845B] dark:text-emerald-400 truncate">
-              <Tag className="w-3 h-3 shrink-0" />
-              <span className="truncate">{getCategoryDisplay(item.category)}</span>
+            <span className="inline-flex items-center gap-1.5 font-semibold text-[#16845B] dark:text-emerald-400">
+              <Tag className="w-3.5 h-3.5 shrink-0" />
+              <span>{getCategoryDisplay(item.category)}</span>
             </span>
             {item.color && (
-              <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate max-w-[110px]">
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-[#F8FAFC] dark:bg-slate-800/80 px-2 py-0.5 rounded-md border border-slate-200/70 dark:border-slate-700/70">
                 {item.color}
               </span>
             )}
           </div>
 
           {/* Readable Item Title */}
-          <h3 className="font-bold text-base text-[#172B2A] dark:text-white line-clamp-1 group-hover:text-[#16845B] dark:group-hover:text-emerald-400 transition-colors tracking-tight">
+          <h3 className="font-bold text-base text-[#172B2A] dark:text-white line-clamp-2 group-hover:text-[#16845B] dark:group-hover:text-emerald-400 transition-colors tracking-tight leading-snug">
             {item.title}
           </h3>
 
@@ -278,13 +278,13 @@ export const ItemCard: React.FC<ItemCardProps> = ({
 
           {/* Discreet Location & Date Metadata */}
           <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
-            <div className="flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400 shrink-0" />
-              <span className="truncate font-medium text-[#172B2A]/85 dark:text-slate-300">
+            <div className="flex items-start gap-1.5">
+              <MapPin className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400 shrink-0 mt-0.5" />
+              <span className="font-medium text-[#172B2A]/90 dark:text-slate-300 leading-snug line-clamp-1">
                 {item.location}
               </span>
             </div>
-            <div className="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
               <Calendar className="w-3.5 h-3.5 shrink-0" />
               <span>{formatDate(item.date)}</span>
             </div>

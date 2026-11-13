@@ -30,14 +30,14 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
     releaseDateTime: "12 de Novembro de 2026 • 20:50 BRT",
     type: "MINOR",
     isCurrent: true,
-    summary: "LOCALIZA+ v1.10.13 — Implementação da nova identidade visual oficial Clean Minimal (#16845B, #064E3B, #F8FAFC, #172B2A) e estabilização do componente D3.js (DigitalReturnsD3Chart). Blindagem de ponta a ponta do fluxo de devolução formal, separação arquitetural de dados pessoais de devolução em /item_return_records com projeção pública limpa em /items, /found_items e /lost_items, autenticação e anti-spoofing em /api/signature/notify-signed, eliminação do bypass ALREADY_SIGNED no RemoteSignatureModal, keyring versionado AES-256-GCM sem fallback previsível (SIGNATURE_TOKEN_SECRET / SIGNATURE_TOKEN_SECRET_PREVIOUS), consistência de métricas de devolução no DashboardView e endurecimento das regras Firestore.",
+    summary: "LOCALIZA+ v1.10.13 — Reformulação visual completa e obrigatória (Clean Minimal + Modern Dashboard) na Página Inicial, Painel Administrativo, Painel do Servidor e Catálogo de Objetos, com Modo Claro padrão, eliminação de truncamentos e navegação lateral SaaS. Blindagem de ponta a ponta do fluxo de devolução formal, separação arquitetural de dados pessoais em /item_return_records com projeção pública limpa, autenticação em /api/signature/notify-signed, keyring AES-256-GCM versionado e otimização das Firestore Rules.",
     additions: [
       {
         id: "v11013-add-official-clean-minimal-visual-identity",
-        title: "Identidade Visual Oficial Clean Minimal e Institucional (#16845B)",
-        description: "Aplicação da paleta de cores oficial (#16845B, #064E3B, #F8FAFC, #172B2A) com tipografia Inter, bordas arredondadas moderadas (rounded-xl/2xl), sombras suaves e ícones Lucide nos painéis administrativos, tabelas, modais e relatórios.",
+        title: "Design System Global Clean Minimal + Modern Dashboard (Página Inicial, Catálogo, Painel do Servidor e Painel Admin)",
+        description: "Reformulação visual integral de todo o sistema com Modo Claro padrão (#F8FAFC / #FFFFFF), destaque verde institucional (#16845B / #064E3B), eliminação de cartões redundantes e textos truncados na HomeView e StatCard, catálogo ObjectsView com segmentação por status e paginação progressiva, e DashboardView com navegação lateral dedicada para Servidor (Atendimento, Custódia, Reivindicações, Assinaturas, Prazos +90d e Relatórios) e Administrador.",
         module: "GERAL",
-        tag: "Identidade Visual & UI/UX",
+        tag: "Design System & UI/UX",
       },
       {
         id: "v11013-add-d3-digital-returns-chart-engine",

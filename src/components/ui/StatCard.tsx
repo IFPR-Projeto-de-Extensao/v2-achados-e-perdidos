@@ -55,8 +55,8 @@ export const StatCard: React.FC<StatCardProps> = ({
       }
       className={`bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-[0_1px_3px_rgba(23,43,42,0.04)] transition-all duration-150 ${interactiveClasses} ${className}`}
     >
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 truncate">
+      <div className="flex items-start justify-between gap-3">
+        <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 leading-snug">
           {label}
         </span>
         {icon && (
@@ -69,11 +69,11 @@ export const StatCard: React.FC<StatCardProps> = ({
           </div>
         )}
       </div>
-      <div className="mt-2 text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tabular-nums tracking-tight">
+      <div className="mt-2.5 text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tabular-nums tracking-tight">
         {value}
       </div>
       {subtitle && (
-        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400 truncate">
+        <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
           {subtitle}
         </p>
       )}

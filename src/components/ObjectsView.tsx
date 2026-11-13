@@ -67,11 +67,11 @@ import {
 } from "./ui";
 
 interface ObjectsViewProps {
-  initialFilterType?: "TODOS" | "PERDIDO" | "ENCONTRADO";
+  initialFilterType?: "TODOS" | "PERDIDO" | "ENCONTRADO" | "DEVOLVIDO";
 }
 
 const CAMPUS_BLOCKS = [
-  { id: "TODOS", label: "Todos os Blocos", shortLabel: "Todos", icon: Building2 },
+  { id: "TODOS", label: "Todos os Blocos", shortLabel: "Todos os Blocos", icon: Building2 },
   { id: "Bloco 1", label: "Bloco 1", shortLabel: "Bloco 1", icon: Building2 },
   { id: "Bloco 2", label: "Bloco 2", shortLabel: "Bloco 2", icon: Building2 },
   { id: "Bloco 3", label: "Bloco 3", shortLabel: "Bloco 3", icon: Building2 },
@@ -89,6 +89,8 @@ const TIME_PRESETS = [
   { id: "CUSTOM", label: "Personalizado (De / Até)" },
 ];
 
+const PAGE_STEP = 18;
+
 export const ObjectsView: React.FC<ObjectsViewProps> = ({
   initialFilterType = "TODOS",
 }) => {
@@ -103,10 +105,9 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterType, setFilterType] = useState<
-    "TODOS" | "PERDIDO" | "ENCONTRADO" | "DEVOLVIDO"
+    "TODOS" | "PERDIDO" | "ENCONTRADO" | "EM_ANALISE" | "DEVOLVIDO"
   >(initialFilterType);
 
-  // Synchronize filterType when routing parameters change (e.g., navigating between /perdidos, /encontrados, /buscar)
   useEffect(() => {
     setFilterType(initialFilterType);
   }, [initialFilterType]);
@@ -122,9 +123,10 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [layoutViewMode, setLayoutViewMode] = useState<
     "ADAPTATIVO" | "CARDS" | "LISTA"
-  >("ADAPTATIVO");
+  >("CARDS");
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] =
     useState<boolean>(false);
+  const [visibleCount, setVisibleCount] = useState<number>(PAGE_STEP);
 
   // Offline search preview support via Service Worker (sw-custom.js) & local cache
   const [isOffline, setIsOffline] = useState<boolean>(
@@ -135,7 +137,6 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
   );
   const [offlineCachedCount, setOfflineCachedCount] = useState<number>(0);
 
-  // Monitor online / offline network state and sync with Service Worker
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => {
@@ -151,7 +152,6 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
       window.addEventListener("offline", handleOffline);
     }
 
-    // Initial check for offline cached items from Service Worker / local storage
     getOfflineRecentItems().then((res) => {
       setOfflineRecentItems(res.items);
       setOfflineCachedCount(res.count);
@@ -165,7 +165,6 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
     };
   }, []);
 
-  // Debounced search effect with timer cancellation on keystroke & unmount
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search);
@@ -175,6 +174,22 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
       clearTimeout(timer);
     };
   }, [search]);
+
+  // Reset pagination whenever filters change
+  useEffect(() => {
+    setVisibleCount(PAGE_STEP);
+  }, [
+    filterType,
+    selectedCategory,
+    selectedCampusBlock,
+    selectedLocation,
+    selectedColor,
+    selectedTimePreset,
+    filterStartDate,
+    filterEndDate,
+    debouncedSearch,
+    sortBy,
+  ]);
 
   // Bulk operations selection state
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
@@ -203,7 +218,6 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
     }
   };
 
-  // Load search history from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem("ifpr_achados_search_history");
@@ -291,7 +305,6 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
     "Branco",
   ];
 
-  // Determine active item pool: if online items exist, use them. If offline or items are empty, use offline recent items.
   const activeItemsPool = useMemo(() => {
     if (items && items.length > 0) {
       return items;
@@ -302,7 +315,6 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
     return items || [];
   }, [items, isOffline, offlineRecentItems]);
 
-  // Helper counts for badges (dynamic from Firestore synchronized items)
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { TODAS: activeItemsPool.length };
     categoriesList.forEach((c) => {
@@ -313,21 +325,22 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
     return counts;
   }, [activeItemsPool]);
 
-  const blockCounts = useMemo(() => {
-    const counts: Record<string, number> = {
-      TODOS: (activeItemsPool || []).length,
+  const statusCounts = useMemo(() => {
+    return {
+      TODOS: activeItemsPool.length,
+      ENCONTRADO: activeItemsPool.filter(
+        (i) => i.type === "ENCONTRADO" && i.status !== "DEVOLVIDO"
+      ).length,
+      PERDIDO: activeItemsPool.filter(
+        (i) => i.type === "PERDIDO" && i.status !== "DEVOLVIDO"
+      ).length,
+      EM_ANALISE: activeItemsPool.filter((i) => i.status === "EM_ANALISE")
+        .length,
+      DEVOLVIDO: activeItemsPool.filter((i) => i.status === "DEVOLVIDO")
+        .length,
     };
-    CAMPUS_BLOCKS.forEach((b) => {
-      if (b && b.id !== "TODOS") {
-        counts[b.id] = (activeItemsPool || []).filter(
-          (i) => i && safeIncludes(i.location, b.id)
-        ).length;
-      }
-    });
-    return counts;
   }, [activeItemsPool]);
 
-  // Filter & Sort Logic (Simultaneous Multi-field Filtering with Firestore data)
   const filteredItems = useMemo(() => {
     const cleanSearch = sanitizeQuery(debouncedSearch);
     const cleanBlock = sanitizeQuery(selectedCampusBlock);
@@ -339,14 +352,16 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
       .filter((item) => {
         if (!item) return false;
 
-        // Type / Status filter tab
+        // Situation / Status filter
         if (filterType === "PERDIDO" && item.type !== "PERDIDO") return false;
         if (filterType === "ENCONTRADO" && item.type !== "ENCONTRADO")
+          return false;
+        if (filterType === "EM_ANALISE" && item.status !== "EM_ANALISE")
           return false;
         if (filterType === "DEVOLVIDO" && item.status !== "DEVOLVIDO")
           return false;
 
-        // Category filter (normalized matching supporting Outros / OUTROS seamlessly)
+        // Category filter
         if (cleanCategory && !isCategoryMatch(item.category, cleanCategory))
           return false;
 
@@ -355,7 +370,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
           if (!safeIncludes(item.location, cleanBlock)) return false;
         }
 
-        // Location Dropdown filter (specific location)
+        // Specific location filter
         if (
           cleanLocation &&
           cleanLocation !== "TODOS" &&
@@ -462,7 +477,6 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
     sortBy,
   ]);
 
-  // Cache filtered items for offline Service Worker preview (sw-custom.js)
   useEffect(() => {
     if (filteredItems && filteredItems.length > 0) {
       cacheSearchedItems(filteredItems, debouncedSearch);
@@ -500,41 +514,116 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
     setFilterEndDate("");
   };
 
+  const paginatedItems = useMemo(
+    () => filteredItems.slice(0, visibleCount),
+    [filteredItems, visibleCount]
+  );
+
+  const getStatusBadgeInfo = (item: LostFoundItem) => {
+    switch (item.status) {
+      case "PERDIDO":
+        return { label: "Perdido", tone: "rose" as const };
+      case "ENCONTRADO":
+        return { label: "Encontrado", tone: "emerald" as const };
+      case "EM_ANALISE":
+        return { label: "Em Análise", tone: "amber" as const };
+      case "DEVOLVIDO":
+        return { label: "Devolvido", tone: "blue" as const };
+      default:
+        return {
+          label: item.type === "PERDIDO" ? "Perdido" : "Encontrado",
+          tone:
+            item.type === "PERDIDO" ? ("rose" as const) : ("emerald" as const),
+        };
+    }
+  };
+
   return (
     <div className="space-y-6 pb-16 pt-2 sm:pt-4">
-      {/* Clean Minimal Page Header & Modality Tabs */}
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 border-b border-slate-200/80 dark:border-slate-800 pb-5">
-        <div className="space-y-1.5">
-          <UIBadge tone="emerald">Inventário Geral • Campus Ivaiporã</UIBadge>
-          <h1 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-            {filterType === "ENCONTRADO"
-              ? "Objetos Encontrados"
-              : filterType === "PERDIDO"
-              ? "Objetos Perdidos"
-              : filterType === "DEVOLVIDO"
-              ? "Objetos Devolvidos"
-              : "Catálogo de Objetos"}
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
-            Pesquise por nome ou categoria, filtre por blocos acadêmicos e acompanhe itens em custódia ou restituídos.
-          </p>
+      {/* 1. CABEÇALHO DO CATÁLOGO E SEGMENTAÇÃO POR SITUAÇÃO */}
+      <SurfaceCard padding="lg" className="space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <UIBadge tone="emerald">
+                <PackageSearch className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
+                <span>Acervo Público • IFPR Campus Ivaiporã</span>
+              </UIBadge>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
+              {filterType === "ENCONTRADO"
+                ? "Objetos Encontrados"
+                : filterType === "PERDIDO"
+                ? "Objetos Perdidos"
+                : filterType === "EM_ANALISE"
+                ? "Objetos em Análise"
+                : filterType === "DEVOLVIDO"
+                ? "Objetos Devolvidos"
+                : "Catálogo de Objetos"}
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+              Consulte ocorrências registradas na Portaria e SEPAE por situação, categoria, localização ou período.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <UIButton
+              type="button"
+              variant="secondary"
+              size="md"
+              onClick={() => {
+                vibrateClick();
+                setIsExportReportModalOpen(true);
+              }}
+              aria-label="Exportar Relatório Oficial de Itens Encontrados em PDF para Prestação de Contas"
+            >
+              <FileText className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
+              <span>Exportar Relatório PDF</span>
+            </UIButton>
+
+            {isAdminOrServer && (
+              <UIButton
+                type="button"
+                variant={isSelectableMode ? "primary" : "outline"}
+                size="md"
+                onClick={() => {
+                  setIsSelectableMode(!isSelectableMode);
+                  if (isSelectableMode) setSelectedItemIds([]);
+                }}
+              >
+                <CheckSquare className="w-4 h-4" />
+                <span>
+                  {isSelectableMode ? "Concluir Seleção" : "Seleção em Massa"}
+                </span>
+              </UIButton>
+            )}
+          </div>
         </div>
 
-        {/* Modality / Status Filter Tabs */}
-        <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shrink-0 overflow-x-auto">
+        {/* Abas de Situação (Todos, Encontrados, Perdidos, Em Análise, Devolvidos) */}
+        <div className="flex flex-wrap items-center gap-2 pt-4 border-t border-slate-100 dark:border-slate-800 tabular-nums">
           <button
             type="button"
             onClick={() => {
               vibrateClick();
               setFilterType("TODOS");
             }}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 border ${
               filterType === "TODOS"
-                ? "bg-[#16845B] text-white shadow-2xs"
-                : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
+                ? "bg-[#16845B] text-white border-[#16845B] shadow-2xs"
+                : "bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-[#16845B]/50"
             }`}
           >
-            Todos ({activeItemsPool.length})
+            <span>Todos</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                filterType === "TODOS"
+                  ? "bg-white/20 text-white"
+                  : "bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+              }`}
+            >
+              {statusCounts.TODOS}
+            </span>
           </button>
 
           <button
@@ -543,13 +632,23 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               vibrateClick();
               setFilterType("ENCONTRADO");
             }}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 border ${
               filterType === "ENCONTRADO"
-                ? "bg-[#16845B] text-white shadow-2xs"
-                : "text-slate-600 dark:text-slate-400 hover:text-[#16845B] dark:hover:text-emerald-400"
+                ? "bg-[#16845B] text-white border-[#16845B] shadow-2xs"
+                : "bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-[#16845B]/50"
             }`}
           >
-            Encontrados ({activeItemsPool.filter((i) => i.type === "ENCONTRADO").length})
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <span>Encontrados</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                filterType === "ENCONTRADO"
+                  ? "bg-white/20 text-white"
+                  : "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300"
+              }`}
+            >
+              {statusCounts.ENCONTRADO}
+            </span>
           </button>
 
           <button
@@ -558,13 +657,48 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               vibrateClick();
               setFilterType("PERDIDO");
             }}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 border ${
               filterType === "PERDIDO"
-                ? "bg-rose-600 text-white shadow-2xs"
-                : "text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"
+                ? "bg-rose-600 text-white border-rose-600 shadow-2xs"
+                : "bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-rose-400"
             }`}
           >
-            Perdidos ({activeItemsPool.filter((i) => i.type === "PERDIDO").length})
+            <span className="w-2 h-2 rounded-full bg-rose-500" />
+            <span>Perdidos</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                filterType === "PERDIDO"
+                  ? "bg-white/20 text-white"
+                  : "bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300"
+              }`}
+            >
+              {statusCounts.PERDIDO}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              vibrateClick();
+              setFilterType("EM_ANALISE");
+            }}
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 border ${
+              filterType === "EM_ANALISE"
+                ? "bg-amber-600 text-white border-amber-600 shadow-2xs"
+                : "bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-400"
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            <span>Em Análise</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                filterType === "EM_ANALISE"
+                  ? "bg-white/20 text-white"
+                  : "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300"
+              }`}
+            >
+              {statusCounts.EM_ANALISE}
+            </span>
           </button>
 
           <button
@@ -573,20 +707,30 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               vibrateClick();
               setFilterType("DEVOLVIDO");
             }}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-2 border ${
               filterType === "DEVOLVIDO"
-                ? "bg-sky-600 text-white shadow-2xs"
-                : "text-slate-600 dark:text-slate-400 hover:text-sky-600 dark:hover:text-sky-400"
+                ? "bg-sky-600 text-white border-sky-600 shadow-2xs"
+                : "bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-sky-400"
             }`}
           >
-            Devolvidos ({activeItemsPool.filter((i) => i.status === "DEVOLVIDO").length})
+            <span className="w-2 h-2 rounded-full bg-sky-500" />
+            <span>Devolvidos</span>
+            <span
+              className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${
+                filterType === "DEVOLVIDO"
+                  ? "bg-white/20 text-white"
+                  : "bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300"
+              }`}
+            >
+              {statusCounts.DEVOLVIDO}
+            </span>
           </button>
         </div>
-      </div>
+      </SurfaceCard>
 
-      {/* Service Worker Offline Search Preview Alert Banner */}
+      {/* Banner de Pré-visualização Offline (Service Worker) */}
       {(isOffline || items.length === 0) && offlineRecentItems.length > 0 && (
-        <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in duration-200">
+        <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 shrink-0">
               <WifiOff className="w-5 h-5" />
@@ -612,12 +756,12 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
         </div>
       )}
 
-      {/* SEARCH & FILTER SURFACE CARD */}
-      <SurfaceCard padding="md" className="space-y-5">
-        {/* Main Search Row */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-          {/* Text Search Input */}
-          <div className="md:col-span-8 space-y-2">
+      {/* 2. BARRA DE BUSCA E FILTROS ORGANIZADOS */}
+      <SurfaceCard padding="md" className="space-y-4">
+        {/* Linha principal: Busca + Filtros diretos (Categoria, Localização/Bloco, Período, Ordenação) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
+          {/* Campo de busca textual e por voz */}
+          <div className="lg:col-span-5 space-y-2">
             <UIInput
               type="text"
               value={search}
@@ -626,7 +770,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               onKeyDown={(e) => {
                 if (e.key === "Enter") saveSearchTerm(search);
               }}
-              placeholder="Buscar por nome, categoria, marca, cor, local ou QR Code..."
+              placeholder="Buscar por nome, marca, cor, local ou QR Code..."
               leftIcon={<Search className="w-4 h-4" />}
               rightElement={
                 <div className="flex items-center gap-1">
@@ -660,11 +804,11 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               }
             />
 
-            {/* Search History Chips (Recent Searches) */}
+            {/* Histórico de buscas */}
             {searchHistory.length > 0 && (
               <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
                 <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1 font-semibold">
-                  <Clock className="w-3 h-3 text-[#16845B]" /> Buscas Recentes:
+                  <Clock className="w-3 h-3 text-[#16845B]" /> Recentes:
                 </span>
                 {searchHistory.map((historyTerm) => (
                   <button
@@ -699,23 +843,135 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
             )}
           </div>
 
-          {/* Advanced Filter Toggle & Clear Buttons */}
-          <div className="md:col-span-4 flex items-start gap-2 justify-end">
+          {/* Seletores diretos: Categoria, Localização/Bloco, Período, Ordenação */}
+          <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+            <UISelect
+              aria-label="Filtrar por categoria"
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="text-xs"
+            >
+              <option value="TODAS">
+                Todas as Categorias ({categoryCounts.TODAS})
+              </option>
+              {categoriesList.map((cat) => (
+                <option key={cat.name} value={cat.name}>
+                  {cat.name} ({categoryCounts[cat.name] || 0})
+                </option>
+              ))}
+            </UISelect>
+
+            <UISelect
+              aria-label="Filtrar por bloco ou localização"
+              value={selectedCampusBlock}
+              onChange={(e) => setSelectedCampusBlock(e.target.value)}
+              className="text-xs"
+            >
+              {CAMPUS_BLOCKS.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.label}
+                </option>
+              ))}
+            </UISelect>
+
+            <UISelect
+              aria-label="Filtrar por período"
+              value={selectedTimePreset}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedTimePreset(val);
+                if (val === "CUSTOM") {
+                  setIsAdvancedFiltersOpen(true);
+                } else {
+                  setFilterStartDate("");
+                  setFilterEndDate("");
+                }
+              }}
+              className="text-xs"
+            >
+              {TIME_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </UISelect>
+
+            <UISelect
+              aria-label="Ordenar objetos"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="text-xs"
+            >
+              <option value="recentes">Mais Recentes</option>
+              <option value="antigos">Mais Antigos</option>
+            </UISelect>
+          </div>
+        </div>
+
+        {/* Barra secundária: Categorias rápidas, Mais Filtros e Modo de Visualização */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+          {/* Categorias em pílulas discretas */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                setSelectedCategory("TODAS");
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer border whitespace-nowrap ${
+                selectedCategory === "TODAS"
+                  ? "bg-[#EBF5F0] dark:bg-emerald-950/60 text-[#064E3B] dark:text-emerald-300 border-[#16845B]/30"
+                  : "bg-white dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-[#16845B]/40"
+              }`}
+            >
+              Todas Categorias
+            </button>
+            {categoriesList.map((cat) => {
+              const IconComp = cat.icon;
+              const isSelected = selectedCategory === cat.name;
+              return (
+                <button
+                  key={cat.name}
+                  type="button"
+                  onClick={() => {
+                    vibrateClick();
+                    setSelectedCategory(isSelected ? "TODAS" : cat.name);
+                  }}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer border whitespace-nowrap ${
+                    isSelected
+                      ? "bg-[#16845B] text-white border-[#16845B]"
+                      : "bg-white dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-[#16845B]/40"
+                  }`}
+                >
+                  <IconComp
+                    className={`w-3.5 h-3.5 ${
+                      isSelected
+                        ? "text-white"
+                        : "text-[#16845B] dark:text-emerald-400"
+                    }`}
+                  />
+                  <span>{cat.name}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Controles de Filtros Avançados e Alternância Grade / Lista */}
+          <div className="flex items-center gap-2 shrink-0 ml-auto">
             <UIButton
               type="button"
               variant={isAdvancedFiltersOpen ? "primary" : "secondary"}
-              size="md"
+              size="sm"
               onClick={() => {
                 vibrateClick();
                 setIsAdvancedFiltersOpen(!isAdvancedFiltersOpen);
               }}
-              className="flex-1 md:flex-none"
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span>Filtros Avançados</span>
+              <span>Mais Filtros</span>
               {activeFiltersCount > 0 && (
                 <span
-                  className={`ml-1 px-1.5 py-0.2 text-[10px] rounded-full font-bold ${
+                  className={`px-1.5 py-0.2 text-[10px] rounded-full font-bold ${
                     isAdvancedFiltersOpen
                       ? "bg-white/20 text-white"
                       : "bg-[#EBF5F0] text-[#064E3B] dark:bg-emerald-950 dark:text-emerald-300"
@@ -731,260 +987,55 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               )}
             </UIButton>
 
-            {activeFiltersCount > 0 && (
-              <UIButton
-                type="button"
-                variant="ghost"
-                size="md"
-                onClick={clearFilters}
-                className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 border border-red-200/70 dark:border-red-900/40"
-                title="Limpar todos os filtros ativos"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Limpar</span>
-              </UIButton>
-            )}
-          </div>
-        </div>
-
-        {/* Category Filter Pills directly visible on main panel (Matching Reference Moodboard) */}
-        <div className="space-y-2.5 pt-3 border-t border-slate-100 dark:border-slate-800/80">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#172B2A] dark:text-slate-300 flex items-center gap-1.5">
-              <Tag className="w-3.5 h-3.5 text-[#16845B]" />
-              <span>Categorias</span>
-            </span>
-            {selectedCategory !== "TODAS" && (
+            {/* Alternador Grade / Lista */}
+            <div
+              className="inline-flex items-center bg-[#F8FAFC] dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700"
+              role="group"
+              aria-label="Modo de visualização do catálogo"
+            >
               <button
                 type="button"
-                onClick={() => setSelectedCategory("TODAS")}
-                className="text-xs text-[#16845B] dark:text-emerald-400 font-semibold hover:underline cursor-pointer"
-              >
-                Ver todas
-              </button>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                vibrateClick();
-                setSelectedCategory("TODAS");
-              }}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer border ${
-                selectedCategory === "TODAS"
-                  ? "bg-[#16845B] text-white border-[#16845B] shadow-2xs"
-                  : "bg-white dark:bg-slate-800/80 text-[#172B2A] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-[#16845B]/50 hover:bg-[#F8FAFC]"
-              }`}
-            >
-              <span>Todos</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                  selectedCategory === "TODAS"
-                    ? "bg-white/20 text-white"
-                    : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                onClick={() => setLayoutViewMode("CARDS")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                  layoutViewMode !== "LISTA"
+                    ? "bg-[#16845B] text-white shadow-2xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
                 }`}
               >
-                {categoryCounts.TODAS}
-              </span>
-            </button>
-
-            {categoriesList.map((cat) => {
-              const IconComp = cat.icon;
-              const isSelected = selectedCategory === cat.name;
-              const count = categoryCounts[cat.name] || 0;
-              return (
-                <button
-                  key={cat.name}
-                  type="button"
-                  onClick={() => {
-                    vibrateClick();
-                    setSelectedCategory(isSelected ? "TODAS" : cat.name);
-                  }}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer border ${
-                    isSelected
-                      ? "bg-[#16845B] text-white border-[#16845B] shadow-2xs"
-                      : "bg-white dark:bg-slate-800/80 text-[#172B2A] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-[#16845B]/50 hover:bg-[#F8FAFC]"
-                  }`}
-                >
-                  <IconComp
-                    className={`w-3.5 h-3.5 ${
-                      isSelected
-                        ? "text-white"
-                        : "text-[#16845B] dark:text-emerald-400"
-                    }`}
-                  />
-                  <span>{cat.name}</span>
-                  {count > 0 && (
-                    <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                        isSelected
-                          ? "bg-white/20 text-white"
-                          : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
-                      }`}
-                    >
-                      {count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>Grade</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLayoutViewMode("LISTA")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                  layoutViewMode === "LISTA"
+                    ? "bg-[#16845B] text-white shadow-2xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
+                }`}
+              >
+                <List className="w-3.5 h-3.5" />
+                <span>Lista</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* EXPANDABLE ADVANCED FILTER PANEL */}
+        {/* Painel Expansível de Filtros Detalhados (Local Específico, Cor e Intervalo de Datas) */}
         <AnimatePresence>
           {isAdvancedFiltersOpen && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.22 }}
-              className="space-y-4 pt-3 border-t border-slate-100 dark:border-slate-800 overflow-hidden"
+              transition={{ duration: 0.2 }}
+              className="pt-3 border-t border-slate-100 dark:border-slate-800 overflow-hidden"
             >
-              {/* 1. Bloco do Campus Ivaiporã */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-[#172B2A] dark:text-slate-200 flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-[#16845B]" />
-                    <span>Bloco do Campus Ivaiporã</span>
-                  </span>
-                  {selectedCampusBlock !== "TODOS" && (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCampusBlock("TODOS")}
-                      className="text-xs text-[#16845B] dark:text-emerald-400 font-semibold hover:underline cursor-pointer"
-                    >
-                      Limpar bloco
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {CAMPUS_BLOCKS.map((block) => {
-                    const IconComp = block.icon;
-                    const isSelected = selectedCampusBlock === block.id;
-                    const count = blockCounts[block.id] || 0;
-                    return (
-                      <button
-                        key={block.id}
-                        type="button"
-                        onClick={() => {
-                          vibrateClick();
-                          setSelectedCampusBlock(
-                            isSelected ? "TODOS" : block.id
-                          );
-                        }}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer border ${
-                          isSelected
-                            ? "bg-[#16845B] text-white border-[#16845B] shadow-2xs"
-                            : "bg-[#F8FAFC] dark:bg-slate-800 text-[#172B2A] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-[#16845B]/50"
-                        }`}
-                      >
-                        <IconComp
-                          className={`w-3.5 h-3.5 ${
-                            isSelected
-                              ? "text-white"
-                              : "text-[#16845B] dark:text-emerald-400"
-                          }`}
-                        />
-                        <span>{block.shortLabel}</span>
-                        <span
-                          className={`text-[10px] px-1.5 py-0.2 rounded-md font-bold ${
-                            isSelected
-                              ? "bg-white/20 text-white"
-                              : "bg-slate-200/80 dark:bg-slate-700 text-slate-600 dark:text-slate-400"
-                          }`}
-                        >
-                          {count}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 2. Período de Tempo e Data */}
-              <SubtlePanel className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-                <div className="lg:col-span-7 space-y-2">
-                  <span className="text-xs font-semibold text-[#172B2A] dark:text-slate-200 flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-[#16845B]" />
-                    <span>Período de Tempo</span>
-                  </span>
-
-                  <div className="flex flex-wrap gap-1.5">
-                    {TIME_PRESETS.map((preset) => {
-                      const isSelected = selectedTimePreset === preset.id;
-                      return (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => {
-                            vibrateClick();
-                            setSelectedTimePreset(preset.id);
-                            if (preset.id !== "CUSTOM") {
-                              setFilterStartDate("");
-                              setFilterEndDate("");
-                            }
-                          }}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
-                            isSelected
-                              ? "bg-[#16845B] text-white border-[#16845B] shadow-2xs"
-                              : "bg-white dark:bg-slate-800 text-[#172B2A] dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-[#16845B]/50"
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Custom Date Range */}
-                <div className="lg:col-span-5 space-y-2">
-                  <span className="text-xs font-semibold text-[#172B2A] dark:text-slate-200 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-[#16845B]" />
-                    <span>Intervalo de Datas Específico</span>
-                  </span>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="text-[11px] font-medium text-slate-500 block mb-1">
-                        De (Início)
-                      </label>
-                      <UIInput
-                        type="date"
-                        value={filterStartDate}
-                        onChange={(e) => {
-                          setFilterStartDate(e.target.value);
-                          setSelectedTimePreset("CUSTOM");
-                        }}
-                        className="py-1.5 text-xs"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-medium text-slate-500 block mb-1">
-                        Até (Fim)
-                      </label>
-                      <UIInput
-                        type="date"
-                        value={filterEndDate}
-                        onChange={(e) => {
-                          setFilterEndDate(e.target.value);
-                          setSelectedTimePreset("CUSTOM");
-                        }}
-                        className="py-1.5 text-xs"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </SubtlePanel>
-
-              {/* 3. Local Específico e Cor */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                {/* Specific Location Dropdown */}
+              <SubtlePanel
+                padding="md"
+                className="grid grid-cols-1 md:grid-cols-3 gap-4"
+              >
+                {/* Sala ou Local Específico */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-[#172B2A] dark:text-slate-200 flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-[#16845B]" />
@@ -993,6 +1044,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                   <UISelect
                     value={selectedLocation}
                     onChange={(e) => setSelectedLocation(e.target.value)}
+                    className="text-xs"
                   >
                     <option value="TODOS">Todos os Locais Detalhados</option>
                     {IFPR_LOCATION_GROUPS.map((group) => (
@@ -1014,13 +1066,13 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                   </UISelect>
                 </div>
 
-                {/* Color Selector */}
+                {/* Cor Predominante */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-[#172B2A] dark:text-slate-200 flex items-center gap-1.5">
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-[#16845B]" />
+                    <Tag className="w-3.5 h-3.5 text-[#16845B]" />
                     <span>Cor Predominante</span>
                   </label>
-                  <div className="flex items-center gap-1.5 overflow-x-auto py-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     {colorsList.map((col) => (
                       <button
                         key={col}
@@ -1029,10 +1081,10 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                           vibrateClick();
                           setSelectedColor(col);
                         }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer border whitespace-nowrap ${
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer border ${
                           selectedColor === col
-                            ? "bg-[#16845B] text-white border-[#16845B] shadow-2xs"
-                            : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-[#16845B]/40"
+                            ? "bg-[#16845B] text-white border-[#16845B]"
+                            : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-[#16845B]/40"
                         }`}
                       >
                         {col}
@@ -1040,12 +1092,42 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                     ))}
                   </div>
                 </div>
-              </div>
+
+                {/* Intervalo de Datas Específico */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-[#172B2A] dark:text-slate-200 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-[#16845B]" />
+                    <span>Intervalo de Datas (De / Até)</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <UIInput
+                      type="date"
+                      aria-label="Data inicial"
+                      value={filterStartDate}
+                      onChange={(e) => {
+                        setFilterStartDate(e.target.value);
+                        setSelectedTimePreset("CUSTOM");
+                      }}
+                      className="py-1.5 text-xs"
+                    />
+                    <UIInput
+                      type="date"
+                      aria-label="Data final"
+                      value={filterEndDate}
+                      onChange={(e) => {
+                        setFilterEndDate(e.target.value);
+                        setSelectedTimePreset("CUSTOM");
+                      }}
+                      className="py-1.5 text-xs"
+                    />
+                  </div>
+                </div>
+              </SubtlePanel>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* ACTIVE FILTER BADGES ROW */}
+        {/* Chips de Filtros Ativos */}
         {activeFiltersCount > 0 && (
           <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
             <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
@@ -1057,7 +1139,10 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                 <span>Busca: "{search}"</span>
                 <button
                   type="button"
-                  onClick={() => setSearch("")}
+                  onClick={() => {
+                    setSearch("");
+                    setDebouncedSearch("");
+                  }}
                   className="hover:text-red-500 ml-1 cursor-pointer"
                 >
                   ×
@@ -1067,7 +1152,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
 
             {filterType !== "TODOS" && (
               <UIBadge tone="emerald">
-                <span>Tipo: {filterType}</span>
+                <span>Situação: {filterType}</span>
                 <button
                   type="button"
                   onClick={() => setFilterType("TODOS")}
@@ -1097,6 +1182,19 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setSelectedCampusBlock("TODOS")}
+                  className="hover:text-red-500 ml-1 cursor-pointer"
+                >
+                  ×
+                </button>
+              </UIBadge>
+            )}
+
+            {selectedLocation !== "TODOS" && (
+              <UIBadge tone="blue">
+                <span>Local: {selectedLocation}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLocation("TODOS")}
                   className="hover:text-red-500 ml-1 cursor-pointer"
                 >
                   ×
@@ -1137,117 +1235,32 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
             <button
               type="button"
               onClick={clearFilters}
-              className="text-xs font-semibold text-red-600 dark:text-red-400 hover:underline cursor-pointer ml-auto"
+              className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer ml-auto flex items-center gap-1"
             >
-              Limpar todos
+              <RotateCcw className="w-3 h-3" />
+              <span>Limpar todos os filtros</span>
             </button>
           </div>
         )}
-
-        {/* Layout Mode & Sort Control Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-[#172B2A] dark:text-slate-200">
-              Visualização:
-            </span>
-            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200/70 dark:border-slate-700/70">
-              <button
-                type="button"
-                onClick={() => setLayoutViewMode("ADAPTATIVO")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                  layoutViewMode === "ADAPTATIVO"
-                    ? "bg-[#16845B] text-white shadow-2xs"
-                    : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
-                }`}
-                title="Grid Adaptativo RNF03 (Alterna Cards em Mobile e Lista em Tablets)"
-              >
-                Adaptativo
-              </button>
-              <button
-                type="button"
-                onClick={() => setLayoutViewMode("CARDS")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-                  layoutViewMode === "CARDS"
-                    ? "bg-[#16845B] text-white shadow-2xs"
-                    : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
-                }`}
-              >
-                <LayoutGrid className="w-3.5 h-3.5" />
-                <span>Grade</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setLayoutViewMode("LISTA")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1 ${
-                  layoutViewMode === "LISTA"
-                    ? "bg-[#16845B] text-white shadow-2xs"
-                    : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
-                }`}
-              >
-                <List className="w-3.5 h-3.5" />
-                <span>Lista</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-[#172B2A] dark:text-slate-200">
-              Ordenar por:
-            </span>
-            <UISelect
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
-              className="w-auto py-1.5 text-xs"
-            >
-              <option value="recentes">Mais Recentes</option>
-              <option value="antigos">Mais Antigos</option>
-            </UISelect>
-          </div>
-        </div>
       </SurfaceCard>
 
-      {/* ITEMS CATALOG SECTION */}
+      {/* 3. RESULTADOS DO CATÁLOGO (GRADE OU LISTA) */}
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-400">
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-400 px-1">
           <span>
             Exibindo{" "}
-            <strong className="text-[#172B2A] dark:text-white">
+            <strong className="text-[#172B2A] dark:text-white tabular-nums">
+              {paginatedItems.length}
+            </strong>{" "}
+            de{" "}
+            <strong className="text-[#172B2A] dark:text-white tabular-nums">
               {filteredItems.length}
             </strong>{" "}
-            de {items.length} objetos no catálogo
+            objetos localizados ({items.length} no acervo total)
           </span>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <UIButton
-              type="button"
-              variant="primary"
-              size="sm"
-              onClick={() => {
-                vibrateClick();
-                setIsExportReportModalOpen(true);
-              }}
-              aria-label="Exportar Relatório Oficial de Itens Encontrados em PDF para Prestação de Contas"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Exportar Relatório PDF</span>
-            </UIButton>
-
-            <UIButton
-              type="button"
-              variant={isSelectableMode ? "primary" : "secondary"}
-              size="sm"
-              onClick={() => {
-                setIsSelectableMode(!isSelectableMode);
-                if (isSelectableMode) setSelectedItemIds([]);
-              }}
-            >
-              <CheckSquare className="w-3.5 h-3.5" />
-              <span>
-                {isSelectableMode ? "Sair do Modo Seleção" : "Seleção em Massa"}
-              </span>
-            </UIButton>
-
-            {isSelectableMode && (
+          {isSelectableMode && (
+            <div className="flex items-center gap-2">
               <UIButton
                 type="button"
                 variant="secondary"
@@ -1259,8 +1272,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                   ? "Desmarcar Todos"
                   : `Selecionar Todos (${filteredItems.length})`}
               </UIButton>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {filteredItems.length === 0 ? (
@@ -1285,127 +1298,118 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
             }
           />
         ) : layoutViewMode === "LISTA" ? (
-          /* CLEAN MINIMAL LIST VIEW (Matching Bottom-Left Reference Screen) */
+          /* VISUALIZAÇÃO EM LISTA LIMPA E ESTRUTURADA */
           <SurfaceCard padding="none" className="overflow-hidden">
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              <AnimatePresence mode="popLayout">
-                {filteredItems.map((item, idx) => {
-                  const hasImg =
-                    item.imageUrl &&
-                    item.imageUrl.trim() !== "" &&
-                    !item.imageUrl.includes(
-                      "photo-1584438784894-089d6a62b8fa"
-                    );
-                  return (
-                    <motion.div
-                      key={item.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      transition={{
-                        duration: 0.22,
-                        ease: [0.16, 1, 0.3, 1],
-                        delay: Math.min(idx * 0.02, 0.16),
-                      }}
-                      onClick={() => handleItemClick(item)}
-                      className="p-4 sm:px-6 flex items-center justify-between gap-4 hover:bg-[#F8FAFC] dark:hover:bg-slate-800/60 cursor-pointer transition-colors group"
-                    >
-                      <div className="flex items-center gap-3.5 min-w-0">
-                        {hasImg ? (
-                          <img
-                            src={item.imageUrl}
-                            alt={item.title}
-                            loading="lazy"
-                            decoding="async"
-                            className="w-14 h-14 rounded-xl object-cover border border-slate-200/80 dark:border-slate-700 shrink-0 bg-[#F8FAFC]"
-                          />
-                        ) : (
-                          <div
-                            className="w-14 h-14 rounded-xl bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 flex items-center justify-center shrink-0 text-[#16845B] dark:text-emerald-400"
-                            aria-label="Sem foto anexada"
-                          >
-                            <CameraOff className="w-5 h-5" />
-                          </div>
-                        )}
-
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-bold text-sm sm:text-base text-[#172B2A] dark:text-white truncate group-hover:text-[#16845B] dark:group-hover:text-emerald-400 transition-colors">
-                              {item.title}
-                            </h3>
-                            <UIBadge
-                              tone={
-                                item.status === "PERDIDO"
-                                  ? "rose"
-                                  : item.status === "DEVOLVIDO"
-                                  ? "blue"
-                                  : item.status === "EM_ANALISE"
-                                  ? "amber"
-                                  : "emerald"
-                              }
-                            >
-                              {item.status === "PERDIDO"
-                                ? "Perdido"
-                                : item.status === "DEVOLVIDO"
-                                ? "Devolvido"
-                                : item.status === "EM_ANALISE"
-                                ? "Em Análise"
-                                : "Encontrado"}
-                            </UIBadge>
-                            {isItemNew(item) && (
-                              <span
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#16845B] text-white"
-                                title="Cadastrado nas últimas 24 horas"
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 uppercase font-bold tracking-wider text-[10px] border-b border-slate-200 dark:border-slate-800">
+                  <tr>
+                    <th className="p-4">Objeto</th>
+                    <th className="p-4">Situação</th>
+                    <th className="p-4">Categoria</th>
+                    <th className="p-4">Localização</th>
+                    <th className="p-4">Data</th>
+                    <th className="p-4 text-right">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {paginatedItems.map((item) => {
+                    const hasImg =
+                      item.imageUrl &&
+                      item.imageUrl.trim() !== "" &&
+                      !item.imageUrl.includes(
+                        "photo-1584438784894-089d6a62b8fa"
+                      );
+                    const badge = getStatusBadgeInfo(item);
+                    return (
+                      <tr
+                        key={item.id}
+                        onClick={() => handleItemClick(item)}
+                        className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/50 cursor-pointer transition-colors group"
+                      >
+                        <td className="p-4">
+                          <div className="flex items-center gap-3.5 min-w-[200px]">
+                            {hasImg ? (
+                              <img
+                                src={item.imageUrl}
+                                alt={item.title}
+                                loading="lazy"
+                                decoding="async"
+                                className="w-12 h-12 rounded-xl object-cover border border-slate-200/80 dark:border-slate-700 shrink-0 bg-[#F8FAFC]"
+                              />
+                            ) : (
+                              <div
+                                className="w-12 h-12 rounded-xl bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 flex items-center justify-center shrink-0 text-[#16845B] dark:text-emerald-400"
+                                aria-label="Sem foto anexada"
                               >
-                                <Sparkles className="w-2.5 h-2.5 text-amber-200 fill-amber-200" />
-                                Novo
-                              </span>
+                                <CameraOff className="w-4 h-4" />
+                              </div>
                             )}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-sm text-[#172B2A] dark:text-white group-hover:text-[#16845B] dark:group-hover:text-emerald-400 transition-colors">
+                                  {item.title}
+                                </span>
+                                {isItemNew(item) && (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#16845B] text-white"
+                                    title="Cadastrado nas últimas 24 horas"
+                                  >
+                                    <Sparkles className="w-2.5 h-2.5 text-amber-200 fill-amber-200" />
+                                    Novo
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] font-mono text-slate-400 mt-0.5">
+                                #{item.id} {item.color ? `• ${item.color}` : ""}
+                              </div>
+                            </div>
                           </div>
-
-                          <p className="text-xs text-slate-600 dark:text-slate-400 truncate">
-                            {item.type === "PERDIDO"
-                              ? `Perdido em ${item.location}`
-                              : `Encontrado em ${item.location}`}{" "}
-                            • {getCategoryDisplay(item.category)}
-                          </p>
-
-                          <div className="flex items-center gap-3 text-[11px] text-slate-400 dark:text-slate-500">
-                            <span className="inline-flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              <span>{formatDate(item.date)}</span>
-                            </span>
-                            <span className="font-mono">ID: {item.id}</span>
+                        </td>
+                        <td className="p-4 whitespace-nowrap">
+                          <UIBadge tone={badge.tone}>{badge.label}</UIBadge>
+                        </td>
+                        <td className="p-4 text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap">
+                          {getCategoryDisplay(item.category)}
+                        </td>
+                        <td className="p-4 text-slate-600 dark:text-slate-300">
+                          <div className="flex items-center gap-1.5 max-w-[220px]">
+                            <MapPin className="w-3.5 h-3.5 text-[#16845B] shrink-0" />
+                            <span className="truncate">{item.location}</span>
                           </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="hidden sm:inline-flex text-xs font-semibold text-[#16845B] dark:text-emerald-400 group-hover:underline">
-                          Ver Detalhes
-                        </span>
-                        <div className="w-8 h-8 rounded-xl bg-[#F8FAFC] dark:bg-slate-800 group-hover:bg-[#EBF5F0] dark:group-hover:bg-emerald-950/60 flex items-center justify-center text-slate-400 group-hover:text-[#16845B] dark:group-hover:text-emerald-400 transition-colors">
-                          <ChevronRight className="w-4 h-4" />
-                        </div>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
+                        </td>
+                        <td className="p-4 text-slate-500 dark:text-slate-400 whitespace-nowrap tabular-nums">
+                          {formatDate(item.date)}
+                        </td>
+                        <td className="p-4 text-right whitespace-nowrap">
+                          <UIButton
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleItemClick(item);
+                            }}
+                          >
+                            <span>Ver Detalhes</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </UIButton>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </SurfaceCard>
         ) : (
-          /* RESPONSIVE GRID MODE (grid-cols-1 md:grid-cols-2 lg:grid-cols-3) */
+          /* VISUALIZAÇÃO EM GRADE CONSISTENTE (Celular, Tablet e Desktop) */
           <motion.div
             layout
-            className={
-              layoutViewMode === "CARDS"
-                ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-full min-w-0"
-                : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 md:hidden lg:grid gap-6 w-full max-w-full min-w-0"
-            }
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 w-full max-w-full min-w-0"
           >
             <AnimatePresence mode="popLayout">
-              {filteredItems.map((item, idx) => (
+              {paginatedItems.map((item, idx) => (
                 <ItemCard
                   key={item.id}
                   item={item}
@@ -1420,110 +1424,29 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
           </motion.div>
         )}
 
-        {/* TABLET ONLY LIST ROW (RNF03 Adaptive layout for md: to lg: breakpoint) */}
-        {layoutViewMode === "ADAPTATIVO" && filteredItems.length > 0 && (
-          <SurfaceCard
-            padding="none"
-            className="hidden md:block lg:hidden overflow-hidden"
-          >
-            <div className="px-4 py-3 bg-[#EBF5F0] dark:bg-emerald-950/40 border-b border-[#16845B]/15 dark:border-emerald-900/40 text-[#064E3B] dark:text-emerald-300 text-xs font-semibold flex items-center justify-between">
+        {/* Paginação / Carregamento Progressivo Limpo */}
+        {filteredItems.length > visibleCount && (
+          <div className="pt-4 flex flex-col items-center gap-2">
+            <UIButton
+              type="button"
+              variant="secondary"
+              size="lg"
+              onClick={() => {
+                vibrateClick();
+                setVisibleCount((prev) => prev + PAGE_STEP);
+              }}
+            >
               <span>
-                Visualização Otimizada para Tablet (Lista Compacta)
+                Carregar mais objetos ({filteredItems.length - visibleCount}{" "}
+                restantes)
               </span>
-              <span className="text-[11px] font-mono">
-                {filteredItems.length} objetos
-              </span>
-            </div>
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              <AnimatePresence mode="popLayout">
-                {filteredItems.map((item, idx) => {
-                  const hasImg =
-                    item.imageUrl &&
-                    item.imageUrl.trim() !== "" &&
-                    !item.imageUrl.includes(
-                      "photo-1584438784894-089d6a62b8fa"
-                    );
-                  return (
-                    <motion.div
-                      key={item.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      transition={{
-                        duration: 0.22,
-                        ease: [0.16, 1, 0.3, 1],
-                        delay: Math.min(idx * 0.02, 0.16),
-                      }}
-                      onClick={() => handleItemClick(item)}
-                      className="p-4 flex items-center justify-between gap-3 hover:bg-[#F8FAFC] dark:hover:bg-slate-800/60 cursor-pointer transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        {hasImg ? (
-                          <img
-                            src={item.imageUrl}
-                            alt={item.title}
-                            loading="lazy"
-                            decoding="async"
-                            className="w-12 h-12 rounded-xl object-cover border border-slate-200 dark:border-slate-700 shrink-0"
-                          />
-                        ) : (
-                          <div
-                            className="w-12 h-12 rounded-xl bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0 text-[#16845B] dark:text-emerald-400"
-                            aria-label="Sem foto anexada"
-                          >
-                            <CameraOff className="w-5 h-5" />
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <h4 className="font-bold text-sm text-[#172B2A] dark:text-white truncate">
-                              {item.title}
-                            </h4>
-                            {isItemNew(item) && (
-                              <span
-                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-[#16845B] text-white"
-                                title="Cadastrado nas últimas 24 horas"
-                              >
-                                <Sparkles className="w-2.5 h-2.5 text-amber-200 fill-amber-200" />
-                                Novo 24h
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                            {getCategoryDisplay(item.category)} • {item.location} •{" "}
-                            {formatDate(item.date)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2.5 shrink-0">
-                        <UIBadge
-                          tone={item.type === "PERDIDO" ? "rose" : "emerald"}
-                        >
-                          {item.type === "PERDIDO" ? "Perdido" : "Encontrado"}
-                        </UIBadge>
-                        <UIButton
-                          type="button"
-                          variant="primary"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedItemForDetail(item);
-                          }}
-                        >
-                          Detalhes
-                        </UIButton>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-            </div>
-          </SurfaceCard>
+              <ChevronDown className="w-4 h-4" />
+            </UIButton>
+          </div>
         )}
       </div>
 
-      {/* FLOATING BULK ACTIONS BAR */}
+      {/* BARRA FLUTUANTE DE AÇÕES EM MASSA */}
       {selectedItemIds.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#111827]/95 text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-slate-700/80 backdrop-blur-md flex flex-wrap items-center justify-between gap-4 max-w-xl w-[92%] animate-slide-up">
           <div className="flex items-center gap-2.5">
@@ -1556,7 +1479,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                     setSelectedItemIds([]);
                   }
                 } catch (_) {
-                  // Em caso de falha total, mantém os itens selecionados para nova tentativa
+                  // Preserva a seleção em caso de falha
                 }
               }}
             >
@@ -1585,7 +1508,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                         setSelectedItemIds([]);
                       }
                     } catch (_) {
-                      // Em caso de falha total, preserva a seleção para nova tentativa
+                      // Preserva a seleção em caso de falha
                     }
                   }
                 }}
@@ -1607,13 +1530,13 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
         </div>
       )}
 
-      {/* Export Found Items Official Accountability PDF Report Modal */}
+      {/* Modal de Exportação de Relatório Oficial em PDF */}
       <ExportFoundItemsReportModal
         isOpen={isExportReportModalOpen}
         onClose={() => setIsExportReportModalOpen(false)}
       />
 
-      {/* Voice Search Command Modal */}
+      {/* Modal de Busca por Comando de Voz */}
       <VoiceSearchModal
         isOpen={isVoiceSearchOpen}
         onClose={() => setIsVoiceSearchOpen(false)}

@@ -1507,13 +1507,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await subscribeToFCM();
   };
 
-  // Theme State
+  // Theme State — Modo claro é o padrão oficial do sistema (modo escuro opcional)
   const [darkMode, setDarkMode] = useState<boolean>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_THEME_KEY);
     if (saved !== null) {
       return saved === "dark";
     }
-    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+    return false;
   });
 
   // Sync dark class on HTML element & localStorage whenever darkMode changes
