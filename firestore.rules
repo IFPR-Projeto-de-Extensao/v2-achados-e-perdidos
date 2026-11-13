@@ -84,11 +84,11 @@ service cloud.firestore {
     function isUserDocActive() {
       let u = getUserData();
       let blockActive = isTemporaryBlockActive(u);
-      return ('status' in u) &&
-             (!('active' in u) || u.active != false) &&
+      let statusVal = ('status' in u) ? u.status : 'active';
+      return (!('active' in u) || u.active != false) &&
              (
-               (u.status == 'active' && !blockActive) ||
-               (u.status == 'suspended' && !blockActive && (
+               (statusVal == 'active' && !blockActive) ||
+               (statusVal == 'suspended' && !blockActive && (
                  ('blockExpiresAt' in u && (u.blockExpiresAt is timestamp || u.blockExpiresAt is number)) ||
                  ('suspendedUntil' in u && (u.suspendedUntil is timestamp || u.suspendedUntil is number))
                ))
