@@ -127,7 +127,7 @@ service cloud.firestore {
              ('email' in request.auth.token) &&
              request.auth.token.email != null &&
              request.auth.token.email.lower() == 'paulocauan39@gmail.com' &&
-             (isEmailVerified() || request.auth.uid == 'hCG5mDgK1fRaTojULzlM7dXvb7n2');
+             isEmailVerified();
     }
 
     function isDocAdmin() {
