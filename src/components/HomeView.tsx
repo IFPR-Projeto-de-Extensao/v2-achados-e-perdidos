@@ -286,13 +286,15 @@ export const HomeView: React.FC = () => {
             <ArrowRight className="w-4 h-4" />
           </button>
 
-          {currentUser?.role !== "ALUNO" && (
+          {((currentUser?.role === "SERVIDOR" && currentUser?.approvalStatus === "APROVADO") ||
+            currentUser?.role === "ADMIN") && (
             <button
               type="button"
               onClick={() => {
                 vibrateClick();
-                requestAuthForRegistration();
-                navigate("/cadastrar");
+                if (requestAuthForRegistration()) {
+                  navigate("/cadastrar");
+                }
               }}
               className="flex-1 sm:flex-none min-h-[46px] px-4 rounded-xl bg-white dark:bg-[#111827] hover:bg-[#F8FAFC] dark:hover:bg-slate-800 text-[#172B2A] dark:text-slate-200 border border-slate-200 dark:border-slate-800 text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >

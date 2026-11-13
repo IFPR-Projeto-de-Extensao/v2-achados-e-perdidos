@@ -31,6 +31,7 @@ import { DEFAULT_PROJECT_SETTINGS } from "../lib/projectSettingsConstants";
 import { sortUsersByCreationDesc, isAccountBlocked } from "../lib/accountStatusUtils";
 import { canOperateFormalReturn, canReopenFormalReturn } from "../lib/devolutionAuth";
 import { sanitizePublicItemProjection, mergeItemWithPrivateRecord } from "../lib/itemPrivacyUtils";
+import { buildItemStatusTransitionPatch, upsertItemPreservingFields } from "../lib/itemStateSync";
 import {
   assertClientItemDataUpdateAllowed,
   assertDirectDocUpdateAllowed,
@@ -484,6 +485,8 @@ interface AppContextType {
   resendVerificationEmail: () => Promise<void>;
   pendingPostLoginAction: PendingPostLoginAction | null;
   setPendingPostLoginAction: (action: PendingPostLoginAction | null) => void;
+  postLoginRedirectPath: string | null;
+  setPostLoginRedirectPath: (path: string | null) => void;
   requestAuthForRegistration: (
     registerType?: "PERDIDO" | "ENCONTRADO",
     prefilledItem?: Partial<LostFoundItem> | null,
@@ -629,7 +632,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
 
   // Heartbeat & System Health Monitoring (RNF01 & RNF02)
-  const [systemLatencyMs, setSystemLatencyMs] = useState<number | null>(24);
+  const [systemLatencyMs, setSystemLatencyMs] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const isSyncingRef = useRef<boolean>(false);
@@ -1370,6 +1373,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Claims state
   const [claims, setClaims] = useState<ItemClaim[]>([]);
   const inFlightClaimSubmissionsRef = useRef<Set<string>>(new Set());
+  const inFlightItemStatusOpsRef = useRef<Set<string>>(new Set());
 
   // Comments state
   const [comments, setComments] = useState<ItemComment[]>([]);
@@ -1891,44 +1895,119 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast("Encerramento em lote direto é proibido. Registre a destinação institucional formal de cada objeto.", "error");
       throw new Error("Ação bloqueada: ENCERRADO exige registro formal de destinação.");
     }
-    if (!canOperateFormalReturn(currentUser, auth.currentUser, isGuest)) {
+    if (isGuest || !auth.currentUser || !canOperateFormalReturn(currentUser, auth.currentUser, isGuest)) {
       addToast("Apenas servidores ou administradores ativos e aprovados podem alterar status em lote.", "error");
       throw new Error("Permissão negada para atualização de status em lote.");
     }
-    if (itemIds.length === 0) return { succeededIds: [], failedIds: [] };
+
+    const uniqueIds = Array.from(new Set((itemIds || []).filter((id): id is string => Boolean(id && id.trim()))));
+    if (uniqueIds.length === 0) return { succeededIds: [], failedIds: [] };
+
+    const effectiveUserId = auth.currentUser.uid;
+    const effectiveUserEmail = auth.currentUser.email || currentUser?.email || "";
+    const effectiveUserName = currentUser?.name || auth.currentUser.displayName || "Servidor IFPR";
+    const effectiveUserRole: UserRole =
+      currentUser?.role === "ADMIN" || auth.currentUser?.email === "paulocauan39@gmail.com" ? "ADMIN" : "SERVIDOR";
+
     const succeededIds: string[] = [];
     const failedIds: string[] = [];
+    const skippedAlreadyInStatusIds: string[] = [];
+    const updatedItemsMap = new Map<string, LostFoundItem>();
+    const generatedAuditLogs: SystemAuditLog[] = [];
+    const generatedActivityLogs: ActivityLog[] = [];
 
-    for (const id of itemIds) {
+    for (const id of uniqueIds) {
+      if (inFlightItemStatusOpsRef.current.has(id)) {
+        failedIds.push(id);
+        continue;
+      }
+
+      inFlightItemStatusOpsRef.current.add(id);
       try {
-        const existingItem = items.find((i) => i.id === id);
-        if (existingItem && (existingItem.status === "DEVOLVIDO" || existingItem.status === "ENCERRADO")) {
+        let existingItem = items.find((i) => i.id === id);
+        if (!existingItem) {
+          const directSnap = await getDoc(doc(db, "items", id));
+          if (directSnap.exists()) {
+            existingItem = { id: directSnap.id, ...(directSnap.data() as any) } as LostFoundItem;
+          }
+        }
+        if (!existingItem) {
+          throw new Error("Objeto não encontrado no Firestore.");
+        }
+        if (existingItem.status === "DEVOLVIDO" || existingItem.status === "ENCERRADO") {
           throw new Error("Item já resolvido não pode ter status alterado diretamente.");
         }
-        await updateDoc(doc(db, "items", id), sanitizeFirestoreData({ status }));
+        if (existingItem.status === status) {
+          skippedAlreadyInStatusIds.push(id);
+          continue;
+        }
+
+        const transition = buildItemStatusTransitionPatch({
+          existing: existingItem,
+          newStatus: status,
+          actorId: effectiveUserId,
+          actorName: effectiveUserName,
+          actorEmail: effectiveUserEmail,
+          actorRole: effectiveUserRole,
+          isBulk: true,
+        });
+
+        const batch = writeBatch(db);
+        batch.update(doc(db, "items", id), transition.firestoreItemUpdate);
+        batch.set(doc(db, "audit_logs", transition.auditLogDoc.id), sanitizeFirestoreData(transition.auditLogDoc));
+        batch.set(doc(db, "activity_logs", transition.auditLogDoc.id), transition.activityLogDoc);
+        await batch.commit();
+
         succeededIds.push(id);
+        updatedItemsMap.set(id, transition.updatedItem);
+        generatedAuditLogs.push(transition.auditLogDoc);
+        generatedActivityLogs.push({
+          id: transition.auditLogDoc.id,
+          adminId: effectiveUserId,
+          adminName: effectiveUserName,
+          action: "STATUS_OVERRIDE",
+          details: transition.activityLogDoc.details,
+          timestamp: transition.auditLogDoc.timestamp,
+        });
       } catch (err) {
         failedIds.push(id);
         console.error(`[bulkUpdateItemStatus] Falha ao atualizar item #${id} no Firestore:`, err);
+      } finally {
+        inFlightItemStatusOpsRef.current.delete(id);
       }
     }
 
     // Apenas os itens cuja alteração foi EFETIVAMENTE confirmada pelo Firestore têm o estado local modificado
-    if (succeededIds.length > 0) {
-      setItems((prev) =>
-        prev.map((it) => (succeededIds.includes(it.id) ? { ...it, status } : it))
+    if (updatedItemsMap.size > 0) {
+      setItems((prev) => {
+        let next = prev;
+        updatedItemsMap.forEach((updatedItem) => {
+          next = upsertItemPreservingFields(next, updatedItem);
+        });
+        return next;
+      });
+      setSelectedItemForDetail((prev) =>
+        prev && updatedItemsMap.has(prev.id) ? updatedItemsMap.get(prev.id)! : prev
       );
+      if (generatedAuditLogs.length > 0) {
+        setSystemAuditLogs((prev) => [...generatedAuditLogs, ...prev]);
+      }
+      if (generatedActivityLogs.length > 0) {
+        setActivityLogs((prev) => [...generatedActivityLogs, ...prev]);
+      }
     }
 
     // Exibição de feedback fiel à realidade das operações
-    if (failedIds.length === 0) {
+    if (failedIds.length === 0 && succeededIds.length > 0) {
       // Cenário A: Todas confirmadas com sucesso
       addToast(`${succeededIds.length} item(ns) alterado(s) para ${status} com sucesso!`, "success");
-    } else if (succeededIds.length === 0) {
+    } else if (failedIds.length === 0 && succeededIds.length === 0 && skippedAlreadyInStatusIds.length > 0) {
+      addToast(`Os ${skippedAlreadyInStatusIds.length} objeto(s) selecionado(s) já estão com status ${String(status).replace("_", " ")}.`, "info");
+    } else if (succeededIds.length === 0 && failedIds.length > 0) {
       // Cenário C: Todas falharam no Firestore
       addToast(`Falha ao alterar o status dos ${failedIds.length} item(ns) no Firestore. Nenhuma alteração foi persistida.`, "error");
       throw new Error(`Falha total na atualização em lote de ${failedIds.length} item(ns).`);
-    } else {
+    } else if (failedIds.length > 0) {
       // Cenário B: Falha parcial (alguns sucederam e outros falharam)
       addToast(
         `${succeededIds.length} item(ns) alterado(s) com sucesso e ${failedIds.length} falharam na gravação remota.`,
@@ -1936,7 +2015,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
-    return { succeededIds, failedIds };
+    return {
+      succeededIds: [...succeededIds, ...skippedAlreadyInStatusIds],
+      failedIds,
+    };
   };
 
   const bulkDeleteItems = async (itemIds: string[]): Promise<{ succeededIds: string[]; failedIds: string[] }> => {
@@ -2254,6 +2336,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const isGuest = !isAuthenticated;
 
   // Pending Post-Login Action (intent to register an item or open a specific form after auth)
+  const [postLoginRedirectPath, setPostLoginRedirectPath] = useState<string | null>(null);
   const [pendingPostLoginAction, setPendingPostLoginActionState] = useState<PendingPostLoginAction | null>(() => {
     try {
       const saved = sessionStorage.getItem("ifpr_pending_post_login");
@@ -2320,6 +2403,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       if (action.tab) {
         setActiveTab(action.tab);
+        if (action.tab === "register") {
+          setPostLoginRedirectPath(
+            action.registerType ? `/cadastrar?tipo=${action.registerType.toLowerCase()}` : "/cadastrar"
+          );
+        } else if (action.tab === "dashboard") {
+          setPostLoginRedirectPath("/admin");
+        } else if (action.tab === "profile") {
+          setPostLoginRedirectPath("/perfil");
+        }
       }
       addToast(
         "Você está autenticado! Agora você pode preencher e cadastrar o item.",
@@ -4620,61 +4712,75 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error("Autenticação necessária para alterar o status.");
     }
 
-    const existing = items.find((i) => i.id === id);
-    if (!existing) {
-      addToast("Objeto não encontrado no sistema.", "error");
-      throw new Error("Objeto não encontrado.");
-    }
-
-    if (existing.status === "DEVOLVIDO" || existing.status === "ENCERRADO") {
-      addToast("Objetos já devolvidos ou encerrados não podem ter status alterado diretamente.", "error");
-      throw new Error("Item já finalizado não permite alteração direta de status.");
-    }
-
     if (!canOperateFormalReturn(currentUser, auth.currentUser, isGuest)) {
       addToast("Apenas servidores ou administradores ativos e aprovados podem alterar o status de objetos.", "error");
       throw new Error("Permissão negada para alteração de status.");
     }
 
-    const effectiveUserId = auth.currentUser.uid;
-    const effectiveUserName = currentUser?.name || auth.currentUser.displayName || "Servidor IFPR";
-    const effectiveUserRole: UserRole =
-      currentUser?.role === "ADMIN" || auth.currentUser?.email === "paulocauan39@gmail.com" ? "ADMIN" : "SERVIDOR";
+    if (inFlightItemStatusOpsRef.current.has(id)) {
+      return;
+    }
 
-    const existingHistory = existing?.history || existing?.historyLogs || [];
-
-    const newHistLog: ItemHistoryLog = {
-      id: `hist-${Date.now()}`,
-      action: `Status alterado para ${status}`,
-      actorId: effectiveUserId,
-      actorName: effectiveUserName,
-      actorRole: effectiveUserRole,
-      userId: effectiveUserId,
-      userName: effectiveUserName,
-      userRole: effectiveUserRole,
-      timestamp: new Date().toISOString(),
-      details: `Status do objeto alterado de ${existing?.status || "N/A"} para ${status}.`,
-    };
-
-    const updates: Record<string, any> = sanitizeFirestoreData({
-      status,
-      resolutionDate: deleteField(),
-      history: [...existingHistory, newHistLog],
-      historyLogs: [...existingHistory, newHistLog],
-    });
-
+    inFlightItemStatusOpsRef.current.add(id);
     try {
+      let existing = items.find((i) => i.id === id);
+      if (!existing) {
+        try {
+          const directSnap = await getDoc(doc(db, "items", id));
+          if (directSnap.exists()) {
+            existing = { id: directSnap.id, ...(directSnap.data() as any) } as LostFoundItem;
+          }
+        } catch (lookupErr) {
+          console.warn("[AppContext] Falha ao buscar objeto no Firestore durante atualização de status:", lookupErr);
+        }
+      }
+      if (!existing) {
+        addToast("Objeto não encontrado no sistema.", "error");
+        throw new Error("Objeto não encontrado.");
+      }
+
+      if (existing.status === "DEVOLVIDO" || existing.status === "ENCERRADO") {
+        addToast("Objetos já devolvidos ou encerrados não podem ter status alterado diretamente.", "error");
+        throw new Error("Item já finalizado não permite alteração direta de status.");
+      }
+
+      if (existing.status === status) {
+        setItems((prev) => upsertItemPreservingFields(prev, existing!));
+        setSelectedItemForDetail((prev) => (prev && prev.id === id ? existing! : prev));
+        addToast(`O objeto já está com status: ${String(status || "").replace("_", " ")}`, "info");
+        return;
+      }
+
+      const effectiveUserId = auth.currentUser.uid;
+      const effectiveUserEmail = auth.currentUser.email || currentUser?.email || "";
+      const effectiveUserName = currentUser?.name || auth.currentUser.displayName || "Servidor IFPR";
+      const effectiveUserRole: UserRole =
+        currentUser?.role === "ADMIN" || auth.currentUser?.email === "paulocauan39@gmail.com" ? "ADMIN" : "SERVIDOR";
+
+      const transition = buildItemStatusTransitionPatch({
+        existing,
+        newStatus: status,
+        actorId: effectiveUserId,
+        actorName: effectiveUserName,
+        actorEmail: effectiveUserEmail,
+        actorRole: effectiveUserRole,
+        isBulk: false,
+      });
+
+      const nextHistory = transition.nextHistory;
+      const updates: Record<string, any> = sanitizeFirestoreData({
+        status,
+        resolutionDate: deleteField(),
+        history: nextHistory,
+        historyLogs: nextHistory,
+      });
+
       await updateDoc(doc(db, "items", id), updates);
 
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === id
-            ? { ...it, status, resolutionDate: undefined, history: [...existingHistory, newHistLog] }
-            : it
-        )
-      );
+      const syncedUpdatedItem = transition.updatedItem;
+      setItems((prev) => upsertItemPreservingFields(prev, syncedUpdatedItem));
+      setSelectedItemForDetail((prev) => (prev && prev.id === id ? syncedUpdatedItem : prev));
 
-      const statusTxId = `TX-STAT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
       await recordAuditLog({
         objectId: id,
         objectType: "ITEM",
@@ -4683,8 +4789,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fieldChanged: "status",
         oldValue: existing?.status || "DESCONHECIDO",
         newValue: status,
-        details: `Status do objeto '${existing?.title || id}' alterado de ${existing?.status || "DESCONHECIDO"} para ${status}.`,
-        transactionId: statusTxId,
+        details: transition.auditLogDoc.details,
+        transactionId: transition.auditLogDoc.transactionId,
       });
 
       await logAdminAction(
@@ -4692,10 +4798,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         `Alterou o status do objeto #${id} para '${status}'`
       );
       addToast(`Status do objeto atualizado para: ${String(status || "").replace("_", " ")}`, "info");
-    } catch (e) {
-      addToast("Falha ao persistir a alteração de status no Firestore.", "error");
-      handleFirestoreError(e, OperationType.UPDATE, `items/${id}`);
+    } catch (e: any) {
+      if (
+        !e?.message?.includes("Objeto não encontrado") &&
+        !e?.message?.includes("Item já finalizado") &&
+        !e?.message?.includes("Permissão negada")
+      ) {
+        addToast("Falha ao persistir a alteração de status no Firestore.", "error");
+        handleFirestoreError(e, OperationType.UPDATE, `items/${id}`);
+      }
       throw e;
+    } finally {
+      inFlightItemStatusOpsRef.current.delete(id);
     }
   };
 
@@ -4806,13 +4920,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await updateDoc(doc(db, "items", id), mergedData);
 
       // Update local state immediately
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === id
-            ? { ...it, ...safeUpdates, history: [...existingHistory, newHistLog], lastEditedAt: mergedData.lastEditedAt }
-            : it
-        )
-      );
+      const updatedLocalItem: LostFoundItem = {
+        ...existing,
+        ...safeUpdates,
+        history: [...existingHistory, newHistLog],
+        lastEditedAt: mergedData.lastEditedAt,
+      };
+      setItems((prev) => upsertItemPreservingFields(prev, updatedLocalItem));
+      setSelectedItemForDetail((prev) => (prev && prev.id === id ? updatedLocalItem : prev));
       
       const editTxId = `TX-EDIT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
       const fieldsList = Object.keys(updatedFields).join(", ");
@@ -4917,6 +5032,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : it
       )
     );
+    setSelectedItemForDetail((prev) =>
+      prev && prev.id === itemId ? { ...prev, ...serverItemUpdate, status: "DEVOLVIDO" } : prev
+    );
 
     if (completedIds.length > 0) {
       setClaims((prev) =>
@@ -5011,45 +5129,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const restoredClaimIds: string[] = Array.isArray(data.restoredClaimIds) ? data.restoredClaimIds : [];
     const requiresAdminClaimReview = Boolean(data.requiresAdminClaimReview);
 
+    const applyReopenedState = (it: LostFoundItem): LostFoundItem => {
+      const existingHistory = it.history || it.historyLogs || [];
+      const nextHistory = historyEntry ? [...existingHistory, historyEntry] : existingHistory;
+      return {
+        ...it,
+        status: previousStatus,
+        resolutionDate: undefined,
+        returnedByUserId: undefined,
+        returnedByName: undefined,
+        returnedByRole: undefined,
+        returnDate: undefined,
+        returnTime: undefined,
+        recipientName: undefined,
+        recipientEmail: undefined,
+        recipientBond: undefined,
+        recipientDocument: undefined,
+        returnObservations: undefined,
+        receiptValidationCode: undefined,
+        recipientSignatureUrl: undefined,
+        recipientSignatureType: undefined,
+        recipientSignatureStatus: undefined,
+        staffSignatureStatus: undefined,
+        staffSignatureUrl: undefined,
+        staffSignatureMethod: undefined,
+        staffSignedAt: undefined,
+        staffSignerUid: undefined,
+        staffSignerName: undefined,
+        staffSignerEmail: undefined,
+        signatureToken: undefined,
+        signatureTokenExpiresAt: undefined,
+        signatureTokenUsed: undefined,
+        signedAt: undefined,
+        history: nextHistory,
+        historyLogs: nextHistory,
+      };
+    };
+
     setItems((prev) =>
-      prev.map((it) => {
-        if (it.id !== itemId) return it;
-        const existingHistory = it.history || it.historyLogs || [];
-        const nextHistory = historyEntry ? [...existingHistory, historyEntry] : existingHistory;
-        return {
-          ...it,
-          status: previousStatus,
-          resolutionDate: undefined,
-          returnedByUserId: undefined,
-          returnedByName: undefined,
-          returnedByRole: undefined,
-          returnDate: undefined,
-          returnTime: undefined,
-          recipientName: undefined,
-          recipientEmail: undefined,
-          recipientBond: undefined,
-          recipientDocument: undefined,
-          returnObservations: undefined,
-          receiptValidationCode: undefined,
-          recipientSignatureUrl: undefined,
-          recipientSignatureType: undefined,
-          recipientSignatureMethod: undefined,
-          recipientSignatureStatus: undefined,
-          staffSignatureStatus: undefined,
-          staffSignatureUrl: undefined,
-          staffSignatureMethod: undefined,
-          staffSignedAt: undefined,
-          staffSignerUid: undefined,
-          staffSignerName: undefined,
-          staffSignerEmail: undefined,
-          signatureToken: undefined,
-          signatureTokenExpiresAt: undefined,
-          signatureTokenUsed: undefined,
-          signedAt: undefined,
-          history: nextHistory,
-          historyLogs: nextHistory,
-        };
-      })
+      prev.map((it) => (it.id === itemId ? applyReopenedState(it) : it))
+    );
+    setSelectedItemForDetail((prev) =>
+      prev && prev.id === itemId ? applyReopenedState(prev) : prev
     );
 
     if (restoredClaimIds.length > 0) {
@@ -5133,21 +5254,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     try {
       await updateDoc(doc(db, "items", itemId), updatePayload);
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === itemId
-            ? {
-                ...it,
-                status: "ENCERRADO" as ItemStatus,
-                destinationType: destType,
-                destinationReason: destReason,
-                destinationDate: now.toISOString(),
-                destinationResponsible: currentUser.name,
-                history: [...existingHistory, newHistLog],
-                historyLogs: [...existingHistory, newHistLog],
-              }
-            : it
-        )
+      const destinationUpdatedItem: LostFoundItem = {
+        ...existing,
+        status: "ENCERRADO" as ItemStatus,
+        destinationType: destType,
+        destinationReason: destReason,
+        destinationDate: now.toISOString(),
+        destinationResponsible: currentUser.name,
+        history: [...existingHistory, newHistLog],
+        historyLogs: [...existingHistory, newHistLog],
+      };
+      setItems((prev) => upsertItemPreservingFields(prev, destinationUpdatedItem));
+      setSelectedItemForDetail((prev) =>
+        prev && prev.id === itemId ? destinationUpdatedItem : prev
       );
       await logAdminAction(
         "DESTINACAO_ITEM",
@@ -5776,6 +5895,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resendVerificationEmail,
         pendingPostLoginAction,
         setPendingPostLoginAction,
+        postLoginRedirectPath,
+        setPostLoginRedirectPath,
         requestAuthForRegistration,
         authModalOpen,
         setAuthModalOpen,

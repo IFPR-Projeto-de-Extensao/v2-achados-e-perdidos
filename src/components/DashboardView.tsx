@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useApp } from "../context/AppContext";
+import { useRouter } from "../context/RouterContext";
 import { formatDate, formatDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeIncludes, sanitizeQuery } from "../lib/utils";
 import { UserRole, User, AccountStatus, ActivityLog, BackupScheduleConfig, ItemClaim } from "../types";
 import { AppUptimeMonitor } from "./AppUptimeMonitor";
@@ -19,7 +20,14 @@ import { ManageUserStatusModal } from "./ManageUserStatusModal";
 import { AccountManagementView } from "./AccountManagementView";
 import { getSafeAvatarUrl, handleAvatarError } from "../lib/avatarUtils";
 import { resolveAccountStatus, formatAccountStatusDetails } from "../lib/accountStatusUtils";
-import { computeDashboardReturnMetrics, isRecipientReturnConcluded } from "../lib/dashboardMetricsUtils";
+import { CANONICAL_ITEM_CATEGORIES } from "../lib/categoryUtils";
+import {
+  computeDashboardReturnMetrics,
+  isRecipientReturnConcluded,
+  sortAndFilterAdminTableItems,
+  buildPieCategoryData,
+  readAvailableMemoryUsageMB,
+} from "../lib/dashboardMetricsUtils";
 import { SurfaceCard, UIButton, UIBadge, EmptyState } from "./ui";
 import { auth, db, traceFirebasePerformance } from "../lib/firebase";
 import { collection, query, limit, getDocs } from "firebase/firestore";
@@ -135,6 +143,8 @@ export const DashboardView: React.FC = () => {
     requestAuthForRegistration,
   } = useApp();
 
+  const { navigate } = useRouter();
+
   // Notification Modal State (Admin to Student)
   const [notifyModalUser, setNotifyModalUser] = useState<any | null>(null);
   const [isBroadcastNotification, setIsBroadcastNotification] = useState(false);
@@ -182,7 +192,78 @@ export const DashboardView: React.FC = () => {
   // Table Filters for Admin/Server items view
   const [tableSearch, setTableSearch] = useState("");
   const [tableCategory, setTableCategory] = useState("TODAS");
+  const [adminTableLimit, setAdminTableLimit] = useState<number>(15);
   const [serverFilterStatus, setServerFilterStatus] = useState<string>("TODOS");
+  const [confirmingArrivalId, setConfirmingArrivalId] = useState<string | null>(null);
+  const [serverOverviewLimit, setServerOverviewLimit] = useState<number>(15);
+
+  useEffect(() => {
+    setAdminTableLimit(15);
+  }, [tableSearch, tableCategory]);
+
+  useEffect(() => {
+    setServerOverviewLimit(15);
+  }, [serverFilterStatus, tableSearch]);
+
+  const serverCustodyFilteredItems = useMemo(() => {
+    return sortAndFilterAdminTableItems(items, {
+      search: tableSearch,
+      statusFilter: serverFilterStatus,
+    });
+  }, [items, serverFilterStatus, tableSearch]);
+
+  const handleConfirmArrival = async (it: (typeof items)[number]) => {
+    if (!it || confirmingArrivalId) return;
+    vibrateClick();
+    setConfirmingArrivalId(it.id);
+    try {
+      await updateItemStatus(it.id, "EM_ANALISE");
+      vibrateSuccess();
+    } catch (err) {
+      console.error("[DashboardView] Falha ao confirmar chegada do objeto:", err);
+    } finally {
+      setConfirmingArrivalId(null);
+    }
+  };
+
+  const handleAdminStatusOverride = async (
+    it: (typeof items)[number],
+    newStatus: "PERDIDO" | "ENCONTRADO" | "EM_ANALISE"
+  ) => {
+    if (!it || newStatus === it.status) return;
+    try {
+      await updateItemStatus(it.id, newStatus);
+    } catch (err) {
+      console.error("[DashboardView] Falha ao atualizar status via override:", err);
+    }
+  };
+
+  const handleOpenNotifyModalForItem = (it: (typeof items)[number]) => {
+    if (!it) return;
+    vibrateClick();
+    const studentUser = (allUsers || []).find(
+      (u) =>
+        u &&
+        (u.id === it.registeredByUserId ||
+          (it.contactInfo && (u.email === it.contactInfo || u.phone === it.contactInfo)))
+    );
+    const targetUser = studentUser || {
+      id: it.registeredByUserId || "aluno-ifpr",
+      name: it.registeredByName || "Aluno(a) Cadastrante",
+      email: (studentUser as any)?.email || it.contactInfo || "aluno@estudantes.ifpr.edu.br",
+      role: "ALUNO" as UserRole,
+      courseOrDept: "IFPR Campus Ivaiporã",
+      registrationNumber: "20261001",
+      reputationScore: 10,
+    };
+    setNotifyModalUser(targetUser);
+    setIsBroadcastNotification(false);
+    setNotifyRelatedItemId(it.id);
+    setNotifyTitle(`Atualização sobre seu item: ${it.title}`);
+    setNotifyMessage(
+      `Olá, ${targetUser.name}! Há uma atualização referente ao seu objeto "${it.title}" registrado no Achados e Perdidos do IFPR Campus Ivaiporã.`
+    );
+  };
 
   // Admin & Server Sub-Tab State
   const [adminSubTab, setAdminSubTab] = useState<
@@ -293,32 +374,30 @@ export const DashboardView: React.FC = () => {
     await updateMaintenanceCustomMessage(customMsgInput);
   };
 
-  // Telemetry Ping Latency & Performance State
-  const [pingLatencyMs, setPingLatencyMs] = useState<number | null>(24);
-  const [dbLatencyMs, setDbLatencyMs] = useState<number | null>(28);
-  const [memoryUsageMB, setMemoryUsageMB] = useState<number>(42.8);
+  // Telemetry Ping Latency & Performance State (Strict real measurements; null/[] when unmeasured)
+  const [pingLatencyMs, setPingLatencyMs] = useState<number | null>(null);
+  const [dbLatencyMs, setDbLatencyMs] = useState<number | null>(null);
+  const [memoryUsageMB, setMemoryUsageMB] = useState<number | null>(null);
   const [isPinging, setIsPinging] = useState(false);
-  const [latencyHistory, setLatencyHistory] = useState<Array<{ time: string; network: number; db: number }>>([
-    { time: "08:10", network: 22, db: 31 },
-    { time: "08:12", network: 24, db: 28 },
-    { time: "08:14", network: 19, db: 26 },
-    { time: "08:16", network: 25, db: 32 },
-    { time: "08:18", network: 21, db: 29 },
-  ]);
+  const [latencyHistory, setLatencyHistory] = useState<
+    Array<{ time: string; network: number | null; db: number | null }>
+  >([]);
 
   const measurePing = async () => {
     setIsPinging(true);
     const startNet = performance.now();
-    let netMs = 24;
-    let dbMs = 28;
+    let netMs: number | null = null;
+    let dbMs: number | null = null;
 
     try {
-      await fetch("/api/analytics/metrics", { cache: "no-store" });
-      netMs = Math.round(performance.now() - startNet);
+      const res = await fetch("/api/analytics/metrics", { cache: "no-store" });
+      if (res.ok) {
+        netMs = Math.max(1, Math.round(performance.now() - startNet));
+      }
     } catch (_) {
-      netMs = 24;
+      netMs = null;
     }
-    setPingLatencyMs(netMs > 0 ? netMs : 18);
+    setPingLatencyMs(netMs);
 
     // Measure Firestore DB response time with Firebase Performance trace
     const perfTrace = traceFirebasePerformance("firestore_db_latency");
@@ -327,25 +406,33 @@ export const DashboardView: React.FC = () => {
       if (db) {
         const q = query(collection(db, "items"), limit(1));
         await getDocs(q);
+        dbMs = Math.max(1, Math.round(performance.now() - startDb));
       }
-      dbMs = Math.round(performance.now() - startDb);
-      if (perfTrace) perfTrace.stop();
-    } catch (err) {
-      dbMs = 32;
+    } catch (_) {
+      dbMs = null;
+    } finally {
+      if (perfTrace) {
+        try {
+          perfTrace.stop();
+        } catch (_) {}
+      }
     }
-    setDbLatencyMs(dbMs > 0 ? dbMs : 28);
+    setDbLatencyMs(dbMs);
 
-    // Memory usage
-    if (typeof window !== "undefined" && (performance as any).memory) {
-      const mem = (performance as any).memory;
-      const usedMB = parseFloat((mem.usedJSHeapSize / (1024 * 1024)).toFixed(1));
-      setMemoryUsageMB(usedMB > 0 ? usedMB : 42.8);
-    } else {
-      setMemoryUsageMB(42.8);
+    // Real JS heap memory usage (null when browser doesn't expose performance.memory)
+    setMemoryUsageMB(readAvailableMemoryUsageMB());
+
+    if (netMs !== null || dbMs !== null) {
+      const timeLabel = new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+      setLatencyHistory((prev) => [
+        ...prev.slice(-8),
+        { time: timeLabel, network: netMs, db: dbMs },
+      ]);
     }
-
-    const timeLabel = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    setLatencyHistory((prev) => [...prev.slice(-8), { time: timeLabel, network: netMs, db: dbMs }]);
     setIsPinging(false);
   };
 
@@ -516,24 +603,16 @@ export const DashboardView: React.FC = () => {
     devolvidos: m.devolvidos,
   }));
 
-  // Chart 2 Data: Categories Distribution (Pie / Donut)
+  // Chart 2 Data: Categories Distribution (Pie / Donut - strict real stored data)
   const categoryCounts: Record<string, number> = {};
   items.forEach((it) => {
+    if (!it || !it.category) return;
     categoryCounts[it.category] = (categoryCounts[it.category] || 0) + 1;
   });
 
   const COLORS = ["#16845B", "#DC2626", "#2563EB", "#D97706", "#7C3AED", "#DB2777", "#0D9488"];
 
-  const pieCategoryData =
-    Object.keys(categoryCounts).length > 0
-      ? Object.keys(categoryCounts).map((catKey) => ({
-          name: catKey,
-          value: categoryCounts[catKey],
-        }))
-      : [
-          { name: "Eletrônicos", value: 1 },
-          { name: "Documentos", value: 1 },
-        ];
+  const pieCategoryData = useMemo(() => buildPieCategoryData(items), [items]);
 
   // Storage Deadline Calculation & Alerts (Controle de Prazo de Armazenamento)
   const todayMs = new Date().getTime();
@@ -577,21 +656,20 @@ export const DashboardView: React.FC = () => {
     pendentes: pendingByCat[cat],
   }));
 
-  // Filtered Items for Management Table
-  const filteredTableItems = (items || []).filter((it) => {
-    if (!it) return false;
-    const matchCat = tableCategory === "TODAS" || it.category === tableCategory;
-    const q = sanitizeQuery(tableSearch);
-    const matchText =
-      !q ||
-      safeIncludes(it.title, q) ||
-      safeIncludes(it.registeredByName, q) ||
-      safeIncludes(it.id, q) ||
-      safeIncludes(it.qrCodeId, q) ||
-      safeIncludes(it.location, q) ||
-      safeIncludes(it.category, q);
-    return matchCat && matchText;
-  });
+  // Filtered & Priority-Sorted Items for Admin Management Table
+  const filteredTableItems = useMemo(
+    () =>
+      sortAndFilterAdminTableItems(items, {
+        search: tableSearch,
+        category: tableCategory,
+      }),
+    [items, tableSearch, tableCategory]
+  );
+
+  const visibleAdminTableItems = useMemo(
+    () => filteredTableItems.slice(0, adminTableLimit),
+    [filteredTableItems, adminTableLimit]
+  );
 
   // Export CSV Helper
   const handleExportCSV = () => {
@@ -1100,7 +1178,13 @@ export const DashboardView: React.FC = () => {
               {((currentUser.role === "SERVIDOR" && currentUser.approvalStatus === "APROVADO") ||
                 currentUser.role === "ADMIN") && (
                 <button
-                  onClick={() => requestAuthForRegistration()}
+                  type="button"
+                  onClick={() => {
+                    vibrateClick();
+                    if (requestAuthForRegistration()) {
+                      navigate("/cadastrar");
+                    }
+                  }}
                   className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-[#16845B] text-white text-xs font-semibold hover:bg-[#126B49] transition-colors cursor-pointer"
                 >
                   + Registrar Objeto
@@ -1195,7 +1279,8 @@ export const DashboardView: React.FC = () => {
       {/* ========================================================================= */}
       {(activeDashboardRole === "ADMIN" || activeDashboardRole === "SERVIDOR") && (
         <div>
-          {currentUser.role !== "ADMIN" && currentUser.role !== "SERVIDOR" ? (
+          {currentUser.role !== "ADMIN" &&
+          !(currentUser.role === "SERVIDOR" && currentUser.approvalStatus === "APROVADO") ? (
             <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-6 text-center space-y-3">
               <Lock className="w-5 h-5 text-rose-500 mx-auto" />
               <div className="space-y-1">
@@ -1578,7 +1663,12 @@ export const DashboardView: React.FC = () => {
 
                           <button
                             type="button"
-                            onClick={() => requestAuthForRegistration()}
+                            onClick={() => {
+                              vibrateClick();
+                              if (requestAuthForRegistration()) {
+                                navigate("/cadastrar");
+                              }
+                            }}
                             className="min-h-[42px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                           >
                             <span>+ Registrar Objeto</span>
@@ -1622,7 +1712,8 @@ export const DashboardView: React.FC = () => {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 dark:border-slate-800 pb-3">
                         <div>
                           <h3 className="text-sm sm:text-base font-bold text-[#0F172A] dark:text-white">
-                            Objetos sob Custódia ({items.length})
+                            Objetos sob Custódia ({serverCustodyFilteredItems.length}
+                            {serverCustodyFilteredItems.length !== items.length ? ` de ${items.length}` : ""})
                           </h3>
                           <p className="text-xs text-slate-500">
                             Confirmação presencial de chegada, guarda física e formalização de devoluções.
@@ -1659,7 +1750,7 @@ export const DashboardView: React.FC = () => {
                             type="text"
                             value={tableSearch}
                             onChange={(e) => setTableSearch(e.target.value)}
-                            placeholder="Buscar objeto ou local..."
+                            placeholder="Buscar objeto, ID, QR ou local..."
                             className="w-full h-9 pl-9 pr-3 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-[#0F172A] dark:text-white outline-none focus:border-[#16845B]"
                           />
                         </div>
@@ -1667,66 +1758,50 @@ export const DashboardView: React.FC = () => {
 
                       {/* Lista Mobile Empilhada (Evita tabelas largas no celular) */}
                       <div className="md:hidden divide-y divide-slate-200/80 dark:divide-slate-800 border-y border-slate-200/80 dark:border-slate-800">
-                        {items
-                          .filter((it) => {
-                            if (serverFilterStatus !== "TODOS" && it.status !== serverFilterStatus)
-                              return false;
-                            if (tableSearch) {
-                              const s = tableSearch.toLowerCase();
-                              return (
-                                (it.title || "").toLowerCase().includes(s) ||
-                                (it.location || "").toLowerCase().includes(s) ||
-                                (it.category || "").toLowerCase().includes(s)
-                              );
-                            }
-                            return true;
-                          })
-                          .slice(0, 15)
-                          .map((it) => (
-                            <div key={it.id} className="py-3 space-y-2.5">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <p className="text-xs font-semibold text-[#0F172A] dark:text-white truncate">
-                                    {it.title}
-                                  </p>
-                                  <p className="text-[11px] text-slate-500 truncate">
-                                    {it.status} · {it.location || "Campus IFPR"} · {formatDate(it.createdAt)}
-                                  </p>
+                        {serverCustodyFilteredItems.length === 0 ? (
+                          <p className="py-8 text-center text-xs text-slate-500">
+                            Nenhum objeto encontrado para os filtros aplicados.
+                          </p>
+                        ) : (
+                          serverCustodyFilteredItems
+                            .slice(0, serverOverviewLimit)
+                            .map((it) => (
+                              <div key={it.id} className="py-3 space-y-2.5">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-semibold text-[#0F172A] dark:text-white truncate">
+                                      {it.title}
+                                    </p>
+                                    <p className="text-[11px] text-slate-500 truncate">
+                                      {it.status} · {it.location || "Campus IFPR"} · {formatDate(it.createdAt || it.date)}
+                                    </p>
+                                  </div>
+                                  <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                                    #{String(it.id).slice(0, 6)}
+                                  </span>
                                 </div>
-                                <span className="text-[10px] font-mono text-slate-400 shrink-0">
-                                  #{String(it.id).slice(0, 6)}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {it.status !== "EM_ANALISE" && it.status !== "DEVOLVIDO" && it.status !== "ENCERRADO" && (
+                                <div className="flex items-center gap-2">
+                                  {it.status !== "EM_ANALISE" && it.status !== "DEVOLVIDO" && it.status !== "ENCERRADO" && (
+                                    <button
+                                      type="button"
+                                      disabled={confirmingArrivalId === it.id}
+                                      onClick={() => handleConfirmArrival(it)}
+                                      className="flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 text-xs font-semibold cursor-pointer disabled:opacity-50"
+                                    >
+                                      {confirmingArrivalId === it.id ? "Confirmando..." : "Confirmar Chegada"}
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
-                                    onClick={async () => {
-                                      try {
-                                        await updateItemStatus(it.id, "EM_ANALISE");
-                                        addToast(
-                                          `Chegada do objeto "${it.title}" confirmada sob custódia na Guarita!`,
-                                          "success"
-                                        );
-                                      } catch (err) {
-                                        console.error("[DashboardView] Falha ao confirmar chegada do objeto:", err);
-                                      }
-                                    }}
-                                    className="flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 text-xs font-semibold cursor-pointer"
+                                    onClick={() => setSelectedItemForDetail(it)}
+                                    className="flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-[#16845B] text-white text-xs font-semibold cursor-pointer"
                                   >
-                                    Confirmar Chegada
+                                    Ver / Devolver
                                   </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedItemForDetail(it)}
-                                  className="flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-[#16845B] text-white text-xs font-semibold cursor-pointer"
-                                >
-                                  Ver / Devolver
-                                </button>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            ))
+                        )}
                       </div>
 
                       {/* Tabela Desktop Limpa de Objetos */}
@@ -1743,108 +1818,112 @@ export const DashboardView: React.FC = () => {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                            {items
-                              .filter((it) => {
-                                if (serverFilterStatus !== "TODOS" && it.status !== serverFilterStatus)
-                                  return false;
-                                if (tableSearch) {
-                                  const s = tableSearch.toLowerCase();
-                                  return (
-                                    (it.title || "").toLowerCase().includes(s) ||
-                                    (it.location || "").toLowerCase().includes(s) ||
-                                    (it.category || "").toLowerCase().includes(s)
-                                  );
-                                }
-                                return true;
-                              })
-                              .slice(0, 15)
-                              .map((it) => (
-                                <tr key={it.id} className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/40">
-                                  <td className="py-3 px-4">
-                                    <div className="flex items-center gap-3">
-                                      {it.imageUrl ? (
-                                        <img
-                                          src={it.imageUrl}
-                                          alt={it.title}
-                                          className="w-9 h-9 rounded-lg object-cover border border-slate-200 dark:border-slate-700"
-                                        />
-                                      ) : (
-                                        <div className="w-9 h-9 rounded-lg bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-400 text-[10px]">
-                                          IF
+                            {serverCustodyFilteredItems.length === 0 ? (
+                              <tr>
+                                <td colSpan={6} className="py-8 text-center text-slate-400">
+                                  Nenhum objeto encontrado para os filtros aplicados.
+                                </td>
+                              </tr>
+                            ) : (
+                              serverCustodyFilteredItems
+                                .slice(0, serverOverviewLimit)
+                                .map((it) => (
+                                  <tr key={it.id} className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/40">
+                                    <td className="py-3 px-4">
+                                      <div className="flex items-center gap-3">
+                                        {it.imageUrl ? (
+                                          <img
+                                            src={it.imageUrl}
+                                            alt={it.title}
+                                            className="w-9 h-9 rounded-lg object-cover border border-slate-200 dark:border-slate-700"
+                                          />
+                                        ) : (
+                                          <div className="w-9 h-9 rounded-lg bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center font-bold text-slate-400 text-[10px]">
+                                            IF
+                                          </div>
+                                        )}
+                                        <div>
+                                          <span className="font-bold text-[#172B2A] dark:text-white block">
+                                            {it.title}
+                                          </span>
+                                          <span className="text-[11px] text-slate-400 font-mono">
+                                            #{it.id} • {it.category} {it.color ? `• ${it.color}` : ""}
+                                          </span>
                                         </div>
-                                      )}
-                                      <div>
-                                        <span className="font-bold text-[#172B2A] dark:text-white block">
-                                          {it.title}
-                                        </span>
-                                        <span className="text-[11px] text-slate-400 font-mono">
-                                          #{it.id} • {it.category} {it.color ? `• ${it.color}` : ""}
-                                        </span>
                                       </div>
-                                    </div>
-                                  </td>
-                                  <td className="py-3 px-4">
-                                    <UIBadge tone={it.type === "ENCONTRADO" ? "emerald" : "rose"}>
-                                      {it.type}
-                                    </UIBadge>
-                                  </td>
-                                  <td className="py-3 px-4 text-slate-600 dark:text-slate-300 font-medium">
-                                    {it.location || "Campus IFPR"}
-                                  </td>
-                                  <td className="py-3 px-4 text-center">
-                                    <UIBadge
-                                      tone={
-                                        it.status === "ENCONTRADO"
-                                          ? "emerald"
-                                          : it.status === "EM_ANALISE"
-                                          ? "amber"
-                                          : it.status === "DEVOLVIDO"
-                                          ? "blue"
-                                          : "rose"
-                                      }
-                                    >
-                                      {it.status}
-                                    </UIBadge>
-                                  </td>
-                                  <td className="py-3 px-4 text-slate-500 font-mono text-[11px] tabular-nums">
-                                    {formatDate(it.createdAt)}
-                                  </td>
-                                  <td className="py-3 px-4 text-right">
-                                    <div className="flex items-center justify-end gap-1.5">
-                                      {it.status !== "EM_ANALISE" && it.status !== "DEVOLVIDO" && it.status !== "ENCERRADO" && (
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      <UIBadge tone={it.type === "ENCONTRADO" ? "emerald" : "rose"}>
+                                        {it.type}
+                                      </UIBadge>
+                                    </td>
+                                    <td className="py-3 px-4 text-slate-600 dark:text-slate-300 font-medium">
+                                      {it.location || "Campus IFPR"}
+                                    </td>
+                                    <td className="py-3 px-4 text-center">
+                                      <UIBadge
+                                        tone={
+                                          it.status === "ENCONTRADO"
+                                            ? "emerald"
+                                            : it.status === "EM_ANALISE"
+                                            ? "amber"
+                                            : it.status === "DEVOLVIDO"
+                                            ? "blue"
+                                            : "rose"
+                                        }
+                                      >
+                                        {it.status}
+                                      </UIBadge>
+                                    </td>
+                                    <td className="py-3 px-4 text-slate-500 font-mono text-[11px] tabular-nums">
+                                      {formatDate(it.createdAt || it.date)}
+                                    </td>
+                                    <td className="py-3 px-4 text-right">
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        {it.status !== "EM_ANALISE" && it.status !== "DEVOLVIDO" && it.status !== "ENCERRADO" && (
+                                          <button
+                                            type="button"
+                                            disabled={confirmingArrivalId === it.id}
+                                            onClick={() => handleConfirmArrival(it)}
+                                            className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-600 text-amber-800 hover:text-white dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
+                                            title="Confirmar que o objeto foi recebido fisicamente na guarita / secretaria"
+                                          >
+                                            {confirmingArrivalId === it.id ? "Confirmando..." : "Confirmar Chegada"}
+                                          </button>
+                                        )}
                                         <button
                                           type="button"
-                                          onClick={async () => {
-                                            try {
-                                              await updateItemStatus(it.id, "EM_ANALISE");
-                                              addToast(
-                                                `Chegada do objeto "${it.title}" confirmada sob custódia na Guarita!`,
-                                                "success"
-                                              );
-                                            } catch (err) {
-                                              console.error("[DashboardView] Falha ao confirmar chegada do objeto:", err);
-                                            }
-                                          }}
-                                          className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-600 text-amber-800 hover:text-white dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap"
-                                          title="Confirmar que o objeto foi recebido fisicamente na guarita / secretaria"
+                                          onClick={() => setSelectedItemForDetail(it)}
+                                          className="px-3 py-1.5 rounded-lg bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-semibold transition-all cursor-pointer whitespace-nowrap"
                                         >
-                                          Confirmar Chegada
+                                          Ver / Devolver
                                         </button>
-                                      )}
-                                      <button
-                                        type="button"
-                                        onClick={() => setSelectedItemForDetail(it)}
-                                        className="px-3 py-1.5 rounded-lg bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-semibold transition-all cursor-pointer whitespace-nowrap"
-                                      >
-                                        Ver / Devolver
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              ))}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))
+                            )}
                           </tbody>
                         </table>
                       </div>
+
+                      {serverCustodyFilteredItems.length > serverOverviewLimit && (
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-1">
+                          <span className="text-[11px] text-slate-500 tabular-nums">
+                            Exibindo {Math.min(serverOverviewLimit, serverCustodyFilteredItems.length)} de {serverCustodyFilteredItems.length} objetos
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              vibrateClick();
+                              setServerOverviewLimit((prev) => prev + 20);
+                            }}
+                            className="min-h-[36px] px-4 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
+                          >
+                            Mostrar mais objetos (restam {serverCustodyFilteredItems.length - serverOverviewLimit})
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     {/* 3. Controle de Prazo de Armazenamento (Portaria IFPR 90 Dias) */}
@@ -2067,61 +2146,73 @@ export const DashboardView: React.FC = () => {
                               Categorias de Objetos
                             </h3>
                             <span className="text-[11px] text-slate-400 font-mono tabular-nums">
-                              {Object.keys(categoryCounts).length} categorias
+                              {pieCategoryData.length} categorias
                             </span>
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-                            <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
-                              {pieCategoryData.map((cat, idx) => {
-                                const totalCount = items.length || 1;
-                                const pct = Math.round((cat.value / totalCount) * 100);
-                                return (
-                                  <div
-                                    key={cat.name}
-                                    className="flex items-center justify-between text-xs py-1 px-1.5 rounded-lg"
-                                  >
-                                    <div className="flex items-center gap-2 min-w-0">
-                                      <span
-                                        className="w-2 h-2 rounded-full shrink-0"
-                                        style={{ backgroundColor: COLORS[idx % COLORS.length] }}
-                                      />
-                                      <span className="text-slate-700 dark:text-slate-300 text-[11px] font-medium">
-                                        {cat.name}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-2 shrink-0 tabular-nums">
-                                      <span className="font-bold text-[#172B2A] dark:text-white text-xs">
-                                        {cat.value}
-                                      </span>
-                                      <span className="text-[10px] text-slate-400 font-mono w-7 text-right">
-                                        {pct}%
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                          {pieCategoryData.length === 0 ? (
+                            <div className="h-44 flex flex-col items-center justify-center text-center px-4 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
+                              <PackageSearch className="w-7 h-7 text-slate-400 mb-2" />
+                              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                Nenhum objeto cadastrado para exibir distribuição por categoria.
+                              </p>
+                              <p className="text-[11px] text-slate-400 mt-0.5">
+                                Os gráficos refletem exclusivamente os registros reais armazenados no banco.
+                              </p>
                             </div>
-                            <div className="h-44 w-full">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                  <Pie
-                                    data={pieCategoryData}
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={40}
-                                    outerRadius={65}
-                                    paddingAngle={3}
-                                    dataKey="value"
-                                  >
-                                    {pieCategoryData.map((_, index) => (
-                                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                    ))}
-                                  </Pie>
-                                  <Tooltip />
-                                </PieChart>
-                              </ResponsiveContainer>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                              <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                                {pieCategoryData.map((cat, idx) => {
+                                  const totalCount = items.length || 1;
+                                  const pct = Math.round((cat.value / totalCount) * 100);
+                                  return (
+                                    <div
+                                      key={cat.name}
+                                      className="flex items-center justify-between text-xs py-1 px-1.5 rounded-lg"
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span
+                                          className="w-2 h-2 rounded-full shrink-0"
+                                          style={{ backgroundColor: COLORS[idx % COLORS.length] }}
+                                        />
+                                        <span className="text-slate-700 dark:text-slate-300 text-[11px] font-medium truncate">
+                                          {cat.name}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2 shrink-0 tabular-nums">
+                                        <span className="font-bold text-[#172B2A] dark:text-white text-xs">
+                                          {cat.value}
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 font-mono w-7 text-right">
+                                          {pct}%
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div className="h-44 w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <PieChart>
+                                    <Pie
+                                      data={pieCategoryData}
+                                      cx="50%"
+                                      cy="50%"
+                                      innerRadius={40}
+                                      outerRadius={65}
+                                      paddingAngle={3}
+                                      dataKey="value"
+                                    >
+                                      {pieCategoryData.map((_, index) => (
+                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                      ))}
+                                    </Pie>
+                                    <Tooltip />
+                                  </PieChart>
+                                </ResponsiveContainer>
+                              </div>
                             </div>
-                          </div>
+                          )}
                         </div>
 
                         <div className="bg-[#F8FAFC] dark:bg-slate-900/50 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-3">
@@ -2133,22 +2224,31 @@ export const DashboardView: React.FC = () => {
                               {inAnalysisCount + pendingClaimsCount} Pendentes
                             </UIBadge>
                           </div>
-                          <div className="h-44 w-full">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={barPendingData}>
-                                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                                <XAxis dataKey="category" stroke="#64748B" fontSize={10} />
-                                <YAxis stroke="#64748B" fontSize={11} />
-                                <Tooltip />
-                                <Bar
-                                  dataKey="pendentes"
-                                  fill="#F59E0B"
-                                  radius={[6, 6, 0, 0]}
-                                  name="Aguardando Revisão"
-                                />
-                              </BarChart>
-                            </ResponsiveContainer>
-                          </div>
+                          {barPendingData.length === 0 ? (
+                            <div className="h-44 flex flex-col items-center justify-center text-center px-4 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
+                              <CheckCircle2 className="w-7 h-7 text-[#16845B] mb-2" />
+                              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                Nenhuma revisão pendente por categoria no momento.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="h-44 w-full">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={barPendingData}>
+                                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                                  <XAxis dataKey="category" stroke="#64748B" fontSize={10} />
+                                  <YAxis stroke="#64748B" fontSize={11} />
+                                  <Tooltip />
+                                  <Bar
+                                    dataKey="pendentes"
+                                    fill="#F59E0B"
+                                    radius={[6, 6, 0, 0]}
+                                    name="Aguardando Revisão"
+                                  />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </SurfaceCard>
@@ -2487,63 +2587,95 @@ export const DashboardView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* OVERRIDE ITEM STATUS TABLE */}
-                  <div className="bg-white dark:bg-[#111827] rounded-2xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-6">
+                  {/* OVERRIDE ITEM STATUS TABLE (Responsive Mobile Cards + Desktop Table) */}
+                  <div className="bg-white dark:bg-[#111827] rounded-2xl p-4 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-[0_1px_3px_rgba(23,43,42,0.04)] space-y-5">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div>
                         <h2 className="text-lg font-bold text-[#172B2A] dark:text-white">
                           Controle de Objetos e Override de Status
                         </h2>
                         <p className="text-xs text-slate-500">
-                          Alteração direta do status das ocorrências registradas no campus.
+                          Alteração direta do status das ocorrências registradas no campus (prioridade para itens ativos).
                         </p>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 w-full md:w-auto">
                         <input
                           type="text"
                           value={tableSearch}
                           onChange={(e) => setTableSearch(e.target.value)}
-                          placeholder="Buscar por objeto..."
-                          className="px-3.5 py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs outline-none w-48 focus:border-[#16845B]"
+                          placeholder="Buscar por objeto, ID ou QR..."
+                          className="px-3.5 py-2 sm:py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs outline-none w-full sm:w-52 focus:border-[#16845B]"
                         />
                         <select
                           value={tableCategory}
                           onChange={(e) => setTableCategory(e.target.value)}
-                          className="px-3 py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs font-semibold outline-none focus:border-[#16845B]"
+                          className="px-3 py-2 sm:py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs font-semibold outline-none focus:border-[#16845B] w-full sm:w-auto"
                         >
                           <option value="TODAS">Todas as Categorias</option>
-                          <option value="Eletrônicos">Eletrônicos</option>
-                          <option value="Documentos & Cartões">Documentos</option>
-                          <option value="Chaves">Chaves</option>
-                          <option value="Roupas & Calçados">Roupas</option>
+                          {CANONICAL_ITEM_CATEGORIES.map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-[#F8FAFC] dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase font-bold text-[10px]">
-                          <tr>
-                            <th className="p-3.5 rounded-l-xl">Título / Código</th>
-                            <th className="p-3.5">Categoria</th>
-                            <th className="p-3.5">Localização</th>
-                            <th className="p-3.5">Data</th>
-                            <th className="p-3.5">Status (Override)</th>
-                            <th className="p-3.5 rounded-r-xl text-right">Ação</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                          {filteredTableItems.map((item) => (
-                            <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                              <td className="p-3.5 font-bold text-[#172B2A] dark:text-white">
-                                <div>{item.title}</div>
-                                <div className="text-[10px] font-mono text-slate-400">{item.id}</div>
-                              </td>
-                              <td className="p-3.5">{item.category}</td>
-                              <td className="p-3.5 truncate max-w-[140px]">{item.location}</td>
-                              <td className="p-3.5 text-slate-500">{formatDate(item.date)}</td>
-                              <td className="p-3.5">
+                    {filteredTableItems.length === 0 ? (
+                      <div className="py-10 px-4 text-center rounded-xl border border-dashed border-slate-200 dark:border-slate-800 space-y-2.5">
+                        <PackageSearch className="w-8 h-8 text-slate-400 mx-auto" />
+                        <p className="text-sm font-bold text-[#172B2A] dark:text-white">
+                          Nenhum objeto encontrado neste filtro
+                        </p>
+                        <p className="text-xs text-slate-500 max-w-md mx-auto">
+                          Não há ocorrências correspondentes aos critérios atuais de busca ou categoria.
+                        </p>
+                        {(tableSearch.trim() !== "" || tableCategory !== "TODAS") && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTableSearch("");
+                              setTableCategory("TODAS");
+                            }}
+                            className="inline-flex items-center px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-[#172B2A] dark:text-slate-200 cursor-pointer"
+                          >
+                            Limpar filtros
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        {/* Mobile Stacked Cards (md:hidden) */}
+                        <div className="md:hidden space-y-3">
+                          {visibleAdminTableItems.map((item) => (
+                            <div
+                              key={item.id}
+                              className="p-4 rounded-xl bg-[#F8FAFC] dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 space-y-3"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <h3 className="text-sm font-bold text-[#172B2A] dark:text-white break-words">
+                                    {item.title}
+                                  </h3>
+                                  <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                                    #{item.id} {item.qrCodeId ? `• ${item.qrCodeId}` : ""}
+                                  </p>
+                                </div>
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400 shrink-0 tabular-nums">
+                                  {formatDate(item.date)}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
+                                <span className="font-semibold text-[#16845B] dark:text-emerald-400">
+                                  {item.category}
+                                </span>
+                                <span className="text-slate-300 dark:text-slate-700">•</span>
+                                <span className="truncate max-w-[200px]">{item.location}</span>
+                              </div>
+
+                              <div className="space-y-2 pt-1">
                                 {item.status === "DEVOLVIDO" || item.status === "ENCERRADO" ? (
                                   <span
                                     className={`inline-flex items-center py-1.5 px-2.5 rounded-xl text-xs font-bold border ${
@@ -2556,77 +2688,180 @@ export const DashboardView: React.FC = () => {
                                     {item.status} (Formal)
                                   </span>
                                 ) : (
-                                  <select
-                                    value={item.status}
-                                    onChange={async (e) => {
-                                      const newStat = e.target.value as any;
-                                      if (newStat === item.status) return;
-                                      try {
-                                        await updateItemStatus(item.id, newStat);
-                                      } catch (err) {
-                                        console.error("[DashboardView] Falha ao atualizar status via override:", err);
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <select
+                                      aria-label={`Alterar status de ${item.title}`}
+                                      value={item.status}
+                                      onChange={(e) =>
+                                        handleAdminStatusOverride(
+                                          item,
+                                          e.target.value as "PERDIDO" | "ENCONTRADO" | "EM_ANALISE"
+                                        )
                                       }
-                                    }}
-                                    className={`py-1.5 px-2.5 rounded-xl text-xs font-bold border outline-none cursor-pointer ${
-                                      item.status === "ENCONTRADO"
-                                        ? "bg-[#EBF5F0] text-[#16845B] border-[#16845B]/30 dark:bg-emerald-950/50 dark:text-emerald-400"
-                                        : item.status === "PERDIDO"
-                                        ? "bg-rose-500/10 text-rose-600 border-rose-500/30"
-                                        : "bg-amber-500/10 text-amber-600 border-amber-500/30"
-                                    }`}
-                                  >
-                                    <option value="PERDIDO">PERDIDO</option>
-                                    <option value="ENCONTRADO">ENCONTRADO</option>
-                                    <option value="EM_ANALISE">EM ANÁLISE</option>
-                                  </select>
+                                      className={`flex-1 min-w-[140px] min-h-[40px] py-1.5 px-2.5 rounded-xl text-xs font-bold border outline-none cursor-pointer ${
+                                        item.status === "ENCONTRADO"
+                                          ? "bg-[#EBF5F0] text-[#16845B] border-[#16845B]/30 dark:bg-emerald-950/50 dark:text-emerald-400"
+                                          : item.status === "PERDIDO"
+                                          ? "bg-rose-500/10 text-rose-600 border-rose-500/30"
+                                          : "bg-amber-500/10 text-amber-600 border-amber-500/30"
+                                      }`}
+                                    >
+                                      <option value="PERDIDO">PERDIDO</option>
+                                      <option value="ENCONTRADO">ENCONTRADO</option>
+                                      <option value="EM_ANALISE">EM ANÁLISE</option>
+                                    </select>
+                                    {item.status !== "EM_ANALISE" && (
+                                      <button
+                                        type="button"
+                                        disabled={confirmingArrivalId === item.id}
+                                        onClick={() => handleConfirmArrival(item)}
+                                        className="min-h-[40px] px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-600 text-amber-800 hover:text-white dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
+                                        title="Confirmar chegada física na guarita / secretaria (EM ANÁLISE)"
+                                      >
+                                        {confirmingArrivalId === item.id
+                                          ? "Confirmando..."
+                                          : "Confirmar Chegada"}
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
-                              </td>
-                              <td className="p-3.5 text-right whitespace-nowrap">
-                                <button
-                                  type="button"
-                                  title={`Enviar notificação para o aluno que cadastrou "${item.title}"`}
-                                  onClick={() => {
-                                    vibrateClick();
-                                    const studentUser = (allUsers || []).find(
-                                      (u) =>
-                                        u &&
-                                        (u.id === item.registeredByUserId ||
-                                          (item.contactInfo && (u.email === item.contactInfo || u.phone === item.contactInfo)))
-                                    );
-                                    const targetUser = studentUser || {
-                                      id: item.registeredByUserId || "aluno-ifpr",
-                                      name: item.registeredByName || "Aluno(a) Cadastrante",
-                                      email: (studentUser as any)?.email || item.contactInfo || "aluno@estudantes.ifpr.edu.br",
-                                      role: "ALUNO" as UserRole,
-                                      courseOrDept: "IFPR Campus Ivaiporã",
-                                      registrationNumber: "20261001",
-                                      reputationScore: 10,
-                                    };
-                                    setNotifyModalUser(targetUser);
-                                    setIsBroadcastNotification(false);
-                                    setNotifyRelatedItemId(item.id);
-                                    setNotifyTitle(`Atualização sobre seu item: ${item.title}`);
-                                    setNotifyMessage(
-                                      `Olá, ${targetUser.name}! Há uma atualização referente ao seu objeto "${item.title}" registrado no Achados e Perdidos do IFPR Campus Ivaiporã.`
-                                    );
-                                  }}
-                                  className="p-1.5 rounded-lg bg-[#EBF5F0] hover:bg-[#16845B] text-[#16845B] hover:text-white dark:bg-emerald-950/50 dark:text-emerald-400 dark:hover:bg-[#16845B] dark:hover:text-white font-semibold text-[11px] transition-colors border border-[#16845B]/20 mr-1.5 inline-flex items-center gap-1 cursor-pointer"
-                                >
-                                  <Bell className="w-3.5 h-3.5" />
-                                  <span>Notificar</span>
-                                </button>
-                                <button
-                                  onClick={() => setSelectedItemForDetail(item)}
-                                  className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-[#16845B] hover:text-white font-semibold text-[11px] transition-colors inline-flex items-center cursor-pointer"
-                                >
-                                  Detalhes
-                                </button>
-                              </td>
-                            </tr>
+
+                                <div className="grid grid-cols-2 gap-2 pt-1">
+                                  <button
+                                    type="button"
+                                    title={`Enviar notificação para o aluno que cadastrou "${item.title}"`}
+                                    onClick={() => handleOpenNotifyModalForItem(item)}
+                                    className="min-h-[40px] px-3 py-2 rounded-xl bg-[#EBF5F0] hover:bg-[#16845B] text-[#16845B] hover:text-white dark:bg-emerald-950/50 dark:text-emerald-400 dark:hover:bg-[#16845B] dark:hover:text-white font-semibold text-xs transition-colors border border-[#16845B]/20 inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                                  >
+                                    <Bell className="w-3.5 h-3.5" />
+                                    <span>Notificar</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedItemForDetail(item)}
+                                    className="min-h-[40px] px-3 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-[#16845B] hover:text-white font-semibold text-xs border border-slate-200 dark:border-slate-700 transition-colors inline-flex items-center justify-center cursor-pointer"
+                                  >
+                                    Detalhes
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
                           ))}
-                        </tbody>
-                      </table>
-                    </div>
+                        </div>
+
+                        {/* Desktop Table (hidden md:block) */}
+                        <div className="hidden md:block overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-[#F8FAFC] dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase font-bold text-[10px]">
+                              <tr>
+                                <th className="p-3.5 rounded-l-xl">Título / Código</th>
+                                <th className="p-3.5">Categoria</th>
+                                <th className="p-3.5">Localização</th>
+                                <th className="p-3.5">Data</th>
+                                <th className="p-3.5">Status (Override)</th>
+                                <th className="p-3.5 rounded-r-xl text-right">Ação</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                              {visibleAdminTableItems.map((item) => (
+                                <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                                  <td className="p-3.5 font-bold text-[#172B2A] dark:text-white">
+                                    <div>{item.title}</div>
+                                    <div className="text-[10px] font-mono text-slate-400">{item.id}</div>
+                                  </td>
+                                  <td className="p-3.5">{item.category}</td>
+                                  <td className="p-3.5 truncate max-w-[140px]">{item.location}</td>
+                                  <td className="p-3.5 text-slate-500">{formatDate(item.date)}</td>
+                                  <td className="p-3.5">
+                                    {item.status === "DEVOLVIDO" || item.status === "ENCERRADO" ? (
+                                      <span
+                                        className={`inline-flex items-center py-1.5 px-2.5 rounded-xl text-xs font-bold border ${
+                                          item.status === "DEVOLVIDO"
+                                            ? "bg-sky-500/10 text-sky-600 border-sky-500/30"
+                                            : "bg-slate-500/10 text-slate-600 border-slate-500/30"
+                                        }`}
+                                        title="Status final gerenciado pelo fluxo formal (abra os detalhes para consultar ou reabrir)"
+                                      >
+                                        {item.status} (Formal)
+                                      </span>
+                                    ) : (
+                                      <div className="flex items-center gap-1.5">
+                                        <select
+                                          value={item.status}
+                                          onChange={(e) =>
+                                            handleAdminStatusOverride(
+                                              item,
+                                              e.target.value as "PERDIDO" | "ENCONTRADO" | "EM_ANALISE"
+                                            )
+                                          }
+                                          className={`py-1.5 px-2.5 rounded-xl text-xs font-bold border outline-none cursor-pointer ${
+                                            item.status === "ENCONTRADO"
+                                              ? "bg-[#EBF5F0] text-[#16845B] border-[#16845B]/30 dark:bg-emerald-950/50 dark:text-emerald-400"
+                                              : item.status === "PERDIDO"
+                                              ? "bg-rose-500/10 text-rose-600 border-rose-500/30"
+                                              : "bg-amber-500/10 text-amber-600 border-amber-500/30"
+                                          }`}
+                                        >
+                                          <option value="PERDIDO">PERDIDO</option>
+                                          <option value="ENCONTRADO">ENCONTRADO</option>
+                                          <option value="EM_ANALISE">EM ANÁLISE</option>
+                                        </select>
+                                        {item.status !== "EM_ANALISE" && (
+                                          <button
+                                            type="button"
+                                            disabled={confirmingArrivalId === item.id}
+                                            onClick={() => handleConfirmArrival(item)}
+                                            className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-600 text-amber-800 hover:text-white dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 text-[11px] font-semibold transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
+                                            title="Confirmar chegada física na guarita / secretaria (EM ANÁLISE)"
+                                          >
+                                            {confirmingArrivalId === item.id ? "Confirmando..." : "Confirmar Chegada"}
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="p-3.5 text-right whitespace-nowrap">
+                                    <button
+                                      type="button"
+                                      title={`Enviar notificação para o aluno que cadastrou "${item.title}"`}
+                                      onClick={() => handleOpenNotifyModalForItem(item)}
+                                      className="p-1.5 rounded-lg bg-[#EBF5F0] hover:bg-[#16845B] text-[#16845B] hover:text-white dark:bg-emerald-950/50 dark:text-emerald-400 dark:hover:bg-[#16845B] dark:hover:text-white font-semibold text-[11px] transition-colors border border-[#16845B]/20 mr-1.5 inline-flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Bell className="w-3.5 h-3.5" />
+                                      <span>Notificar</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedItemForDetail(item)}
+                                      className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-[#16845B] hover:text-white font-semibold text-[11px] transition-colors inline-flex items-center cursor-pointer"
+                                    >
+                                      Detalhes
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Progressive Pagination Controls */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+                          <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                            Exibindo <strong>{visibleAdminTableItems.length}</strong> de{" "}
+                            <strong>{filteredTableItems.length}</strong> objetos
+                          </span>
+                          {filteredTableItems.length > adminTableLimit && (
+                            <button
+                              type="button"
+                              onClick={() => setAdminTableLimit((prev) => prev + 15)}
+                              className="min-h-[40px] px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-[#16845B] hover:text-white text-xs font-bold text-[#172B2A] dark:text-slate-200 transition-colors cursor-pointer"
+                            >
+                              Mostrar mais objetos ({filteredTableItems.length - adminTableLimit} restantes)
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -2651,10 +2886,26 @@ export const DashboardView: React.FC = () => {
                           <Activity className="w-6 h-6 animate-pulse" />
                         </div>
                         <div>
-                          <h2 className="text-lg font-bold text-[#172B2A] dark:text-white flex items-center space-x-2">
+                          <h2 className="text-lg font-bold text-[#172B2A] dark:text-white flex items-center flex-wrap gap-2">
                             <span>Métricas da Saúde do Sistema (Firebase Performance)</span>
-                            <span className="px-2.5 py-0.5 rounded-lg bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
-                              🟢 Excelente
+                            <span
+                              className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
+                                !isOnline
+                                  ? "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                                  : pingLatencyMs === null && dbLatencyMs === null
+                                  ? "bg-slate-200/80 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                                  : (pingLatencyMs ?? 0) > 800 || (dbLatencyMs ?? 0) > 800
+                                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                                  : "bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400"
+                              }`}
+                            >
+                              {!isOnline
+                                ? "🔴 Offline"
+                                : pingLatencyMs === null && dbLatencyMs === null
+                                ? "⚪ Aguardando medição"
+                                : (pingLatencyMs ?? 0) > 800 || (dbLatencyMs ?? 0) > 800
+                                ? "🟡 Oscilando"
+                                : "🟢 Estável"}
                             </span>
                           </h2>
                           <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -2692,18 +2943,32 @@ export const DashboardView: React.FC = () => {
                             <Wifi className="w-4 h-4 text-sky-500" />
                             <span>Latência de Rede Ping</span>
                           </span>
-                          <span className="px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-600 text-[10px] font-bold">
-                            {isOnline ? "Conectado 🟢" : "Offline 🔴"}
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                              !isOnline
+                                ? "bg-rose-500/10 text-rose-600"
+                                : pingLatencyMs === null
+                                ? "bg-slate-200/80 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                                : "bg-sky-500/10 text-sky-600"
+                            }`}
+                          >
+                            {!isOnline
+                              ? "Offline 🔴"
+                              : pingLatencyMs === null
+                              ? "Indisponível"
+                              : "Conectado 🟢"}
                           </span>
                         </div>
                         <div className="flex items-baseline space-x-2">
                           <span className="text-3xl font-bold text-[#172B2A] dark:text-white tabular-nums">
-                            {pingLatencyMs ? `${pingLatencyMs} ms` : "--"}
+                            {pingLatencyMs !== null ? `${pingLatencyMs} ms` : "Indisponível"}
                           </span>
                           <span className="text-xs text-slate-400">API Gateway</span>
                         </div>
                         <p className="text-[11px] text-slate-500">
-                          Heartbeat automático a cada 60s monitorando estabilidade móvel.
+                          {pingLatencyMs !== null
+                            ? "Medição real obtida do endpoint de métricas."
+                            : "Aguardando resposta válida da API para exibir latência real."}
                         </p>
                       </div>
 
@@ -2714,18 +2979,32 @@ export const DashboardView: React.FC = () => {
                             <Database className="w-4 h-4 text-[#16845B]" />
                             <span>Resposta Banco Firestore</span>
                           </span>
-                          <span className="px-2 py-0.5 rounded-md bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400 text-[10px] font-bold">
-                            Rápido
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                              dbLatencyMs === null
+                                ? "bg-slate-200/80 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                                : dbLatencyMs < 300
+                                ? "bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400"
+                                : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                            }`}
+                          >
+                            {dbLatencyMs === null
+                              ? "Indisponível"
+                              : dbLatencyMs < 300
+                              ? "Rápido"
+                              : "Moderado"}
                           </span>
                         </div>
                         <div className="flex items-baseline space-x-2">
                           <span className="text-3xl font-bold text-[#16845B] dark:text-emerald-400 tabular-nums">
-                            {dbLatencyMs ? `${dbLatencyMs} ms` : "--"}
+                            {dbLatencyMs !== null ? `${dbLatencyMs} ms` : "Indisponível"}
                           </span>
                           <span className="text-xs text-slate-400">leitura/escrita</span>
                         </div>
                         <p className="text-[11px] text-slate-500">
-                          Medido via Firebase Performance Trace (`firestore_db_latency`).
+                          {dbLatencyMs !== null
+                            ? "Medido via consulta real e Firebase Performance Trace (firestore_db_latency)."
+                            : "Não foi possível obter tempo de resposta real do Firestore neste momento."}
                         </p>
                       </div>
 
@@ -2736,28 +3015,46 @@ export const DashboardView: React.FC = () => {
                             <Cpu className="w-4 h-4 text-purple-500" />
                             <span>Uso de Memória RAM</span>
                           </span>
-                          <span className="px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-600 text-[10px] font-bold">
-                            {memoryUsageMB < 100 ? "Baixo" : "Médio"}
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                              memoryUsageMB === null
+                                ? "bg-slate-200/80 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                                : "bg-purple-500/10 text-purple-600"
+                            }`}
+                          >
+                            {memoryUsageMB === null
+                              ? "Indisponível"
+                              : memoryUsageMB < 100
+                              ? "Baixo"
+                              : "Médio"}
                           </span>
                         </div>
                         <div className="flex items-baseline space-x-2">
                           <span className="text-3xl font-bold text-[#172B2A] dark:text-white tabular-nums">
-                            {memoryUsageMB} MB
+                            {memoryUsageMB !== null ? `${memoryUsageMB} MB` : "Indisponível"}
                           </span>
-                          <span className="text-xs text-slate-400">/ 512 MB JS Heap</span>
+                          <span className="text-xs text-slate-400">
+                            {memoryUsageMB !== null ? "/ 512 MB JS Heap" : "Métrica não exposta pelo navegador"}
+                          </span>
                         </div>
-                        <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
-                          <div
-                            className="bg-[#16845B] h-full rounded-full transition-all duration-500"
-                            style={{ width: `${Math.min(100, Math.round((memoryUsageMB / 512) * 100))}%` }}
-                          />
-                        </div>
+                        {memoryUsageMB !== null ? (
+                          <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                            <div
+                              className="bg-[#16845B] h-full rounded-full transition-all duration-500"
+                              style={{ width: `${Math.min(100, Math.round((memoryUsageMB / 512) * 100))}%` }}
+                            />
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-slate-500">
+                            Disponível apenas em navegadores que expõem a API <code>performance.memory</code>.
+                          </p>
+                        )}
                       </div>
                     </div>
 
                     {/* Chart: Network vs DB Latency */}
                     <div className="bg-[#F8FAFC] dark:bg-slate-900/40 p-5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
                         <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300">
                           Gráfico de Latência em Tempo Real (ms)
                         </h3>
@@ -2773,18 +3070,30 @@ export const DashboardView: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="h-56 w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={latencyHistory}>
-                            <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
-                            <XAxis dataKey="time" tick={{ fontSize: 10 }} />
-                            <YAxis tick={{ fontSize: 10 }} unit="ms" />
-                            <Tooltip contentStyle={{ borderRadius: "12px", fontSize: "11px" }} />
-                            <Area type="monotone" dataKey="network" name="Rede (ms)" stroke="#0284c7" fill="#0284c7" fillOpacity={0.15} />
-                            <Area type="monotone" dataKey="db" name="Firestore (ms)" stroke="#16845B" fill="#16845B" fillOpacity={0.15} />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
+                      {latencyHistory.length === 0 ? (
+                        <div className="h-56 w-full flex flex-col items-center justify-center text-center px-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+                          <Activity className="w-7 h-7 text-slate-400 mb-2" />
+                          <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                            Nenhuma amostra real de latência coletada nesta sessão.
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Clique em &quot;Medir Desempenho Agora&quot; ou aguarde a coleta em tempo real.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="h-56 w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={latencyHistory}>
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+                              <XAxis dataKey="time" tick={{ fontSize: 10 }} />
+                              <YAxis tick={{ fontSize: 10 }} unit="ms" />
+                              <Tooltip contentStyle={{ borderRadius: "12px", fontSize: "11px" }} />
+                              <Area type="monotone" dataKey="network" name="Rede (ms)" stroke="#0284c7" fill="#0284c7" fillOpacity={0.15} connectNulls={false} />
+                              <Area type="monotone" dataKey="db" name="Firestore (ms)" stroke="#16845B" fill="#16845B" fillOpacity={0.15} connectNulls={false} />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
                     </div>
 
                     {/* LOG DE ERROS GLOBAL FIRESTORE */}

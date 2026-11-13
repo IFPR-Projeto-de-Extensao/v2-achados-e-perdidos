@@ -200,6 +200,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const [returnSignatureMode, setReturnSignatureMode] = useState<"IN_PERSON_DEVICE" | "REMOTE_EMAIL">("IN_PERSON_DEVICE");
   const [returnSignatureDataUrl, setReturnSignatureDataUrl] = useState<string>("");
   const [isRegisteringReturn, setIsRegisteringReturn] = useState(false);
+  const [isConfirmingArrival, setIsConfirmingArrival] = useState(false);
 
   useEffect(() => {
     if (returnModalAutoOpen) {
@@ -324,18 +325,28 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
   // Institutional notification modal state
   const [emailModalOpen, setEmailModalOpen] = useState(false);
-  const [recipientEmail, setRecipientEmail] = useState(item?.contactInfo || "localizamais0@gmail.com");
-  const [emailSubject, setEmailSubject] = useState(`[IFPR Achados & Perdidos] Consulta: ${item?.title || "Item"}`);
-  const [emailBody, setEmailBody] = useState(`Olá,\n\nEstou entrando em contato a respeito do item "${item?.title || "Item"}" (ID: ${item?.id || ""}) cadastrado no Achados e Perdidos do IFPR Campus Ivaiporã.\n\nAtenciosamente,\n${currentUser?.name || "Usuário IFPR"}`);
+  const [recipientEmail, setRecipientEmail] = useState(currentItem?.contactInfo || "localizamais0@gmail.com");
+  const [emailSubject, setEmailSubject] = useState(`[IFPR Achados & Perdidos] Consulta: ${currentItem?.title || "Item"}`);
+  const [emailBody, setEmailBody] = useState(`Olá,\n\nEstou entrando em contato a respeito do item "${currentItem?.title || "Item"}" (ID: ${currentItem?.id || ""}) cadastrado no Achados e Perdidos do IFPR Campus Ivaiporã.\n\nAtenciosamente,\n${currentUser?.name || "Usuário IFPR"}`);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
+
+  useEffect(() => {
+    if (!emailModalOpen) {
+      setRecipientEmail(currentItem?.contactInfo || "localizamais0@gmail.com");
+      setEmailSubject(`[IFPR Achados & Perdidos] Consulta: ${currentItem?.title || "Item"}`);
+      setEmailBody(
+        `Olá,\n\nEstou entrando em contato a respeito do item "${currentItem?.title || "Item"}" (ID: ${currentItem?.id || ""}) cadastrado no Achados e Perdidos do IFPR Campus Ivaiporã.\n\nAtenciosamente,\n${currentUser?.name || "Usuário IFPR"}`
+      );
+    }
+  }, [emailModalOpen, currentItem?.id, currentItem?.title, currentItem?.contactInfo, currentUser?.name]);
 
   // Restricted Public View QR Modal State
   const [showRestrictedQRView, setShowRestrictedQRView] = useState(false);
 
   // Consolidate Timeline History Logs
   const combinedHistoryLogs = [
-    ...(item?.historyLogs || []),
-    ...(item?.history || []).map((h: any) => ({
+    ...(currentItem?.historyLogs || []),
+    ...(currentItem?.history || []).map((h: any) => ({
       id: h?.id || `h-${Math.random()}`,
       action: h?.action,
       actorId: h?.actorId || h?.userId || "system",
@@ -358,10 +369,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   );
 
   // Find associated approved claim for PDF receipt details
-  const approvedClaim = claims.find((c) => c.itemId === item.id && (c.status === "APROVADO" || c.status === "CONCLUIDO"));
+  const approvedClaim = claims.find((c) => c.itemId === currentItem.id && (c.status === "APROVADO" || c.status === "CONCLUIDO"));
   // Find current user's active claim (PENDENTE or APROVADO)
   const userActiveClaim = currentUser && currentUser.id !== "guest"
-    ? claims.find((c) => c.itemId === item.id && c.claimerId === currentUser.id && (c.status === "PENDENTE" || c.status === "APROVADO"))
+    ? claims.find((c) => c.itemId === currentItem.id && c.claimerId === currentUser.id && (c.status === "PENDENTE" || c.status === "APROVADO"))
     : undefined;
 
   // Auto-fill recipient information in return modal if there is an approved claim
@@ -426,10 +437,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     vibrateClick();
     try {
       const doc = new jsPDF("p", "mm", "a4");
-      const safeId = String(item?.id ?? "ITEM").replace(/[^a-zA-Z0-9_-]/g, "").toUpperCase();
+      const safeId = String(currentItem?.id ?? "ITEM").replace(/[^a-zA-Z0-9_-]/g, "").toUpperCase();
       const docReportCode = `LAUDO-IFPR-${safeId}-${Date.now().toString().slice(-4)}`;
       const emissionDate = new Date().toLocaleString("pt-BR");
-      const safeTitle = item?.title || "Item sem Título";
+      const safeTitle = currentItem?.title || "Item sem Título";
 
       // 1. Institutional Top Banner (IFPR Emerald Green #00843D)
       doc.setFillColor(0, 132, 61);
@@ -461,24 +472,24 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       doc.text(`Código do Laudo: ${docReportCode}`, 14, 40);
       doc.text(`Data de Emissão: ${emissionDate}`, 14, 45);
       doc.text(`Emitido por: ${currentUser?.name || "Usuário IFPR"} (${currentUser?.role || "USUÁRIO"} • ${currentUser?.email || "campus.ivaipora@ifpr.edu.br"})`, 14, 50);
-      doc.text(`Código de Rastreamento QR: ${item?.qrCodeId || item?.id}`, 14, 55);
+      doc.text(`Código de Rastreamento QR: ${currentItem?.qrCodeId || currentItem?.id}`, 14, 55);
 
       // Status Badge inside document
       doc.setFont("helvetica", "bold");
       doc.setFontSize(8);
       let statusColor: [number, number, number] = [0, 132, 61];
-      if (item.status === "PERDIDO") statusColor = [220, 38, 38];
-      else if (item.status === "EM_ANALISE") statusColor = [217, 119, 6];
-      else if (item.status === "DEVOLVIDO") statusColor = [37, 99, 235];
+      if (currentItem.status === "PERDIDO") statusColor = [220, 38, 38];
+      else if (currentItem.status === "EM_ANALISE") statusColor = [217, 119, 6];
+      else if (currentItem.status === "DEVOLVIDO") statusColor = [37, 99, 235];
 
       doc.setFillColor(statusColor[0], statusColor[1], statusColor[2]);
       doc.roundedRect(14, 58, 48, 6.5, 1.5, 1.5, "F");
       doc.setTextColor(255, 255, 255);
-      doc.text(`STATUS: ${String(item?.status || "REGISTRADO").replace("_", " ")}`, 16, 62.5);
+      doc.text(`STATUS: ${String(currentItem?.status || "REGISTRADO").replace("_", " ")}`, 16, 62.5);
 
       // Render QR Code onto the top-right corner if available
       try {
-        const qrDataUrl = await getQRCodeDataUrl(item.id);
+        const qrDataUrl = await getQRCodeDataUrl(currentItem.id);
         if (qrDataUrl) {
           doc.setDrawColor(0, 132, 61);
           doc.setLineWidth(0.4);
@@ -495,12 +506,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       // 3. Section 1 Table: Dados Cadastrais do Objeto
       const generalDataRows = [
-        ["ID da Ocorrência:", item.id, "Tipo do Registro:", item.type === "PERDIDO" ? "Perdido (Procura-se)" : "Encontrado (No Acervo)"],
-        ["Título / Denominação:", safeTitle, "Categoria:", getCategoryDisplay(item.category)],
-        ["Local da Ocorrência:", item.location || "Campus IFPR", "Data do Registro / Entrada:", formatDate(item.date)],
-        ["Cor Predominante:", item.color || "Não especificada", "Marca / Fabricante:", item.brand || "Não identificada"],
-        ["Cadastrado por:", `${item.registeredByName || "Usuário IFPR"} (${item.registeredByRole || "IFPR"})`, "Validação de Posse (RNF04):", item.secretVerificationKey || item.secretVerificationHint ? "Chave Secreta Configurada (Ativa)" : "Verificação Convencional"],
-        ["Setor de Custódia / Contato:", item.contactInfo || "Guarita Principal / SEBAC Campus Ivaiporã", "Código de Etiqueta QR:", item.qrCodeId || item.id],
+        ["ID da Ocorrência:", currentItem.id, "Tipo do Registro:", currentItem.type === "PERDIDO" ? "Perdido (Procura-se)" : "Encontrado (No Acervo)"],
+        ["Título / Denominação:", safeTitle, "Categoria:", getCategoryDisplay(currentItem.category)],
+        ["Local da Ocorrência:", currentItem.location || "Campus IFPR", "Data do Registro / Entrada:", formatDate(currentItem.date)],
+        ["Cor Predominante:", currentItem.color || "Não especificada", "Marca / Fabricante:", currentItem.brand || "Não identificada"],
+        ["Cadastrado por:", `${currentItem.registeredByName || "Usuário IFPR"} (${currentItem.registeredByRole || "IFPR"})`, "Validação de Posse (RNF04):", currentItem.secretVerificationKey || currentItem.secretVerificationHint ? "Chave Secreta Configurada (Ativa)" : "Verificação Convencional"],
+        ["Setor de Custódia / Contato:", currentItem.contactInfo || "Guarita Principal / SEBAC Campus Ivaiporã", "Código de Etiqueta QR:", currentItem.qrCodeId || currentItem.id],
       ];
 
       autoTable(doc, {
@@ -533,7 +544,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       autoTable(doc, {
         startY: currentY,
         head: [["2. DESCRIÇÃO DETALHADA E CARACTERÍSTICAS VISUAIS"]],
-        body: [[item.description || "Nenhuma observação descritiva complementar informada no momento do registro."]],
+        body: [[currentItem.description || "Nenhuma observação descritiva complementar informada no momento do registro."]],
         theme: "grid",
         headStyles: {
           fillColor: [30, 41, 59],
@@ -553,9 +564,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       // 5. Section 3: Histórico de Tramitação e Auditoria
       const timelineRows = (sortedTimeline.length > 0 ? sortedTimeline : [
         {
-          timestamp: item.date,
+          timestamp: currentItem.date,
           action: "Registro do Objeto no Sistema",
-          actorName: item.registeredByName || "Sistema",
+          actorName: currentItem.registeredByName || "Sistema",
           actorRole: "AUTOR",
           details: "Objeto inserido no banco de dados oficial de Achados & Perdidos.",
         },
@@ -598,15 +609,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       }
 
       // 6. Section 4: Informações de Restituição / Reivindicação (se houver)
-      if (approvedClaim || item.status === "DEVOLVIDO") {
-        const claimerName = approvedClaim ? approvedClaim.claimerName : (item.registeredByName || "Proprietário Identificado");
+      if (approvedClaim || currentItem.status === "DEVOLVIDO") {
+        const claimerName = approvedClaim ? approvedClaim.claimerName : (currentItem.registeredByName || "Proprietário Identificado");
         const claimerEmail = approvedClaim ? approvedClaim.claimerEmail : (currentUser?.email || "E-mail Registrado");
 
         autoTable(doc, {
           startY: currentY,
           head: [["4. DADOS DA RESTITUIÇÃO E ENCERRAMENTO"]],
           body: [
-            [`Proprietário / Recebedor: ${claimerName} (${claimerEmail})\nData de Encerramento: ${item.resolutionDate ? formatDateTime(item.resolutionDate) : emissionDate}\nComprovação Registrada: ${approvedClaim?.verificationAnswer || "Conferência presencial realizada na guarita / SEBAC com documento oficial."}`],
+            [`Proprietário / Recebedor: ${claimerName} (${claimerEmail})\nData de Encerramento: ${currentItem.resolutionDate ? formatDateTime(currentItem.resolutionDate) : emissionDate}\nComprovação Registrada: ${approvedClaim?.verificationAnswer || "Conferência presencial realizada na guarita / SEBAC com documento oficial."}`],
           ],
           theme: "grid",
           headStyles: {
@@ -921,7 +932,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const handleDownloadQRCodePNG = () => {
     vibrateClick();
     try {
-      const qrSvg = document.getElementById(`qr-code-svg-${item.id}`) as unknown as SVGElement | null;
+      const qrSvg = document.getElementById(`qr-code-svg-${currentItem.id}`) as unknown as SVGElement | null;
       if (!qrSvg) {
         addToast("Código QR não encontrado no documento.", "error");
         return;
@@ -962,23 +973,23 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           // Item Title
           ctx.font = "bold 22px sans-serif";
           ctx.fillStyle = "#1E293B";
-          const cleanTitle = item.title.length > 32 ? item.title.substring(0, 29) + "..." : item.title;
+          const cleanTitle = currentItem.title.length > 32 ? currentItem.title.substring(0, 29) + "..." : currentItem.title;
           ctx.fillText(cleanTitle, canvas.width / 2, 500);
 
           // QR Code ID Tag
           ctx.font = "bold 18px monospace";
           ctx.fillStyle = "#00843D";
-          ctx.fillText(`CÓDIGO: ${item.qrCodeId}`, canvas.width / 2, 535);
+          ctx.fillText(`CÓDIGO: ${currentItem.qrCodeId}`, canvas.width / 2, 535);
 
           // Location & Date Info
           ctx.font = "16px sans-serif";
           ctx.fillStyle = "#475569";
-          ctx.fillText(`Local: ${item.location} • Data: ${formatDate(item.date)}`, canvas.width / 2, 570);
+          ctx.fillText(`Local: ${currentItem.location} • Data: ${formatDate(currentItem.date)}`, canvas.width / 2, 570);
 
           // Category & Type Badge Info
           ctx.font = "14px sans-serif";
           ctx.fillStyle = "#64748B";
-          ctx.fillText(`Categoria: ${getCategoryDisplay(item.category)} (${item.type})`, canvas.width / 2, 600);
+          ctx.fillText(`Categoria: ${getCategoryDisplay(currentItem.category)} (${currentItem.type})`, canvas.width / 2, 600);
 
           // Footer Guidance
           ctx.fillStyle = "#F8FAFC";
@@ -990,7 +1001,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           const pngUrl = canvas.toDataURL("image/png");
           const downloadLink = document.createElement("a");
           downloadLink.href = pngUrl;
-          downloadLink.download = `qrcode_${item.qrCodeId || item.id}.png`;
+          downloadLink.download = `qrcode_${currentItem.qrCodeId || currentItem.id}.png`;
           document.body.appendChild(downloadLink);
           downloadLink.click();
           document.body.removeChild(downloadLink);
@@ -1010,10 +1021,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   // Web Share API Implementation for native sharing (WhatsApp, Email, Telegram, System Share Sheet)
   const handleShareItem = async () => {
     vibrateClick();
-    const typeLabel = item.type === "PERDIDO" ? "Objeto Perdido" : "Objeto Encontrado";
-    const shareTitle = `[IFPR Achados e Perdidos] ${typeLabel}: ${item.title}`;
-    const shareText = `Campus Ivaiporã • ${typeLabel}: "${item.title}" (${getCategoryDisplay(item.category)})\nLocal: ${item.location}\nData: ${formatDate(item.date)}\nStatus: ${String(item.status).replace("_", " ")}\n\nConsulte o item no Localiza+ IFPR:`;
-    const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/?tab=${item.type === "PERDIDO" ? "lost" : "found"}&itemId=${encodeURIComponent(item.id)}` : "";
+    const typeLabel = currentItem.type === "PERDIDO" ? "Objeto Perdido" : "Objeto Encontrado";
+    const shareTitle = `[IFPR Achados e Perdidos] ${typeLabel}: ${currentItem.title}`;
+    const shareText = `Campus Ivaiporã • ${typeLabel}: "${currentItem.title}" (${getCategoryDisplay(currentItem.category)})\nLocal: ${currentItem.location}\nData: ${formatDate(currentItem.date)}\nStatus: ${String(currentItem.status).replace("_", " ")}\n\nConsulte o item no Localiza+ IFPR:`;
+    const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/?tab=${currentItem.type === "PERDIDO" ? "lost" : "found"}&itemId=${encodeURIComponent(currentItem.id)}` : "";
 
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
       try {
@@ -1169,7 +1180,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
     setIsRegisteringReturn(true);
     try {
-      await registerItemReturn(item.id, {
+      await registerItemReturn(currentItem.id, {
         recipientName: returnRecipientName.trim(),
         recipientEmail: returnRecipientEmail.trim(),
         recipientBond: returnRecipientBond,
@@ -1184,7 +1195,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       vibrateSuccess();
       addToast(
         returnSignatureMode === "IN_PERSON_DEVICE"
-          ? `Devolução e Assinatura Digital do objeto "${item.title}" registradas com sucesso!`
+          ? `Devolução e Assinatura Digital do objeto "${currentItem.title}" registradas com sucesso!`
           : `Devolução registrada! Link de assinatura digital despachado para ${returnRecipientEmail}.`,
         "success"
       );
@@ -1215,7 +1226,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
     setIsReopeningReturn(true);
     try {
-      await reopenItemReturn(item.id, reopenReason.trim());
+      await reopenItemReturn(currentItem.id, reopenReason.trim());
       setReopenModalOpen(false);
       onClose();
     } catch (err) {
@@ -1235,7 +1246,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
     setIsRegisteringDestination(true);
     try {
-      await registerItemDestination(item.id, destinationType, destinationNotes.trim());
+      await registerItemDestination(currentItem.id, destinationType, destinationNotes.trim());
       setDestinationModalOpen(false);
       onClose();
     } catch (err) {
@@ -1245,7 +1256,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     }
   };
 
-  const itemComments = comments.filter((c) => c.itemId === item.id);
+  const itemComments = comments.filter((c) => c.itemId === currentItem.id);
 
   const handlePrintQRTag = () => {
     const printWindow = window.open("", "_blank", "width=700,height=800");
@@ -1258,7 +1269,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>Etiqueta IFPR - ${item.id}</title>
+          <title>Etiqueta IFPR - ${currentItem.id}</title>
           <style>
             @media print {
               body { margin: 0; padding: 10px; background: white; }
@@ -1286,16 +1297,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <p>Achados e Perdidos • Etiqueta de Identificação</p>
             </div>
             <div class="qr-box">
-              <img class="qr-code-img" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getItemPublicUrl(item))}" alt="QR Code" />
-              <div class="qr-id">${item.qrCodeId}</div>
+              <img class="qr-code-img" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getItemPublicUrl(currentItem))}" alt="QR Code" />
+              <div class="qr-id">${currentItem.qrCodeId}</div>
             </div>
             <table class="info-table">
-              <tr><td class="label">ID da Ocorrência:</td><td><strong>${item.id}</strong></td></tr>
-              <tr><td class="label">Título do Item:</td><td><strong>${item.title}</strong></td></tr>
-              <tr><td class="label">Categoria / Tipo:</td><td>${getCategoryDisplay(item.category)} (${item.type})</td></tr>
-              <tr><td class="label">Local Encontrado:</td><td>${item.location}</td></tr>
-              <tr><td class="label">Data de Entrada:</td><td>${formatDate(item.date)}</td></tr>
-              <tr><td class="label">Cor / Marca:</td><td>${item.color || 'N/I'} • ${item.brand || 'N/I'}</td></tr>
+              <tr><td class="label">ID da Ocorrência:</td><td><strong>${currentItem.id}</strong></td></tr>
+              <tr><td class="label">Título do Item:</td><td><strong>${currentItem.title}</strong></td></tr>
+              <tr><td class="label">Categoria / Tipo:</td><td>${getCategoryDisplay(currentItem.category)} (${currentItem.type})</td></tr>
+              <tr><td class="label">Local Encontrado:</td><td>${currentItem.location}</td></tr>
+              <tr><td class="label">Data de Entrada:</td><td>${formatDate(currentItem.date)}</td></tr>
+              <tr><td class="label">Cor / Marca:</td><td>${currentItem.color || 'N/I'} • ${currentItem.brand || 'N/I'}</td></tr>
               <tr><td class="label">Atendimento:</td><td>Guarita Principal / SEBAC Campus Ivaiporã</td></tr>
             </table>
             <div class="footer">
@@ -1342,7 +1353,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     setIsSendingEmail(true);
     try {
       const targetUser = allUsers.find((u) => u.email === recipientEmail);
-      const targetUserId = targetUser?.id || (item.registeredByUserId && item.registeredByUserId !== "guest_visitor" ? item.registeredByUserId : null);
+      const targetUserId = targetUser?.id || (currentItem.registeredByUserId && currentItem.registeredByUserId !== "guest_visitor" ? currentItem.registeredByUserId : null);
       if (!targetUserId || targetUserId === "all") {
         addToast("Não foi possível identificar o destinatário específico associado a este item.", "error");
         setIsSendingEmail(false);
@@ -1351,8 +1362,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       await sendNotificationToUser(
         targetUserId,
         emailSubject,
-        `Mensagem referente ao item "${item.title}": ${emailBody}`,
-        item.id
+        `Mensagem referente ao item "${currentItem.title}": ${emailBody}`,
+        currentItem.id
       );
       setEmailModalOpen(false);
       setEmailBody("");
@@ -1505,10 +1516,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   // Progress Tracker Step States
   const step1Done = true; // Reported/Registered
   const step2Done =
-    item.status === "EM_ANALISE" ||
-    item.status === "DEVOLVIDO" ||
-    claims.some((c) => c.itemId === item.id);
-  const step3Done = item.status === "DEVOLVIDO";
+    currentItem.status === "EM_ANALISE" ||
+    currentItem.status === "DEVOLVIDO" ||
+    claims.some((c) => c.itemId === currentItem.id);
+  const step3Done = currentItem.status === "DEVOLVIDO";
 
   return (
     <div
@@ -1542,13 +1553,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <span>Voltar</span>
             </button>
 
-            <UIBadge tone={getStatusBadgeTone(item?.status || "PERDIDO")}>
-              {getStatusLabel(item?.status || "PERDIDO")}
+            <UIBadge tone={getStatusBadgeTone(currentItem?.status || "PERDIDO")}>
+              {getStatusLabel(currentItem?.status || "PERDIDO")}
             </UIBadge>
 
-            {isItemNew(item) && (
+            {isItemNew(currentItem) && (
               <span
-                id={`detail-new-badge-${item.id}`}
+                id={`detail-new-badge-${currentItem.id}`}
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-[#16845B] text-white"
                 title="Cadastrado nas últimas 24 horas no campus"
               >
@@ -1561,7 +1572,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               onClick={() => {
                 vibrateClick();
                 if (typeof navigator !== "undefined" && navigator.clipboard) {
-                  navigator.clipboard.writeText(item.id);
+                  navigator.clipboard.writeText(currentItem.id);
                   addToast(
                     "ID do objeto copiado para a área de transferência!",
                     "info"
@@ -1573,7 +1584,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             >
               <Copy className="w-3 h-3 text-slate-400" />
               <span>
-                #{item.id.length > 12 ? `${item.id.slice(0, 8)}...` : item.id}
+                #{currentItem.id.length > 12 ? `${currentItem.id.slice(0, 8)}...` : currentItem.id}
               </span>
             </button>
           </div>
@@ -1634,7 +1645,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               !mainImageError ? (
                 <img
                   src={allImages[activeImageIndex]}
-                  alt={item.title}
+                  alt={currentItem.title}
                   onError={() => setMainImageError(true)}
                   className="w-full h-full object-contain p-2"
                 />
@@ -1691,7 +1702,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   <span>Jornada de Tramitação</span>
                 </div>
                 <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                  {item.status === "DEVOLVIDO" ? "Concluído" : "Em andamento"}
+                  {currentItem.status === "DEVOLVIDO" ? "Concluído" : "Em andamento"}
                 </span>
               </div>
 
@@ -1715,7 +1726,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     Registrado
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                    {formatDate(item.date)}
+                    {formatDate(currentItem.date)}
                   </span>
                 </div>
 
@@ -1765,8 +1776,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     Devolvido
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                    {item.resolutionDate
-                      ? formatDate(item.resolutionDate)
+                    {currentItem.resolutionDate
+                      ? formatDate(currentItem.resolutionDate)
                       : "Pendente"}
                   </span>
                 </div>
@@ -1778,8 +1789,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <div className="flex items-center gap-3.5">
                 <div className="p-2 bg-white rounded-xl border border-slate-200 shadow-2xs shrink-0">
                   <QRCodeSVG
-                    id={`qr-code-svg-${item.id}`}
-                    value={getItemQrValue(item)}
+                    id={`qr-code-svg-${currentItem.id}`}
+                    value={getItemQrValue(currentItem)}
                     size={68}
                     level="H"
                   />
@@ -1790,7 +1801,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     Código Etiqueta QR
                   </h5>
                   <p className="text-[11px] text-[#16845B] dark:text-emerald-400 font-mono font-semibold mt-0.5 truncate">
-                    {item.qrCodeId}
+                    {currentItem.qrCodeId}
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
                     Apresente este código no setor responsável do IFPR para identificação e baixa oficial.
@@ -1863,11 +1874,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#16845B] dark:text-emerald-400">
                   <Tag className="w-3.5 h-3.5" />
-                  <span>{getCategoryDisplay(item.category)}</span>
+                  <span>{getCategoryDisplay(currentItem.category)}</span>
                 </span>
                 <span className="text-slate-300 dark:text-slate-700">•</span>
-                <UIBadge tone={getStatusBadgeTone(item?.status || "PERDIDO")}>
-                  {getStatusLabel(item?.status || "PERDIDO")}
+                <UIBadge tone={getStatusBadgeTone(currentItem?.status || "PERDIDO")}>
+                  {getStatusLabel(currentItem?.status || "PERDIDO")}
                 </UIBadge>
               </div>
 
@@ -1875,24 +1886,24 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 id="item-modal-title"
                 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight break-words"
               >
-                {item.title}
+                {currentItem.title}
               </h2>
 
               {/* Date & Location Key Indicators (Matching Reference Screen) */}
               <div className="space-y-1.5 pt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0" />
-                  <span className="font-medium">{formatDate(item.date)}</span>
-                  {item.createdAt && (
+                  <span className="font-medium">{formatDate(currentItem.date)}</span>
+                  {currentItem.createdAt && (
                     <span className="text-xs text-slate-400 dark:text-slate-500">
-                      • {getItemAgeText(item.createdAt)}
+                      • {getItemAgeText(currentItem.createdAt)}
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0" />
                   <span className="font-medium text-[#172B2A] dark:text-white">
-                    {item.location}
+                    {currentItem.location}
                   </span>
                 </div>
               </div>
@@ -1904,7 +1915,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 Descrição do Objeto
               </h4>
               <p className="text-sm text-[#172B2A] dark:text-slate-200 leading-relaxed break-words">
-                {item.description}
+                {currentItem.description}
               </p>
             </div>
 
@@ -1915,7 +1926,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   Cor Predominante
                 </span>
                 <span className="font-semibold text-[#172B2A] dark:text-slate-100">
-                  {item.color || "Não informada"}
+                  {currentItem.color || "Não informada"}
                 </span>
               </div>
               <div className="p-3 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70">
@@ -1923,7 +1934,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   Marca / Fabricante
                 </span>
                 <span className="font-semibold text-[#172B2A] dark:text-slate-100">
-                  {item.brand || "Não informada"}
+                  {currentItem.brand || "Não informada"}
                 </span>
               </div>
               <div className="p-3 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70 col-span-2 sm:col-span-1">
@@ -1931,13 +1942,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   Cadastrado por
                 </span>
                 <span className="font-semibold text-[#172B2A] dark:text-slate-100 truncate block">
-                  {item.registeredByName}
+                  {currentItem.registeredByName}
                 </span>
               </div>
             </div>
 
             {/* Accessible Voice Reader (Text-to-Speech) */}
-            <AccessibleVoiceReader item={item} />
+            <AccessibleVoiceReader item={currentItem} />
 
             {/* "Como recuperar?" Recovery Instructions Box (Matching Reference Moodboard) */}
             <div className="p-4 rounded-2xl bg-[#EBF5F0]/70 dark:bg-emerald-950/30 border border-[#16845B]/20 dark:border-emerald-800/50 space-y-1.5">
@@ -1948,9 +1959,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <p className="text-xs sm:text-sm text-[#172B2A] dark:text-slate-200 leading-relaxed">
                 Compareça na administração / ponto de guarda do campus com um documento oficial de identificação ou envie uma solicitação abaixo.
               </p>
-              {item.contactInfo && (
+              {currentItem.contactInfo && (
                 <p className="text-xs font-semibold text-[#064E3B] dark:text-emerald-300 pt-1">
-                  Ponto de atendimento / Contato: {item.contactInfo}
+                  Ponto de atendimento / Contato: {currentItem.contactInfo}
                 </p>
               )}
             </div>
@@ -2215,28 +2226,62 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
               {/* Operational Actions for Approved & Active Servidores and Admins */}
               {canPerformFormalReturn && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <UIButton
-                      type="button"
-                      variant="dark"
-                      size="md"
-                      fullWidth
-                      onClick={() => setReturnModalOpen(true)}
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      <span>Registrar Devolução Formal</span>
-                    </UIButton>
+                  <div className="space-y-2">
+                    {currentItem.status !== "EM_ANALISE" &&
+                      currentItem.status !== "DEVOLVIDO" &&
+                      currentItem.status !== "ENCERRADO" && (
+                        <UIButton
+                          type="button"
+                          variant="outline"
+                          size="md"
+                          fullWidth
+                          disabled={isConfirmingArrival}
+                          onClick={async () => {
+                            if (isConfirmingArrival) return;
+                            vibrateClick();
+                            setIsConfirmingArrival(true);
+                            try {
+                              await updateItemStatus(currentItem.id, "EM_ANALISE");
+                              vibrateSuccess();
+                            } catch (err) {
+                              console.error("[ItemDetailModal] Falha ao confirmar chegada:", err);
+                            } finally {
+                              setIsConfirmingArrival(false);
+                            }
+                          }}
+                          className="border-amber-300 dark:border-amber-700 bg-amber-50/70 dark:bg-amber-950/30 text-amber-900 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                        >
+                          <Clock className="w-4 h-4" />
+                          <span>
+                            {isConfirmingArrival
+                              ? "Confirmando Chegada..."
+                              : "Confirmar Chegada na Guarita (Em Análise)"}
+                          </span>
+                        </UIButton>
+                      )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <UIButton
+                        type="button"
+                        variant="dark"
+                        size="md"
+                        fullWidth
+                        onClick={() => setReturnModalOpen(true)}
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        <span>Registrar Devolução Formal</span>
+                      </UIButton>
 
-                    <UIButton
-                      type="button"
-                      variant="secondary"
-                      size="md"
-                      fullWidth
-                      onClick={() => setDestinationModalOpen(true)}
-                    >
-                      <PackageCheck className="w-4 h-4" />
-                      <span>Registrar Destinação</span>
-                    </UIButton>
+                      <UIButton
+                        type="button"
+                        variant="secondary"
+                        size="md"
+                        fullWidth
+                        onClick={() => setDestinationModalOpen(true)}
+                      >
+                        <PackageCheck className="w-4 h-4" />
+                        <span>Registrar Destinação</span>
+                      </UIButton>
+                    </div>
                   </div>
                 )}
 
@@ -2275,14 +2320,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     size="sm"
                     fullWidth
                     onClick={() => {
-                      setEditTitle(item.title);
-                      setEditDescription(item.description);
-                      setEditCategory(normalizeCategory(item.category));
-                      setEditLocation(item.location);
-                      setEditDate(item.date || getTodayDateString());
-                      setEditColor(item.color || "");
-                      setEditBrand(item.brand || "");
-                      setEditContactInfo(item.contactInfo || "");
+                      setEditTitle(currentItem.title);
+                      setEditDescription(currentItem.description);
+                      setEditCategory(normalizeCategory(currentItem.category));
+                      setEditLocation(currentItem.location);
+                      setEditDate(currentItem.date || getTodayDateString());
+                      setEditColor(currentItem.color || "");
+                      setEditBrand(currentItem.brand || "");
+                      setEditContactInfo(currentItem.contactInfo || "");
                       setEditItemModalOpen(true);
                     }}
                     title="Editar dados e informações do objeto"
@@ -2553,7 +2598,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               Envie uma notificação institucional sobre o objeto{" "}
-              <strong>"{item.title}"</strong>. A mensagem será registrada no sistema e entregue ao destinatário no Localiza+.
+              <strong>"{currentItem.title}"</strong>. A mensagem será registrada no sistema e entregue ao destinatário no Localiza+.
             </p>
 
             <form onSubmit={handleSendEmailSubmit} className="space-y-3.5">

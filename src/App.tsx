@@ -61,6 +61,8 @@ const MainContent: React.FC = () => {
     currentUser,
     items,
     requestAuthForRegistration,
+    postLoginRedirectPath,
+    setPostLoginRedirectPath,
     isEmailVerificationRequired,
     isAuthenticated,
     isGuest,
@@ -99,6 +101,14 @@ const MainContent: React.FC = () => {
     window.addEventListener("open-tour-guide", handleOpenTour);
     return () => window.removeEventListener("open-tour-guide", handleOpenTour);
   }, []);
+
+  useEffect(() => {
+    if (postLoginRedirectPath) {
+      const targetPath = postLoginRedirectPath;
+      setPostLoginRedirectPath(null);
+      navigate(targetPath);
+    }
+  }, [postLoginRedirectPath, setPostLoginRedirectPath, navigate]);
 
   const shouldReduceMotion = useReducedMotion();
   const lastResolvedItemIdRef = useRef<string | null>(null);
@@ -150,8 +160,9 @@ const MainContent: React.FC = () => {
           break;
         case "R":
           e.preventDefault();
-          requestAuthForRegistration();
-          navigate("/cadastrar");
+          if (requestAuthForRegistration()) {
+            navigate("/cadastrar");
+          }
           break;
         case "D":
           e.preventDefault();

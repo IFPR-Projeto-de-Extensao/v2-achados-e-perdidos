@@ -176,3 +176,151 @@ export async function compressImage(
     img.src = dataUrlSrc;
   });
 }
+
+import {
+  calculatePayloadSizeBytes,
+  FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES,
+} from "./payloadSizeGuard";
+
+/**
+ * Conservatively caps standalone image base64 payloads so that combined item
+ * metadata + history arrays stay well below FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES (900,000 bytes).
+ */
+export const MAX_SAFE_ITEM_IMAGE_BYTES = 750_000;
+
+export type ImageCompressorFn = (
+  input: File | Blob | string,
+  options?: ImageCompressionOptions
+) => Promise<CompressedImageResult>;
+
+export interface SafeImagePreparationSuccess {
+  ok: true;
+  result: CompressedImageResult;
+  usedFallbackCompression: boolean;
+  byteSize: number;
+}
+
+export interface SafeImagePreparationFailure {
+  ok: false;
+  reason: "COMPRESSION_FAILED" | "IMAGE_TOO_LARGE";
+  byteSize?: number;
+  message: string;
+}
+
+export type SafeImagePreparationOutcome =
+  | SafeImagePreparationSuccess
+  | SafeImagePreparationFailure;
+
+/**
+ * Compresses an item image with a safe secondary JPEG fallback and verifies
+ * that the resulting base64 payload fits safely inside Firestore limits.
+ * Never returns raw unvalidated oversized payloads.
+ */
+export async function compressItemImageSafely(
+  input: File | Blob | string,
+  compressor: ImageCompressorFn = compressImage
+): Promise<SafeImagePreparationOutcome> {
+  const attempts: Array<{ options: ImageCompressionOptions; isFallback: boolean }> = [
+    {
+      options: { maxWidth: 1280, maxHeight: 1280, quality: 0.82, outputFormat: "image/webp" },
+      isFallback: false,
+    },
+    {
+      options: { maxWidth: 960, maxHeight: 960, quality: 0.65, outputFormat: "image/jpeg" },
+      isFallback: true,
+    },
+    {
+      options: { maxWidth: 720, maxHeight: 720, quality: 0.55, outputFormat: "image/jpeg" },
+      isFallback: true,
+    },
+  ];
+
+  let lastResultByteSize: number | undefined;
+  let compressionSucceededAtLeastOnce = false;
+
+  for (const attempt of attempts) {
+    try {
+      const res = await compressor(input, attempt.options);
+      if (!res || typeof res.base64 !== "string" || !res.base64.startsWith("data:image/")) {
+        continue;
+      }
+      compressionSucceededAtLeastOnce = true;
+      const byteSize = calculatePayloadSizeBytes(res.base64);
+      lastResultByteSize = byteSize;
+      if (byteSize <= MAX_SAFE_ITEM_IMAGE_BYTES) {
+        return {
+          ok: true,
+          result: res,
+          usedFallbackCompression: attempt.isFallback,
+          byteSize,
+        };
+      }
+    } catch {
+      // Try next compression strategy cleanly
+    }
+  }
+
+  if (compressionSucceededAtLeastOnce && lastResultByteSize !== undefined) {
+    return {
+      ok: false,
+      reason: "IMAGE_TOO_LARGE",
+      byteSize: lastResultByteSize,
+      message: `A imagem comprimida (${formatBytes(lastResultByteSize)}) ainda excede o limite seguro de armazenamento (${formatBytes(MAX_SAFE_ITEM_IMAGE_BYTES)}). Escolha uma foto menor ou em outro formato.`,
+    };
+  }
+
+  return {
+    ok: false,
+    reason: "COMPRESSION_FAILED",
+    message:
+      "Não foi possível processar ou comprimir esta imagem com segurança. Tente converter para JPG/PNG ou selecionar outra foto.",
+  };
+}
+
+export function validateItemImageAndPayloadSize(params: {
+  imageUrl?: string;
+  fields?: Record<string, unknown>;
+}): {
+  isValid: boolean;
+  reason?: "IMAGE_TOO_LARGE" | "PAYLOAD_TOO_LARGE";
+  imageByteSize: number;
+  estimatedPayloadBytes: number;
+  error?: string;
+} {
+  const imageUrl = (params.imageUrl || "").trim();
+  const imageByteSize = imageUrl ? calculatePayloadSizeBytes(imageUrl) : 0;
+
+  if (imageByteSize > MAX_SAFE_ITEM_IMAGE_BYTES) {
+    return {
+      isValid: false,
+      reason: "IMAGE_TOO_LARGE",
+      imageByteSize,
+      estimatedPayloadBytes: imageByteSize,
+      error: `A imagem anexada (${formatBytes(imageByteSize)}) excede o limite seguro de ${formatBytes(MAX_SAFE_ITEM_IMAGE_BYTES)} para gravação no Firestore. Substitua ou remova a foto antes de continuar.`,
+    };
+  }
+
+  const estimatedPayload = {
+    ...(params.fields || {}),
+    imageUrl,
+    historyOverheadPlaceholder: "h".repeat(1024),
+  };
+  const estimatedPayloadBytes = calculatePayloadSizeBytes(estimatedPayload);
+
+  if (estimatedPayloadBytes > FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES) {
+    return {
+      isValid: false,
+      reason: "PAYLOAD_TOO_LARGE",
+      imageByteSize,
+      estimatedPayloadBytes,
+      error: `O tamanho total estimado do registro (${formatBytes(estimatedPayloadBytes)}) excede o limite defensivo do Firestore (${formatBytes(FIRESTORE_DEFENSIVE_PAYLOAD_LIMIT_BYTES)}). Reduza textos ou substitua a imagem.`,
+    };
+  }
+
+  return {
+    isValid: true,
+    imageByteSize,
+    estimatedPayloadBytes,
+  };
+}
+

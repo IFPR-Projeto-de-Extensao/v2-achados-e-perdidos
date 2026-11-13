@@ -80,8 +80,9 @@ export const Navbar: React.FC = () => {
 
   const handleRegisterClick = (type: "PERDIDO" | "ENCONTRADO") => {
     vibrateClick();
-    requestAuthForRegistration(type);
-    navigate(`/cadastrar?tipo=${type.toLowerCase()}`);
+    if (requestAuthForRegistration(type)) {
+      navigate(`/cadastrar?tipo=${type.toLowerCase()}`);
+    }
     setMobileMenuOpen(false);
   };
 

@@ -7,6 +7,8 @@ import { VoiceSearchModal } from "./VoiceSearchModal";
 import { IFPR_LOCATIONS, IFPR_LOCATION_GROUPS } from "../data/mockData";
 import { ItemCategory, LostFoundItem } from "../types";
 import { isCategoryMatch, getCategoryDisplay } from "../lib/categoryUtils";
+import { canOperateFormalReturn, canReopenFormalReturn } from "../lib/devolutionAuth";
+import { auth } from "../lib/firebase";
 import {
   formatDate,
   vibrateClick,
@@ -98,6 +100,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
     items,
     setSelectedItemForDetail,
     currentUser,
+    isGuest,
     bulkUpdateItemStatus,
     bulkDeleteItems,
   } = useApp();
@@ -194,12 +197,20 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
   // Bulk operations selection state
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [isSelectableMode, setIsSelectableMode] = useState<boolean>(false);
+  const [isBulkUpdating, setIsBulkUpdating] = useState<boolean>(false);
   const [isExportReportModalOpen, setIsExportReportModalOpen] =
     useState<boolean>(false);
   const [isVoiceSearchOpen, setIsVoiceSearchOpen] = useState<boolean>(false);
 
-  const isAdminOrServer =
-    currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR";
+  const canManageBulkItems = canOperateFormalReturn(currentUser, auth.currentUser, isGuest);
+  const canBulkDeleteItems = canReopenFormalReturn(currentUser, auth.currentUser, isGuest);
+
+  useEffect(() => {
+    if (!canManageBulkItems && (isSelectableMode || selectedItemIds.length > 0)) {
+      setIsSelectableMode(false);
+      setSelectedItemIds([]);
+    }
+  }, [canManageBulkItems, isSelectableMode, selectedItemIds.length]);
 
   const handleToggleSelectItem = (id: string, shouldSelect: boolean) => {
     if (shouldSelect) {
@@ -575,7 +586,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               <span className="sm:hidden">PDF</span>
             </button>
 
-            {isAdminOrServer && (
+            {canManageBulkItems && (
               <button
                 type="button"
                 onClick={() => {
@@ -1072,7 +1083,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
       </div>
 
       {/* BARRA FLUTUANTE DE AÇÕES EM MASSA */}
-      {selectedItemIds.length > 0 && (
+      {canManageBulkItems && selectedItemIds.length > 0 && (
         <div className="fixed bottom-16 lg:bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#111827] text-white px-4 py-3 rounded-xl border border-slate-700 flex flex-wrap items-center justify-between gap-3 max-w-lg w-[92%]">
           <span className="text-xs font-semibold tabular-nums">
             {selectedItemIds.length} selecionado(s)
@@ -1083,7 +1094,15 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               type="button"
               variant="primary"
               size="sm"
+              disabled={isBulkUpdating}
               onClick={async () => {
+                if (isBulkUpdating) return;
+                if (!canOperateFormalReturn(currentUser, auth.currentUser, isGuest)) {
+                  setSelectedItemIds([]);
+                  setIsSelectableMode(false);
+                  return;
+                }
+                setIsBulkUpdating(true);
                 try {
                   const res = await bulkUpdateItemStatus(
                     selectedItemIds,
@@ -1096,23 +1115,29 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                   } else {
                     setSelectedItemIds([]);
                   }
-                } catch (_) {}
+                } catch (_) {
+                } finally {
+                  setIsBulkUpdating(false);
+                }
               }}
             >
-              <span>Mover p/ Análise</span>
+              <span>{isBulkUpdating ? "Movendo..." : "Mover p/ Análise"}</span>
             </UIButton>
 
-            {isAdminOrServer && (
+            {canBulkDeleteItems && (
               <UIButton
                 type="button"
                 variant="danger"
                 size="sm"
+                disabled={isBulkUpdating}
                 onClick={async () => {
+                  if (isBulkUpdating) return;
                   if (
                     window.confirm(
                       `Tem certeza que deseja excluir permanentemente ${selectedItemIds.length} objeto(s)?`
                     )
                   ) {
+                    setIsBulkUpdating(true);
                     try {
                       const res = await bulkDeleteItems(selectedItemIds);
                       if (res && res.succeededIds) {
@@ -1122,7 +1147,10 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                       } else {
                         setSelectedItemIds([]);
                       }
-                    } catch (_) {}
+                    } catch (_) {
+                    } finally {
+                      setIsBulkUpdating(false);
+                    }
                   }
                 }}
               >

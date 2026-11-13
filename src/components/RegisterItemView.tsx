@@ -20,7 +20,11 @@ import {
   validateItemTextFields,
   ITEM_FIELD_LIMITS,
 } from "../lib/utils";
-import { compressImage } from "../lib/imageCompression";
+import {
+  compressImage,
+  compressItemImageSafely,
+  validateItemImageAndPayloadSize,
+} from "../lib/imageCompression";
 import {
   PlusCircle,
   CheckCircle2,
@@ -193,6 +197,8 @@ export const RegisterItemView: React.FC = () => {
     currentUser,
     registerTypeSelection,
     setRegisterTypeSelection,
+    prefilledItemFromAI,
+    setPrefilledItemFromAI,
     addToast,
     isOnline,
     activeUploadTasks,
@@ -200,10 +206,10 @@ export const RegisterItemView: React.FC = () => {
     cancelUploadTask,
   } = useApp();
 
-  const { navigate, goBack } = useRouter();
+  const { navigate, goBack, searchParams } = useRouter();
 
   // Institutional Auth Guard
-  const { isGuest, requireAuth } = useRequireAuth({
+  const { isGuest, isAuthLoading, requireAuth } = useRequireAuth({
     redirectOnUnauth: true,
     targetTab: "register",
     registerType: registerTypeSelection,
@@ -211,11 +217,13 @@ export const RegisterItemView: React.FC = () => {
       "Apenas usuários autenticados podem cadastrar novos itens no IFPR. Faça login para continuar.",
   });
 
-  // Strict Access Guard: ALUNO, INTRUSO, or unapproved SERVIDOR cannot access registration flow directly or via route
+  // Strict Access Guard: only evaluate unauthorized role AFTER auth finishes hydrating and user is not guest
   const isUnauthorized =
-    currentUser?.role === "ALUNO" ||
-    currentUser?.role === "INTRUSO" ||
-    (currentUser?.role === "SERVIDOR" && currentUser?.approvalStatus !== "APROVADO");
+    !isAuthLoading &&
+    !isGuest &&
+    (currentUser?.role === "ALUNO" ||
+      currentUser?.role === "INTRUSO" ||
+      (currentUser?.role === "SERVIDOR" && currentUser?.approvalStatus !== "APROVADO"));
 
   useEffect(() => {
     if (isUnauthorized) {
@@ -223,37 +231,6 @@ export const RegisterItemView: React.FC = () => {
       navigate("/");
     }
   }, [isUnauthorized, navigate, addToast]);
-
-  if (isUnauthorized) {
-    return (
-      <div className="min-h-[70vh] flex items-center justify-center p-4">
-        <SurfaceCard className="max-w-md w-full p-8 text-center space-y-5">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 text-rose-600 dark:text-rose-400 flex items-center justify-center">
-            <ShieldAlert className="w-8 h-8" />
-          </div>
-          <div className="space-y-2">
-            <UIBadge tone="rose">Acesso Restrito</UIBadge>
-            <h2 className="text-xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-              Acesso Restrito ao Cadastro
-            </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-              {currentUser?.role === "SERVIDOR"
-                ? "Sua conta de Servidor/TAE aguarda aprovação institucional pela Secretaria/Diretoria do Campus. O cadastro de objetos será liberado assim que o perfil for aprovado."
-                : "O cadastro de objetos perdidos e encontrados é restrito a Servidores/TAE aprovados e Administradores do IFPR."}
-            </p>
-          </div>
-          <UIButton
-            variant="primary"
-            size="lg"
-            fullWidth
-            onClick={() => navigate("/")}
-          >
-            Voltar à Página Inicial
-          </UIButton>
-        </SurfaceCard>
-      </div>
-    );
-  }
 
   // Step Management (1: Tipo, 2: Informações, 3: Local e Data, 4: Revisão, 5: Conclusão)
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
@@ -321,12 +298,45 @@ export const RegisterItemView: React.FC = () => {
     taskId?: string;
   } | null>(null);
 
-  // Synchronize initial type from global registerTypeSelection if passed
+  // Synchronize initial type from global registerTypeSelection or URL ?tipo= query param
   useEffect(() => {
-    if (registerTypeSelection) {
+    if (draftRestored) return;
+    if (searchParams.tipo === "perdido") {
+      setType("PERDIDO");
+    } else if (searchParams.tipo === "encontrado") {
+      setType("ENCONTRADO");
+    } else if (registerTypeSelection) {
       setType(registerTypeSelection);
     }
-  }, [registerTypeSelection]);
+  }, [registerTypeSelection, searchParams.tipo, draftRestored]);
+
+  // Hydrate fields if user entered registration flow via AI prefill
+  useEffect(() => {
+    if (!prefilledItemFromAI || draftRestored) return;
+    if (prefilledItemFromAI.type === "PERDIDO" || prefilledItemFromAI.type === "ENCONTRADO") {
+      setType(prefilledItemFromAI.type);
+    }
+    if (prefilledItemFromAI.title) setTitle(prefilledItemFromAI.title.slice(0, ITEM_FIELD_LIMITS.TITLE));
+    if (prefilledItemFromAI.category) setCategory(normalizeCategory(prefilledItemFromAI.category));
+    if (prefilledItemFromAI.description) setDescription(prefilledItemFromAI.description.slice(0, ITEM_FIELD_LIMITS.DESCRIPTION));
+    if (prefilledItemFromAI.color) setColor(prefilledItemFromAI.color.slice(0, ITEM_FIELD_LIMITS.COLOR));
+    if (prefilledItemFromAI.brand) setBrand(prefilledItemFromAI.brand.slice(0, ITEM_FIELD_LIMITS.BRAND));
+    if (prefilledItemFromAI.location && IFPR_LOCATIONS.includes(prefilledItemFromAI.location)) {
+      setLocation(prefilledItemFromAI.location);
+    }
+    if (prefilledItemFromAI.date) {
+      const dateCheck = validateItemOccurrenceDate(prefilledItemFromAI.date, "A data da ocorrência");
+      if (dateCheck.isValid) setDate(prefilledItemFromAI.date);
+    }
+    if (prefilledItemFromAI.contactInfo) {
+      setContactInfo(prefilledItemFromAI.contactInfo.slice(0, ITEM_FIELD_LIMITS.CONTACT_INFO));
+    }
+    if (prefilledItemFromAI.imageUrl) {
+      setImageUrl(prefilledItemFromAI.imageUrl);
+      setHasCustomImage(true);
+    }
+    setPrefilledItemFromAI(null);
+  }, [prefilledItemFromAI, draftRestored, setPrefilledItemFromAI]);
 
   // Restore Scoped Draft on Mount or UID change (Strict account isolation)
   useEffect(() => {
@@ -541,53 +551,62 @@ export const RegisterItemView: React.FC = () => {
     addToast("Rascunho descartado com sucesso. Formulário pronto.", "info");
   };
 
-  // Image File Upload with WebP Compression
+  // Image File Upload with Multi-Pass Compression & Defensive Payload Guard
   const handleImageFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
       addToast("Por favor, selecione um arquivo de imagem válido (JPG, PNG, WebP).", "error");
+      e.target.value = "";
       return;
     }
 
     if (file.size > 15 * 1024 * 1024) {
       addToast("A imagem selecionada é muito pesada (máximo 15MB).", "error");
+      e.target.value = "";
       return;
     }
 
     try {
       setIsCompressing(true);
-      const compressed = await compressImage(file, {
-        maxWidth: 1280,
-        maxHeight: 1280,
-        quality: 0.82,
-        outputFormat: "image/webp",
+      setStepErrors((prev) => {
+        if (!prev.image) return prev;
+        const { image: _removed, ...rest } = prev;
+        return rest;
       });
 
-      setImageUrl(compressed.base64);
+      const prepared = await compressItemImageSafely(file, compressImage);
+      if ("reason" in prepared) {
+        vibrateCritical();
+        setStepErrors((prev) => ({ ...prev, image: prepared.message }));
+        addToast(prepared.message, "error");
+        return;
+      }
+
+      setImageUrl(prepared.result.base64);
       setHasCustomImage(true);
       setCompressionStats({
-        original: compressed.formattedOriginalSize,
-        compressed: compressed.formattedCompressedSize,
-        savings: compressed.savingsPercentage,
+        original: prepared.result.formattedOriginalSize,
+        compressed: prepared.result.formattedCompressedSize,
+        savings: prepared.result.savingsPercentage,
       });
 
       addToast(
-        `Foto anexada e otimizada com sucesso! Redução de ${compressed.savingsPercentage}%.`,
+        prepared.usedFallbackCompression
+          ? `Foto otimizada em formato compatível (${prepared.result.formattedCompressedSize})!`
+          : `Foto anexada e otimizada com sucesso! Redução de ${prepared.result.savingsPercentage}%.`,
         "success"
       );
     } catch (compErr) {
-      console.warn("Aviso ao comprimir arquivo:", compErr);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImageUrl(reader.result as string);
-        setHasCustomImage(true);
-        addToast("Foto anexada com sucesso!", "success");
-      };
-      reader.readAsDataURL(file);
+      console.error("Erro ao processar imagem selecionada:", compErr);
+      vibrateCritical();
+      const errMsg = "Não foi possível processar a imagem selecionada. Tente outro arquivo JPG ou PNG.";
+      setStepErrors((prev) => ({ ...prev, image: errMsg }));
+      addToast(errMsg, "error");
     } finally {
       setIsCompressing(false);
+      e.target.value = "";
     }
   };
 
@@ -647,24 +666,34 @@ export const RegisterItemView: React.FC = () => {
 
     try {
       setIsCompressing(true);
-      const compressed = await compressImage(rawDataUrl, {
-        maxWidth: 1280,
-        maxHeight: 1280,
-        quality: 0.82,
-        outputFormat: "image/webp",
+      setStepErrors((prev) => {
+        if (!prev.image) return prev;
+        const { image: _removed, ...rest } = prev;
+        return rest;
       });
-      setImageUrl(compressed.base64);
+
+      const prepared = await compressItemImageSafely(rawDataUrl, compressImage);
+      if ("reason" in prepared) {
+        vibrateCritical();
+        setStepErrors((prev) => ({ ...prev, image: prepared.message }));
+        addToast(prepared.message, "error");
+        return;
+      }
+
+      setImageUrl(prepared.result.base64);
       setHasCustomImage(true);
       setCompressionStats({
-        original: compressed.formattedOriginalSize,
-        compressed: compressed.formattedCompressedSize,
-        savings: compressed.savingsPercentage,
+        original: prepared.result.formattedOriginalSize,
+        compressed: prepared.result.formattedCompressedSize,
+        savings: prepared.result.savingsPercentage,
       });
       addToast("Foto capturada e otimizada com sucesso!", "success");
-    } catch (_) {
-      setImageUrl(rawDataUrl);
-      setHasCustomImage(true);
-      addToast("Foto capturada com sucesso!", "success");
+    } catch (err) {
+      console.error("Erro ao processar foto capturada:", err);
+      vibrateCritical();
+      const errMsg = "Falha ao processar a foto capturada pela câmera. Tente novamente.";
+      setStepErrors((prev) => ({ ...prev, image: errMsg }));
+      addToast(errMsg, "error");
     } finally {
       setIsCompressing(false);
       stopCamera();
@@ -677,6 +706,11 @@ export const RegisterItemView: React.FC = () => {
     setImageUrl("");
     setHasCustomImage(false);
     setCompressionStats(null);
+    setStepErrors((prev) => {
+      if (!prev.image) return prev;
+      const { image: _removed, ...rest } = prev;
+      return rest;
+    });
     addToast("Foto removida.", "info");
   };
 
@@ -710,11 +744,25 @@ export const RegisterItemView: React.FC = () => {
       errors.general = textCheck.error || "Limite de caracteres excedido.";
     }
 
+    if (hasCustomImage && imageUrl.trim()) {
+      const imageSizeCheck = validateItemImageAndPayloadSize({
+        imageUrl,
+        fields: { title, description, category, color, brand, type },
+      });
+      if (!imageSizeCheck.isValid) {
+        errors.image = imageSizeCheck.error || "A imagem excede o limite permitido.";
+      }
+    }
+
     setStepErrors(errors);
     if (Object.keys(errors).length > 0) {
       vibrateCritical();
       addToast(
-        errors.title || errors.description || errors.general || "Preencha os campos obrigatórios.",
+        errors.title ||
+          errors.description ||
+          errors.image ||
+          errors.general ||
+          "Preencha os campos obrigatórios.",
         "error"
       );
       return false;
@@ -740,19 +788,61 @@ export const RegisterItemView: React.FC = () => {
       errors.contactInfo = "Informe o e-mail ou ponto de contato para devolução.";
     }
 
+    if (contactPhone.trim() && !isValidPhone(contactPhone)) {
+      errors.contactPhone = "Telefone inválido. Utilize o formato (XX) 9XXXX-XXXX.";
+    }
+
+    const fullLocation = locationComplement.trim()
+      ? `${location.trim()} — ${locationComplement.trim()}`
+      : location.trim();
+
+    if (fullLocation.length > ITEM_FIELD_LIMITS.LOCATION) {
+      errors.locationComplement = `Local + complemento excedem ${ITEM_FIELD_LIMITS.LOCATION} caracteres (${fullLocation.length}/${ITEM_FIELD_LIMITS.LOCATION}). Reduza o complemento.`;
+    }
+
+    const fullContact =
+      [
+        contactPhone.trim() ? `WhatsApp: ${contactPhone.trim()}` : "",
+        contactInfo.trim() ? `Contato/Ponto: ${contactInfo.trim()}` : "",
+      ]
+        .filter(Boolean)
+        .join(" | ") ||
+      currentUser?.email ||
+      "Contato Institucional IFPR";
+
+    if (fullContact.length > ITEM_FIELD_LIMITS.CONTACT_INFO) {
+      errors.contactInfo = `As informações de contato combinadas excedem ${ITEM_FIELD_LIMITS.CONTACT_INFO} caracteres (${fullContact.length}/${ITEM_FIELD_LIMITS.CONTACT_INFO}). Encurte o campo de contato.`;
+    }
+
     const textCheck = validateItemTextFields(
       {
-        location,
-        contactInfo,
+        location: fullLocation,
+        contactInfo: fullContact,
       },
       true
     );
-    if (!textCheck.isValid) {
+    if (!textCheck.isValid && !errors.locationComplement && !errors.contactInfo) {
       errors.general = textCheck.error || "Limite de caracteres excedido.";
     }
 
-    if (contactPhone.trim() && !isValidPhone(contactPhone)) {
-      errors.contactPhone = "Telefone inválido. Utilize o formato (XX) 9XXXX-XXXX.";
+    if (hasCustomImage && imageUrl.trim()) {
+      const payloadCheck = validateItemImageAndPayloadSize({
+        imageUrl,
+        fields: {
+          title,
+          description,
+          category,
+          color,
+          brand,
+          type,
+          location: fullLocation,
+          contactInfo: fullContact,
+          date,
+        },
+      });
+      if (!payloadCheck.isValid) {
+        errors.image = payloadCheck.error || "A imagem + dados excedem o limite do Firestore.";
+      }
     }
 
     setStepErrors(errors);
@@ -760,9 +850,12 @@ export const RegisterItemView: React.FC = () => {
       vibrateCritical();
       addToast(
         errors.location ||
+          errors.locationComplement ||
           errors.date ||
           errors.contactInfo ||
           errors.contactPhone ||
+          errors.image ||
+          errors.general ||
           "Corrija os campos indicados.",
         "error"
       );
@@ -958,6 +1051,18 @@ export const RegisterItemView: React.FC = () => {
     setCurrentStep(1);
   };
 
+  // Show clean hydration loading state before checking guest/role access
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center space-y-3">
+        <Loader2 className="w-7 h-7 animate-spin text-[#16845B]" />
+        <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+          Verificando sessão institucional...
+        </p>
+      </div>
+    );
+  }
+
   // If visitor / guest, render friendly security guard screen
   if (isGuest) {
     return (
@@ -1036,6 +1141,38 @@ export const RegisterItemView: React.FC = () => {
               <span>Fechar</span>
             </UIButton>
           </div>
+        </SurfaceCard>
+      </div>
+    );
+  }
+
+  // Strict Access Guard rendered AFTER all hooks (prevents React hooks mismatch during auth hydration)
+  if (isUnauthorized) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center p-4">
+        <SurfaceCard className="max-w-md w-full p-8 text-center space-y-5">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <UIBadge tone="rose">Acesso Restrito</UIBadge>
+            <h2 className="text-xl font-bold text-[#172B2A] dark:text-white tracking-tight">
+              Acesso Restrito ao Cadastro
+            </h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+              {currentUser?.role === "SERVIDOR"
+                ? "Sua conta de Servidor/TAE aguarda aprovação institucional pela Secretaria/Diretoria do Campus. O cadastro de objetos será liberado assim que o perfil for aprovado."
+                : "O cadastro de objetos perdidos e encontrados é restrito a Servidores/TAE aprovados e Administradores do IFPR."}
+            </p>
+          </div>
+          <UIButton
+            variant="primary"
+            size="lg"
+            fullWidth
+            onClick={() => navigate("/")}
+          >
+            Voltar à Página Inicial
+          </UIButton>
         </SurfaceCard>
       </div>
     );
@@ -1592,6 +1729,16 @@ export const RegisterItemView: React.FC = () => {
                   <span>Otimizando e comprimindo imagem para o PWA...</span>
                 </div>
               )}
+
+              {stepErrors.image && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 text-rose-700 dark:text-rose-300 text-xs font-semibold"
+                >
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
+                  <span>{stepErrors.image}</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1666,19 +1813,31 @@ export const RegisterItemView: React.FC = () => {
             </UIFieldGroup>
 
             {/* Ponto de Referência / Complemento */}
-            <UIFieldGroup
-              label="Ponto de Referência / Detalhes do Local (Opcional)"
-              htmlFor="location-complement-input"
-            >
-              <UIInput
-                id="location-complement-input"
-                type="text"
-                maxLength={120}
-                value={locationComplement}
-                onChange={(e) => setLocationComplement(e.target.value)}
-                placeholder="Ex: Em cima da mesa 04 da biblioteca, ou próximo aos bebedouros do bloco"
-              />
-            </UIFieldGroup>
+            {(() => {
+              const maxComplementChars = Math.max(0, ITEM_FIELD_LIMITS.LOCATION - location.trim().length - 3);
+              return (
+                <UIFieldGroup
+                  label="Ponto de Referência / Detalhes do Local (Opcional)"
+                  htmlFor="location-complement-input"
+                  error={stepErrors.locationComplement}
+                >
+                  <UIInput
+                    id="location-complement-input"
+                    type="text"
+                    maxLength={maxComplementChars}
+                    value={locationComplement}
+                    onChange={(e) => setLocationComplement(e.target.value)}
+                    hasError={Boolean(stepErrors.locationComplement)}
+                    placeholder="Ex: Em cima da mesa 04 da biblioteca, ou próximo aos bebedouros"
+                  />
+                  <div className="flex justify-end mt-1">
+                    <span className="text-[10px] text-slate-400 tabular-nums">
+                      {locationComplement.length}/{maxComplementChars} caracteres disponíveis para o complemento
+                    </span>
+                  </div>
+                </UIFieldGroup>
+              );
+            })()}
 
             {/* Data da Ocorrência */}
             <div>
@@ -1727,6 +1886,7 @@ export const RegisterItemView: React.FC = () => {
                 <UIFieldGroup
                   label={type === "ENCONTRADO" ? "Ponto de Guarda / E-mail" : "E-mail de Contato"}
                   htmlFor="contact-input"
+                  error={stepErrors.contactInfo}
                   required
                 >
                   <UIInput
@@ -1736,6 +1896,7 @@ export const RegisterItemView: React.FC = () => {
                     maxLength={ITEM_FIELD_LIMITS.CONTACT_INFO}
                     value={contactInfo}
                     onChange={(e) => setContactInfo(e.target.value)}
+                    hasError={Boolean(stepErrors.contactInfo)}
                     leftIcon={<Mail className="w-4 h-4" />}
                     placeholder={
                       type === "ENCONTRADO"

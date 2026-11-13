@@ -97,10 +97,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "PWA",
         tag: "Mobile First, Rolagem & PWA",
       },
+      {
+        id: "v11013-fix-post-redesign-register-and-arrival-confirmation",
+        title: "Recuperação Integral do Cadastro de Objetos e Confirmação da Chegada Pós-Redesign",
+        description: "Correção de condição de corrida de autenticação e violação da ordem de hooks no RegisterItemView (aguardando isAuthLoading antes de avaliar isGuest/isUnauthorized e movendo os retornos antecipados para depois dos hooks, restaurando também a tela de identificação de visitantes, sincronização com ?tipo= e preenchimento por IA, e validação prévia na Etapa 3 dos limites combinados de 120 caracteres para localização e 150 caracteres para contato); conexão real dos botões '+ Registrar Objeto' no DashboardView e da ponte pós-login (postLoginRedirectPath) para /cadastrar; recuperação operacional da confirmação de chegada (EM_ANALISE) com ordenação prioritária, busca por ID/QR, paginação progressiva ('Mostrar mais objetos'), estado de carregamento por item no Painel do Servidor e Admin, fallback via getDoc e sincronia de historyLogs no AppContext, além de ação dedicada no ItemDetailModal.",
+        module: "GERAL",
+        tag: "Cadastro, Custódia & Regressões",
+      },
     ],
     stats: {
       additionsCount: 2,
-      fixesCount: 7,
+      fixesCount: 8,
     },
   },
   {

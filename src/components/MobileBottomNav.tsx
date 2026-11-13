@@ -24,9 +24,10 @@ export const MobileBottomNav: React.FC = () => {
 
   const handleRegisterClick = () => {
     vibrateClick();
-    requestAuthForRegistration();
-    navigate("/cadastrar");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (requestAuthForRegistration()) {
+      navigate("/cadastrar");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const handleQrClick = () => {
@@ -34,7 +35,9 @@ export const MobileBottomNav: React.FC = () => {
     setQrScannerOpen(true);
   };
 
-  const isAluno = currentUser?.role === "ALUNO";
+  const canRegister =
+    (currentUser?.role === "SERVIDOR" && currentUser?.approvalStatus === "APROVADO") ||
+    currentUser?.role === "ADMIN";
   const isCatalogActive =
     routeKey === "search" ||
     pathname === "/objetos" ||
@@ -52,7 +55,7 @@ export const MobileBottomNav: React.FC = () => {
     >
       <div
         className={`max-w-md mx-auto grid ${
-          isAluno ? "grid-cols-4" : "grid-cols-5"
+          canRegister ? "grid-cols-5" : "grid-cols-4"
         } items-center h-14`}
       >
         {/* 1. Início */}
@@ -93,8 +96,8 @@ export const MobileBottomNav: React.FC = () => {
           <span className="text-[10px] leading-tight mt-1">Objetos</span>
         </button>
 
-        {/* 3. Registrar (Restrito de ALUNO conforme regras RBAC) */}
-        {!isAluno && (
+        {/* 3. Registrar (Restrito a Servidores aprovados e Administradores conforme regras RBAC) */}
+        {canRegister && (
           <button
             type="button"
             onClick={handleRegisterClick}
