@@ -1,6 +1,4 @@
-import { getAdminAuth, getAdminFirestore } from "../_lib/firebaseAdmin.js";
-
-const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
+import { getAdminAuth, getAdminFirestore, verifyServerlessCallerAccess } from "../_lib/firebaseAdmin.js";
 
 async function parseBody(req: any): Promise<any> {
   if (req.body) {
@@ -96,17 +94,8 @@ export default async function handler(req: any, res: any) {
   }
 
   const callerUid = decodedToken.uid;
-  const isRootAdmin = decodedToken.email === ROOT_ADMIN_EMAIL;
-  let isAdmin = isRootAdmin || decodedToken.role === "ADMIN" || decodedToken.admin === true;
-
-  if (!isAdmin) {
-    try {
-      const uDoc = await adminFirestore.collection("users").doc(callerUid).get();
-      if (uDoc.exists && uDoc.data()?.role === "ADMIN") {
-        isAdmin = true;
-      }
-    } catch (_) {}
-  }
+  const callerAccess = await verifyServerlessCallerAccess(adminFirestore, decodedToken);
+  const isAdmin = callerAccess.isAdmin;
 
   const body = await parseBody(req);
   const requestedUid = typeof body?.uid === "string" ? body.uid.trim() : "";

@@ -9,3 +9,4 @@ coverage/
 server.js
 api/*.js
 api/*.js.map
+*.tsbuildinfo

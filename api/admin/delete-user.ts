@@ -2,10 +2,8 @@ import {
   getFirebaseAdminApp,
   getAdminAuth,
   getAdminFirestore,
-  FIREBASE_PROJECT_ID,
+  verifyServerlessCallerAccess,
 } from "../_lib/firebaseAdmin.js";
-
-const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
 
 async function parseBody(req: any): Promise<any> {
   if (req.body) {
@@ -128,20 +126,8 @@ export default async function handler(req: any, res: any) {
       const decoded = await adminAuth.verifyIdToken(token);
       adminUid = decoded.uid;
       adminEmail = decoded.email || "";
-      const isRoot = adminEmail === ROOT_ADMIN_EMAIL;
-      isAdmin = isRoot || decoded.role === "ADMIN" || (decoded as any).admin === true;
-
-      // Verify Firestore record for extra role enforcement
-      if (adminFirestore && !isAdmin) {
-        try {
-          const adminDoc = await adminFirestore.collection("users").doc(adminUid).get();
-          if (adminDoc.exists && adminDoc.data()?.role === "ADMIN") {
-            isAdmin = true;
-          }
-        } catch {
-          // ignore read error
-        }
-      }
+      const callerAccess = await verifyServerlessCallerAccess(adminFirestore, decoded);
+      isAdmin = callerAccess.isAdmin;
     } catch (tokenVerifyErr: any) {
       console.warn(`[Admin Delete User Security] verifyIdToken falhou na validação de assinatura:`, tokenVerifyErr?.message || tokenVerifyErr);
       return res.status(401).json({

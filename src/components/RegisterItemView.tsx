@@ -985,9 +985,8 @@ export const RegisterItemView: React.FC = () => {
       setDraftSavedAt(null);
       setDraftRestored(false);
 
-      vibrateSuccess();
-
       if (res.persistenceStatus === "CONFIRMED") {
+        vibrateSuccess();
         addToast(
           `Cadastro Concluído! O objeto "${res.newItem.title}" foi gravado com sucesso no Firestore.`,
           "success"
@@ -998,21 +997,20 @@ export const RegisterItemView: React.FC = () => {
         });
       } else if (res.persistenceStatus === "ERROR") {
         const classifiedMsg =
-          typeof (res as any)?.classifiedMessage === "string" && (res as any).classifiedMessage.trim().length > 0
-            ? (res as any).classifiedMessage
-            : typeof (res as any)?.error === "string" && (res as any).error.trim().length > 0
-            ? (res as any).error
+          typeof res.classifiedMessage === "string" && res.classifiedMessage.trim().length > 0
+            ? res.classifiedMessage
             : `Sincronização recusada por falta de autorização/permissão no Firestore. O objeto "${res.newItem.title}" permanece preservado no dispositivo.`;
 
-        addToast(classifiedMsg, "warning");
+        addToast(classifiedMsg, res.errorCategory === "AUTHORIZATION" ? "error" : "warning");
         setRegistrationFeedback({
           status: "ERROR",
           item: res.newItem,
         });
       } else {
+        vibrateSuccess();
         const pendingMsg =
-          typeof (res as any)?.classifiedMessage === "string" && (res as any).classifiedMessage.trim().length > 0
-            ? (res as any).classifiedMessage
+          typeof res.classifiedMessage === "string" && res.classifiedMessage.trim().length > 0
+            ? res.classifiedMessage
             : `Salvo no dispositivo: O objeto "${res.newItem.title}" será sincronizado assim que a rede voltar.`;
 
         addToast(pendingMsg, "info");

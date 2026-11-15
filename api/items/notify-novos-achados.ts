@@ -1,4 +1,4 @@
-import { getAdminAuth, getAdminFirestore } from "../_lib/firebaseAdmin.js";
+import { getAdminAuth, getAdminFirestore, verifyServerlessCallerAccess } from "../_lib/firebaseAdmin.js";
 
 function getDiscordNovosAchadosWebhookUrl(): string {
   return (
@@ -221,18 +221,16 @@ export default async function handler(req: any, res: any) {
   }
 
   const callerUid = decodedToken.uid;
-  const isRootAdmin = decodedToken.email === "paulocauan39@gmail.com";
-  let isAdmin = isRootAdmin || decodedToken.role === "ADMIN" || decodedToken.admin === true;
-  let callerRole = decodedToken.role || "ALUNO";
-
-  try {
-    const userDoc = await adminDb.collection("users").doc(callerUid).get();
-    if (userDoc.exists) {
-      const uData = userDoc.data();
-      if (uData?.role === "ADMIN") isAdmin = true;
-      if (uData?.role) callerRole = uData.role;
-    }
-  } catch (_) {}
+  const callerAccess = await verifyServerlessCallerAccess(adminDb, decodedToken);
+  if (callerAccess.isBlocked) {
+    return res.status(403).json({
+      success: false,
+      error: "Conta suspensa ou desativada.",
+      code: "ACCOUNT_BLOCKED",
+    });
+  }
+  const isAdmin = callerAccess.isAdmin;
+  const callerRole = callerAccess.role;
 
   try {
     const body = await parseBody(req);

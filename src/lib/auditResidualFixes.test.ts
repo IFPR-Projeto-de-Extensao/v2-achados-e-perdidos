@@ -143,7 +143,7 @@ describe("Auditoria Pós-Correção — Correção dos 5 Defeitos Residuais (v1.
   });
 
   describe("Correção 2 — Integridade de bulkUpdateItemStatus & Permissões em ObjectsView", () => {
-    it("buildItemStatusTransitionPatch gera history, historyLogs, audit_logs, activity_logs e remove resolutionDate com deleteField()", () => {
+    it("buildItemStatusTransitionPatch gera historyEntry, updatedItem.history/historyLogs, audit_logs, activity_logs e exclui history/historyLogs de /items", () => {
       const existing = makeItem({
         id: "obj-bulk-1",
         status: "ENCONTRADO",
@@ -179,7 +179,12 @@ describe("Auditoria Pós-Correção — Correção dos 5 Defeitos Residuais (v1.
       expect(patch.updatedItem.historyLogs).toEqual(patch.nextHistory);
       expect(patch.firestoreItemUpdate.status).toBe("EM_ANALISE");
       expect(patch.firestoreItemUpdate.resolutionDate).toBeDefined();
-      expect(patch.firestoreItemUpdate.historyLogs).toEqual(patch.nextHistory);
+      expect(patch.firestoreItemUpdate.history).toBeUndefined();
+      expect(patch.firestoreItemUpdate.historyLogs).toBeUndefined();
+      expect(patch.historyEntry).toMatchObject({
+        objectId: "obj-bulk-1",
+        newValue: "EM_ANALISE",
+      });
 
       expect(patch.auditLogDoc).toMatchObject({
         action: "STATUS_OVERRIDE",

@@ -8,6 +8,10 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { getApps, initializeApp, cert, type App } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, FieldValue, type Firestore } from "firebase-admin/firestore";
+import {
+  buildApprovedUserStatusFields,
+  reconcileSingleUserProfile,
+} from "./api/_lib/firebaseAdmin.js";
 
 // Safe loading of firebase config to prevent Node 22 ESM import assertion errors
 let firebaseAppConfig: any = {};
@@ -28,6 +32,15 @@ process.on("unhandledRejection", (reason) => {
 });
 process.on("uncaughtException", (err) => {
   console.error("[Server Process uncaughtException]:", err);
+  const isServerless = Boolean(
+    process.env.VERCEL ||
+    process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    process.env.LAMBDA_TASK_ROOT ||
+    process.env.VERCEL_ENV
+  );
+  if (!isServerless && process.env.NODE_ENV !== "test") {
+    process.exit(1);
+  }
 });
 
 const app = express();
@@ -35,6 +48,25 @@ const portArgIndex = process.argv.indexOf("--port");
 const cliPort = portArgIndex !== -1 && process.argv[portArgIndex + 1] ? Number(process.argv[portArgIndex + 1]) : NaN;
 const PORT = (!isNaN(cliPort) && cliPort > 0) ? cliPort : (Number(process.env.PORT) || 3000);
 export const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
+
+/**
+ * Safely retrieves the Root Admin email from the runtime environment.
+ * Falls back to the default institutional Root Admin email only when ROOT_ADMIN_EMAIL is not defined.
+ */
+export function getRootAdminEmail(): string {
+  const raw = process.env.ROOT_ADMIN_EMAIL;
+  if (raw === undefined) {
+    return ROOT_ADMIN_EMAIL;
+  }
+  let trimmed = raw.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
 
 /**
  * Safely retrieves the pinned Root Admin UID from the runtime environment.
@@ -65,7 +97,7 @@ export interface RootAdminEvaluationResult {
 /**
  * Evaluates whether an authenticated user qualifies as the Root Admin.
  * Strictly requires:
- * 1. Root Admin candidate email (case-insensitive comparison with paulocauan39@gmail.com)
+ * 1. Root Admin candidate email (case-insensitive comparison with configured ROOT_ADMIN_EMAIL)
  * 2. ROOT_ADMIN_UID configured in the server environment (fail-closed if missing)
  * 3. Cryptographically verified email (email_verified === true)
  * 4. Exact UID match against configured ROOT_ADMIN_UID
@@ -76,10 +108,10 @@ export function evaluateRootAdminAuth(user: {
   email_verified?: boolean;
 }): RootAdminEvaluationResult {
   const configuredRootUid = getRootAdminUid();
+  const configuredRootEmail = getRootAdminEmail().toLowerCase();
   const userEmail = (user?.email || "").trim().toLowerCase();
-  const rootEmail = ROOT_ADMIN_EMAIL.toLowerCase();
 
-  if (userEmail !== rootEmail) {
+  if (!configuredRootEmail || userEmail !== configuredRootEmail) {
     return { isRoot: false, rejectionReason: "EMAIL_NOT_ROOT_ADMIN" };
   }
 
@@ -132,7 +164,7 @@ const FIREBASE_PROJECT_ID =
   process.env.FIREBASE_PROJECT_ID ||
   process.env.VITE_FIREBASE_PROJECT_ID ||
   (firebaseAppConfig as any)?.projectId ||
-  "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
+  "gen-lang-client-0490390966";
 
 let adminAppInstance: App | null = null;
 let adminAuthInstance: Auth | null = null;
@@ -237,6 +269,11 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   express.json({ limit: "10mb" })(req, res, (err) => {
     if (err) {
       console.warn("[JSON Parse Warning]:", err?.message || err);
+      return res.status(400).json({
+        success: false,
+        error: "Corpo da requisição JSON malformado.",
+        code: "INVALID_JSON_BODY",
+      });
     }
     next();
   });
@@ -356,6 +393,7 @@ export interface AuthenticatedUser {
   email_verified?: boolean;
   role?: string;
   isAdmin: boolean;
+  isBlocked?: boolean;
 }
 
 declare global {
@@ -366,7 +404,7 @@ declare global {
   }
 }
 
-async function authenticateToken(req: Request, res: Response, next: NextFunction) {
+export async function authenticateToken(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return next();
@@ -387,25 +425,27 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
           email_verified: isEmailVerified,
         });
         const isRoot = rootAuthEval.isRoot;
+        const configuredRootEmail = getRootAdminEmail();
 
-        if (!isRoot && (decoded.email || "").toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase()) {
+        if (!isRoot && configuredRootEmail && (decoded.email || "").toLowerCase() === configuredRootEmail.toLowerCase()) {
           if (rootAuthEval.rejectionReason === "ROOT_ADMIN_UID_NOT_CONFIGURED") {
-            console.warn(`[Security Alert] Root Admin candidate (${ROOT_ADMIN_EMAIL}) attempted authentication, but ROOT_ADMIN_UID is not configured on the server. Elevation denied (fail-closed).`);
+            console.warn(`[Security Alert] Root Admin candidate (${configuredRootEmail}) attempted authentication, but ROOT_ADMIN_UID is not configured on the server. Elevation denied (fail-closed).`);
           } else if (rootAuthEval.rejectionReason === "UID_NOT_MATCHING_PINNED_ROOT") {
-            console.warn(`[Security Alert] Root Admin candidate (${ROOT_ADMIN_EMAIL}) UID mismatch. Expected pinned UID, received ${decoded.uid}. Access denied.`);
+            console.warn(`[Security Alert] Root Admin candidate (${configuredRootEmail}) UID mismatch. Expected pinned UID, received ${decoded.uid}. Access denied.`);
           } else if (rootAuthEval.rejectionReason === "EMAIL_NOT_VERIFIED") {
-            console.warn(`[Security Alert] Root Admin candidate (${ROOT_ADMIN_EMAIL}) email is not verified by identity provider. Access denied.`);
+            console.warn(`[Security Alert] Root Admin candidate (${configuredRootEmail}) email is not verified by identity provider. Access denied.`);
           }
         }
         let isAdmin = false;
         let dbRole: string | undefined = undefined;
+        let isBlocked = false;
 
         const adminFirestore = getAdminFirestore();
         if (adminFirestore) {
           try {
             const uDoc = await adminFirestore.collection("users").doc(decoded.uid).get();
             const uData: any = (uDoc.exists && (typeof uDoc.data === "function" ? uDoc.data() : (uDoc as any).data)) || {};
-            const isSuspendedOrBanned = uData?.status === "banned" || uData?.status === "suspended";
+            isBlocked = isUserBlockedOrInactive(uData);
             dbRole = uData?.role;
 
             let hasAdminAssignment = false;
@@ -427,7 +467,7 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
               hasAdminAssignment = false;
             }
 
-            if (isSuspendedOrBanned) {
+            if (isBlocked) {
               isAdmin = false;
             } else if (isRoot) {
               isAdmin = true;
@@ -453,12 +493,20 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
           isAdmin = false;
         }
 
+        const safeNonAdminRole =
+          isBlocked
+            ? "INTRUSO"
+            : dbRole && dbRole !== "ADMIN"
+            ? dbRole
+            : "ALUNO";
+
         req.authUser = {
           uid: decoded.uid,
           email: decoded.email,
           email_verified: isEmailVerified,
-          role: isAdmin ? "ADMIN" : (dbRole || "ALUNO"),
+          role: isAdmin ? "ADMIN" : safeNonAdminRole,
           isAdmin,
+          isBlocked,
         };
         return next();
       } catch (tokenVerifyErr: any) {
@@ -481,7 +529,7 @@ async function authenticateToken(req: Request, res: Response, next: NextFunction
   next();
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+export function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.authUser || !req.authUser.uid) {
     const unauthAudit = logAIAudit({
       userId: "ANONYMOUS_UNAUTHENTICATED",
@@ -507,6 +555,14 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
     });
   }
 
+  if (req.authUser.isBlocked) {
+    return res.status(403).json({
+      success: false,
+      error: "Conta suspensa ou desativada. Acesso bloqueado aos recursos do Localiza+.",
+      code: "ACCOUNT_BLOCKED",
+    });
+  }
+
   // Mandatory email verification security check (Admins bypass this check)
   if (req.authUser.email_verified !== true && !req.authUser.isAdmin) {
     return res.status(403).json({
@@ -519,7 +575,7 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-function requireAdmin(req: Request, res: Response, next: NextFunction) {
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.authUser || !req.authUser.isAdmin) {
     return res.status(403).json({
       success: false,
@@ -542,10 +598,52 @@ export interface StaffOrAdminValidationResult {
 }
 
 export function parseUserExpiryMs(val: any): number | null {
-  if (typeof val === "number" && Number.isFinite(val)) return val;
-  if (val && typeof val.toMillis === "function") return val.toMillis();
+  if (val === null || val === undefined) return null;
+  if (val instanceof Date) {
+    const ms = val.getTime();
+    return Number.isNaN(ms) ? null : ms;
+  }
+  if (typeof val === "number" && Number.isFinite(val)) {
+    return Math.abs(val) < 1e11 ? val * 1000 : val;
+  }
+  if (val && typeof val.toMillis === "function") {
+    const ms = val.toMillis();
+    return typeof ms === "number" && Number.isFinite(ms) ? ms : null;
+  }
+  if (val && typeof val.toDate === "function") {
+    const d = val.toDate();
+    if (d instanceof Date) {
+      const ms = d.getTime();
+      return Number.isNaN(ms) ? null : ms;
+    }
+  }
+  if (val && typeof val === "object") {
+    const sec =
+      typeof val.seconds === "number"
+        ? val.seconds
+        : typeof val._seconds === "number"
+        ? val._seconds
+        : null;
+    if (sec !== null && Number.isFinite(sec)) {
+      const nano =
+        typeof val.nanoseconds === "number"
+          ? val.nanoseconds
+          : typeof val._nanoseconds === "number"
+          ? val._nanoseconds
+          : 0;
+      return sec * 1000 + Math.floor(nano / 1e6);
+    }
+  }
   if (typeof val === "string") {
-    const parsed = Date.parse(val);
+    const trimmed = val.trim();
+    if (!trimmed) return null;
+    if (/^\d+$/.test(trimmed)) {
+      const num = Number(trimmed);
+      if (Number.isFinite(num)) {
+        return Math.abs(num) < 1e11 ? num * 1000 : num;
+      }
+    }
+    const parsed = Date.parse(trimmed);
     return Number.isNaN(parsed) ? null : parsed;
   }
   return null;
@@ -560,6 +658,59 @@ export function hasUserActiveTemporalBlock(udata: Record<string, any> | null | u
     (blockExpiresMs !== null && blockExpiresMs > nowMs) ||
     (suspendedUntilMs !== null && suspendedUntilMs > nowMs)
   );
+}
+
+export function isUserBlockedOrInactive(udata: Record<string, any> | null | undefined): boolean {
+  if (!udata || typeof udata !== "object") return false;
+  const normStatus = String(udata.status || "").trim().toLowerCase();
+  if (udata.active === false) return true;
+  if (hasUserActiveTemporalBlock(udata)) return true;
+  if (normStatus === "banned" || normStatus === "inactive") return true;
+  if (normStatus === "suspended") {
+    const blockExpiresMs = parseUserExpiryMs(udata.blockExpiresAt);
+    const suspendedUntilMs = parseUserExpiryMs(udata.suspendedUntil);
+    const hasExpiredDate =
+      (blockExpiresMs !== null || suspendedUntilMs !== null) &&
+      (blockExpiresMs === null || blockExpiresMs <= Date.now()) &&
+      (suspendedUntilMs === null || suspendedUntilMs <= Date.now());
+    if (!hasExpiredDate) return true;
+  }
+  return false;
+}
+
+export function sanitizeTrustedOriginUrl(rawOrigin: unknown): string {
+  const defaultOrigin = process.env.APP_URL || "https://localiza-plus-ifpr.vercel.app";
+  if (typeof rawOrigin !== "string" || !rawOrigin.trim()) {
+    return defaultOrigin;
+  }
+  try {
+    const parsed = new URL(rawOrigin.trim());
+    const hostname = parsed.hostname.toLowerCase();
+    const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1";
+    if (parsed.protocol !== "https:" && !(isLocalHost && parsed.protocol === "http:")) {
+      return defaultOrigin;
+    }
+    const allowedExactHosts = new Set<string>(["localhost", "127.0.0.1"]);
+    try {
+      allowedExactHosts.add(new URL(defaultOrigin).hostname.toLowerCase());
+    } catch {}
+    if (process.env.VERCEL_URL) {
+      allowedExactHosts.add(process.env.VERCEL_URL.replace(/^https?:\/\//i, "").split("/")[0].toLowerCase());
+    }
+    const isAllowedDomain =
+      allowedExactHosts.has(hostname) ||
+      hostname.endsWith(".ifpr.edu.br") ||
+      hostname.endsWith(".vercel.app") ||
+      hostname.endsWith(".run.app") ||
+      hostname.endsWith(".web.app") ||
+      hostname.endsWith(".firebaseapp.com");
+    if (!isAllowedDomain) {
+      return defaultOrigin;
+    }
+    return parsed.origin;
+  } catch {
+    return defaultOrigin;
+  }
 }
 
 export interface SignatureEncryptionKeyEntry {
@@ -736,8 +887,8 @@ export async function canRemovePreviousEncryptionKey(
   for (const d of docs) {
     const data = (typeof d.data === "function" ? d.data() : d.data) || {};
     if (data.invalidated === true) continue;
-    const expMs = data.expiresAt ? Date.parse(String(data.expiresAt)) : NaN;
-    if (Number.isNaN(expMs) || expMs <= nowMs) continue;
+    const expMs = parseUserExpiryMs(data.expiresAt);
+    if (expMs !== null && expMs <= nowMs) continue;
     const enc = typeof data.encryptedToken === "string" ? data.encryptedToken : "";
     if (data.encryptionKeyId === cleanKeyId || enc.startsWith(`${cleanKeyId}.`)) {
       itemIds.push(data.itemId || d.id);
@@ -1427,6 +1578,80 @@ app.post(
   }
 );
 
+/**
+ * POST /api/auth/reconcile-profile
+ * Server-authoritative reconciliation of /users/{uid} from an active/approved /role_assignments/{uid}.
+ * Strictly scoped to the authenticated caller's own verified UID; never elevates blocked/suspended/banned users.
+ */
+app.post(
+  ["/api/auth/reconcile-profile", "/auth/reconcile-profile"],
+  generalRateLimiter,
+  async (req: Request, res: Response) => {
+    const callerUid = req.authUser?.uid;
+    if (!callerUid) {
+      return res.status(401).json({
+        success: false,
+        reconciled: false,
+        error: "Autenticação obrigatória. Forneça um token Bearer válido.",
+        code: "UNAUTHENTICATED",
+      });
+    }
+
+    if (req.authUser?.isBlocked) {
+      return res.status(403).json({
+        success: false,
+        reconciled: false,
+        error: "Conta suspensa, banida ou desativada. Reconciliação bloqueada.",
+        code: "ACCOUNT_BLOCKED",
+      });
+    }
+
+    if (req.authUser?.email_verified !== true) {
+      return res.status(403).json({
+        success: false,
+        reconciled: false,
+        error: "E-mail não verificado. Confirme seu e-mail antes de sincronizar permissões.",
+        code: "AUTH_EMAIL_NOT_VERIFIED",
+      });
+    }
+
+    const adminFirestore = getAdminFirestore();
+    const adminAuth = getAdminAuth();
+    if (!adminFirestore) {
+      return res.status(503).json({
+        success: false,
+        reconciled: false,
+        error: "Serviço Firestore administrativo indisponível.",
+        code: "FIRESTORE_UNAVAILABLE",
+      });
+    }
+
+    try {
+      const result = await reconcileSingleUserProfile({
+        uid: callerUid,
+        email: req.authUser?.email,
+        emailVerified: true,
+        adminFirestore,
+        adminAuth,
+        dryRun: false,
+      });
+
+      return res.status(200).json({
+        success: true,
+        ...result,
+      });
+    } catch (err: any) {
+      console.error("[Auth Reconcile Profile Error]:", err?.message || err);
+      return res.status(500).json({
+        success: false,
+        reconciled: false,
+        error: "Falha interna ao reconciliar perfil institucional.",
+        code: "RECONCILE_PROFILE_ERROR",
+      });
+    }
+  }
+);
+
 app.post(["/api/system/config", "/system/config"], requireAuth, requireAdmin, (req: Request, res: Response) => {
   try {
     if (!req.body || typeof req.body !== "object") {
@@ -1556,7 +1781,8 @@ app.post(["/api/admin/master-wipe", "/admin/master-wipe"], requireAuth, requireA
     console.error("[MASTER WIPE ERROR]:", wipeErr);
     return res.status(500).json({
       success: false,
-      error: "Falha ao executar limpeza no servidor: " + (wipeErr?.message || String(wipeErr)),
+      error: "Falha ao executar limpeza no servidor.",
+      details: process.env.NODE_ENV !== "production" ? (wipeErr?.message || String(wipeErr)) : undefined,
     });
   }
 });
@@ -2026,7 +2252,7 @@ app.post("/api/admin/assign-role", generalRateLimiter, requireAuth, requireAdmin
 
       if (callerDoc.exists) {
         const cData = callerDoc.data();
-        if (cData?.status === "banned" || cData?.status === "suspended") {
+        if (isUserBlockedOrInactive(cData)) {
           const err: any = new Error("Sua conta está suspensa ou desativada.");
           err.code = "ACCOUNT_SUSPENDED";
           err.statusCode = 403;
@@ -2056,7 +2282,8 @@ app.post("/api/admin/assign-role", generalRateLimiter, requireAuth, requireAdmin
         throw err;
       }
 
-      if (targetEmail.toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase()) {
+      const configuredRootEmail = getRootAdminEmail();
+      if (configuredRootEmail && targetEmail.toLowerCase() === configuredRootEmail.toLowerCase()) {
         const err: any = new Error("Não é permitido alterar o cargo do Administrador Raiz oficial.");
         err.code = "CANNOT_MODIFY_ROOT_ADMIN";
         err.statusCode = 403;
@@ -2124,6 +2351,8 @@ app.post("/api/admin/assign-role", generalRateLimiter, requireAuth, requireAdmin
       };
 
       // 2. ALL WRITES INSIDE TRANSACTION
+      const existingTargetData = targetUserDoc.exists ? targetUserDoc.data() : null;
+      const approvedStatusFields = buildApprovedUserStatusFields(existingTargetData, approvalStatus, active);
       transaction.set(assignRef, assignmentDoc, { merge: true });
       transaction.set(userRef, {
         role: cleanRole,
@@ -2132,6 +2361,7 @@ app.post("/api/admin/assign-role", generalRateLimiter, requireAuth, requireAdmin
         roleAssignedAt: nowIso,
         roleAssignmentActive: active,
         updatedAt: nowIso,
+        ...approvedStatusFields,
       }, { merge: true });
       transaction.set(auditRef, auditData);
       transaction.set(actRef, actData);
@@ -2152,6 +2382,7 @@ app.post("/api/admin/assign-role", generalRateLimiter, requireAuth, requireAdmin
         await adminAuth.setCustomUserClaims(cleanTargetUid, {
           role: txResult.cleanRole,
           approvalStatus: txResult.approvalStatus,
+          admin: txResult.cleanRole === "ADMIN",
         });
         if (txResult.isIntruso) {
           await adminAuth.revokeRefreshTokens(cleanTargetUid);
@@ -2183,7 +2414,7 @@ app.post("/api/admin/assign-role", generalRateLimiter, requireAuth, requireAdmin
       success: false,
       error: "Falha interna ao atribuir cargo ao usuário.",
       code: "ROLE_ASSIGNMENT_ERROR",
-      details: err?.message || String(err),
+      details: process.env.NODE_ENV !== "production" ? (err?.message || String(err)) : undefined,
     });
   }
 });
@@ -2248,7 +2479,7 @@ app.post("/api/admin/revoke-role", generalRateLimiter, requireAuth, requireAdmin
 
       if (callerDoc.exists) {
         const cData = callerDoc.data();
-        if (cData?.status === "banned" || cData?.status === "suspended") {
+        if (isUserBlockedOrInactive(cData)) {
           const err: any = new Error("Sua conta está suspensa ou desativada.");
           err.code = "ACCOUNT_SUSPENDED";
           err.statusCode = 403;
@@ -2269,7 +2500,8 @@ app.post("/api/admin/revoke-role", generalRateLimiter, requireAuth, requireAdmin
         previousRole = aData?.assignedRole || "UNKNOWN";
       }
 
-      if (targetEmail.toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase()) {
+      const configuredRootEmail = getRootAdminEmail();
+      if (configuredRootEmail && targetEmail.toLowerCase() === configuredRootEmail.toLowerCase()) {
         const err: any = new Error("Não é permitido revogar o cargo do Administrador Raiz oficial.");
         err.code = "CANNOT_REVOKE_ROOT_ADMIN";
         err.statusCode = 403;
@@ -2345,6 +2577,7 @@ app.post("/api/admin/revoke-role", generalRateLimiter, requireAuth, requireAdmin
         await adminAuth.setCustomUserClaims(cleanTargetUid, {
           role: "INTRUSO",
           approvalStatus: "PENDENTE",
+          admin: false,
         });
       } catch (claimErr: any) {
         claimsSynced = false;
@@ -2375,7 +2608,7 @@ app.post("/api/admin/revoke-role", generalRateLimiter, requireAuth, requireAdmin
       success: false,
       error: "Falha interna ao revogar atribuição de cargo.",
       code: "ROLE_REVOCATION_ERROR",
-      details: err?.message || String(err),
+      details: process.env.NODE_ENV !== "production" ? (err?.message || String(err)) : undefined,
     });
   }
 });
@@ -2406,7 +2639,7 @@ app.get("/api/admin/role-assignments", generalRateLimiter, requireAuth, requireA
     return res.status(500).json({
       success: false,
       error: "Falha ao consultar atribuições de cargos.",
-      details: err?.message || String(err),
+      details: process.env.NODE_ENV !== "production" ? (err?.message || String(err)) : undefined,
     });
   }
 });
@@ -3376,7 +3609,9 @@ app.post(["/api/fcm/send-match-alert", "/fcm/send-match-alert"], requireAuth, ge
     });
   } catch (error: any) {
     console.error("Erro no envio de push FCM:", error);
-    return res.status(500).json({ error: error.message || "Erro no servidor ao despachar push FCM." });
+    return res.status(500).json({
+      error: process.env.NODE_ENV !== "production" ? (error.message || "Erro no servidor ao despachar push FCM.") : "Erro no servidor ao despachar push FCM.",
+    });
   }
 });
 
@@ -3718,7 +3953,9 @@ app.post(["/api/notifications/send-match-email", "/notifications/send-match-emai
     });
   } catch (error: any) {
     console.error("Erro no endpoint send-match-email:", error);
-    return res.status(500).json({ error: error.message || "Erro interno ao processar e-mail de correspondência." });
+    return res.status(500).json({
+      error: process.env.NODE_ENV !== "production" ? (error.message || "Erro interno ao processar e-mail de correspondência.") : "Erro interno ao processar e-mail de correspondência.",
+    });
   }
 });
 
@@ -3889,7 +4126,7 @@ app.post(
     const ticketProtocol = `IFPR-SUP-${Date.now().toString(36).toUpperCase()}`;
     const timestamp = new Date().toISOString();
     const destinationEmail = "localizamais0@gmail.com";
-    const adminNotificationEmail = ROOT_ADMIN_EMAIL;
+    const adminNotificationEmail = getRootAdminEmail() || destinationEmail;
 
     const emailPayload = {
       protocol: ticketProtocol,
@@ -3992,7 +4229,7 @@ app.post(
     console.error("Erro no envio do feedback de suporte:", error);
     return res.status(500).json({
       success: false,
-      error: error.message || "Erro ao processar envio do formulário de contato.",
+      error: process.env.NODE_ENV !== "production" ? (error.message || "Erro ao processar envio do formulário de contato.") : "Erro ao processar envio do formulário de contato.",
     });
   }
 });
@@ -4398,7 +4635,7 @@ app.post(["/api/items/notify-novos-achados", "/items/notify-novos-achados"], req
     console.error("Erro no endpoint notify-novos-achados:", error);
     return res.status(500).json({
       success: false,
-      error: error.message || "Erro ao processar notificação para o Discord.",
+      error: process.env.NODE_ENV !== "production" ? (error.message || "Erro ao processar notificação para o Discord.") : "Erro ao processar notificação para o Discord.",
     });
   }
 });
@@ -4655,7 +4892,7 @@ app.post(["/api/items/notify-novas-perdas", "/items/notify-novas-perdas"], requi
     console.error("Erro no endpoint notify-novas-perdas:", error);
     return res.status(500).json({
       success: false,
-      error: error.message || "Erro ao processar notificação para o Discord.",
+      error: process.env.NODE_ENV !== "production" ? (error.message || "Erro ao processar notificação para o Discord.") : "Erro ao processar notificação para o Discord.",
     });
   }
 });
@@ -6398,10 +6635,7 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
       throw new Error("SERVICE_UNAVAILABLE");
     }
 
-    let sanitizedOrigin = process.env.APP_URL || "https://localiza-plus-ifpr.vercel.app";
-    if (typeof originUrl === "string" && /^https?:\/\/[a-zA-Z0-9.-]+(:\d+)?$/.test(originUrl.trim())) {
-      sanitizedOrigin = originUrl.trim();
-    }
+    const sanitizedOrigin = sanitizeTrustedOriginUrl(originUrl);
     const signatureLink = `${sanitizedOrigin}/?tab=sign-receipt&itemId=${encodeURIComponent(cleanItemId)}&token=${encodeURIComponent(resolvedRawToken)}`;
 
     if (mode === "LINK_ONLY") {
@@ -6648,7 +6882,7 @@ app.post(["/api/signature/notify-signed", "/signature/notify-signed"], generalRa
           uid: decoded.uid,
           email: decoded.email,
           email_verified: decoded.email_verified,
-          isAdmin: decoded.admin === true || decoded.role === "ADMIN",
+          isAdmin: decoded.admin === true,
         });
         if (!staffCheck.authorized) {
           return res.status(403).json({
@@ -7334,10 +7568,7 @@ export async function executeFormalItemReturn(
   }
 
   // Post-transaction non-blocking email dispatch (failures MUST NOT roll back or fail a committed return)
-  let sanitizedOrigin = process.env.APP_URL || "https://localiza-plus-ifpr.vercel.app";
-  if (typeof body?.originUrl === "string" && /^https?:\/\/[a-zA-Z0-9.-]+(:\d+)?$/.test(body.originUrl.trim())) {
-    sanitizedOrigin = body.originUrl.trim();
-  }
+  const sanitizedOrigin = sanitizeTrustedOriginUrl(body?.originUrl);
   const signatureLink = isRemote
     ? `${sanitizedOrigin}/?tab=sign-receipt&itemId=${encodeURIComponent(rawItemId)}&token=${encodeURIComponent(rawSignatureToken)}`
     : undefined;

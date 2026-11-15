@@ -122,12 +122,12 @@ service cloud.firestore {
     }
 
     function isRootAdmin() {
-      return isSignedIn() && 
+      return isSignedIn() &&
+             isEmailVerified() &&
              request.auth.uid == 'hCG5mDgK1fRaTojULzlM7dXvb7n2' &&
              ('email' in request.auth.token) &&
              request.auth.token.email != null &&
-             request.auth.token.email.lower() == 'paulocauan39@gmail.com' &&
-             isEmailVerified();
+             request.auth.token.email.lower() == 'paulocauan39@gmail.com';
     }
 
     function isDocAdmin() {
@@ -179,7 +179,7 @@ service cloud.firestore {
     function isInstitutionalStudentEmail() {
       return isSignedIn() && isEmailVerified() && ('email' in request.auth.token) && request.auth.token.email != null && (
         request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*(estudantes|estudante|aluno)[.]ifpr[.]edu[.]br') ||
-        request.auth.token.email.lower().matches('.*@([a-zA-Z0-9-]+\\.)*(estudantes|estudante|aluno)[.]ifpr[.]edu[.]br')
+        request.auth.token.email.lower().matches('.*@([a-zA-Z0-9-]+\\.)*(estudantes|estudante|aluno|alunos)[.]ifpr[.]edu[.]br')
       );
     }
 
@@ -187,11 +187,11 @@ service cloud.firestore {
       return isSignedIn() && isEmailVerified() && ('email' in request.auth.token) && request.auth.token.email != null && (
         (
           request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*ifpr[.]edu[.]br') &&
-          !request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*(aluno|estudante|estudantes|escola)[.]ifpr[.]edu[.]br')
+          !request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*(aluno|alunos|estudante|estudantes|escola)[.]ifpr[.]edu[.]br')
         ) ||
         (
           request.auth.token.email.lower().matches('.*@([a-zA-Z0-9-]+\\.)*ifpr[.]edu[.]br') &&
-          !request.auth.token.email.lower().matches('.*@([a-zA-Z0-9-]+\\.)*(aluno|estudante|estudantes|escola)[.]ifpr[.]edu[.]br')
+          !request.auth.token.email.lower().matches('.*@([a-zA-Z0-9-]+\\.)*(aluno|alunos|estudante|estudantes|escola)[.]ifpr[.]edu[.]br')
         )
       );
     }
@@ -212,9 +212,7 @@ service cloud.firestore {
              (
                (userDocExists() && isApprovedStaffOrAdminDoc()) || 
                hasAdminClaim() || 
-               isRootAdmin() ||
-               (('role' in request.auth.token && request.auth.token.role == 'SERVIDOR') && 
-                (!('approvalStatus' in request.auth.token) || request.auth.token.approvalStatus == 'APROVADO'))
+               isRootAdmin()
              );
     }
 
@@ -302,6 +300,7 @@ service cloud.firestore {
         'signedAt',
         'signatureIpOrDevice',
         'secretVerificationKey',
+        'secretVerificationHint',
         'requiresAdminClaimReview',
         'devolutionNotified',
         'returnEmailNotified',
@@ -346,6 +345,7 @@ service cloud.firestore {
         'signedAt',
         'signatureIpOrDevice',
         'secretVerificationKey',
+        'secretVerificationHint',
         'requiresAdminClaimReview',
         'devolutionNotified',
         'returnEmailNotified',
@@ -364,7 +364,9 @@ service cloud.firestore {
     }
 
     function isAuthorSafeMetadataEdit() {
-      return (!('status' in existing()) ? !('status' in incoming()) : incoming().status == existing().status) &&
+      return isSignedIn() &&
+             isAccountActive() &&
+             (!('status' in existing()) ? !('status' in incoming()) : incoming().status == existing().status) &&
              ('registeredByUserId' in existing()) &&
              existing().registeredByUserId == request.auth.uid &&
              isEmailVerified() &&
@@ -380,13 +382,10 @@ service cloud.firestore {
                'contactInfo',
                'imageUrl',
                'additionalImages',
-               'secretVerificationHint',
                'lastEditedByUserId',
                'lastEditedByName',
                'lastEditedByRole',
-               'lastEditedAt',
-               'history',
-               'historyLogs'
+               'lastEditedAt'
              ]);
     }
 
@@ -404,7 +403,6 @@ service cloud.firestore {
                'contactInfo',
                'imageUrl',
                'additionalImages',
-               'secretVerificationHint',
                'status',
                'resolutionDate',
                'destinationType',
@@ -415,9 +413,7 @@ service cloud.firestore {
                'lastEditedByUserId',
                'lastEditedByName',
                'lastEditedByRole',
-               'lastEditedAt',
-               'history',
-               'historyLogs'
+               'lastEditedAt'
              ]) &&
              (!('status' in incoming()) || incoming().status != 'ENCERRADO' || (
                ('destinationType' in incoming()) &&
@@ -585,7 +581,7 @@ service cloud.firestore {
       // that are clean public projections (free of personal return data, signatures, and secrets).
       // Any document containing personal return/signature data can ONLY be read by active SERVIDOR or ADMIN.
       allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
-      allow list: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
+      allow list: if hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
 
       // Creation: ONLY Authenticated users with verified email, real UID and active account standing:
       // - Author ID must match request.auth.uid
@@ -634,7 +630,7 @@ service cloud.firestore {
 
     match /found_items/{itemId} {
       allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
-      allow list: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
+      allow list: if hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
       allow create: if incoming().registeredByUserId == request.auth.uid && 
                     isEmailVerified() && 
                     (incoming().registeredByRole == 'SERVIDOR' || incoming().registeredByRole == 'ADMIN') &&
@@ -671,7 +667,7 @@ service cloud.firestore {
 
     match /lost_items/{itemId} {
       allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
-      allow list: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
+      allow list: if hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
       allow create: if incoming().registeredByUserId == request.auth.uid && 
                     isEmailVerified() && 
                     (incoming().registeredByRole == 'SERVIDOR' || incoming().registeredByRole == 'ADMIN') &&
@@ -730,11 +726,93 @@ service cloud.firestore {
     }
 
     // ==========================================
+    // 2c-bis. Private Item Verification Hints & Keys (/item_private)
+    // ==========================================
+    match /item_private/{itemId} {
+      // Get: Only active approved SERVIDOR, ADMIN, or the item author can read private verification hints/keys.
+      allow get: if isSignedIn() && isAccountActive() && (
+        isAdmin() ||
+        isServidor() ||
+        (resource != null && 'registeredByUserId' in resource.data && resource.data.registeredByUserId == request.auth.uid) ||
+        (exists(/databases/$(database)/documents/items/$(itemId)) &&
+         get(/databases/$(database)/documents/items/$(itemId)).data.registeredByUserId == request.auth.uid)
+      );
+      // List: Only active approved SERVIDOR or ADMIN can list private verification metadata.
+      allow list: if isSignedIn() && isAccountActive() && (isAdmin() || isServidor());
+      // Create / Update: Active verified staff/admin or authorized item registrar.
+      allow create: if isSignedIn() &&
+                       isEmailVerified() &&
+                       isAccountActive() &&
+                       !isIntruso() &&
+                       (
+                         isAdmin() ||
+                         isServidor() ||
+                         (canRegisterItems() && incoming().registeredByUserId == request.auth.uid)
+                       ) &&
+                       (!('itemId' in incoming()) || incoming().itemId == itemId);
+      allow update: if isSignedIn() &&
+                       isEmailVerified() &&
+                       isAccountActive() &&
+                       !isIntruso() &&
+                       (
+                         isAdmin() ||
+                         isServidor() ||
+                         (
+                           canRegisterItems() &&
+                           (
+                             ('registeredByUserId' in existing() && existing().registeredByUserId == request.auth.uid) ||
+                             (exists(/databases/$(database)/documents/items/$(itemId)) &&
+                              get(/databases/$(database)/documents/items/$(itemId)).data.registeredByUserId == request.auth.uid)
+                           )
+                         )
+                       ) &&
+                       (!('registeredByUserId' in existing()) || incoming().registeredByUserId == existing().registeredByUserId) &&
+                       (!('itemId' in incoming()) || incoming().itemId == itemId);
+      allow delete: if isAdmin() || (
+        isSignedIn() &&
+        isAccountActive() &&
+        !isIntruso() &&
+        exists(/databases/$(database)/documents/items/$(itemId)) &&
+        get(/databases/$(database)/documents/items/$(itemId)).data.registeredByUserId == request.auth.uid &&
+        get(/databases/$(database)/documents/items/$(itemId)).data.status != 'DEVOLVIDO'
+      );
+    }
+
+    // ==========================================
     // 2d. Email Notifications Log Collection (Server-Only Writes / Staff & Admin Read)
     // ==========================================
     match /email_notifications/{notifId} {
       allow get, list: if isSignedIn() && isAccountActive() && (isAdmin() || isServidor());
       allow create, update, delete: if false;
+    }
+
+    // ==========================================
+    // 2e. Immutable Item History Timeline (/item_history)
+    // ==========================================
+    match /item_history/{entryId} {
+      // Public timeline read strictly free of private return/signature/secret fields.
+      allow get, list: if hasNoReturnOrSignatureFields(resource.data);
+      // Append-only creation by active verified non-intruso users matching their own auth.uid & non-escalated role.
+      allow create: if isSignedIn() &&
+                       isEmailVerified() &&
+                       isAccountActive() &&
+                       !isIntruso() &&
+                       incoming().actorId == request.auth.uid &&
+                       incoming().objectId is string &&
+                       incoming().objectId.size() > 0 &&
+                       incoming().action is string &&
+                       incoming().action.size() > 0 &&
+                       hasNoReturnOrSignatureFields(incoming()) &&
+                       (
+                         (isAdmin() && (!('actorRole' in incoming()) || incoming().actorRole in ['ADMIN', 'SERVIDOR'])) ||
+                         (isServidor() && (!('actorRole' in incoming()) || incoming().actorRole == 'SERVIDOR')) ||
+                         (
+                           (!('actorRole' in incoming()) || incoming().actorRole == 'ALUNO') &&
+                           exists(/databases/$(database)/documents/items/$(incoming().objectId)) &&
+                           get(/databases/$(database)/documents/items/$(incoming().objectId)).data.registeredByUserId == request.auth.uid
+                         )
+                       );
+      allow update, delete: if false;
     }
 
     // ==========================================
@@ -928,7 +1006,9 @@ service cloud.firestore {
       // - Admin can perform administrative updates if needed.
       allow update: if (
         isSignedIn() && 
+        isAccountActive() &&
         existing().userId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']) &&
         incoming().userId == existing().userId &&
         incoming().title == existing().title &&
         incoming().message == existing().message &&
@@ -944,7 +1024,7 @@ service cloud.firestore {
       // - User CANNOT delete another user's notification.
       // - Admin can delete.
       allow delete: if isSignedIn() && (
-        existing().userId == request.auth.uid || 
+        isAccountActive() && existing().userId == request.auth.uid || 
         isAdmin()
       );
     }
@@ -965,8 +1045,8 @@ service cloud.firestore {
     // 5b. System Config Root Admin (Protected Root Identity Pinning)
     // ==========================================
     match /system_config/{configId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
+      allow get: if isAdmin();
+      allow list: if isAdmin();
       allow create, update, delete: if false;
     }
 
@@ -1077,6 +1157,7 @@ service cloud.firestore {
       allow get: if isAdmin() || isServidor();
       allow list: if isAdmin() || isServidor();
       allow create: if isSignedIn() && 
+                       isAccountActive() &&
                        (!('userId' in incoming()) || incoming().userId == request.auth.uid) &&
                        (!('userEmail' in incoming()) || request.auth.token.email == null || incoming().userEmail == request.auth.token.email);
       allow update: if false;
@@ -1126,8 +1207,8 @@ service cloud.firestore {
     match /fcm_subscriptions/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isAdmin();
-      allow create, update: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create, update: if isAdmin() || (isSignedIn() && request.auth.uid == userId && isAccountActive() && isEmailVerified() && !isIntruso());
+      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == userId && isAccountActive());
     }
 
     // ==========================================
@@ -1141,6 +1222,7 @@ service cloud.firestore {
       // Support tickets: allow creation by visitors (no userId/userRole allowed) or authenticated users (must match auth.uid and auth email)
       allow create: if (
         (isSignedIn() && 
+         isAccountActive() &&
          incoming().userId == request.auth.uid && 
          (!('email' in incoming()) || incoming().email == request.auth.token.email) &&
          incoming().status == 'NOVO') ||

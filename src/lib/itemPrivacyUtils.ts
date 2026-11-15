@@ -114,6 +114,21 @@ export function sanitizePublicItemProjection<T extends Record<string, any>>(item
 }
 
 /**
+ * Monta o payload estritamente limpo para gravação em /items/{itemId}.
+ * Remove campos privados/PII, arrays de histórico (persistidos em /item_history/{entryId})
+ * e metadados locais de sincronização (isOfflineQueued, syncedAt), garantindo compatibilidade
+ * com as Firestore Security Rules tanto na criação quanto na sincronização offline.
+ */
+export function buildFirestoreItemCreatePayload<T extends Record<string, any>>(item: T): Omit<T, "history" | "historyLogs" | "isOfflineQueued" | "syncedAt"> {
+  const publicProj = sanitizePublicItemProjection(item) as Record<string, any>;
+  delete publicProj.history;
+  delete publicProj.historyLogs;
+  delete publicProj.isOfflineQueued;
+  delete publicProj.syncedAt;
+  return publicProj as Omit<T, "history" | "historyLogs" | "isOfflineQueued" | "syncedAt">;
+}
+
+/**
  * Extrai apenas os campos privados/administrativos de devolução e assinatura
  * para persistência ou leitura na coleção restrita /item_return_records/{itemId}.
  */

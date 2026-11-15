@@ -94,8 +94,6 @@ export function buildItemStatusTransitionPatch(
   const firestoreItemUpdate = sanitizeFirestoreData({
     status: newStatus,
     resolutionDate: deleteField(),
-    history: nextHistory,
-    historyLogs: nextHistory,
   });
 
   const updatedItem: LostFoundItem = {

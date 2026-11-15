@@ -1,6 +1,4 @@
-import { getAdminFirestore, getAdminAuth } from "../_lib/firebaseAdmin.js";
-
-const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
+import { getAdminFirestore, getAdminAuth, verifyServerlessCallerAccess } from "../_lib/firebaseAdmin.js";
 const serverlessStartTime = Date.now();
 let serverlessRequestCount = 0;
 
@@ -88,25 +86,8 @@ export default async function handler(req: any, res: any) {
   const userEmail = decoded.email || "";
 
   // 3. Strict Administrative Authorization Check (Source of Truth)
-  const isRoot = userEmail.toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase();
-  let isAdmin = isRoot || decoded.role === "ADMIN" || decoded.admin === true;
-
-  if (!isAdmin && userUid) {
-    const firestore = getAdminFirestore();
-    if (firestore) {
-      try {
-        const userDoc = await firestore.collection("users").doc(userUid).get();
-        if (userDoc.exists) {
-          const userData = userDoc.data();
-          if (userData?.role === "ADMIN") {
-            isAdmin = true;
-          }
-        }
-      } catch (fsErr: any) {
-        console.warn("[Analytics Metrics Security] Aviso ao consultar Firestore users:", fsErr?.message || fsErr);
-      }
-    }
-  }
+  const callerAccess = await verifyServerlessCallerAccess(getAdminFirestore(), decoded);
+  const isAdmin = callerAccess.isAdmin;
 
   // 4. If authenticated but NOT an Administrator -> Block access to administrative & audit data (HTTP 403)
   if (!isAdmin) {

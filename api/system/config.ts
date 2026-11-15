@@ -1,9 +1,8 @@
 import {
   getAdminFirestore,
   getAdminAuth,
+  verifyServerlessCallerAccess,
 } from "../_lib/firebaseAdmin.js";
-
-const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
 
 export interface SystemConfigState {
   maintenanceMode: boolean;
@@ -170,26 +169,9 @@ export default async function handler(req: any, res: any) {
       const adminEmail = decoded.email || "";
 
       // 3. Strict Administrative Authorization Check (Source of Truth)
-      const isRoot = adminEmail.toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase();
-      let isAdmin = isRoot || decoded.role === "ADMIN" || decoded.admin === true;
-
-      // Consult Firestore users collection if not already verified via root or custom claims
-      if (!isAdmin && adminUid) {
-        const adminFirestore = getAdminFirestore();
-        if (adminFirestore) {
-          try {
-            const userDoc = await adminFirestore.collection("users").doc(adminUid).get();
-            if (userDoc.exists) {
-              const userData = userDoc.data();
-              if (userData?.role === "ADMIN") {
-                isAdmin = true;
-              }
-            }
-          } catch (fsLookupErr: any) {
-            console.warn("[System Config Security] Aviso ao consultar perfil do usuário no Firestore:", fsLookupErr?.message || fsLookupErr);
-          }
-        }
-      }
+      const adminFirestore = getAdminFirestore();
+      const callerAccess = await verifyServerlessCallerAccess(adminFirestore, decoded);
+      const isAdmin = callerAccess.isAdmin;
 
       if (!isAdmin) {
         console.warn(`[System Config Security] Acesso negado para UID ${adminUid} (${adminEmail}) - Não possui privilégios ADMIN.`);

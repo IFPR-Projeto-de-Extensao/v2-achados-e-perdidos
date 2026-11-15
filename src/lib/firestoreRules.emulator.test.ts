@@ -296,6 +296,207 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
         })
       );
     });
+
+    it("6b. ADMIN não-root (Gmail promovido) com users/{uid} ADMIN/APROVADO/active consegue criar em /items, /item_private e /item_history", async () => {
+      const uid = "gmail_admin_aprovado";
+      await setupUserDoc(uid, {
+        id: uid,
+        email: "admin.gmail@gmail.com",
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+      });
+
+      const db = testEnv.authenticatedContext(uid, {
+        email: "admin.gmail@gmail.com",
+        email_verified: true,
+        role: "ADMIN",
+        admin: true,
+      }).firestore();
+
+      await assertSucceeds(
+        setDoc(doc(db, "items", "item_admin_ok"), {
+          id: "item_admin_ok",
+          title: "Notebook Dell",
+          description: "Encontrado no Bloco 2",
+          category: "Eletrônicos",
+          location: "Bloco 2",
+          status: "ENCONTRADO",
+          type: "ENCONTRADO",
+          registeredByUserId: uid,
+          registeredByRole: "ADMIN",
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      await assertSucceeds(
+        setDoc(doc(db, "item_private", "item_admin_ok"), {
+          itemId: "item_admin_ok",
+          registeredByUserId: uid,
+          secretVerificationHint: "Adesivo azul na tampa",
+          updatedAt: new Date().toISOString(),
+        })
+      );
+
+      await assertSucceeds(
+        setDoc(doc(db, "item_history", "hist_admin_ok"), {
+          id: "hist_admin_ok",
+          itemId: "item_admin_ok",
+          objectId: "item_admin_ok",
+          action: "Ocorrência cadastrada",
+          actorId: uid,
+          actorRole: "ADMIN",
+          timestamp: new Date().toISOString(),
+        })
+      );
+    });
+
+    it("6c. ADMIN não-root com claim role=ADMIN mas users/{uid} INTRUSO ou PENDENTE é negado ao criar em /items", async () => {
+      const uidIntruso = "gmail_claim_admin_intruso";
+      await setupUserDoc(uidIntruso, {
+        id: uidIntruso,
+        email: "intruso.claim@gmail.com",
+        role: "INTRUSO",
+        approvalStatus: "PENDENTE",
+        status: "active",
+      });
+
+      const dbIntruso = testEnv.authenticatedContext(uidIntruso, {
+        email: "intruso.claim@gmail.com",
+        email_verified: true,
+        role: "ADMIN",
+        admin: true,
+      }).firestore();
+
+      await assertFails(
+        setDoc(doc(dbIntruso, "items", "item_intruso_claim"), {
+          id: "item_intruso_claim",
+          title: "Item Bloqueado Intruso",
+          description: "Perfil users/{uid} ainda é INTRUSO",
+          category: "Outros",
+          location: "Bloco 1",
+          status: "ENCONTRADO",
+          type: "ENCONTRADO",
+          registeredByUserId: uidIntruso,
+          registeredByRole: "ADMIN",
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      const uidPendente = "gmail_claim_admin_pendente";
+      await setupUserDoc(uidPendente, {
+        id: uidPendente,
+        email: "pendente.claim@gmail.com",
+        role: "ADMIN",
+        approvalStatus: "PENDENTE",
+        status: "active",
+      });
+
+      const dbPendente = testEnv.authenticatedContext(uidPendente, {
+        email: "pendente.claim@gmail.com",
+        email_verified: true,
+        role: "ADMIN",
+        admin: true,
+      }).firestore();
+
+      await assertFails(
+        setDoc(doc(dbPendente, "items", "item_pendente_claim"), {
+          id: "item_pendente_claim",
+          title: "Item Bloqueado Pendente",
+          description: "Perfil users/{uid} está PENDENTE",
+          category: "Outros",
+          location: "Bloco 1",
+          status: "ENCONTRADO",
+          type: "ENCONTRADO",
+          registeredByUserId: uidPendente,
+          registeredByRole: "ADMIN",
+          createdAt: new Date().toISOString(),
+        })
+      );
+    });
+
+    it("6d. SERVIDOR externo (Gmail) aprovado cria em /items, /item_private e /item_history; se PENDENTE é negado", async () => {
+      const uidServOk = "gmail_serv_ok";
+      await setupUserDoc(uidServOk, {
+        id: uidServOk,
+        email: "servidor.gmail@gmail.com",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+      });
+
+      const dbOk = testEnv.authenticatedContext(uidServOk, {
+        email: "servidor.gmail@gmail.com",
+        email_verified: true,
+        role: "SERVIDOR",
+      }).firestore();
+
+      await assertSucceeds(
+        setDoc(doc(dbOk, "items", "item_serv_ok"), {
+          id: "item_serv_ok",
+          title: "Garrafa Térmica",
+          description: "Deixada na biblioteca",
+          category: "Outros",
+          location: "Biblioteca",
+          status: "ENCONTRADO",
+          type: "ENCONTRADO",
+          registeredByUserId: uidServOk,
+          registeredByRole: "SERVIDOR",
+          createdAt: new Date().toISOString(),
+        })
+      );
+      await assertSucceeds(
+        setDoc(doc(dbOk, "item_private", "item_serv_ok"), {
+          itemId: "item_serv_ok",
+          registeredByUserId: uidServOk,
+          secretVerificationHint: "Nome gravado na base",
+          updatedAt: new Date().toISOString(),
+        })
+      );
+      await assertSucceeds(
+        setDoc(doc(dbOk, "item_history", "hist_serv_ok"), {
+          id: "hist_serv_ok",
+          itemId: "item_serv_ok",
+          objectId: "item_serv_ok",
+          action: "Ocorrência cadastrada",
+          actorId: uidServOk,
+          actorRole: "SERVIDOR",
+          timestamp: new Date().toISOString(),
+        })
+      );
+
+      const uidServPend = "gmail_serv_pend";
+      await setupUserDoc(uidServPend, {
+        id: uidServPend,
+        email: "servidor.pend.gmail@gmail.com",
+        role: "SERVIDOR",
+        approvalStatus: "PENDENTE",
+        status: "active",
+      });
+
+      const dbPend = testEnv.authenticatedContext(uidServPend, {
+        email: "servidor.pend.gmail@gmail.com",
+        email_verified: true,
+        role: "SERVIDOR",
+      }).firestore();
+
+      await assertFails(
+        setDoc(doc(dbPend, "items", "item_serv_pend"), {
+          id: "item_serv_pend",
+          title: "Estojo Preto",
+          description: "Tentativa pendente",
+          category: "Materiais",
+          location: "Bloco 3",
+          status: "ENCONTRADO",
+          type: "ENCONTRADO",
+          registeredByUserId: uidServPend,
+          registeredByRole: "SERVIDOR",
+          createdAt: new Date().toISOString(),
+        })
+      );
+    });
   });
 
   describe("Collection /users — Profile Creation and Email Casing Rules", () => {

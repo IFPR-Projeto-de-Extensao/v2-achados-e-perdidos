@@ -1,6 +1,4 @@
-import { getAdminAuth, getAdminFirestore } from "../_lib/firebaseAdmin.js";
-
-const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
+import { getAdminAuth, getAdminFirestore, verifyServerlessCallerAccess } from "../_lib/firebaseAdmin.js";
 
 export default async function handler(req: any, res: any) {
   // CORS Headers
@@ -48,17 +46,8 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  const isRootAdmin = decodedToken.email === ROOT_ADMIN_EMAIL;
-  let isAdmin = isRootAdmin || decodedToken.role === "ADMIN" || decodedToken.admin === true;
-
-  if (adminDb && !isAdmin) {
-    try {
-      const uDoc = await adminDb.collection("users").doc(decodedToken.uid).get();
-      if (uDoc.exists && uDoc.data()?.role === "ADMIN") {
-        isAdmin = true;
-      }
-    } catch (_) {}
-  }
+  const callerAccess = await verifyServerlessCallerAccess(adminDb, decodedToken);
+  const isAdmin = callerAccess.isAdmin;
 
   if (!isAdmin) {
     return res.status(403).json({

@@ -5,7 +5,7 @@ Plataforma digital de gerenciamento de objetos perdidos e encontrados do Institu
 Desenvolvido pela equipe InovaIF, no contexto de um Projeto de Extensão do curso de Sistemas de Informação.
 
 [![Projeto](https://img.shields.io/badge/Projeto-Extensão-00843D)](https://www.ifpr.edu.br/)
-[![Versão](https://img.shields.io/badge/Versão-1.10.12-blue)](https://github.com/IFPR-Projeto-de-Extensao/v2-achados-e-perdidos)
+[![Versão](https://img.shields.io/badge/Versão-1.10.13-blue)](https://github.com/IFPR-Projeto-de-Extensao/v2-achados-e-perdidos)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Firebase](https://img.shields.io/badge/Firebase-Backend-FFCA28?logo=firebase&logoColor=black)](https://firebase.google.com/)
@@ -68,23 +68,25 @@ Endereço: Rua Max Arthur Greipel, nº 505 – Parque Industrial, Ivaiporã – 
 
 Front-end
 
-Tecnologia| Finalidade
-React 19| Construção da interface
-TypeScript| Tipagem estática
-Vite| Ferramentas de desenvolvimento e build
-Tailwind CSS 4| Estilização
-Lucide React| Ícones
-Recharts| Visualização de dados
+| Tecnologia | Finalidade |
+| --- | --- |
+| React 19 | Construção da interface |
+| TypeScript | Tipagem estática |
+| Vite | Ferramentas de desenvolvimento e build |
+| Tailwind CSS 4 | Estilização |
+| Lucide React | Ícones |
+| Recharts | Visualização de dados |
 
 Backend e serviços
 
-Tecnologia| Finalidade
-Node.js 22| Ambiente de execução
-Express| Servidor e APIs
-Firebase Authentication| Autenticação de usuários
-Cloud Firestore| Banco de dados
-Firebase Admin SDK| Operações administrativas no servidor
-Nodemailer| Envio de notificações por e-mail
+| Tecnologia | Finalidade |
+| --- | --- |
+| Node.js 22 | Ambiente de execução |
+| Express | Servidor e APIs |
+| Firebase Authentication | Autenticação de usuários |
+| Cloud Firestore | Banco de dados |
+| Firebase Admin SDK | Operações administrativas no servidor |
+| Nodemailer | Envio de notificações por e-mail |
 
 Infraestrutura e ferramentas
 
@@ -100,6 +102,7 @@ Infraestrutura e ferramentas
 
 O Localiza+ utiliza uma arquitetura web com interface React, servidor Node.js/Express e serviços Firebase.
 
+```text
                   ┌─────────────────────┐
                   │       Usuário       │
                   └──────────┬──────────┘
@@ -129,6 +132,7 @@ O Localiza+ utiliza uma arquitetura web com interface React, servidor Node.js/Ex
                   │   Dados e registros │
                   │    da aplicação     │
                   └─────────────────────┘
+```
 
 O servidor também disponibiliza operações administrativas e serviços que exigem validação e autorização no backend.
 
@@ -140,10 +144,11 @@ O sistema utiliza controle de acesso baseado em funções (RBAC), considerando o
 
 Perfis disponíveis
 
-Perfil| Permissões
-ALUNO| Consultar ocorrências, pesquisar objetos e solicitar reivindicações.
-SERVIDOR/TAE| Consultar, cadastrar e gerenciar objetos e ocorrências, conforme as permissões atribuídas.
-ADMIN| Acessar recursos administrativos, gerenciar usuários e realizar operações administrativas autorizadas.
+| Perfil | Permissões |
+| --- | --- |
+| ALUNO | Consultar ocorrências, pesquisar objetos e solicitar reivindicações. |
+| SERVIDOR/TAE | Consultar, cadastrar e gerenciar objetos e ocorrências, conforme as permissões atribuídas. |
+| ADMIN | Acessar recursos administrativos, gerenciar usuários e realizar operações administrativas autorizadas. |
 
 Regras importantes
 
@@ -199,6 +204,7 @@ O sistema disponibiliza recursos para geração de etiquetas relacionadas às oc
 
 Fluxo simplificado:
 
+```text
 Cadastro da ocorrência
         ↓
 Identificação do objeto
@@ -206,6 +212,7 @@ Identificação do objeto
 Geração da etiqueta
         ↓
 Identificação física
+```
 
 📋 6. Registro de devolução
 
@@ -292,11 +299,11 @@ Importante: as chaves e credenciais privadas não devem ser inseridas diretament
 
 🤖 Inteligência artificial
 
-A integração com inteligência artificial encontra-se desativada na versão atual do Localiza+.
+O Localiza+ integra recursos de IA via SDK oficial `@google/genai` exclusivamente no backend Express (rotas `/api/ai/*` e `/api/gemini/semantic-search`), mantendo a chave `GEMINI_API_KEY` isolada no servidor.
 
-A aplicação deve ser utilizada e documentada considerando suas funcionalidades operacionais implementadas, sem depender de serviços de IA.
-
-A indisponibilidade desses recursos não impede a utilização das funcionalidades convencionais de gerenciamento de Achados e Perdidos.
+- Auxilia no preenchimento estruturado de ocorrências, análise visual de imagens, busca semântica e sugestões de correspondência para perfis autorizados.
+- Exige autenticação e controle de acesso quando aplicável, com limitação de taxa (*rate limiting*) no servidor.
+- Quando `GEMINI_API_KEY` não estiver configurada no ambiente, as rotas de IA informam a indisponibilidade do serviço sem comprometer as funcionalidades convencionais de gerenciamento de Achados e Perdidos.
 
 ---
 
@@ -331,32 +338,40 @@ Para executar o projeto localmente, são necessários:
 
 1. Clonar o repositório
 
+```bash
 git clone https://github.com/IFPR-Projeto-de-Extensao/v2-achados-e-perdidos.git
+```
 
 2. Acessar o diretório
 
+```bash
 cd v2-achados-e-perdidos
+```
 
 3. Instalar dependências
 
+```bash
 npm install
+```
 
 4. Configurar variáveis de ambiente
 
-Crie o arquivo ".env.local" na raiz do projeto.
+Crie o arquivo `.env.local` na raiz do projeto.
 
 Configure as variáveis necessárias para o Firebase e para os serviços server-side.
 
 Exemplo de configuração do Firebase:
 
+```env
 VITE_FIREBASE_API_KEY=
 VITE_FIREBASE_AUTH_DOMAIN=
 VITE_FIREBASE_PROJECT_ID=
 VITE_FIREBASE_STORAGE_BUCKET=
 VITE_FIREBASE_MESSAGING_SENDER_ID=
 VITE_FIREBASE_APP_ID=
+```
 
-As demais variáveis devem seguir os nomes efetivamente utilizados pelo código da versão correspondente.
+As demais variáveis devem seguir os nomes efetivamente utilizados pelo código da versão correspondente (ver `.env.example`).
 
 Atenção:
 
@@ -367,33 +382,43 @@ Atenção:
 
 5. Executar em desenvolvimento
 
+```bash
 npm run dev
+```
 
-Esse comando executa o servidor de desenvolvimento definido no projeto por meio do "tsx server.ts".
+Esse comando executa o servidor de desenvolvimento definido no projeto por meio do `tsx server.ts`.
 
 6. Verificar o código
 
+```bash
 npm run lint
+```
 
 Executa a verificação de tipos TypeScript.
 
 7. Executar testes automatizados
 
+```bash
 npm test
+```
 
 Executa a suíte de testes utilizando Vitest.
 
 8. Gerar build de produção
 
+```bash
 npm run build
+```
 
 O processo realiza a compilação da aplicação web e a geração do bundle do servidor.
 
 9. Executar o servidor compilado
 
+```bash
 npm run start
+```
 
-Executa o servidor compilado em "dist/server.cjs".
+Executa o servidor compilado em `dist/server.cjs`.
 
 ---
 
@@ -430,6 +455,7 @@ O projeto utiliza a Vercel como infraestrutura de hospedagem.
 
 O processo de implantação pode seguir o fluxo:
 
+```text
         GitHub
            │
            ▼
@@ -446,6 +472,7 @@ O processo de implantação pode seguir o fluxo:
            │
            ▼
        Localiza+
+```
 
 As variáveis de ambiente devem ser configuradas diretamente no ambiente de hospedagem.
 
@@ -459,6 +486,7 @@ A publicação de regras do Firestore e as alterações de infraestrutura devem 
 
 A estrutura geral do repositório contempla os seguintes elementos:
 
+```text
 v2-achados-e-perdidos/
 │
 ├── api/
@@ -486,6 +514,7 @@ v2-achados-e-perdidos/
 ├── vite.config.ts
 ├── .gitignore
 └── README.md
+```
 
 A organização interna pode evoluir conforme novas funcionalidades e necessidades técnicas forem incorporadas.
 
@@ -540,6 +569,7 @@ Por se tratar de um projeto de extensão institucional, as alterações devem se
 
 Fluxo recomendado
 
+```text
 Criar branch
      ↓
 Desenvolver alteração
@@ -557,32 +587,40 @@ Enviar alterações
 Revisar Pull Request
      ↓
 Integrar alterações
+```
 
 Criar uma branch
 
+```bash
 git checkout -b feature/nova-funcionalidade
+```
 
 Registrar alterações
 
+```bash
 git add .
 git commit -m "feat: adiciona nova funcionalidade"
+```
 
 Enviar alterações
 
+```bash
 git push origin feature/nova-funcionalidade
+```
 
 Convenção de commits
 
 Recomenda-se utilizar mensagens descritivas:
 
-Prefixo| Utilização
-"feat:"| Nova funcionalidade
-"fix:"| Correção de problema
-"security:"| Alteração de segurança
-"refactor:"| Refatoração
-"docs:"| Documentação
-"test:"| Testes
-"chore:"| Manutenção e dependências
+| Prefixo | Utilização |
+| --- | --- |
+| `"feat:"` | Nova funcionalidade |
+| `"fix:"` | Correção de problema |
+| `"security:"` | Alteração de segurança |
+| `"refactor:"` | Refatoração |
+| `"docs:"` | Documentação |
+| `"test:"` | Testes |
+| `"chore:"` | Manutenção e dependências |
 
 ---
 
@@ -627,7 +665,7 @@ https://github.com/IFPR-Projeto-de-Extensao/v2-achados-e-perdidos
 
 📌 Status do projeto
 
-Versão documentada: 1.10.12
+Versão documentada: 1.10.13
 
 O Localiza+ encontra-se em desenvolvimento e evolução contínua, com foco na estabilidade, segurança, organização das ocorrências e melhoria da experiência dos usuários.
 
@@ -635,11 +673,8 @@ A documentação deste repositório deve acompanhar as funcionalidades efetivame
 
 ---
 
-<p align="center">LOCALIZA+
-
-Tecnologia para tornar o processo de Achados e Perdidos mais simples, organizado e acessível.
-
-Desenvolvido pela equipe InovaIF
-IFPR – Campus Ivaiporã
-
+<p align="center">
+<strong>LOCALIZA+</strong><br />
+Tecnologia para tornar o processo de Achados e Perdidos mais simples, organizado e acessível.<br />
+Desenvolvido pela equipe InovaIF • IFPR – Campus Ivaiporã
 </p>

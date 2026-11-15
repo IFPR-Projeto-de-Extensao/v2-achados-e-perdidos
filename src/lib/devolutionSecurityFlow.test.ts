@@ -557,8 +557,8 @@ describe("ETAPA 11: Blindagem Completa do Fluxo de Devolução, Leitor QR e Fire
       ) {
         const allowedAuthorKeys = new Set([
           "title", "description", "category", "location", "date", "color", "brand",
-          "contactInfo", "imageUrl", "additionalImages", "secretVerificationHint",
-          "lastEditedByUserId", "lastEditedByName", "lastEditedByRole", "lastEditedAt", "history", "historyLogs",
+          "contactInfo", "imageUrl", "additionalImages",
+          "lastEditedByUserId", "lastEditedByName", "lastEditedByRole", "lastEditedAt",
         ]);
         for (const k of diffKeys) {
           if (!allowedAuthorKeys.has(k)) return false;

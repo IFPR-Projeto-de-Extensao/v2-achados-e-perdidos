@@ -65,7 +65,7 @@ export function getFirebaseAdminApp(): App | null {
   const rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
   const privateKey = formatPrivateKey(rawPrivateKey);
   const cfg = getLazyFirebaseAppConfig();
-  const projectId = FIREBASE_PROJECT_ID || cfg?.projectId || "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
+  const projectId = FIREBASE_PROJECT_ID || cfg?.projectId || "gen-lang-client-0490390966";
 
   try {
     if (clientEmail && privateKey) {
@@ -133,4 +133,406 @@ export function getAdminFirestore(): Firestore | null {
   }
   return adminFirestoreInstance;
 }
+
+export const DEFAULT_ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
+
+function stripQuotes(val: string): string {
+  let trimmed = val.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+export function getRootAdminEmail(): string {
+  const raw = process.env.ROOT_ADMIN_EMAIL;
+  if (raw === undefined) {
+    return DEFAULT_ROOT_ADMIN_EMAIL;
+  }
+  return stripQuotes(raw);
+}
+
+export function getRootAdminUid(): string {
+  return stripQuotes(process.env.ROOT_ADMIN_UID || "");
+}
+
+function parseExpiryMs(val: any): number | null {
+  if (val === null || val === undefined) return null;
+  if (val instanceof Date) {
+    const ms = val.getTime();
+    return Number.isNaN(ms) ? null : ms;
+  }
+  if (typeof val === "number" && Number.isFinite(val)) {
+    return Math.abs(val) < 1e11 ? val * 1000 : val;
+  }
+  if (val && typeof val.toMillis === "function") {
+    const ms = val.toMillis();
+    return typeof ms === "number" && Number.isFinite(ms) ? ms : null;
+  }
+  if (val && typeof val.toDate === "function") {
+    const d = val.toDate();
+    if (d instanceof Date) {
+      const ms = d.getTime();
+      return Number.isNaN(ms) ? null : ms;
+    }
+  }
+  if (val && typeof val === "object") {
+    const sec =
+      typeof val.seconds === "number"
+        ? val.seconds
+        : typeof val._seconds === "number"
+        ? val._seconds
+        : null;
+    if (sec !== null && Number.isFinite(sec)) {
+      const nano =
+        typeof val.nanoseconds === "number"
+          ? val.nanoseconds
+          : typeof val._nanoseconds === "number"
+          ? val._nanoseconds
+          : 0;
+      return sec * 1000 + Math.floor(nano / 1e6);
+    }
+  }
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (!trimmed) return null;
+    const parsed = Date.parse(trimmed);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+export function isUserBlockedOrInactive(udata: Record<string, any> | null | undefined): boolean {
+  if (!udata || typeof udata !== "object") return false;
+  const normStatus = String(udata.status || "").trim().toLowerCase();
+  if (udata.active === false) return true;
+  const nowMs = Date.now();
+  const blockExpiresMs = parseExpiryMs(udata.blockExpiresAt);
+  const suspendedUntilMs = parseExpiryMs(udata.suspendedUntil);
+  if ((blockExpiresMs !== null && blockExpiresMs > nowMs) || (suspendedUntilMs !== null && suspendedUntilMs > nowMs)) {
+    return true;
+  }
+  if (normStatus === "banned" || normStatus === "inactive") return true;
+  if (normStatus === "suspended") {
+    const hasExpiredDate =
+      (blockExpiresMs !== null || suspendedUntilMs !== null) &&
+      (blockExpiresMs === null || blockExpiresMs <= nowMs) &&
+      (suspendedUntilMs === null || suspendedUntilMs <= nowMs);
+    if (!hasExpiredDate) return true;
+  }
+  return false;
+}
+
+export function hasUserBanSuspensionOrBlock(udata: Record<string, any> | null | undefined): boolean {
+  if (!udata || typeof udata !== "object") return false;
+  const normStatus = String(udata.status || "").trim().toLowerCase();
+  if (udata.active === false) return true;
+  if (normStatus === "banned" || normStatus === "suspended" || normStatus === "inactive") {
+    return true;
+  }
+  return isUserBlockedOrInactive(udata);
+}
+
+export function buildApprovedUserStatusFields(
+  existingUserData: Record<string, any> | null | undefined,
+  approvalStatus: string,
+  active: boolean
+): Record<string, any> {
+  if (approvalStatus !== "APROVADO" || !active) {
+    return {};
+  }
+  if (hasUserBanSuspensionOrBlock(existingUserData)) {
+    return {};
+  }
+  return {
+    status: "active",
+    active: true,
+  };
+}
+
+export interface ReconcileUserProfileResult {
+  uid: string;
+  reconciled: boolean;
+  alreadyConsistent?: boolean;
+  reason?: string;
+  assignedRole?: string;
+  previousRole?: string;
+  claimsSynced?: boolean;
+}
+
+export async function reconcileSingleUserProfile(options: {
+  uid: string;
+  email?: string | null;
+  displayName?: string | null;
+  emailVerified?: boolean;
+  adminFirestore: Firestore;
+  adminAuth?: Auth | null;
+  dryRun?: boolean;
+}): Promise<ReconcileUserProfileResult> {
+  const { uid, email, displayName, emailVerified, adminFirestore, adminAuth, dryRun = false } = options;
+  const cleanUid = String(uid || "").trim();
+  if (!cleanUid) {
+    return { uid: "", reconciled: false, reason: "INVALID_UID" };
+  }
+
+  const configuredRootEmail = getRootAdminEmail().toLowerCase();
+  const configuredRootUid = getRootAdminUid();
+  const cleanCallerEmail = (email || "").trim().toLowerCase();
+  if (
+    (configuredRootUid && cleanUid === configuredRootUid) ||
+    (configuredRootEmail && cleanCallerEmail === configuredRootEmail)
+  ) {
+    return { uid: cleanUid, reconciled: false, reason: "ROOT_ADMIN_SKIPPED" };
+  }
+
+  const assignRef = adminFirestore.collection("role_assignments").doc(cleanUid);
+  const userRef = adminFirestore.collection("users").doc(cleanUid);
+
+  const txOutcome = await adminFirestore.runTransaction(async (transaction) => {
+    const assignDoc = await transaction.get(assignRef);
+    const userDoc = await transaction.get(userRef);
+
+    if (!assignDoc.exists) {
+      return { reconciled: false, reason: "ASSIGNMENT_NOT_FOUND" } as ReconcileUserProfileResult;
+    }
+
+    const aData: any = assignDoc.data() || {};
+    const assignedRole = String(aData.assignedRole || "").trim().toUpperCase();
+    const targetEmail = (aData.targetEmail || email || "").trim().toLowerCase();
+
+    if (configuredRootEmail && targetEmail && targetEmail === configuredRootEmail) {
+      return { reconciled: false, reason: "ROOT_ADMIN_SKIPPED" } as ReconcileUserProfileResult;
+    }
+
+    if (
+      aData.active !== true ||
+      aData.approvalStatus !== "APROVADO" ||
+      aData.targetUserId !== cleanUid ||
+      (assignedRole !== "ADMIN" && assignedRole !== "SERVIDOR")
+    ) {
+      return {
+        reconciled: false,
+        reason: "NO_ACTIVE_APPROVED_ASSIGNMENT",
+      } as ReconcileUserProfileResult;
+    }
+
+    const uData: any = userDoc.exists ? userDoc.data() || {} : null;
+
+    if (uData && hasUserBanSuspensionOrBlock(uData)) {
+      return {
+        reconciled: false,
+        reason: "ACCOUNT_BLOCKED_OR_INACTIVE",
+        assignedRole,
+        previousRole: uData.role,
+      } as ReconcileUserProfileResult;
+    }
+
+    const isAlreadyConsistent = Boolean(
+      userDoc.exists &&
+      uData?.role === assignedRole &&
+      uData?.approvalStatus === "APROVADO" &&
+      uData?.status === "active" &&
+      uData?.active === true &&
+      uData?.roleAssignmentActive === true
+    );
+
+    if (isAlreadyConsistent) {
+      return {
+        reconciled: false,
+        alreadyConsistent: true,
+        reason: "ALREADY_CONSISTENT",
+        assignedRole,
+        previousRole: uData.role,
+      } as ReconcileUserProfileResult;
+    }
+
+    if (dryRun) {
+      return {
+        reconciled: true,
+        reason: "DRY_RUN_WOULD_RECONCILE",
+        assignedRole,
+        previousRole: uData?.role || "MISSING_DOC",
+      } as ReconcileUserProfileResult;
+    }
+
+    const nowIso = new Date().toISOString();
+    const patch: Record<string, any> = {
+      id: cleanUid,
+      role: assignedRole,
+      approvalStatus: "APROVADO",
+      status: "active",
+      active: true,
+      roleAssignedBy: aData.assignedByEmail || aData.assignedByUid || uData?.roleAssignedBy || "system-reconcile",
+      roleAssignedAt: aData.assignedAt || uData?.roleAssignedAt || nowIso,
+      roleAssignmentActive: true,
+      updatedAt: nowIso,
+    };
+
+    if (!userDoc.exists) {
+      patch.email = targetEmail;
+      patch.name = displayName || (targetEmail ? targetEmail.split("@")[0] : "Usuário IFPR");
+      patch.emailVerified = Boolean(emailVerified);
+      patch.createdAt = nowIso;
+    } else if (emailVerified && uData?.emailVerified !== true) {
+      patch.emailVerified = true;
+    }
+
+    transaction.set(userRef, patch, { merge: true });
+
+    const auditLogId = `audit-reconcile-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const auditRef = adminFirestore.collection("audit_logs").doc(auditLogId);
+    transaction.set(auditRef, {
+      id: auditLogId,
+      transactionId: `TX-RECONCILE-${Date.now().toString(36).toUpperCase()}`,
+      objectId: cleanUid,
+      objectType: "ROLE_ASSIGNMENT",
+      objectTitle: targetEmail || cleanUid,
+      action: "PROFILE_RECONCILED",
+      actorId: cleanUid,
+      actorName: displayName || targetEmail || cleanUid,
+      actorEmail: targetEmail,
+      actorRole: assignedRole,
+      timestamp: nowIso,
+      fieldChanged: "role",
+      oldValue: uData?.role || "MISSING_DOC",
+      newValue: assignedRole,
+      details: `Perfil users/${cleanUid} reconciliado a partir de role_assignments/${cleanUid} (${uData?.role || "MISSING"}/${uData?.approvalStatus || "NONE"}/${uData?.status || "NONE"} -> ${assignedRole}/APROVADO/active).`,
+      immutable: true,
+    });
+
+    return {
+      uid: cleanUid,
+      reconciled: true,
+      assignedRole,
+      previousRole: uData?.role || "MISSING_DOC",
+    } as ReconcileUserProfileResult;
+  });
+
+  if (dryRun || (!txOutcome.reconciled && !txOutcome.alreadyConsistent)) {
+    return { ...txOutcome, uid: cleanUid };
+  }
+
+  let claimsSynced = false;
+  if (adminAuth && txOutcome.assignedRole && (txOutcome.reconciled || txOutcome.alreadyConsistent)) {
+    try {
+      const userRecord = await adminAuth.getUser(cleanUid).catch(() => null);
+      const currentClaims = (userRecord?.customClaims || {}) as Record<string, any>;
+      const expectedAdmin = txOutcome.assignedRole === "ADMIN";
+      const claimsMismatch =
+        currentClaims.role !== txOutcome.assignedRole ||
+        currentClaims.approvalStatus !== "APROVADO" ||
+        currentClaims.admin !== expectedAdmin;
+      if (txOutcome.reconciled || claimsMismatch) {
+        await adminAuth.setCustomUserClaims(cleanUid, {
+          ...currentClaims,
+          role: txOutcome.assignedRole,
+          approvalStatus: "APROVADO",
+          admin: expectedAdmin,
+        });
+      }
+      claimsSynced = true;
+    } catch (claimErr: any) {
+      console.warn(`[Profile Reconcile Warning] Falha ao sincronizar claims para ${cleanUid}:`, claimErr?.message || claimErr);
+    }
+  }
+
+  return {
+    ...txOutcome,
+    uid: cleanUid,
+    claimsSynced,
+  };
+}
+
+export async function verifyServerlessCallerAccess(
+  adminDb: Firestore | null,
+  decoded: { uid?: string; email?: string | null; email_verified?: boolean } | null | undefined
+): Promise<{
+  isAdmin: boolean;
+  isRoot: boolean;
+  isBlocked: boolean;
+  role: string;
+}> {
+  if (!decoded?.uid) {
+    return { isAdmin: false, isRoot: false, isBlocked: false, role: "ALUNO" };
+  }
+  const configuredRootEmail = getRootAdminEmail().toLowerCase();
+  const configuredRootUid = getRootAdminUid();
+  const userEmail = (decoded.email || "").trim().toLowerCase();
+  const isEmailVerified = decoded.email_verified === true;
+  const isRoot =
+    Boolean(configuredRootEmail) &&
+    Boolean(configuredRootUid) &&
+    userEmail === configuredRootEmail &&
+    isEmailVerified &&
+    decoded.uid === configuredRootUid;
+
+  let isAdmin = false;
+  let isBlocked = false;
+  let dbRole: string | undefined = undefined;
+  let approvalStatus: string | undefined = undefined;
+
+  if (adminDb) {
+    try {
+      const uDoc = await adminDb.collection("users").doc(decoded.uid).get();
+      const uData: any = uDoc.exists ? uDoc.data() || {} : {};
+      isBlocked = isUserBlockedOrInactive(uData);
+      dbRole = uData?.role;
+      approvalStatus = uData?.approvalStatus;
+
+      let hasAdminAssignment = false;
+      try {
+        const assignDoc = await adminDb.collection("role_assignments").doc(decoded.uid).get();
+        if (assignDoc.exists) {
+          const aData: any = assignDoc.data();
+          if (
+            aData?.targetUserId === decoded.uid &&
+            aData?.active === true &&
+            aData?.assignedRole === "ADMIN" &&
+            aData?.approvalStatus === "APROVADO"
+          ) {
+            hasAdminAssignment = true;
+          }
+        }
+      } catch {
+        hasAdminAssignment = false;
+      }
+
+      if (isBlocked) {
+        isAdmin = false;
+      } else if (isRoot) {
+        isAdmin = true;
+        dbRole = "ADMIN";
+      } else if (isEmailVerified && hasAdminAssignment) {
+        isAdmin = true;
+        dbRole = "ADMIN";
+      }
+    } catch {
+      if (isRoot) {
+        isAdmin = true;
+        dbRole = "ADMIN";
+      }
+    }
+  } else if (isRoot) {
+    isAdmin = true;
+    dbRole = "ADMIN";
+  }
+
+  const safeNonAdminRole =
+    isBlocked
+      ? "INTRUSO"
+      : dbRole && dbRole !== "ADMIN" && (dbRole !== "SERVIDOR" || approvalStatus === "APROVADO")
+      ? dbRole
+      : "ALUNO";
+
+  return {
+    isAdmin,
+    isRoot,
+    isBlocked,
+    role: isAdmin ? "ADMIN" : safeNonAdminRole,
+  };
+}
+
 

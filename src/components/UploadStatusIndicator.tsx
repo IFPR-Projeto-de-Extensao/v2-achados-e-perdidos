@@ -17,6 +17,87 @@ import { useApp } from "../context/AppContext";
 import { UploadTaskStatus } from "../types";
 import { vibrateClick, vibrateSuccess } from "../lib/utils";
 
+export function isAuthorizationUploadError(task: UploadTaskStatus): boolean {
+  if (task.status !== "ERROR") return false;
+  const err = (task.error || "").toLowerCase();
+  const msg = (task.statusMessage || "").toLowerCase();
+  return (
+    err.includes("authorization") ||
+    err.includes("permission-denied") ||
+    err.includes("insufficient permissions") ||
+    msg.includes("autorização") ||
+    msg.includes("permissão") ||
+    msg.includes("permission-denied")
+  );
+}
+
+export function isPermanentUploadError(task: UploadTaskStatus): boolean {
+  if (task.status !== "ERROR") return false;
+  if (isAuthorizationUploadError(task)) return true;
+  return Boolean(
+    task.error?.includes("PAYLOAD_SIZE") ||
+    task.error?.includes("FIELD_LIMIT") ||
+    task.error?.includes("PERMANENT") ||
+    task.statusMessage?.includes("atenção") ||
+    task.statusMessage?.includes("grandes demais")
+  );
+}
+
+export function computeUploadSubtitle(params: {
+  isOnline: boolean;
+  isSyncing: boolean;
+  pendingSyncCount: number;
+  inProgressCount: number;
+  authorizationErrorCount: number;
+  permanentErrorCount: number;
+  temporaryErrorCount: number;
+  completedCount: number;
+}): string {
+  const {
+    isOnline,
+    isSyncing,
+    pendingSyncCount,
+    inProgressCount,
+    authorizationErrorCount,
+    permanentErrorCount,
+    temporaryErrorCount,
+    completedCount,
+  } = params;
+
+  if (!isOnline) {
+    return pendingSyncCount > 0
+      ? `Sem conexão. ${pendingSyncCount} ${pendingSyncCount === 1 ? "item aguardando" : "itens aguardando"} sincronização.`
+      : "Sem conexão com a internet.";
+  }
+
+  if (isSyncing || inProgressCount > 0) {
+    const count = pendingSyncCount || inProgressCount || 1;
+    return `Sincronizando ${count} ${count === 1 ? "item" : "itens"}...`;
+  }
+
+  if (authorizationErrorCount > 0) {
+    return "Sincronização bloqueada por falta de autorização";
+  }
+
+  if (permanentErrorCount > 0) {
+    return "Um item precisa de atenção antes de ser sincronizado.";
+  }
+
+  if (temporaryErrorCount > 0) {
+    return "Não foi possível sincronizar agora. Tentaremos novamente.";
+  }
+
+  if (completedCount > 0 && pendingSyncCount === 0) {
+    return `Sincronização concluída. ${completedCount} ${completedCount === 1 ? "item enviado" : "itens enviados"}.`;
+  }
+
+  if (pendingSyncCount > 0) {
+    return `Fila offline: ${pendingSyncCount} ${pendingSyncCount === 1 ? "item pendente" : "itens pendentes"}`;
+  }
+
+  return "Nenhum upload pendente.";
+}
+
 export const UploadStatusIndicator: React.FC = () => {
   const {
     activeUploadTasks,
@@ -42,14 +123,8 @@ export const UploadStatusIndicator: React.FC = () => {
   ).length;
 
   const errorCount = (activeUploadTasks || []).filter((t) => t.status === "ERROR").length;
-  const permanentErrorCount = (activeUploadTasks || []).filter(
-    (t) =>
-      t.status === "ERROR" &&
-      (t.error?.includes("PAYLOAD_SIZE") ||
-        t.error?.includes("PERMANENT") ||
-        t.statusMessage?.includes("atenção") ||
-        t.statusMessage?.includes("grandes demais"))
-  ).length;
+  const authorizationErrorCount = (activeUploadTasks || []).filter((t) => isAuthorizationUploadError(t)).length;
+  const permanentErrorCount = (activeUploadTasks || []).filter((t) => isPermanentUploadError(t)).length;
   const temporaryErrorCount = Math.max(0, errorCount - permanentErrorCount);
   const completedCount = (activeUploadTasks || []).filter((t) => t.status === "COMPLETED").length;
 
@@ -59,36 +134,17 @@ export const UploadStatusIndicator: React.FC = () => {
       : undefined;
 
   // Determine user-facing subtitle following strict state rules
-  const getSubtitleMessage = (): string => {
-    if (!isOnline) {
-      return pendingSyncCount > 0
-        ? `Sem conexão. ${pendingSyncCount} ${pendingSyncCount === 1 ? "item aguardando" : "itens aguardando"} sincronização.`
-        : "Sem conexão com a internet.";
-    }
-
-    if (isSyncing || inProgressCount > 0) {
-      const count = pendingSyncCount || inProgressCount || 1;
-      return `Sincronizando ${count} ${count === 1 ? "item" : "itens"}...`;
-    }
-
-    if (permanentErrorCount > 0) {
-      return "Um item precisa de atenção antes de ser sincronizado.";
-    }
-
-    if (temporaryErrorCount > 0) {
-      return "Não foi possível sincronizar agora. Tentaremos novamente.";
-    }
-
-    if (completedCount > 0 && pendingSyncCount === 0) {
-      return `Sincronização concluída. ${completedCount} ${completedCount === 1 ? "item enviado" : "itens enviados"}.`;
-    }
-
-    if (pendingSyncCount > 0) {
-      return `Fila offline: ${pendingSyncCount} ${pendingSyncCount === 1 ? "item pendente" : "itens pendentes"}`;
-    }
-
-    return "Nenhum upload pendente.";
-  };
+  const getSubtitleMessage = (): string =>
+    computeUploadSubtitle({
+      isOnline,
+      isSyncing,
+      pendingSyncCount,
+      inProgressCount,
+      authorizationErrorCount,
+      permanentErrorCount,
+      temporaryErrorCount,
+      completedCount,
+    });
 
   const getStatusBadge = (status: UploadTaskStatus["status"]) => {
     switch (status) {
@@ -233,12 +289,14 @@ export const UploadStatusIndicator: React.FC = () => {
         )}
 
         {/* Background Sync Notice */}
-        <div className="px-4 py-2 bg-emerald-50/60 dark:bg-emerald-950/30 border-b border-emerald-100/50 dark:border-emerald-900/30 flex items-start space-x-2">
-          <Smartphone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-          <p className="text-[11px] leading-tight text-emerald-800 dark:text-emerald-300">
-            <strong>Background Sync:</strong> Você pode fechar o aplicativo com segurança. Suas fotos e itens serão sincronizados em segundo plano.
-          </p>
-        </div>
+        {permanentErrorCount === 0 && (
+          <div className="px-4 py-2 bg-emerald-50/60 dark:bg-emerald-950/30 border-b border-emerald-100/50 dark:border-emerald-900/30 flex items-start space-x-2">
+            <Smartphone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-tight text-emerald-800 dark:text-emerald-300">
+              <strong>Background Sync:</strong> Você pode fechar o aplicativo com segurança. Suas fotos e itens serão sincronizados em segundo plano.
+            </p>
+          </div>
+        )}
 
         {/* Expanded Task List Details */}
         {isExpanded && (
