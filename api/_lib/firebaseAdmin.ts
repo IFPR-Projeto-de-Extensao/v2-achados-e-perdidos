@@ -51,6 +51,75 @@ export const FIRESTORE_DATABASE_ID =
 let adminAppInstance: App | null = null;
 let adminAuthInstance: Auth | null = null;
 let adminFirestoreInstance: Firestore | null = null;
+let adminCertInitError: string | null = null;
+
+export function resolveFirebaseServiceAccountFromEnv(): {
+  projectId?: string;
+  clientEmail?: string;
+  privateKey?: string;
+  incompleteReason?: string;
+} {
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL?.trim();
+  const rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
+  const privateKey = formatPrivateKey(rawPrivateKey);
+
+  if (clientEmail && privateKey) {
+    return {
+      projectId: FIREBASE_PROJECT_ID,
+      clientEmail,
+      privateKey,
+    };
+  }
+
+  if (Boolean(clientEmail) !== Boolean(privateKey)) {
+    return {
+      incompleteReason: clientEmail
+        ? "FIREBASE_PRIVATE_KEY ausente quando FIREBASE_CLIENT_EMAIL foi definido."
+        : "FIREBASE_CLIENT_EMAIL ausente quando FIREBASE_PRIVATE_KEY foi definido.",
+    };
+  }
+
+  const serviceAccountRaw =
+    process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  if (serviceAccountRaw && serviceAccountRaw.trim()) {
+    try {
+      const parsed = JSON.parse(serviceAccountRaw);
+      const parsedPrivateKey = formatPrivateKey(parsed?.private_key);
+      if (parsed?.client_email && parsedPrivateKey) {
+        return {
+          projectId: parsed.project_id || FIREBASE_PROJECT_ID,
+          clientEmail: String(parsed.client_email).trim(),
+          privateKey: parsedPrivateKey,
+        };
+      }
+      return {
+        incompleteReason: "FIREBASE_SERVICE_ACCOUNT JSON não contém client_email e private_key válidos.",
+      };
+    } catch (parseErr: any) {
+      return {
+        incompleteReason: `FIREBASE_SERVICE_ACCOUNT inválido (erro de JSON): ${parseErr?.message || parseErr}`,
+      };
+    }
+  }
+
+  return {};
+}
+
+export function getFirebaseAdminCredentialDiagnostics(): {
+  hasExplicitServiceAccount: boolean;
+  certInitError: string | null;
+  isVercelWithoutCreds: boolean;
+} {
+  const resolved = resolveFirebaseServiceAccountFromEnv();
+  const hasExplicitServiceAccount = Boolean(resolved.clientEmail && resolved.privateKey);
+  const effectiveError = adminCertInitError || resolved.incompleteReason || null;
+  const isVercelWithoutCreds = Boolean(process.env.VERCEL) && !hasExplicitServiceAccount;
+  return {
+    hasExplicitServiceAccount,
+    certInitError: effectiveError,
+    isVercelWithoutCreds,
+  };
+}
 
 export function getFirebaseAdminApp(): App | null {
   if (adminAppInstance) return adminAppInstance;
@@ -61,26 +130,31 @@ export function getFirebaseAdminApp(): App | null {
     return adminAppInstance;
   }
 
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
-  const privateKey = formatPrivateKey(rawPrivateKey);
+  const resolvedSa = resolveFirebaseServiceAccountFromEnv();
   const cfg = getLazyFirebaseAppConfig();
-  const projectId = FIREBASE_PROJECT_ID || cfg?.projectId || "gen-lang-client-0490390966";
+  const projectId = resolvedSa.projectId || FIREBASE_PROJECT_ID || cfg?.projectId || "gen-lang-client-0490390966";
+
+  if (resolvedSa.incompleteReason) {
+    adminCertInitError = resolvedSa.incompleteReason;
+    console.warn(`[Firebase Admin Warning] ${resolvedSa.incompleteReason}`);
+  }
 
   try {
-    if (clientEmail && privateKey) {
+    if (resolvedSa.clientEmail && resolvedSa.privateKey) {
       try {
         adminAppInstance = initializeApp({
           credential: cert({
             projectId,
-            clientEmail,
-            privateKey,
+            clientEmail: resolvedSa.clientEmail,
+            privateKey: resolvedSa.privateKey,
           }),
           projectId,
         });
-        console.log(`[Firebase Admin] Inicializado com Service Account (${clientEmail}) para projeto: ${projectId}`);
+        adminCertInitError = null;
+        console.log(`[Firebase Admin] Inicializado com Service Account (${resolvedSa.clientEmail}) para projeto: ${projectId}`);
       } catch (certErr: any) {
-        console.warn(`[Firebase Admin Warning] Falha na credencial da Service Account:`, certErr?.message || certErr);
+        adminCertInitError = certErr?.message || String(certErr);
+        console.warn(`[Firebase Admin Warning] Falha na credencial da Service Account:`, adminCertInitError);
         adminAppInstance = initializeApp({
           projectId,
         });

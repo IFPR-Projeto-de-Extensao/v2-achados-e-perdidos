@@ -170,6 +170,7 @@ import { buildFirestoreItemCreatePayload } from "./itemPrivacyUtils";
 import {
   isPersistedDocEligibleForItemWrite,
   formatForensicRuntimeLine,
+  formatReconcileProfileErrorMessage,
 } from "../context/AppContext";
 import {
   isAuthorizationUploadError,
@@ -528,6 +529,71 @@ describe("Reconciliação de Perfis, Regras Firestore, Fila Offline e UI — Loc
       expect(hoisted.store.users.get(banUid).role).toBe("INTRUSO");
     });
 
+    it("retorna 503 com código explícito em produção quando credenciais do Firebase Admin SDK estão ausentes, incompletas ou falham por ADC", async () => {
+      const uid = "gmail-prod-check";
+      hoisted.tokenUsers.set("tok-prod-check", {
+        uid,
+        email: "admin.prod@gmail.com",
+        email_verified: true,
+      });
+
+      const prevVercel = process.env.VERCEL;
+      const prevClientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+      const prevPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
+      const prevSa = process.env.FIREBASE_SERVICE_ACCOUNT;
+      const prevSaKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+
+      try {
+        // 1. Vercel sem credenciais configuradas -> 503 FIREBASE_ADMIN_CREDENTIALS_MISSING
+        process.env.VERCEL = "1";
+        delete process.env.FIREBASE_CLIENT_EMAIL;
+        delete process.env.FIREBASE_PRIVATE_KEY;
+        delete process.env.FIREBASE_SERVICE_ACCOUNT;
+        delete process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+
+        const missingRes = await postJson("/api/auth/reconcile-profile", {}, "tok-prod-check");
+        expect(missingRes.status).toBe(503);
+        expect(missingRes.json.code).toBe("FIREBASE_ADMIN_CREDENTIALS_MISSING");
+        expect(missingRes.json.error).toContain("Firebase Admin SDK");
+
+        // 2. Credencial parcial (FIREBASE_CLIENT_EMAIL sem FIREBASE_PRIVATE_KEY) -> 503 FIREBASE_ADMIN_CREDENTIALS_INVALID
+        delete process.env.VERCEL;
+        process.env.FIREBASE_CLIENT_EMAIL = "firebase-adminsdk@example.iam.gserviceaccount.com";
+        delete process.env.FIREBASE_PRIVATE_KEY;
+
+        const partialRes = await postJson("/api/auth/reconcile-profile", {}, "tok-prod-check");
+        expect(partialRes.status).toBe(503);
+        expect(partialRes.json.code).toBe("FIREBASE_ADMIN_CREDENTIALS_INVALID");
+        expect(partialRes.json.error).toContain("FIREBASE_CLIENT_EMAIL");
+
+        // 3. Erro de Application Default Credentials em runtime -> 503 FIREBASE_ADMIN_CREDENTIALS_UNAVAILABLE
+        delete process.env.FIREBASE_CLIENT_EMAIL;
+        const origRunTransaction = hoisted.mockDb.runTransaction;
+        hoisted.mockDb.runTransaction = async () => {
+          throw new Error("Could not load the default credentials. Browse to https://cloud.google.com/docs/authentication/getting-started");
+        };
+        try {
+          const adcRes = await postJson("/api/auth/reconcile-profile", {}, "tok-prod-check");
+          expect(adcRes.status).toBe(503);
+          expect(adcRes.json.code).toBe("FIREBASE_ADMIN_CREDENTIALS_UNAVAILABLE");
+          expect(adcRes.json.error).toContain("credenciais administrativas");
+        } finally {
+          hoisted.mockDb.runTransaction = origRunTransaction;
+        }
+      } finally {
+        if (prevVercel === undefined) delete process.env.VERCEL;
+        else process.env.VERCEL = prevVercel;
+        if (prevClientEmail === undefined) delete process.env.FIREBASE_CLIENT_EMAIL;
+        else process.env.FIREBASE_CLIENT_EMAIL = prevClientEmail;
+        if (prevPrivateKey === undefined) delete process.env.FIREBASE_PRIVATE_KEY;
+        else process.env.FIREBASE_PRIVATE_KEY = prevPrivateKey;
+        if (prevSa === undefined) delete process.env.FIREBASE_SERVICE_ACCOUNT;
+        else process.env.FIREBASE_SERVICE_ACCOUNT = prevSa;
+        if (prevSaKey === undefined) delete process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+        else process.env.FIREBASE_SERVICE_ACCOUNT_KEY = prevSaKey;
+      }
+    });
+
     it("POST /api/admin/assign-role grava status=active e active=true para APROVADO e claim admin=true para ADMIN sem remover ban/suspensão", async () => {
       hoisted.tokenUsers.set("tok-root", {
         uid: ROOT_UID,
@@ -688,6 +754,40 @@ describe("Reconciliação de Perfis, Regras Firestore, Fila Offline e UI — Loc
       // RegisterItemView chama addToast uma única vez usando errorCategory e classifiedMessage
       addToast(err.userMessage, err.category === "AUTHORIZATION" ? "error" : "warning");
       expect(emittedToasts).toHaveLength(1);
+    });
+
+    it("formatReconcileProfileErrorMessage exibe mensagens claras para falhas de rede, 401, 403, 404, 503 e 500", () => {
+      expect(formatReconcileProfileErrorMessage(0, null, true)).toContain("Não foi possível conectar");
+      expect(formatReconcileProfileErrorMessage(401, { code: "UNAUTHENTICATED" })).toContain("Sessão expirada");
+      expect(formatReconcileProfileErrorMessage(403, { code: "ACCOUNT_BLOCKED", error: "Conta suspensa." })).toBe("Conta suspensa.");
+      expect(formatReconcileProfileErrorMessage(404, null)).toContain("não encontrado no servidor (HTTP 404)");
+      expect(
+        formatReconcileProfileErrorMessage(503, {
+          code: "FIREBASE_ADMIN_CREDENTIALS_MISSING",
+          error: "Credenciais do Firebase Admin SDK ausentes no ambiente de produção.",
+        })
+      ).toContain("Firebase Admin SDK");
+      expect(
+        formatReconcileProfileErrorMessage(500, {
+          code: "RECONCILE_PROFILE_ERROR",
+          error: "Falha interna ao reconciliar perfil institucional no servidor.",
+        })
+      ).toContain("(HTTP 500)");
+    });
+
+    it("verifyUserInFirestore Branch 3 chama reconcileOwnProfileWithServer no catch em permission-denied", () => {
+      const appCtxSrc = fs.readFileSync(path.resolve(process.cwd(), "src/context/AppContext.tsx"), "utf-8");
+      const branch3Start = appCtxSrc.indexOf("// 3. Create new user document in Firestore if no previous profile exists");
+      const branch3End = appCtxSrc.indexOf("const verifyAndSyncUserDoc = verifyUserInFirestore;", branch3Start);
+      expect(branch3Start).toBeGreaterThan(-1);
+      expect(branch3End).toBeGreaterThan(branch3Start);
+
+      const branch3Block = appCtxSrc.slice(branch3Start, branch3End);
+      expect(branch3Block).toContain("isPermissionDenied && !isRoot && fbUser.emailVerified");
+      expect(branch3Block).toContain("reconcileOwnProfileWithServer(fbUser, {");
+      expect(branch3Block).toContain("verify-create:");
+      expect(branch3Block).toContain("notifyOnError: true");
+      expect(branch3Block).toContain("if (reconcileRes.errorMessage)");
     });
   });
 

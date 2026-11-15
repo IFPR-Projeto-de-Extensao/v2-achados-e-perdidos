@@ -10,7 +10,9 @@ import { getAuth, type Auth } from "firebase-admin/auth";
 import { getFirestore, FieldValue, type Firestore } from "firebase-admin/firestore";
 import {
   buildApprovedUserStatusFields,
+  getFirebaseAdminCredentialDiagnostics,
   reconcileSingleUserProfile,
+  resolveFirebaseServiceAccountFromEnv,
 } from "./api/_lib/firebaseAdmin.js";
 
 // Safe loading of firebase config to prevent Node 22 ESM import assertion errors
@@ -169,6 +171,7 @@ const FIREBASE_PROJECT_ID =
 let adminAppInstance: App | null = null;
 let adminAuthInstance: Auth | null = null;
 let adminFirestoreInstance: Firestore | null = null;
+let serverAdminCertInitError: string | null = null;
 
 export function getFirebaseAdminApp(): App | null {
   if (adminAppInstance) return adminAppInstance;
@@ -179,34 +182,40 @@ export function getFirebaseAdminApp(): App | null {
     return adminAppInstance;
   }
 
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const rawPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
-  const privateKey = formatPrivateKey(rawPrivateKey);
+  const resolvedSa = resolveFirebaseServiceAccountFromEnv();
+  const projectId = resolvedSa.projectId || FIREBASE_PROJECT_ID;
+
+  if (resolvedSa.incompleteReason) {
+    serverAdminCertInitError = resolvedSa.incompleteReason;
+    console.warn(`[Firebase Admin Warning] ${resolvedSa.incompleteReason}`);
+  }
 
   try {
-    if (clientEmail && privateKey) {
+    if (resolvedSa.clientEmail && resolvedSa.privateKey) {
       try {
         adminAppInstance = initializeApp({
           credential: cert({
-            projectId: FIREBASE_PROJECT_ID,
-            clientEmail,
-            privateKey,
+            projectId,
+            clientEmail: resolvedSa.clientEmail,
+            privateKey: resolvedSa.privateKey,
           }),
-          projectId: FIREBASE_PROJECT_ID,
+          projectId,
         });
-        console.log(`[Firebase Admin] Inicializado com Service Account (${clientEmail}) para projeto: ${FIREBASE_PROJECT_ID}`);
+        serverAdminCertInitError = null;
+        console.log(`[Firebase Admin] Inicializado com Service Account (${resolvedSa.clientEmail}) para projeto: ${projectId}`);
       } catch (certErr: any) {
-        console.warn(`[Firebase Admin Warning] Falha na credencial da Service Account:`, certErr?.message || certErr);
+        serverAdminCertInitError = certErr?.message || String(certErr);
+        console.warn(`[Firebase Admin Warning] Falha na credencial da Service Account:`, serverAdminCertInitError);
         adminAppInstance = initializeApp({
-          projectId: FIREBASE_PROJECT_ID,
+          projectId,
         });
-        console.log(`[Firebase Admin] Inicializado com Project ID (${FIREBASE_PROJECT_ID}) em modo padrão após falha de certificado.`);
+        console.log(`[Firebase Admin] Inicializado com Project ID (${projectId}) em modo padrão após falha de certificado.`);
       }
     } else {
       adminAppInstance = initializeApp({
-        projectId: FIREBASE_PROJECT_ID,
+        projectId,
       });
-      console.log(`[Firebase Admin] Inicializado com Project ID (${FIREBASE_PROJECT_ID}) em modo padrão.`);
+      console.log(`[Firebase Admin] Inicializado com Project ID (${projectId}) em modo padrão.`);
     }
   } catch (err: any) {
     console.warn(`[Firebase Admin Notice] Inicialização em modo resiliente:`, err?.message || err);
@@ -1615,6 +1624,25 @@ app.post(
       });
     }
 
+    const credDiag = getFirebaseAdminCredentialDiagnostics();
+    if (serverAdminCertInitError || credDiag.certInitError) {
+      return res.status(503).json({
+        success: false,
+        reconciled: false,
+        error: "Credenciais do Firebase Admin SDK inválidas ou incompletas no servidor. Verifique FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY (ou FIREBASE_SERVICE_ACCOUNT).",
+        code: "FIREBASE_ADMIN_CREDENTIALS_INVALID",
+      });
+    }
+
+    if (credDiag.isVercelWithoutCreds) {
+      return res.status(503).json({
+        success: false,
+        reconciled: false,
+        error: "Credenciais do Firebase Admin SDK ausentes no ambiente de produção. Configure FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY (ou FIREBASE_SERVICE_ACCOUNT).",
+        code: "FIREBASE_ADMIN_CREDENTIALS_MISSING",
+      });
+    }
+
     const adminFirestore = getAdminFirestore();
     const adminAuth = getAdminAuth();
     if (!adminFirestore) {
@@ -1636,16 +1664,49 @@ app.post(
         dryRun: false,
       });
 
+      if (result.reason === "ACCOUNT_BLOCKED_OR_INACTIVE") {
+        return res.status(403).json({
+          success: false,
+          ...result,
+          error: "Conta suspensa, banida ou desativada. Reconciliação bloqueada.",
+          code: "ACCOUNT_BLOCKED",
+        });
+      }
+
       return res.status(200).json({
         success: true,
         ...result,
       });
     } catch (err: any) {
-      console.error("[Auth Reconcile Profile Error]:", err?.message || err);
+      const errMsg = String(err?.message || err || "");
+      const lowerErrMsg = errMsg.toLowerCase();
+      console.error("[Auth Reconcile Profile Error]:", errMsg);
+
+      const isAdminCredentialFailure =
+        lowerErrMsg.includes("default credentials") ||
+        lowerErrMsg.includes("permission_denied") ||
+        lowerErrMsg.includes("unauthenticated") ||
+        lowerErrMsg.includes("invalid jwt") ||
+        lowerErrMsg.includes("private_key") ||
+        lowerErrMsg.includes("pem") ||
+        lowerErrMsg.includes("169.254.169.254") ||
+        lowerErrMsg.includes("metadata.google") ||
+        err?.code === 7 ||
+        err?.code === 16;
+
+      if (isAdminCredentialFailure) {
+        return res.status(503).json({
+          success: false,
+          reconciled: false,
+          error: "Serviço de reconciliação indisponível: credenciais administrativas do Firebase Admin SDK ausentes, inválidas ou sem permissão no servidor.",
+          code: "FIREBASE_ADMIN_CREDENTIALS_UNAVAILABLE",
+        });
+      }
+
       return res.status(500).json({
         success: false,
         reconciled: false,
-        error: "Falha interna ao reconciliar perfil institucional.",
+        error: "Falha interna ao reconciliar perfil institucional no servidor.",
         code: "RECONCILE_PROFILE_ERROR",
       });
     }
@@ -4266,9 +4327,8 @@ app.get(["/api/debug/env", "/debug/env"], requireAuth, requireAdmin, (req, res) 
     process.env.API_KEY
   );
 
-  const isFirebaseAdminConfigured = Boolean(
-    process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY
-  );
+  const adminCredDiag = getFirebaseAdminCredentialDiagnostics();
+  const isFirebaseAdminConfigured = adminCredDiag.hasExplicitServiceAccount;
 
   res.json({
     status: isDiscordConfigured || isSmtpConfigured || isGeminiConfigured,

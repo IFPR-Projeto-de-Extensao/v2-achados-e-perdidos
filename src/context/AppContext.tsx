@@ -490,6 +490,54 @@ export function formatForensicRuntimeLine(params: {
   );
 }
 
+export interface ReconcileProfileClientResult {
+  ok: boolean;
+  reconciled: boolean;
+  alreadyConsistent?: boolean;
+  reason?: string;
+  errorMessage?: string;
+  code?: string;
+  httpStatus?: number;
+}
+
+export function formatReconcileProfileErrorMessage(
+  status: number,
+  data?: { code?: string; error?: string } | null,
+  isNetworkError = false
+): string {
+  if (isNetworkError) {
+    return "Não foi possível conectar ao servidor (/api/auth/reconcile-profile) para sincronizar seu perfil. Verifique sua conexão e tente novamente.";
+  }
+  const serverMsg = typeof data?.error === "string" && data.error.trim().length > 0 ? data.error.trim() : "";
+  const code = typeof data?.code === "string" ? data.code.trim() : "";
+
+  if (status === 401 || code === "UNAUTHENTICATED") {
+    return serverMsg || "Sessão expirada ou não autenticada ao sincronizar permissões (/api/auth/reconcile-profile). Faça login novamente.";
+  }
+  if (status === 403 || code === "ACCOUNT_BLOCKED" || code === "AUTH_EMAIL_NOT_VERIFIED") {
+    return serverMsg || "Sincronização de permissões recusada pelo servidor (HTTP 403).";
+  }
+  if (status === 404) {
+    return "Serviço de sincronização de perfil (/api/auth/reconcile-profile) não encontrado no servidor (HTTP 404).";
+  }
+  if (
+    status === 503 ||
+    code === "FIREBASE_ADMIN_CREDENTIALS_MISSING" ||
+    code === "FIREBASE_ADMIN_CREDENTIALS_INVALID" ||
+    code === "FIREBASE_ADMIN_CREDENTIALS_UNAVAILABLE" ||
+    code === "FIRESTORE_UNAVAILABLE"
+  ) {
+    return (
+      serverMsg ||
+      "Servidor sem credenciais administrativas válidas do Firebase Admin SDK para sincronizar permissões (HTTP 503)."
+    );
+  }
+  if (serverMsg) {
+    return status >= 400 ? `${serverMsg} (HTTP ${status})` : serverMsg;
+  }
+  return `Falha no servidor ao sincronizar permissões do perfil (HTTP ${status || "desconhecido"}).`;
+}
+
 interface Toast {
   id: string;
   type: "success" | "error" | "info" | "warning";
@@ -696,7 +744,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const isSyncingRef = useRef<boolean>(false);
   const authProfileResolvedRef = useRef<boolean>(false);
   const reconcileAttemptKeysRef = useRef<Set<string>>(new Set());
-  const reconcileInFlightRef = useRef<Map<string, Promise<boolean>>>(new Map());
+  const reconcileInFlightRef = useRef<Map<string, Promise<ReconcileProfileClientResult>>>(new Map());
+  const lastReconcileToastKeyRef = useRef<Set<string>>(new Set());
   const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
   const [lastHeartbeatTimestamp, setLastHeartbeatTimestamp] = useState<string | null>(new Date().toISOString());
   const [indexedDbLoaded, setIndexedDbLoaded] = useState<boolean>(false);
@@ -704,16 +753,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const reconcileOwnProfileWithServer = async (
     fbUser: FirebaseUser | null | undefined,
-    options?: { force?: boolean; attemptKey?: string }
-  ): Promise<boolean> => {
-    if (!fbUser || !fbUser.uid || !fbUser.emailVerified) return false;
+    options?: { force?: boolean; attemptKey?: string; notifyOnError?: boolean }
+  ): Promise<ReconcileProfileClientResult> => {
+    if (!fbUser || !fbUser.uid || !fbUser.emailVerified) {
+      return { ok: false, reconciled: false };
+    }
     const uid = fbUser.uid;
     const userEmail = safeToLower(fbUser.email);
-    if (userEmail === "paulocauan39@gmail.com") return false;
+    if (userEmail === "paulocauan39@gmail.com") {
+      return { ok: false, reconciled: false, reason: "ROOT_ADMIN_SKIPPED" };
+    }
 
     const attemptKey = options?.attemptKey || uid;
     if (!options?.force && reconcileAttemptKeysRef.current.has(attemptKey)) {
-      return false;
+      return { ok: false, reconciled: false };
     }
 
     const existingFlight = reconcileInFlightRef.current.get(uid);
@@ -721,7 +774,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return existingFlight;
     }
 
-    const promise = (async () => {
+    const notifyToastOnce = (errorMessage: string, codeOrStatus: string) => {
+      if (!options?.notifyOnError || !errorMessage) return;
+      const toastKey = `${uid}:${codeOrStatus}`;
+      if (lastReconcileToastKeyRef.current.has(toastKey)) return;
+      lastReconcileToastKeyRef.current.add(toastKey);
+      addToast(errorMessage, "error");
+    };
+
+    const promise = (async (): Promise<ReconcileProfileClientResult> => {
       reconcileAttemptKeysRef.current.add(attemptKey);
       try {
         const idToken = await fbUser.getIdToken();
@@ -733,16 +794,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           },
           body: JSON.stringify({}),
         });
-        if (!response.ok) return false;
         const data = await response.json().catch(() => null);
-        if (data?.reconciled) {
-          await fbUser.getIdToken(true).catch(() => null);
-          return true;
+
+        if (!response.ok || data?.success === false) {
+          const errorMessage = formatReconcileProfileErrorMessage(response.status, data, false);
+          console.error("[Profile Reconcile Error]", {
+            uid,
+            status: response.status,
+            code: data?.code || null,
+            error: errorMessage,
+          });
+          notifyToastOnce(errorMessage, String(data?.code || response.status));
+          return {
+            ok: false,
+            reconciled: false,
+            reason: data?.reason,
+            errorMessage,
+            code: data?.code,
+            httpStatus: response.status,
+          };
         }
-        return false;
+
+        if (data?.reconciled || data?.alreadyConsistent) {
+          await fbUser.getIdToken(true).catch(() => null);
+          return {
+            ok: true,
+            reconciled: Boolean(data?.reconciled),
+            alreadyConsistent: Boolean(data?.alreadyConsistent),
+            reason: data?.reason,
+            httpStatus: response.status,
+          };
+        }
+
+        return {
+          ok: false,
+          reconciled: false,
+          reason: data?.reason,
+          httpStatus: response.status,
+        };
       } catch (err) {
-        console.warn("[Profile Reconcile] Falha ao sincronizar perfil via servidor:", err);
-        return false;
+        const errorMessage = formatReconcileProfileErrorMessage(0, null, true);
+        console.error("[Profile Reconcile Error] Falha de rede ao sincronizar perfil via servidor:", err);
+        notifyToastOnce(errorMessage, "NETWORK_ERROR");
+        return {
+          ok: false,
+          reconciled: false,
+          errorMessage,
+          code: "NETWORK_ERROR",
+          httpStatus: 0,
+        };
       } finally {
         reconcileInFlightRef.current.delete(uid);
       }
@@ -2730,10 +2830,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               error: writeErr?.message || writeErr,
             });
             if (!isRoot && fbUser.emailVerified) {
-              const reconciled = await reconcileOwnProfileWithServer(fbUser, {
+              const reconcileRes = await reconcileOwnProfileWithServer(fbUser, {
                 attemptKey: `verify-uid:${fbUser.uid}:${safePersistRole}:${safeApprovalStatus}`,
+                notifyOnError: true,
               });
-              if (reconciled) {
+              if (reconcileRes.ok) {
                 const refreshedSnap = await getDoc(uidRef).catch(() => null);
                 if (refreshedSnap && refreshedSnap.exists()) {
                   return sanitizeFirestoreData({
@@ -2847,10 +2948,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               error: migWriteErr?.message || migWriteErr,
             });
             if (!isRoot && fbUser.emailVerified) {
-              const reconciled = await reconcileOwnProfileWithServer(fbUser, {
+              const reconcileRes = await reconcileOwnProfileWithServer(fbUser, {
                 attemptKey: `verify-legacy:${fbUser.uid}:${targetRole}:${resolvedApprovalStatus}`,
+                notifyOnError: true,
               });
-              if (reconciled) {
+              if (reconcileRes.ok) {
                 const refreshedSnap = await getDoc(uidRef).catch(() => null);
                 if (refreshedSnap && refreshedSnap.exists()) {
                   return sanitizeFirestoreData({
@@ -2938,11 +3040,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       await setDoc(uidRef, newUser, { merge: true });
     } catch (err: any) {
+      const isPermissionDenied =
+        err?.code === "permission-denied" ||
+        /permission-denied|missing or insufficient permissions/i.test(String(err?.message || ""));
       if (err?.code === "auth/unauthorized-domain") {
         const hostname = typeof window !== "undefined" ? window.location.hostname : "seu domínio";
         addToast(`Domínio '${hostname}' não está autorizado no Firebase Authentication.`, "error");
       } else {
         console.error("Erro ao gravar novo registro no Firestore:", err);
+      }
+      if (isPermissionDenied && !isRoot && fbUser.emailVerified) {
+        const reconcileRes = await reconcileOwnProfileWithServer(fbUser, {
+          attemptKey: `verify-create:${fbUser.uid}:${resolvedRole}:${defaultApprovalStatus}`,
+          notifyOnError: true,
+        });
+        if (reconcileRes.ok) {
+          const refreshedSnap = await getDoc(uidRef).catch(() => null);
+          if (refreshedSnap && refreshedSnap.exists()) {
+            return sanitizeFirestoreData({
+              ...newUser,
+              ...(refreshedSnap.data() as User),
+              id: fbUser.uid,
+            }) as User;
+          }
+        }
+        if (reconcileRes.errorMessage) {
+          throw new Error(reconcileRes.errorMessage);
+        }
       }
       throw err;
     }
@@ -3032,7 +3156,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               const divKey = `${fbUser.uid}:${identity.role}:${identity.approvalStatus}:${latestRawUser.role || ""}:${latestRawUser.approvalStatus || ""}:${latestRawUser.status || ""}:${String(rawActive)}`;
               const isRawBlocked = !isPersistedUserDocActive(latestRawUser) && latestRawUser.role !== "INTRUSO";
               if (fbUser.emailVerified && !isRawBlocked) {
-                void reconcileOwnProfileWithServer(fbUser, { attemptKey: divKey });
+                void reconcileOwnProfileWithServer(fbUser, { attemptKey: divKey, notifyOnError: true });
               }
               // Fail-closed: only reflect persisted staff/admin privileges when /users/{uid} confirms them
               if (isPersistedDocEligibleForItemWrite(latestRawUser)) {
@@ -4680,9 +4804,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const isDocEligible = isPersistedDocEligibleForItemWrite(verifiedUserDocData);
         const isTokenEmailVerified = verifiedTokenResult?.claims?.email_verified === true;
 
+        let reconcileErrorMessage: string | undefined;
         if (!isDocEligible || !isTokenEmailVerified) {
-          const reconciled = await reconcileOwnProfileWithServer(authUser, { force: true });
-          if (reconciled) {
+          const reconcileRes = await reconcileOwnProfileWithServer(authUser, { force: true, notifyOnError: false });
+          reconcileErrorMessage = reconcileRes.errorMessage;
+          if (reconcileRes.ok) {
             verifiedTokenResult = await authUser.getIdTokenResult(true).catch(() => verifiedTokenResult);
             try {
               const refreshedSnap = await getDoc(doc(db, "users", authUser.uid));
@@ -4693,6 +4819,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         if (!isPersistedDocEligibleForItemWrite(verifiedUserDocData)) {
+          if (reconcileErrorMessage) {
+            throw new Error(`Falha ao sincronizar permissões com o servidor: ${reconcileErrorMessage}`);
+          }
           throw new Error(
             "Perfil sem autorização persistida no Firestore (/users): apenas Servidores/TAE e Administradores ativos e aprovados podem cadastrar objetos."
           );

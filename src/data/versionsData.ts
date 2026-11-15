@@ -104,10 +104,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "GERAL",
         tag: "Cadastro, Custódia & Regressões",
       },
+      {
+        id: "v11013-fix-reconcile-branch3-and-prod-diagnostics",
+        title: "Reconciliação de Perfil na Criação (Branch 3) e Diagnóstico Explícito de /api/auth/reconcile-profile em Produção",
+        description: "Adição de chamada a reconcileOwnProfileWithServer no bloco catch por permission-denied da criação inicial de users/{uid} (Branch 3 de verifyUserInFirestore) com releitura imediata do documento persistido e propagação de erro explícito; suporte no Firebase Admin SDK (api/_lib/firebaseAdmin.ts e server.ts) para FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY e JSON FIREBASE_SERVICE_ACCOUNT/FIREBASE_SERVICE_ACCOUNT_KEY com classificação HTTP 503 para credenciais ausentes, parciais ou indisponíveis em produção; retorno estruturado e feedback claro ao usuário via toast deduplicado (formatReconcileProfileErrorMessage) e mensagem de erro em addItem.",
+        module: "AUTH",
+        tag: "Reconciliação & Produção",
+      },
     ],
     stats: {
       additionsCount: 2,
-      fixesCount: 8,
+      fixesCount: 9,
     },
   },
   {
