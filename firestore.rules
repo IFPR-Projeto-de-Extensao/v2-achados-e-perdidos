@@ -805,8 +805,13 @@ service cloud.firestore {
     // 2e. Immutable Item History Timeline (/item_history)
     // ==========================================
     match /item_history/{entryId} {
-      // Public timeline read strictly free of private return/signature/secret fields.
-      allow get, list: if hasNoReturnOrSignatureFields(resource.data);
+      // Public timeline read strictly free of private return/signature/secret fields;
+      // active ADMIN and SERVIDOR keep full historical read access including legacy entries.
+      allow get: if resource == null ||
+                    hasNoReturnOrSignatureFields(resource.data) ||
+                    (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
+      allow list: if hasNoReturnOrSignatureFields(resource.data) ||
+                     (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
       // Append-only creation by active verified non-intruso users matching their own auth.uid & non-escalated role.
       allow create: if isSignedIn() &&
                        isEmailVerified() &&

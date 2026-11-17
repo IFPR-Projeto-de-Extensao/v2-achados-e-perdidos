@@ -5,7 +5,7 @@ import {
   assertSucceeds,
   assertFails,
 } from "@firebase/rules-unit-testing";
-import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where } from "firebase/firestore";
+import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, writeBatch } from "firebase/firestore";
 import fs from "fs";
 import path from "path";
 
@@ -1957,5 +1957,314 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
       );
     });
   });
+
+  describe("ETAPA 5 — Batch Completo de Cadastro (/items + /item_history + /item_private), Histórico Legado e Matriz de 7 Perfis", () => {
+    const ROOT_UID = "hCG5mDgK1fRaTojULzlM7dXvb7n2";
+    const ROOT_EMAIL = "paulocauan39@gmail.com";
+
+    const runRegisterBatch = (db: any, uid: string, role: "ADMIN" | "SERVIDOR" | "ALUNO", suffix: string) => {
+      const itemId = `item_batch_${suffix}`;
+      const batch = writeBatch(db);
+      batch.set(doc(db, "items", itemId), {
+        id: itemId,
+        title: `Objeto Teste ${suffix}`,
+        description: "Descrição completa de teste",
+        category: "Eletrônicos",
+        location: "Bloco 1",
+        status: "ENCONTRADO",
+        type: "ENCONTRADO",
+        registeredByUserId: uid,
+        registeredByRole: role,
+        createdAt: new Date().toISOString(),
+      });
+      batch.set(doc(db, "item_history", `hist-${itemId}-init`), {
+        id: `hist-${itemId}-init`,
+        itemId,
+        objectId: itemId,
+        action: "Ocorrência cadastrada",
+        actorId: uid,
+        actorRole: role,
+        timestamp: new Date().toISOString(),
+      });
+      batch.set(doc(db, "item_private", itemId), {
+        itemId,
+        registeredByUserId: uid,
+        secretVerificationHint: "Marca atrás do aparelho",
+        updatedAt: new Date().toISOString(),
+      });
+      return batch.commit();
+    };
+
+    it("46. writeBatch completo (/items + /item_history + /item_private) para os 7 perfis (inclusive sem custom claims)", async () => {
+      // 1. Root Admin sem custom claim
+      await setupUserDoc(ROOT_UID, {
+        id: ROOT_UID,
+        email: ROOT_EMAIL,
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+      const dbRootNoClaim = testEnv!.authenticatedContext(ROOT_UID, {
+        email: ROOT_EMAIL,
+        email_verified: true,
+      }).firestore();
+      await assertSucceeds(runRegisterBatch(dbRootNoClaim, ROOT_UID, "ADMIN", "root_noclaim"));
+
+      // 2. ADMIN não-root aprovado sem custom claim
+      const adminNoClaimUid = "admin_nonroot_noclaim";
+      await setupUserDoc(adminNoClaimUid, {
+        id: adminNoClaimUid,
+        email: "admin.noclaim@gmail.com",
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+      const dbAdminNoClaim = testEnv!.authenticatedContext(adminNoClaimUid, {
+        email: "admin.noclaim@gmail.com",
+        email_verified: true,
+      }).firestore();
+      await assertSucceeds(runRegisterBatch(dbAdminNoClaim, adminNoClaimUid, "ADMIN", "admin_noclaim"));
+
+      // 3. SERVIDOR institucional aprovado (@ifpr.edu.br)
+      const servInstUid = "serv_inst_ok";
+      await setupUserDoc(servInstUid, {
+        id: servInstUid,
+        email: "tae.campus@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+      const dbServInst = testEnv!.authenticatedContext(servInstUid, {
+        email: "tae.campus@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      await assertSucceeds(runRegisterBatch(dbServInst, servInstUid, "SERVIDOR", "serv_inst"));
+
+      // 4. SERVIDOR Gmail atribuído por admin aprovado
+      const servGmailUid = "serv_gmail_ok";
+      await setupUserDoc(servGmailUid, {
+        id: servGmailUid,
+        email: "servidor.atribuido@gmail.com",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        roleAssignedBy: ROOT_EMAIL,
+      });
+      const dbServGmail = testEnv!.authenticatedContext(servGmailUid, {
+        email: "servidor.atribuido@gmail.com",
+        email_verified: true,
+      }).firestore();
+      await assertSucceeds(runRegisterBatch(dbServGmail, servGmailUid, "SERVIDOR", "serv_gmail"));
+
+      // 5. SERVIDOR PENDENTE -> negado
+      const servPendUid = "serv_pend_batch";
+      await setupUserDoc(servPendUid, {
+        id: servPendUid,
+        email: "servidor.pend@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "PENDENTE",
+        status: "active",
+      });
+      const dbServPend = testEnv!.authenticatedContext(servPendUid, {
+        email: "servidor.pend@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      await assertFails(runRegisterBatch(dbServPend, servPendUid, "SERVIDOR", "serv_pend"));
+
+      // 6. ALUNO -> negado
+      const alunoUid = "aluno_batch";
+      await setupUserDoc(alunoUid, {
+        id: alunoUid,
+        email: "aluno@estudantes.ifpr.edu.br",
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+      const dbAluno = testEnv!.authenticatedContext(alunoUid, {
+        email: "aluno@estudantes.ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      await assertFails(runRegisterBatch(dbAluno, alunoUid, "ALUNO", "aluno"));
+
+      // 7. INTRUSO -> negado
+      const intrusoUid = "intruso_batch";
+      await setupUserDoc(intrusoUid, {
+        id: intrusoUid,
+        email: "externo.intruso@gmail.com",
+        role: "INTRUSO",
+        approvalStatus: "PENDENTE",
+        status: "active",
+      });
+      const dbIntruso = testEnv!.authenticatedContext(intrusoUid, {
+        email: "externo.intruso@gmail.com",
+        email_verified: true,
+      }).firestore();
+      await assertFails(runRegisterBatch(dbIntruso, intrusoUid, "SERVIDOR", "intruso"));
+    });
+
+    it("47. Leitura de /item_history com documento legado protegido, /item_private e /item_return_records", async () => {
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        const adminSeed = ctx.firestore();
+        await setDoc(doc(adminSeed, "users", ROOT_UID), {
+          id: ROOT_UID,
+          email: ROOT_EMAIL,
+          role: "ADMIN",
+          approvalStatus: "APROVADO",
+          status: "active",
+        });
+        await setDoc(doc(adminSeed, "users", "admin_ok"), {
+          id: "admin_ok",
+          email: "admin.ok@gmail.com",
+          role: "ADMIN",
+          approvalStatus: "APROVADO",
+          status: "active",
+        });
+        await setDoc(doc(adminSeed, "users", "serv_inst"), {
+          id: "serv_inst",
+          email: "serv@ifpr.edu.br",
+          role: "SERVIDOR",
+          approvalStatus: "APROVADO",
+          status: "active",
+        });
+        await setDoc(doc(adminSeed, "users", "serv_gmail"), {
+          id: "serv_gmail",
+          email: "serv.gmail@gmail.com",
+          role: "SERVIDOR",
+          approvalStatus: "APROVADO",
+          status: "active",
+        });
+        await setDoc(doc(adminSeed, "users", "serv_pend"), {
+          id: "serv_pend",
+          email: "pend@ifpr.edu.br",
+          role: "SERVIDOR",
+          approvalStatus: "PENDENTE",
+          status: "active",
+        });
+        await setDoc(doc(adminSeed, "users", "aluno_ok"), {
+          id: "aluno_ok",
+          email: "aluno@estudantes.ifpr.edu.br",
+          role: "ALUNO",
+          approvalStatus: "APROVADO",
+          status: "active",
+        });
+        await setDoc(doc(adminSeed, "users", "intruso_ok"), {
+          id: "intruso_ok",
+          email: "intruso@gmail.com",
+          role: "INTRUSO",
+          approvalStatus: "PENDENTE",
+          status: "active",
+        });
+
+        // Documento legado em /item_history contendo campo protegido (recipientName)
+        await setDoc(doc(adminSeed, "item_history", "hist_legado_pii"), {
+          id: "hist_legado_pii",
+          itemId: "item_1",
+          objectId: "item_1",
+          action: "DEVOLUCAO",
+          actorId: "serv_inst",
+          recipientName: "Nome Legado Protegido",
+          timestamp: new Date().toISOString(),
+        });
+        await setDoc(doc(adminSeed, "item_private", "item_1"), {
+          itemId: "item_1",
+          registeredByUserId: "serv_inst",
+          secretVerificationHint: "Segredo do objeto",
+        });
+        await setDoc(doc(adminSeed, "item_return_records", "item_1"), {
+          itemId: "item_1",
+          recipientName: "Recebedor Oficial",
+          recipientUid: "aluno_outro",
+          receiptValidationCode: "VAL-1234",
+        });
+      });
+
+      const allowedContexts = [
+        testEnv!.authenticatedContext(ROOT_UID, { email: ROOT_EMAIL, email_verified: true }).firestore(),
+        testEnv!.authenticatedContext("admin_ok", { email: "admin.ok@gmail.com", email_verified: true }).firestore(),
+        testEnv!.authenticatedContext("serv_inst", { email: "serv@ifpr.edu.br", email_verified: true }).firestore(),
+        testEnv!.authenticatedContext("serv_gmail", { email: "serv.gmail@gmail.com", email_verified: true }).firestore(),
+      ];
+
+      for (const db of allowedContexts) {
+        await assertSucceeds(getDocs(collection(db, "item_history")));
+        await assertSucceeds(getDoc(doc(db, "item_history", "hist_legado_pii")));
+        await assertSucceeds(getDocs(collection(db, "item_private")));
+        await assertSucceeds(getDocs(collection(db, "item_return_records")));
+      }
+
+      const deniedContexts = [
+        testEnv!.unauthenticatedContext().firestore(),
+        testEnv!.authenticatedContext("serv_pend", { email: "pend@ifpr.edu.br", email_verified: true }).firestore(),
+        testEnv!.authenticatedContext("aluno_ok", { email: "aluno@estudantes.ifpr.edu.br", email_verified: true }).firestore(),
+        testEnv!.authenticatedContext("intruso_ok", { email: "intruso@gmail.com", email_verified: true }).firestore(),
+      ];
+
+      for (const db of deniedContexts) {
+        await assertFails(getDocs(collection(db, "item_history")));
+        await assertFails(getDoc(doc(db, "item_history", "hist_legado_pii")));
+        await assertFails(getDocs(collection(db, "item_private")));
+        await assertFails(getDocs(collection(db, "item_return_records")));
+      }
+    });
+
+    it("48. email_verified false vs true e campo active ausente/null/false", async () => {
+      await setupUserDoc(ROOT_UID, {
+        id: ROOT_UID,
+        email: ROOT_EMAIL,
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+      await setupUserDoc("admin_unverified", {
+        id: "admin_unverified",
+        email: "unverified@gmail.com",
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: null,
+      });
+      await setupUserDoc("serv_active_null", {
+        id: "serv_active_null",
+        email: "serv.null@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: null,
+      });
+      await setupUserDoc("serv_active_false", {
+        id: "serv_active_false",
+        email: "serv.false@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: false,
+      });
+
+      const dbRootUnverified = testEnv!.authenticatedContext(ROOT_UID, {
+        email: ROOT_EMAIL,
+        email_verified: false,
+      }).firestore();
+      await assertFails(runRegisterBatch(dbRootUnverified, ROOT_UID, "ADMIN", "root_unverified"));
+
+      const dbAdminUnverified = testEnv!.authenticatedContext("admin_unverified", {
+        email: "unverified@gmail.com",
+        email_verified: false,
+      }).firestore();
+      await assertFails(runRegisterBatch(dbAdminUnverified, "admin_unverified", "ADMIN", "admin_unverified"));
+
+      const dbServActiveNull = testEnv!.authenticatedContext("serv_active_null", {
+        email: "serv.null@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      await assertSucceeds(runRegisterBatch(dbServActiveNull, "serv_active_null", "SERVIDOR", "serv_active_null"));
+
+      const dbServActiveFalse = testEnv!.authenticatedContext("serv_active_false", {
+        email: "serv.false@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      await assertFails(runRegisterBatch(dbServActiveFalse, "serv_active_false", "SERVIDOR", "serv_active_false"));
+    });
+  });
 });
+
 

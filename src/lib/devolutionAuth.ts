@@ -2,6 +2,7 @@ import { isAccountBlocked } from "./accountStatusUtils";
 import { LostFoundItem, User } from "../types";
 
 export const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
+export const ROOT_ADMIN_UID = "hCG5mDgK1fRaTojULzlM7dXvb7n2";
 
 export interface AuthContextIdentity {
   uid?: string | null;
@@ -9,10 +10,24 @@ export interface AuthContextIdentity {
   emailVerified?: boolean | null;
 }
 
+export function isVerifiedRootAdminIdentity(
+  user: Partial<User> | null | undefined,
+  authInfo?: AuthContextIdentity | null
+): boolean {
+  if (!authInfo || !authInfo.uid || authInfo.emailVerified !== true) return false;
+  if (authInfo.uid !== ROOT_ADMIN_UID) return false;
+  const authEmail = (authInfo.email || "").trim().toLowerCase();
+  const userEmail = (user?.email || "").trim().toLowerCase();
+  return (
+    authEmail === ROOT_ADMIN_EMAIL.toLowerCase() ||
+    (!authEmail && userEmail === ROOT_ADMIN_EMAIL.toLowerCase())
+  );
+}
+
 /**
  * Pure helper evaluating whether an authenticated user has institutional standing
  * to initiate or register a formal item return (DEVE ser SERVIDOR ou ADMIN aprovado,
- * com conta ativa e e-mail verificado).
+ * com conta ativa, vínculo UID consistente e e-mail verificado no Firebase Auth).
  */
 export function canOperateFormalReturn(
   user: Partial<User> | null | undefined,
@@ -20,13 +35,13 @@ export function canOperateFormalReturn(
   isGuest?: boolean
 ): boolean {
   if (isGuest) return false;
-  if (!user || !user.id || user.id === "guest") return false;
+  if (!user || !user.id || user.id === "guest" || user.id === "guest_visitor") return false;
   if (!authInfo || !authInfo.uid) return false;
+  if (user.id !== authInfo.uid) return false;
 
-  const email = (authInfo.email || user.email || "").trim().toLowerCase();
-  const isRootEmail = email === ROOT_ADMIN_EMAIL.toLowerCase();
-
-  if (!isRootEmail && authInfo.emailVerified !== true && user.emailVerified !== true) {
+  // Regra estrita consistente com firestore.rules (inclusive para o Root Admin via isRootAdmin()):
+  // exige emailVerified === true diretamente do token/sessão Firebase Auth, sem fallback em Firestore.
+  if (authInfo.emailVerified !== true) {
     return false;
   }
 
@@ -44,7 +59,7 @@ export function canOperateFormalReturn(
     return false;
   }
 
-  if (isRootEmail && (user.role === "ADMIN" || user.approvalStatus === "APROVADO")) {
+  if (isVerifiedRootAdminIdentity(user, authInfo)) {
     return true;
   }
 
@@ -79,7 +94,6 @@ export function canReopenFormalReturn(
   isGuest?: boolean
 ): boolean {
   if (!canOperateFormalReturn(user, authInfo, isGuest)) return false;
-  const email = (authInfo?.email || user?.email || "").trim().toLowerCase();
-  if (email === ROOT_ADMIN_EMAIL.toLowerCase()) return true;
+  if (isVerifiedRootAdminIdentity(user, authInfo)) return true;
   return user?.role === "ADMIN" && user?.approvalStatus === "APROVADO";
 }

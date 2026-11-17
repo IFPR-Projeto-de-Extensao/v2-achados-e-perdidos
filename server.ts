@@ -997,6 +997,57 @@ export function sanitizePublicItemDocument(rawItem: Record<string, any>): Record
   return clean;
 }
 
+export function sanitizePublicHistoryEntry(rawEntry: Record<string, any>): Record<string, any> | null {
+  if (!rawEntry || typeof rawEntry !== "object") return null;
+  const clean: Record<string, any> = { ...rawEntry };
+  for (const field of PRIVATE_RETURN_ITEM_FIELDS) {
+    delete clean[field];
+  }
+  const itemKey = clean.objectId || clean.itemId;
+  const detailsStr = typeof clean.details === "string" ? clean.details : typeof clean.description === "string" ? clean.description : "";
+  const combined = `${String(clean.action || "")} ${detailsStr} ${String(clean.newValue || "")} ${String(clean.oldValue || "")}`;
+  const isReturnOrSensitive =
+    clean.action === "RETURNED" ||
+    clean.action === "DEVOLUCAO" ||
+    clean.action === "REOPENED" ||
+    clean.action === "REABERTURA_DEVOLUCAO" ||
+    /devolu[cç][aã]o|devolvido|restitu[ií]do|assinatura|recebedor|receptor|comprovante|validador|valida[cç][aã]o|cpf|rg|siape|matr[ií]cula|secretVerification/i.test(
+      combined
+    );
+
+  if (isReturnOrSensitive) {
+    const isReopen =
+      clean.action === "REOPENED" ||
+      clean.action === "REABERTURA_DEVOLUCAO" ||
+      String(clean.action || "").toLowerCase().includes("reaberta");
+    return {
+      id: clean.id,
+      ...(clean.itemId ? { itemId: clean.itemId } : itemKey ? { itemId: itemKey } : {}),
+      ...(itemKey ? { objectId: itemKey } : {}),
+      action: isReopen ? "Devolução reaberta" : "Devolução institucional registrada",
+      actorRole: clean.actorRole || clean.userRole || "SERVIDOR",
+      timestamp: clean.timestamp || clean.date || "",
+      details: isReopen
+        ? "Registro de devolução reaberto administrativamente."
+        : "Movimentação formal de devolução registrada no sistema.",
+    };
+  }
+
+  return {
+    id: clean.id,
+    ...(clean.itemId ? { itemId: clean.itemId } : itemKey ? { itemId: itemKey } : {}),
+    ...(itemKey ? { objectId: itemKey } : {}),
+    action: clean.action || "Atualização registrada",
+    ...(clean.actorName ? { actorName: clean.actorName } : clean.userName ? { actorName: clean.userName } : {}),
+    actorRole: clean.actorRole || clean.userRole || "SERVIDOR",
+    timestamp: clean.timestamp || clean.date || "",
+    ...(clean.details ? { details: clean.details } : {}),
+    ...(clean.fieldChanged ? { fieldChanged: clean.fieldChanged } : {}),
+    ...(clean.oldValue !== undefined ? { oldValue: clean.oldValue } : {}),
+    ...(clean.newValue !== undefined ? { newValue: clean.newValue } : {}),
+  };
+}
+
 export function mergePublicAndPrivateItemData(
   publicData: Record<string, any> | null | undefined,
   privateData: Record<string, any> | null | undefined
@@ -8114,6 +8165,28 @@ app.get(["/api/items/public-catalog", "/items/public-catalog"], generalRateLimit
   } catch (err: any) {
     console.error("Erro ao consultar projeção pública do catálogo:", err?.message || err);
     return res.status(500).json({ success: false, error: "Erro interno ao carregar catálogo público." });
+  }
+});
+
+// API Endpoint: Public Sanitized Item History Projection (Zero-PII fallback for visitors/students)
+app.get(["/api/items/public-history", "/items/public-history"], generalRateLimiter, async (_req, res) => {
+  try {
+    const adminDb = getAdminFirestore();
+    if (!adminDb) {
+      return res.status(503).json({ success: false, error: "Histórico público indisponível no momento." });
+    }
+    const snap = await adminDb.collection("item_history").get();
+    const docs = snap?.docs || [];
+    const entries = docs
+      .map((d: any) => {
+        const raw = (typeof d.data === "function" ? d.data() : d.data) || {};
+        return sanitizePublicHistoryEntry({ ...raw, id: raw.id || d.id });
+      })
+      .filter(Boolean);
+    return res.json({ success: true, entries });
+  } catch (err: any) {
+    console.error("Erro ao consultar projeção pública do histórico de itens:", err?.message || err);
+    return res.status(500).json({ success: false, error: "Erro interno ao carregar histórico público." });
   }
 });
 

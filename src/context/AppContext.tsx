@@ -29,9 +29,26 @@ import {
 import { DEFAULT_DOCUMENT_TEMPLATES } from "../lib/defaultDocumentTemplates";
 import { DEFAULT_PROJECT_SETTINGS } from "../lib/projectSettingsConstants";
 import { sortUsersByCreationDesc, isAccountBlocked } from "../lib/accountStatusUtils";
-import { canOperateFormalReturn, canReopenFormalReturn } from "../lib/devolutionAuth";
+import {
+  canOperateFormalReturn,
+  canReopenFormalReturn,
+  ROOT_ADMIN_EMAIL,
+  ROOT_ADMIN_UID,
+} from "../lib/devolutionAuth";
+import {
+  evaluateListenerSession,
+  getItemHistorySubscriptionMode,
+  canSubscribeStaffItemCollections,
+  canSubscribeUsersDirectory,
+  canSubscribeStaffLogs,
+  canSubscribeAdminOnlyLogs,
+  getClaimsListenerScope,
+  getNotificationsListenerScope,
+} from "../lib/listenerGuards";
+import { evaluateExistingRemoteItem } from "../lib/offlineSyncRecovery";
 import {
   sanitizePublicItemProjection,
+  sanitizePublicHistoryLogs,
   mergeItemWithPrivateRecord,
   buildFirestoreItemCreatePayload,
 } from "../lib/itemPrivacyUtils";
@@ -1155,9 +1172,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           continue;
         }
 
-        const isUserRootAdmin = currentAuthUser.email === "paulocauan39@gmail.com" || currentUser?.role === "ADMIN";
+        const isRootAuthIdentity =
+          currentAuthUser.uid === ROOT_ADMIN_UID &&
+          (currentAuthUser.email || "").trim().toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase();
+        const isApprovedAdminSync =
+          isRootAuthIdentity ||
+          (currentUser?.id === currentAuthUser.uid &&
+            currentUser?.role === "ADMIN" &&
+            currentUser?.approvalStatus === "APROVADO" &&
+            !isAccountBlocked(currentUser));
 
-        if (itemToSave.registeredByUserId && itemToSave.registeredByUserId !== currentAuthUser.uid && !isUserRootAdmin) {
+        if (itemToSave.registeredByUserId && itemToSave.registeredByUserId !== currentAuthUser.uid && !isApprovedAdminSync) {
           console.warn(`[Offline Sync Auth Guard] Item #${itemToSave.id} pertence a outro UID (${itemToSave.registeredByUserId} !== ${currentAuthUser.uid}). Sincronização bloqueada.`);
           updateUploadTask(taskId, {
             status: "ERROR",
@@ -1167,7 +1192,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           continue;
         }
 
-        if (!currentAuthUser.emailVerified && !isUserRootAdmin) {
+        if (currentAuthUser.emailVerified !== true) {
           console.warn(`[Offline Sync Auth Guard] E-mail do usuário não verificado (${currentAuthUser.email}). Sincronização pausada.`);
           updateUploadTask(taskId, {
             status: "ERROR",
@@ -1214,9 +1239,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             })
           );
 
-          // 4. Persist atomically via writeBatch: /items/{id}, /item_history/{entryId} and conditional /item_private/{id}
-          const syncBatch = writeBatch(db);
-          syncBatch.set(doc(db, "items", itemToSave.id), sanitizedPayload);
           const rawInitHistory = Array.isArray(itemToSave.history) && itemToSave.history.length > 0
             ? itemToSave.history[0]
             : {
@@ -1224,10 +1246,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 action: "Ocorrência cadastrada",
                 actorId: itemToSave.registeredByUserId || currentAuthUser.uid,
                 actorName: itemToSave.registeredByName || currentAuthUser.displayName || "Usuário IFPR",
-                actorRole: itemToSave.registeredByRole || (isUserRootAdmin ? "ADMIN" : "SERVIDOR"),
+                actorRole: itemToSave.registeredByRole || (isApprovedAdminSync ? "ADMIN" : "SERVIDOR"),
                 userId: itemToSave.registeredByUserId || currentAuthUser.uid,
                 userName: itemToSave.registeredByName || currentAuthUser.displayName || "Usuário IFPR",
-                userRole: itemToSave.registeredByRole || (isUserRootAdmin ? "ADMIN" : "SERVIDOR"),
+                userRole: itemToSave.registeredByRole || (isApprovedAdminSync ? "ADMIN" : "SERVIDOR"),
                 timestamp: itemToSave.createdAt || new Date().toISOString(),
                 details: `Ocorrência registrada no sistema do IFPR Campus Ivaiporã como ${itemToSave.type}.`,
                 objectId: itemToSave.id,
@@ -1235,31 +1257,116 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 newValue: `Tipo: ${itemToSave.type} | Local: ${itemToSave.location}`,
               };
           const histEntryId = String(rawInitHistory.id || `hist-${itemToSave.id}-init`);
-          syncBatch.set(
-            doc(db, "item_history", histEntryId),
-            sanitizeFirestoreData({
-              ...rawInitHistory,
-              id: histEntryId,
-              itemId: itemToSave.id,
-              objectId: itemToSave.id,
-              actorId: currentAuthUser.uid,
-            })
+
+          // 4. Verificar existência remota antes de gravar para nunca sobrescrever registro já confirmado ou conflitante
+          const itemRef = doc(db, "items", itemToSave.id);
+          const existingRemoteSnap = await getDoc(itemRef);
+          const remoteEvaluation = evaluateExistingRemoteItem(
+            sanitizedPayload,
+            existingRemoteSnap.exists() ? (existingRemoteSnap.data() as Record<string, any>) : null
           );
-          if (itemToSave.secretVerificationHint !== undefined || itemToSave.secretVerificationKey !== undefined) {
-            syncBatch.set(
-              doc(db, "item_private", itemToSave.id),
-              sanitizeFirestoreData({
-                itemId: itemToSave.id,
-                registeredByUserId: itemToSave.registeredByUserId || currentAuthUser.uid,
-                secretVerificationHint: itemToSave.secretVerificationHint,
-                secretVerificationKey: itemToSave.secretVerificationKey,
-                updatedAt: new Date().toISOString(),
-              }),
-              { merge: true }
-            );
+
+          if (remoteEvaluation.action === "CONFLICT_STOP") {
+            const conflictReason = remoteEvaluation.reason || "Conflito detectado com item já existente no servidor.";
+            console.warn(`[Offline Sync Conflict] ${conflictReason}`);
+            permanentErrorCount++;
+            await updateSyncQueueEntry(entry.id, {
+              status: "ERRO_PERMANENTE",
+              errorType: "PERMANENT",
+              error: `SYNC_CONFLICT_EXISTING_ITEM: ${conflictReason}`,
+              payloadSizeBytes,
+              lastAttempt: new Date().toISOString(),
+            });
+            updateUploadTask(taskId, {
+              status: "ERROR",
+              error: "SYNC_CONFLICT_EXISTING_ITEM",
+              statusMessage: `${conflictReason} O reenvio foi interrompido para preservação dos dados.`,
+            });
+            continue;
           }
-          await syncBatch.commit();
-          console.log(`[Offline Sync Success] Item #${itemToSave.id} gravado atomically no Firestore (${payloadSizeBytes} bytes).`);
+
+          let itemForLocalState: LostFoundItem = itemToSave;
+
+          if (remoteEvaluation.action === "CONFIRM_ALREADY_SYNCED") {
+            const remoteItemData = existingRemoteSnap.data() as LostFoundItem;
+            // Item já existe e equivale aos dados locais: não sobrescreve /items nem histórico existente.
+            // Apenas cria documentos complementares ausentes se o autor autenticado coincidir.
+            const companionBatch = writeBatch(db);
+            let hasCompanionWrites = false;
+
+            const histRef = doc(db, "item_history", histEntryId);
+            const existingHistSnap = await getDoc(histRef).catch(() => null);
+            if (existingHistSnap && !existingHistSnap.exists()) {
+              companionBatch.set(
+                histRef,
+                sanitizeFirestoreData({
+                  ...rawInitHistory,
+                  id: histEntryId,
+                  itemId: itemToSave.id,
+                  objectId: itemToSave.id,
+                  actorId: currentAuthUser.uid,
+                })
+              );
+              hasCompanionWrites = true;
+            }
+
+            if (itemToSave.secretVerificationHint !== undefined || itemToSave.secretVerificationKey !== undefined) {
+              const privRef = doc(db, "item_private", itemToSave.id);
+              const existingPrivSnap = await getDoc(privRef).catch(() => null);
+              if (existingPrivSnap && !existingPrivSnap.exists()) {
+                companionBatch.set(
+                  privRef,
+                  sanitizeFirestoreData({
+                    itemId: itemToSave.id,
+                    registeredByUserId: itemToSave.registeredByUserId || currentAuthUser.uid,
+                    secretVerificationHint: itemToSave.secretVerificationHint,
+                    secretVerificationKey: itemToSave.secretVerificationKey,
+                    updatedAt: new Date().toISOString(),
+                  })
+                );
+                hasCompanionWrites = true;
+              }
+            }
+
+            if (hasCompanionWrites) {
+              await companionBatch.commit();
+            }
+
+            itemForLocalState = sanitizePublicItemProjection({
+              ...remoteItemData,
+              id: itemToSave.id,
+              isOfflineQueued: false,
+            });
+            console.log(`[Offline Sync Reconciled] Item #${itemToSave.id} já confirmado no servidor; fila reconciliada sem sobrescrita.`);
+          } else {
+            // 4b. Criação inédita atômica via writeBatch: /items/{id}, /item_history/{entryId} e condicional /item_private/{id}
+            const syncBatch = writeBatch(db);
+            syncBatch.set(itemRef, sanitizedPayload);
+            syncBatch.set(
+              doc(db, "item_history", histEntryId),
+              sanitizeFirestoreData({
+                ...rawInitHistory,
+                id: histEntryId,
+                itemId: itemToSave.id,
+                objectId: itemToSave.id,
+                actorId: currentAuthUser.uid,
+              })
+            );
+            if (itemToSave.secretVerificationHint !== undefined || itemToSave.secretVerificationKey !== undefined) {
+              syncBatch.set(
+                doc(db, "item_private", itemToSave.id),
+                sanitizeFirestoreData({
+                  itemId: itemToSave.id,
+                  registeredByUserId: itemToSave.registeredByUserId || currentAuthUser.uid,
+                  secretVerificationHint: itemToSave.secretVerificationHint,
+                  secretVerificationKey: itemToSave.secretVerificationKey,
+                  updatedAt: new Date().toISOString(),
+                })
+              );
+            }
+            await syncBatch.commit();
+            console.log(`[Offline Sync Success] Item #${itemToSave.id} gravado atomically no Firestore (${payloadSizeBytes} bytes).`);
+          }
 
           // 5. Remove successfully synchronized entry from local IndexedDB queue
           await removeSyncQueueEntry(entry.id);
@@ -1269,7 +1376,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           updateUploadTask(taskId, {
             progress: 100,
             status: "COMPLETED",
-            statusMessage: "Sincronizado com sucesso com o servidor em nuvem!",
+            statusMessage:
+              remoteEvaluation.action === "CONFIRM_ALREADY_SYNCED"
+                ? "Item já estava salvo no servidor; fila reconciliada com segurança!"
+                : "Sincronizado com sucesso com o servidor em nuvem!",
             completedAt: new Date().toISOString(),
           });
 
@@ -1279,9 +1389,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setItems((prev) => {
             const exists = prev.some((it) => it.id === itemToSave.id);
             if (exists) {
-              return prev.map((it) => (it.id === itemToSave.id ? itemToSave : it));
+              return prev.map((it) => (it.id === itemToSave.id ? itemForLocalState : it));
             }
-            return [itemToSave, ...prev];
+            return [itemForLocalState, ...prev];
           });
 
           // 7. Asynchronous Discord Webhook dispatch (non-blocking)
@@ -1555,9 +1665,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<User>(DEFAULT_GUEST_USER);
   const pendingRegistrationDataRef = useRef<Map<string, Omit<User, "id">>>(new Map());
 
-  // Sync System Error Logs for Admin Dashboard Monitoring
+  // Sync System Error Logs for Admin & Active Servidor Monitoring
   useEffect(() => {
-    if (authLoading || !firebaseUser || (currentUser?.role !== "ADMIN" && currentUser?.role !== "SERVIDOR")) {
+    if (!canSubscribeStaffLogs({ authLoading, firebaseUser, currentUser })) {
       setErrorLogsList([]);
       return;
     }
@@ -1575,7 +1685,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [firebaseUser, currentUser?.role]);
+  }, [
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.email,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.approvalStatus,
+    currentUser?.status,
+    (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
+  ]);
 
   const [allUsers, setAllUsers] = useState<User[]>(() => {
     try {
@@ -1877,9 +1999,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, []);
 
-  // Sync Backup Logs from Firestore
+  // Sync Backup Logs from Firestore (Verified & Approved Admin Only)
   useEffect(() => {
-    if (!firebaseUser || currentUser?.role !== "ADMIN") {
+    if (!canSubscribeAdminOnlyLogs({ authLoading, firebaseUser, currentUser })) {
       setBackupLogs([]);
       return;
     }
@@ -1897,11 +2019,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [firebaseUser, currentUser?.role]);
+  }, [
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.email,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.approvalStatus,
+    currentUser?.status,
+    (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
+  ]);
 
-  // Sync Backup Schedule Config from Firestore
+  // Sync Backup Schedule Config from Firestore (Verified & Approved Admin Only)
   useEffect(() => {
-    if (!firebaseUser || currentUser?.role !== "ADMIN") return;
+    if (!canSubscribeAdminOnlyLogs({ authLoading, firebaseUser, currentUser })) return;
     const unsubscribe = onSnapshot(
       doc(db, "system", "backup_config"),
       (snapshot) => {
@@ -1914,7 +2048,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [firebaseUser, currentUser?.role]);
+  }, [
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.email,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.approvalStatus,
+    currentUser?.status,
+    (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
+  ]);
 
   const updateMaintenanceCustomMessage = async (msg: string) => {
     vibrateClick();
@@ -3296,19 +3442,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // Sync Users from Firestore (Least Privilege: Only Admins and Servidores query the full directory)
+  // Sync Users from Firestore (Least Privilege: Only Verified Active Approved Admins query the full directory)
   useEffect(() => {
-    if (!firebaseUser) {
+    const session = evaluateListenerSession({ authLoading, firebaseUser, currentUser });
+    if (!session.isSessionReady) {
       setAllUsers([]);
       return;
     }
 
-    const email = safeToLower(firebaseUser.email);
-    const isRoot = email === "paulocauan39@gmail.com";
-    const isPrivileged = isRoot || currentUser?.role === "ADMIN";
-
-    // Non-admin users (students and regular staff) do not harvest or enumerate the users collection
-    if (!isPrivileged) {
+    if (!canSubscribeUsersDirectory({ authLoading, firebaseUser, currentUser })) {
       setAllUsers(currentUser ? [currentUser] : []);
       return;
     }
@@ -3356,7 +3498,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [firebaseUser, currentUser?.role]);
+  }, [
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.email,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.approvalStatus,
+    currentUser?.status,
+    (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
+  ]);
 
   const rawPublicItemsRef = useRef<LostFoundItem[]>([]);
   const privateReturnRecordsRef = useRef<Record<string, Record<string, any>>>({});
@@ -3419,7 +3573,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const applyPrivacyMerge = (publicList: LostFoundItem[]) => {
       const sanitizedList = publicList.map((it) => sanitizePublicItemProjection(it));
       rawPublicItemsRef.current = sanitizedList;
-      const hasStaffAccess = canOperateFormalReturn(currentUser, firebaseUser);
+      const hasStaffAccess = !authLoading && canOperateFormalReturn(currentUser, firebaseUser, false);
       const finalItems = mergeAllItemCollections(sanitizedList, hasStaffAccess);
       if (isMounted) {
         setItems(finalItems);
@@ -3490,11 +3644,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isMounted = false;
       unsubscribe();
     };
-  }, [firebaseUser?.uid, currentUser?.id, currentUser?.role, currentUser?.status, currentUser?.approvalStatus]);
+  }, [
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.status,
+    currentUser?.approvalStatus,
+    (currentUser as any)?.active,
+  ]);
 
-  // Sync Immutable Item History Timeline (/item_history)
+  // Sync Immutable Item History Timeline (/item_history for staff; safe sanitized /api/items/public-history for students/visitors)
   useEffect(() => {
+    const mode = getItemHistorySubscriptionMode({ authLoading, firebaseUser, currentUser });
+    if (mode === "WAIT") {
+      return;
+    }
+
     let isMounted = true;
+    const applyHistoryMap = (nextMap: Record<string, ItemHistoryLog[]>, hasStaffAccess: boolean) => {
+      if (!isMounted) return;
+      itemHistoryEntriesRef.current = nextMap;
+      if (rawPublicItemsRef.current.length > 0) {
+        const merged = mergeAllItemCollections(rawPublicItemsRef.current, hasStaffAccess);
+        setItems(merged);
+        setSelectedItemForDetail((prev) => {
+          if (!prev) return null;
+          const updated = merged.find((it) => it.id === prev.id);
+          return updated || (hasStaffAccess ? prev : sanitizePublicItemProjection(prev));
+        });
+      }
+    };
+
+    if (mode === "PUBLIC_API") {
+      itemHistoryEntriesRef.current = {};
+      fetch("/api/items/public-history")
+        .then(async (res) => {
+          if (!res.ok) return null;
+          return res.json();
+        })
+        .then((payload) => {
+          if (!isMounted || !Array.isArray(payload?.entries)) return;
+          const sanitizedEntries = sanitizePublicHistoryLogs(payload.entries as ItemHistoryLog[]) || [];
+          const nextMap: Record<string, ItemHistoryLog[]> = {};
+          for (const entry of sanitizedEntries) {
+            const key = (entry as any).objectId || (entry as any).itemId;
+            if (!key) continue;
+            if (!nextMap[key]) nextMap[key] = [];
+            nextMap[key].push(entry);
+          }
+          applyHistoryMap(nextMap, false);
+        })
+        .catch(() => {});
+
+      return () => {
+        isMounted = false;
+      };
+    }
+
     const unsubscribe = onSnapshot(
       collection(db, "item_history"),
       (snapshot) => {
@@ -3507,17 +3715,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (!nextMap[key]) nextMap[key] = [];
           nextMap[key].push({ ...data, id: docSnap.id || data.id });
         });
-        itemHistoryEntriesRef.current = nextMap;
-        if (rawPublicItemsRef.current.length > 0) {
-          const hasStaffAccess = canOperateFormalReturn(currentUser, firebaseUser);
-          const merged = mergeAllItemCollections(rawPublicItemsRef.current, hasStaffAccess);
-          setItems(merged);
-          setSelectedItemForDetail((prev) => {
-            if (!prev) return null;
-            const updated = merged.find((it) => it.id === prev.id);
-            return updated || prev;
-          });
-        }
+        applyHistoryMap(nextMap, true);
       },
       (err) => {
         console.warn("Aviso ao sincronizar histórico imutável de itens:", err);
@@ -3528,11 +3726,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isMounted = false;
       unsubscribe();
     };
-  }, [firebaseUser?.uid, currentUser?.id, currentUser?.role, currentUser?.status, currentUser?.approvalStatus]);
+  }, [
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.email,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.status,
+    currentUser?.approvalStatus,
+    (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
+  ]);
 
   // Sync Private Return Records (/item_return_records) & Private Verification Hints (/item_private) strictly for active SERVIDOR and ADMIN
   useEffect(() => {
-    const hasStaffAccess = canOperateFormalReturn(currentUser, firebaseUser);
+    const hasStaffAccess = canSubscribeStaffItemCollections({ authLoading, firebaseUser, currentUser });
     if (!hasStaffAccess) {
       privateReturnRecordsRef.current = {};
       privateItemHintsRef.current = {};
@@ -3604,43 +3814,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubscribeReturnRecords();
       unsubscribePrivateHints();
     };
-  }, [firebaseUser, currentUser?.id, currentUser?.role, currentUser?.status, currentUser?.approvalStatus]);
+  }, [
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.email,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.status,
+    currentUser?.approvalStatus,
+    (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
+  ]);
 
   // Sync Claims from Firestore (Strict Least Privilege & RBAC Compliance)
   useEffect(() => {
-    // 1. Must have authenticated Firebase user session
-    if (!firebaseUser || !firebaseUser.uid) {
+    const scope = getClaimsListenerScope({ authLoading, firebaseUser, currentUser });
+    if (scope === "NONE" || !firebaseUser?.uid) {
       setClaims([]);
       return;
     }
 
-    // 2. Prevent premature execution before profile verification handshake completes
-    if (authLoading) {
-      return;
-    }
-
-    // 3. User document must be loaded in state and match the authenticated UID
-    if (!currentUser || currentUser.id === DEFAULT_GUEST_USER.id || currentUser.id !== firebaseUser.uid) {
-      return;
-    }
-
-    // 4. Do not initialize listener if account is blocked or inactive
-    const isRoot = firebaseUser.email?.toLowerCase() === "paulocauan39@gmail.com";
-    if (!isRoot) {
-      if (isAccountBlocked(currentUser) || currentUser.status !== "active") {
-        setClaims([]);
-        return;
-      }
-      if (currentUser.role === "INTRUSO") {
-        setClaims([]);
-        return;
-      }
-    }
-
-    const isPrivileged = currentUser?.role === "ADMIN" || currentUser?.role === "SERVIDOR";
-    const claimsQuery = isPrivileged
-      ? collection(db, "claims")
-      : query(collection(db, "claims"), where("claimerId", "==", firebaseUser.uid));
+    const claimsQuery =
+      scope === "ALL"
+        ? collection(db, "claims")
+        : query(collection(db, "claims"), where("claimerId", "==", firebaseUser.uid));
 
     const unsubscribe = onSnapshot(
       claimsQuery,
@@ -3657,7 +3856,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [firebaseUser, currentUser?.id, currentUser?.role, currentUser?.status, authLoading]);
+  }, [
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.email,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.approvalStatus,
+    currentUser?.status,
+    (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
+  ]);
 
   // Track seen notification IDs to only alert on newly arriving real-time notifications
   const initialNotifsLoadedRef = React.useRef(false);
@@ -3665,25 +3876,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync Notifications from Firestore (Least Privilege matching firestore.rules)
   useEffect(() => {
-    // Unauthenticated visitors do not have access to notifications
-    if (!firebaseUser) {
+    const scope = getNotificationsListenerScope({ authLoading, firebaseUser, currentUser });
+    if (scope === "NONE" || !firebaseUser?.uid) {
       setNotifications([]);
       return;
     }
 
-    // Determine query scope: Admins can view all notifications for oversight;
-    // non-admin users only listen to notifications addressed to their UID or broadcast targets strictly authorized in firestore.rules.
-    const isAdminUser = currentUser?.role === "ADMIN";
     const fbUid = firebaseUser.uid;
-
-    let notifsQuery;
-    if (isAdminUser) {
-      notifsQuery = collection(db, "notifications");
-    } else {
-      // Must strictly match target expressions in firestore.rules: request.auth.uid, 'all', 'todos_alunos', 'todos'
-      const allowedTargets = [fbUid, "all", "todos_alunos", "todos"];
-      notifsQuery = query(collection(db, "notifications"), where("userId", "in", allowedTargets));
-    }
+    const notifsQuery =
+      scope === "ALL"
+        ? collection(db, "notifications")
+        : query(collection(db, "notifications"), where("userId", "in", [fbUid, "all", "todos_alunos", "todos"]));
 
     const unsubscribe = onSnapshot(
       notifsQuery,
@@ -3732,7 +3935,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [currentUser?.role, firebaseUser?.uid]);
+  }, [
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.email,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.approvalStatus,
+    currentUser?.status,
+    (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
+  ]);
 
   // Sync Comments from Firestore (requires authenticated session - least privilege)
   useEffect(() => {
@@ -3797,9 +4012,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Sync Activity Logs from Firestore
+  // Sync Activity Logs from Firestore (Verified & Approved Staff or Admin Only)
   useEffect(() => {
-    if (!firebaseUser || (currentUser?.role !== "ADMIN" && currentUser?.role !== "SERVIDOR")) {
+    if (!canSubscribeStaffLogs({ authLoading, firebaseUser, currentUser })) {
       setActivityLogs([]);
       return;
     }
@@ -3819,11 +4034,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [firebaseUser, currentUser?.role]);
+  }, [
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.email,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.approvalStatus,
+    currentUser?.status,
+    (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
+  ]);
 
-  // Sync System Audit Logs from Firestore (Immutable Audit Trail)
+  // Sync System Audit Logs from Firestore (Immutable Audit Trail - Verified & Approved Admin Only)
   useEffect(() => {
-    if (!firebaseUser || currentUser?.role !== "ADMIN") {
+    if (!canSubscribeAdminOnlyLogs({ authLoading, firebaseUser, currentUser })) {
       setSystemAuditLogs([]);
       return;
     }
@@ -3841,7 +4068,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [firebaseUser, currentUser?.role]);
+  }, [
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.email,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.approvalStatus,
+    currentUser?.status,
+    (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
+  ]);
 
   const recordAuditLog = async (entry: {
     objectId: string;
@@ -3933,9 +4172,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Sync Document Templates from Firestore (Admin Only)
+  // Sync Document Templates from Firestore (Verified & Approved Admin Only)
   useEffect(() => {
-    if (!currentUser || currentUser.role !== "ADMIN") return;
+    if (!canSubscribeAdminOnlyLogs({ authLoading, firebaseUser, currentUser })) {
+      return;
+    }
     const unsubscribe = onSnapshot(
       collection(db, "document_templates"),
       (snapshot) => {
@@ -3980,11 +4221,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [currentUser?.role]);
+  }, [
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.email,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.approvalStatus,
+    currentUser?.status,
+    (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
+  ]);
 
-  // Sync Project Settings from Firestore (Real-time updates - Admin Only)
+  // Sync Project Settings from Firestore (Real-time updates - Verified & Approved Admin Only)
   useEffect(() => {
-    if (!currentUser || currentUser.role !== "ADMIN") return;
+    if (!canSubscribeAdminOnlyLogs({ authLoading, firebaseUser, currentUser })) {
+      return;
+    }
     const unsubscribe = onSnapshot(
       doc(db, "project_settings", "inovaif"),
       (docSnap) => {
@@ -4003,7 +4258,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [currentUser?.role]);
+  }, [
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.email,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.approvalStatus,
+    currentUser?.status,
+    (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
+  ]);
 
   const saveProjectSettings = async (settings: ProjectSettings) => {
     const updated: ProjectSettings = {
@@ -4036,9 +4303,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast("Configurações do projeto restauradas para os dados padrão do InovaIF.", "info");
   };
 
-  // Sync Generated Documents from Firestore (Admin Only)
+  // Sync Generated Documents from Firestore (Verified & Approved Admin Only)
   useEffect(() => {
-    if (!currentUser || currentUser.role !== "ADMIN") return;
+    if (!canSubscribeAdminOnlyLogs({ authLoading, firebaseUser, currentUser })) {
+      setGeneratedDocuments([]);
+      return;
+    }
     const unsubscribe = onSnapshot(
       collection(db, "generated_documents"),
       (snapshot) => {
@@ -4056,7 +4326,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
     return () => unsubscribe();
-  }, [currentUser?.role]);
+  }, [
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.email,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.approvalStatus,
+    currentUser?.status,
+    (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
+  ]);
 
   const saveDocumentTemplate = async (template: DocumentTemplate) => {
     const updatedTemplate: DocumentTemplate = {

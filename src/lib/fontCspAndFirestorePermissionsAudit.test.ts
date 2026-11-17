@@ -53,20 +53,21 @@ describe("LOCALIZA+ v1.10.6 — Auditoria da CSP de Fontes e Permissões Firesto
     it("listener de claims deve isolar consultas por claimerId para usuários não-privilegiados", () => {
       // Localiza o bloco do useEffect de claims
       const claimsBlockMatch = appContextCode.match(
-        /\/\/\s*Sync Claims from Firestore[\s\S]*?useEffect\(\(\)\s*=>\s*\{([\s\S]*?)\},\s*\[(.*?)\]\);/
+        /\/\/\s*Sync Claims from Firestore[\s\S]*?useEffect\(\(\)\s*=>\s*\{([\s\S]*?)\},\s*\[([\s\S]*?)\]\);/
       );
       expect(claimsBlockMatch).not.toBeNull();
 
       const blockBody = claimsBlockMatch![1];
       const deps = claimsBlockMatch![2];
 
-      // Deve verificar privilégio de ADMIN ou SERVIDOR
-      expect(blockBody).toContain('currentUser?.role === "ADMIN" || currentUser?.role === "SERVIDOR"');
+      // Deve delegar privilégio estrito (ADMIN/SERVIDOR ativo e verificado) via getClaimsListenerScope
+      expect(blockBody).toContain("getClaimsListenerScope({ authLoading, firebaseUser, currentUser })");
+      expect(blockBody).toContain('scope === "ALL"');
 
       // Se privilegiado, collection(db, "claims"); se não, filtra estritamente por claimerId == firebaseUser.uid
       expect(blockBody).toContain('where("claimerId", "==", firebaseUser.uid)');
 
-      // Dependências devem ser reativas tanto ao firebaseUser quanto ao papel do usuário
+      // Dependências devem ser reativas tanto ao firebaseUser quanto ao papel do usuário e authLoading
       expect(deps).toContain("firebaseUser");
       expect(deps).toContain("currentUser?.role");
     });
@@ -74,7 +75,7 @@ describe("LOCALIZA+ v1.10.6 — Auditoria da CSP de Fontes e Permissões Firesto
     it("listener de notifications deve consultar estritamente alvos autorizados nas regras do Firestore", () => {
       // Localiza o bloco de notifications
       const notifsBlockMatch = appContextCode.match(
-        /\/\/\s*Sync Notifications from Firestore[\s\S]*?useEffect\(\(\)\s*=>\s*\{([\s\S]*?)\},\s*\[(.*?)\]\);/
+        /\/\/\s*Sync Notifications from Firestore[\s\S]*?useEffect\(\(\)\s*=>\s*\{([\s\S]*?)\},\s*\[([\s\S]*?)\]\);/
       );
       expect(notifsBlockMatch).not.toBeNull();
 
