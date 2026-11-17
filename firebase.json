@@ -1,5 +1,6 @@
 {
   "firestore": {
+    "database": "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1",
     "rules": "firestore.rules"
   },
   "emulators": {

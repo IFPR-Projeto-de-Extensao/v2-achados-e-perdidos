@@ -108,7 +108,7 @@ service cloud.firestore {
 
     function isAdminUserDoc() {
       let u = getUserData();
-      return u.role == 'ADMIN' && u.approvalStatus == 'APROVADO';
+      return ('role' in u) && u.role == 'ADMIN' && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO';
     }
 
     function hasAdminClaim() {
@@ -148,6 +148,7 @@ service cloud.firestore {
       return isSignedIn() && 
              isEmailVerified() &&
              userDocExists() &&
+             ('role' in getUserData()) &&
              getUserData().role == 'SERVIDOR';
     }
 
@@ -160,19 +161,21 @@ service cloud.firestore {
 
     function isApprovedServidorDoc() {
       let u = getUserData();
-      return u.role == 'SERVIDOR' && u.approvalStatus == 'APROVADO';
+      return ('role' in u) && u.role == 'SERVIDOR' && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO';
     }
 
     function isDocAluno() {
       return isSignedIn() && 
              isEmailVerified() &&
              userDocExists() &&
+             ('role' in getUserData()) &&
              getUserData().role == 'ALUNO';
     }
 
     function isDocIntruso() {
       return isSignedIn() && 
              userDocExists() &&
+             ('role' in getUserData()) &&
              getUserData().role == 'INTRUSO';
     }
 
@@ -202,7 +205,7 @@ service cloud.firestore {
 
     function isApprovedStaffOrAdminDoc() {
       let u = getUserData();
-      return (u.role == 'SERVIDOR' || u.role == 'ADMIN') && u.approvalStatus == 'APROVADO';
+      return ('role' in u) && (u.role == 'SERVIDOR' || u.role == 'ADMIN') && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO';
     }
 
     function canRegisterItems() {
@@ -218,9 +221,11 @@ service cloud.firestore {
 
     function isRecognizedUserDocRole() {
       let u = getUserData();
-      return u.role == 'ALUNO' ||
-             u.role == 'SERVIDOR' ||
-             (u.role == 'ADMIN' && u.approvalStatus == 'APROVADO');
+      return ('role' in u) && (
+        u.role == 'ALUNO' ||
+        u.role == 'SERVIDOR' ||
+        (u.role == 'ADMIN' && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO')
+      );
     }
 
     function isIntruso() {
@@ -512,13 +517,17 @@ service cloud.firestore {
           incoming().id == userId && 
           (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) && 
           (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) && 
+          ('role' in existing()) &&
           existing().role == 'INTRUSO' && 
           !isAccountBlocked() && 
           (!('admin' in incoming()) || incoming().admin == false) && 
           (!('admin' in existing()) || existing().admin == false) && 
           (!('roleAssignedBy' in incoming()) || ('roleAssignedBy' in existing() && incoming().roleAssignedBy == existing().roleAssignedBy)) &&
           (!('roleAssignedAt' in incoming()) || ('roleAssignedAt' in existing() && incoming().roleAssignedAt == existing().roleAssignedAt)) && 
-          (incoming().approvalStatus == existing().approvalStatus) && 
+          (
+            ('approvalStatus' in existing() && incoming().approvalStatus == existing().approvalStatus && incoming().role != 'SERVIDOR') ||
+            (incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail() && incoming().approvalStatus == 'PENDENTE')
+          ) && 
           (('status' in existing() && incoming().status == existing().status) || (!('status' in existing()) && (!('status' in incoming()) || incoming().status == 'active'))) && 
           (('suspendedUntil' in existing() && incoming().suspendedUntil == existing().suspendedUntil) || (!('suspendedUntil' in existing()) && !('suspendedUntil' in incoming()))) && 
           (('blockExpiresAt' in existing() && incoming().blockExpiresAt == existing().blockExpiresAt) || (!('blockExpiresAt' in existing()) && !('blockExpiresAt' in incoming()))) && 
@@ -537,10 +546,12 @@ service cloud.firestore {
           request.auth.uid == userId && 
           incoming().id == userId && 
           (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) && 
+          ('role' in existing()) &&
           incoming().role == existing().role && 
           (!('admin' in incoming()) || incoming().admin == existing().admin) && 
           (!('roleAssignedBy' in incoming()) || ('roleAssignedBy' in existing() && incoming().roleAssignedBy == existing().roleAssignedBy)) &&
           (!('roleAssignedAt' in incoming()) || ('roleAssignedAt' in existing() && incoming().roleAssignedAt == existing().roleAssignedAt)) &&
+          ('approvalStatus' in existing()) &&
           (incoming().approvalStatus == existing().approvalStatus) && 
           (('status' in existing() && incoming().status == existing().status) || (!('status' in existing()) && (!('status' in incoming()) || incoming().status == 'active'))) && 
           (('suspendedUntil' in existing() && incoming().suspendedUntil == existing().suspendedUntil) || (!('suspendedUntil' in existing()) && !('suspendedUntil' in incoming()))) && 
@@ -555,11 +566,12 @@ service cloud.firestore {
           (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) && 
           (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) && 
           !isAccountBlocked() &&
+          ('role' in existing()) &&
           (existing().role == 'ALUNO' || existing().role == 'SERVIDOR') &&
           incoming().role == existing().role && 
           (!('admin' in incoming()) || incoming().admin == false) && 
           (!('admin' in existing()) || existing().admin == false) && 
-          (incoming().approvalStatus == existing().approvalStatus) && 
+          (!('approvalStatus' in existing()) || incoming().approvalStatus == existing().approvalStatus) && 
           (!('status' in existing()) && incoming().status == 'active') && 
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
           (
@@ -587,7 +599,8 @@ service cloud.firestore {
       // - Author ID must match request.auth.uid
       // - Cannot falsify author role as ADMIN or SERVIDOR unless possessing real credentials
       // - Text fields must obey ITEM_FIELD_LIMITS (title <= 100, description <= 1000, location <= 120, etc.)
-      allow create: if incoming().registeredByUserId == request.auth.uid && 
+      allow create: if isSignedIn() &&
+                    incoming().registeredByUserId == request.auth.uid && 
                     isEmailVerified() && 
                     (incoming().registeredByRole == 'SERVIDOR' || incoming().registeredByRole == 'ADMIN') &&
                     isValidItemTextFields(incoming()) &&
@@ -631,7 +644,8 @@ service cloud.firestore {
     match /found_items/{itemId} {
       allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
       allow list: if hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
-      allow create: if incoming().registeredByUserId == request.auth.uid && 
+      allow create: if isSignedIn() &&
+                    incoming().registeredByUserId == request.auth.uid && 
                     isEmailVerified() && 
                     (incoming().registeredByRole == 'SERVIDOR' || incoming().registeredByRole == 'ADMIN') &&
                     isValidItemTextFields(incoming()) &&
@@ -668,7 +682,8 @@ service cloud.firestore {
     match /lost_items/{itemId} {
       allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
       allow list: if hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
-      allow create: if incoming().registeredByUserId == request.auth.uid && 
+      allow create: if isSignedIn() &&
+                    incoming().registeredByUserId == request.auth.uid && 
                     isEmailVerified() && 
                     (incoming().registeredByRole == 'SERVIDOR' || incoming().registeredByRole == 'ADMIN') &&
                     isValidItemTextFields(incoming()) &&

@@ -1945,12 +1945,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const nextStatus = approved ? "APROVADO" : "REJEITADO";
     const userObj = allUsers.find((u) => u.id === userId);
     const userName = userObj ? userObj.name : userId;
+    const isBlocked = userObj
+      ? isAccountBlocked({ ...userObj, status: userObj.status || "active" })
+      : false;
+    const approvalPayload: Record<string, any> = {
+      approvalStatus: nextStatus,
+      ...(approved && !isBlocked
+        ? {
+            status: "active",
+            active: true,
+          }
+        : {}),
+    };
 
     try {
-      await setDoc(doc(db, "users", userId), { approvalStatus: nextStatus }, { merge: true });
+      await setDoc(doc(db, "users", userId), approvalPayload, { merge: true });
       // Atualizar estado local APENAS após confirmação inequívoca do Firestore
       setAllUsers((prev) =>
-        prev.map((u) => (u.id === userId ? { ...u, approvalStatus: nextStatus } : u))
+        prev.map((u) => (u.id === userId ? { ...u, ...approvalPayload } : u))
       );
       await logAdminAction(
         approved ? "APROVACAO_USUARIO" : "REJEICAO_USUARIO",
@@ -1983,13 +1995,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const batch = writeBatch(db);
       for (const u of pendingList) {
-        batch.set(doc(db, "users", u.id), { approvalStatus: "APROVADO" }, { merge: true });
+        const isBlocked = isAccountBlocked({ ...u, status: u.status || "active" });
+        batch.set(
+          doc(db, "users", u.id),
+          {
+            approvalStatus: "APROVADO",
+            ...(isBlocked
+              ? {}
+              : {
+                  status: "active",
+                  active: true,
+                }),
+          },
+          { merge: true }
+        );
       }
       await batch.commit();
 
       // Somente após a persistência bem-sucedida do lote no Firestore o estado local é atualizado
       setAllUsers((prev) =>
-        prev.map((u) => (u.approvalStatus === "PENDENTE" ? { ...u, approvalStatus: "APROVADO" } : u))
+        prev.map((u) => {
+          if (u.approvalStatus !== "PENDENTE") return u;
+          const isBlocked = isAccountBlocked({ ...u, status: u.status || "active" });
+          return isBlocked
+            ? { ...u, approvalStatus: "APROVADO" }
+            : {
+                ...u,
+                approvalStatus: "APROVADO",
+                status: "active",
+                active: true,
+              };
+        })
       );
 
       await logAdminAction(
@@ -2325,13 +2361,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addUserByAdmin = async (userData: Omit<User, "id">) => {
     const newUserId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const newUser: User = {
+    const newUser: User = sanitizeFirestoreData({
       ...userData,
       id: newUserId,
+      status: userData.status || "active",
+      active: userData.active ?? true,
+      approvalStatus: userData.approvalStatus || "APROVADO",
       avatarUrl:
         userData.avatarUrl ||
         `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
-    };
+    }) as User;
     try {
       await setDoc(doc(db, "users", newUserId), newUser);
       // Somente após confirmação do Firestore o usuário é adicionado ao estado local
@@ -4247,8 +4286,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const isRoot = cleanEmail === "paulocauan39@gmail.com";
 
     // Zero-Trust: Initial role is INTRUSO until email is verified (unless root admin)
+    // Contas @ifpr.edu.br já iniciam com approvalStatus PENDENTE para respeitar Branch 1 na promoção pós-verificação
     const resolvedRole: UserRole = isRoot ? "ADMIN" : "INTRUSO";
-    const statusVal: ApprovalStatus = "APROVADO";
+    const statusVal: ApprovalStatus =
+      !isRoot && institutionalPreview.role === "SERVIDOR" ? "PENDENTE" : "APROVADO";
     const resolvedCourse = userData.courseOrDept?.trim() || (
       institutionalPreview.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" :
       institutionalPreview.role === "ALUNO" ? "Estudante IFPR Campus Ivaiporã" :

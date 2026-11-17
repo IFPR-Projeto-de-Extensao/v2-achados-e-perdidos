@@ -297,6 +297,52 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
       );
     });
 
+    it("6a. Root Admin (UID hCG5mDgK1fRaTojULzlM7dXvb7n2 e paulocauan39@gmail.com verificado) cria em /items, /item_private e /item_history com ou sem users/{uid}", async () => {
+      const rootUid = "hCG5mDgK1fRaTojULzlM7dXvb7n2";
+      const rootEmail = "paulocauan39@gmail.com";
+
+      const dbRoot = testEnv.authenticatedContext(rootUid, {
+        email: rootEmail,
+        email_verified: true,
+      }).firestore();
+
+      await assertSucceeds(
+        setDoc(doc(dbRoot, "items", "item_root_no_doc"), {
+          id: "item_root_no_doc",
+          title: "Carregador USB-C",
+          description: "Encontrado na portaria",
+          category: "Eletrônicos",
+          location: "Portaria",
+          status: "ENCONTRADO",
+          type: "ENCONTRADO",
+          registeredByUserId: rootUid,
+          registeredByRole: "ADMIN",
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      await assertSucceeds(
+        setDoc(doc(dbRoot, "item_private", "item_root_no_doc"), {
+          itemId: "item_root_no_doc",
+          registeredByUserId: rootUid,
+          secretVerificationHint: "Cabo branco de 2m",
+          updatedAt: new Date().toISOString(),
+        })
+      );
+
+      await assertSucceeds(
+        setDoc(doc(dbRoot, "item_history", "hist_root_no_doc"), {
+          id: "hist_root_no_doc",
+          itemId: "item_root_no_doc",
+          objectId: "item_root_no_doc",
+          action: "Ocorrência cadastrada",
+          actorId: rootUid,
+          actorRole: "ADMIN",
+          timestamp: new Date().toISOString(),
+        })
+      );
+    });
+
     it("6b. ADMIN não-root (Gmail promovido) com users/{uid} ADMIN/APROVADO/active consegue criar em /items, /item_private e /item_history", async () => {
       const uid = "gmail_admin_aprovado";
       await setupUserDoc(uid, {
@@ -495,6 +541,88 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
           registeredByRole: "SERVIDOR",
           createdAt: new Date().toISOString(),
         })
+      );
+    });
+
+    it("6e. ADMIN ou SERVIDOR sem campo approvalStatus em users/{uid} é negado com segurança (sem erro de avaliação)", async () => {
+      const uidAdminSemAprov = "gmail_admin_sem_aprov";
+      await setupUserDoc(uidAdminSemAprov, {
+        id: uidAdminSemAprov,
+        email: "admin.semaprov@gmail.com",
+        role: "ADMIN",
+        status: "active",
+      });
+
+      const dbAdminSemAprov = testEnv.authenticatedContext(uidAdminSemAprov, {
+        email: "admin.semaprov@gmail.com",
+        email_verified: true,
+        role: "ADMIN",
+        admin: true,
+      }).firestore();
+
+      await assertFails(
+        setDoc(doc(dbAdminSemAprov, "items", "item_sem_aprov"), {
+          id: "item_sem_aprov",
+          title: "Item Bloqueado Sem ApprovalStatus",
+          description: "Documento users/{uid} sem campo approvalStatus",
+          category: "Outros",
+          location: "Bloco 1",
+          status: "ENCONTRADO",
+          type: "ENCONTRADO",
+          registeredByUserId: uidAdminSemAprov,
+          registeredByRole: "ADMIN",
+          createdAt: new Date().toISOString(),
+        })
+      );
+    });
+
+    it("6f. Conta @ifpr.edu.br criada como INTRUSO/APROVADO consegue promover apenas para SERVIDOR/PENDENTE após verificar e-mail, e é negada se tentar SERVIDOR/APROVADO", async () => {
+      const uid = "serv_legacy_intruso_aprovado";
+      const email = "docente.novo@ifpr.edu.br";
+      await setupUserDoc(uid, {
+        id: uid,
+        email,
+        name: "Docente Novo",
+        role: "INTRUSO",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+
+      const db = testEnv.authenticatedContext(uid, {
+        email,
+        email_verified: true,
+      }).firestore();
+
+      // Auto-promoção direta para APROVADO deve continuar negada
+      await assertFails(
+        setDoc(
+          doc(db, "users", uid),
+          {
+            id: uid,
+            email,
+            name: "Docente Novo",
+            role: "SERVIDOR",
+            approvalStatus: "APROVADO",
+            status: "active",
+          },
+          { merge: true }
+        )
+      );
+
+      // Transição segura para SERVIDOR PENDENTE deve ser aceita para posterior aprovação administrativa
+      await assertSucceeds(
+        setDoc(
+          doc(db, "users", uid),
+          {
+            id: uid,
+            email,
+            name: "Docente Novo",
+            role: "SERVIDOR",
+            approvalStatus: "PENDENTE",
+            status: "active",
+          },
+          { merge: true }
+        )
       );
     });
   });

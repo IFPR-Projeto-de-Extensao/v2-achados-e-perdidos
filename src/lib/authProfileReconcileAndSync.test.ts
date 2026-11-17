@@ -851,4 +851,41 @@ describe("Reconciliação de Perfis, Regras Firestore, Fila Offline e UI — Loc
       expect(indicatorSrc).toContain("{permanentErrorCount === 0 && (");
     });
   });
+
+  describe("(g) Cadastro @ifpr.edu.br (SERVIDOR PENDENTE), addUserByAdmin e guardas em firestore.rules", () => {
+    it("register() inicializa contas @ifpr.edu.br com approvalStatus PENDENTE e demais contas com APROVADO", () => {
+      const appCtxSrc = fs.readFileSync(path.resolve(process.cwd(), "src/context/AppContext.tsx"), "utf-8");
+      const registerStart = appCtxSrc.indexOf("const registerWithEmailPassword = async");
+      const registerEnd = appCtxSrc.indexOf("const checkVerificationStatus = async", registerStart);
+      expect(registerStart).toBeGreaterThan(-1);
+      expect(registerEnd).toBeGreaterThan(registerStart);
+
+      const registerBlock = appCtxSrc.slice(registerStart, registerEnd);
+      expect(registerBlock).toContain('!isRoot && institutionalPreview.role === "SERVIDOR" ? "PENDENTE" : "APROVADO"');
+    });
+
+    it("addUserByAdmin e approveUser garantem campos canônicos status='active', active=true e approvalStatus", () => {
+      const appCtxSrc = fs.readFileSync(path.resolve(process.cwd(), "src/context/AppContext.tsx"), "utf-8");
+      const approveStart = appCtxSrc.indexOf("const approveUser = async");
+      const approveEnd = appCtxSrc.indexOf("const approveAllPendingUsers", approveStart);
+      const approveBlock = appCtxSrc.slice(approveStart, approveEnd);
+      expect(approveBlock).toContain("active: true");
+      expect(approveBlock).toContain('status: "active"');
+
+      const addStart = appCtxSrc.indexOf("const addUserByAdmin = async");
+      const addEnd = appCtxSrc.indexOf("setAllUsers((prev) => [...prev, newUser]);", addStart);
+      const addBlock = appCtxSrc.slice(addStart, addEnd);
+      expect(addBlock).toContain('status: userData.status || "active"');
+      expect(addBlock).toContain("active: userData.active ?? true");
+      expect(addBlock).toContain('approvalStatus: userData.approvalStatus || "APROVADO"');
+    });
+
+    it("firestore.rules protege leitura de role/approvalStatus ausentes e restringe promoção SERVIDOR a approvalStatus PENDENTE", () => {
+      const rulesSrc = fs.readFileSync(path.resolve(process.cwd(), "firestore.rules"), "utf-8");
+      expect(rulesSrc).toContain("('role' in u) && u.role == 'ADMIN' && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO'");
+      expect(rulesSrc).toContain("('role' in u) && u.role == 'SERVIDOR' && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO'");
+      expect(rulesSrc).toContain("(incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail() && incoming().approvalStatus == 'PENDENTE')");
+    });
+  });
 });
+

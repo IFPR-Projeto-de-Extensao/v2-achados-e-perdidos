@@ -111,10 +111,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "AUTH",
         tag: "Reconciliação & Produção",
       },
+      {
+        id: "v11013-fix-servidor-registration-status-and-rules-guards",
+        title: "Correção do Fluxo de Cadastro @ifpr.edu.br (SERVIDOR), Campos Canônicos em users/{uid} e Guardas Defensivas nas Firestore Rules",
+        description: "Correção em register() (AppContext.tsx) para inicializar contas @ifpr.edu.br com approvalStatus='PENDENTE' em vez de 'APROVADO' (eliminando o bloqueio da transição INTRUSO -> SERVIDOR após verificação de e-mail na Branch 1 de firestore.rules), garantia de status='active', active=true e approvalStatus em approveUser/approveAllPendingUsers/addUserByAdmin; guardas explícitas de existência de 'role' e 'approvalStatus' nos helpers de firestore.rules sem enfraquecer o controle de acesso; restrição estrita da auto-promoção para SERVIDOR a approvalStatus=='PENDENTE' e alinhamento do banco nomeado no firebase.json.",
+        module: "FIRESTORE",
+        tag: "Autorização, Cadastro & Firestore Rules",
+      },
     ],
     stats: {
       additionsCount: 2,
-      fixesCount: 9,
+      fixesCount: 10,
     },
   },
   {

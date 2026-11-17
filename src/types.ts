@@ -36,6 +36,7 @@ export interface User {
   approvalStatus?: ApprovalStatus;
   reputationScore?: number;
   status?: AccountStatus;
+  active?: boolean;
   statusReason?: string;
   statusUpdatedAt?: string;
   statusUpdatedBy?: string;
