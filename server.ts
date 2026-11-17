@@ -919,6 +919,7 @@ export const PRIVATE_RETURN_ITEM_FIELDS = [
   "returnTime",
   "recipientName",
   "recipientEmail",
+  "recipientContact",
   "recipientBond",
   "recipientDocument",
   "recipientUid",
@@ -932,6 +933,7 @@ export const PRIVATE_RETURN_ITEM_FIELDS = [
   "recipientSignatureEmail",
   "recipientSignatureBond",
   "recipientSignatureDate",
+  "signatureData",
   "staffSignatureStatus",
   "staffSignatureMethod",
   "staffSignatureUrl",
@@ -997,55 +999,235 @@ export function sanitizePublicItemDocument(rawItem: Record<string, any>): Record
   return clean;
 }
 
-export function sanitizePublicHistoryEntry(rawEntry: Record<string, any>): Record<string, any> | null {
-  if (!rawEntry || typeof rawEntry !== "object") return null;
-  const clean: Record<string, any> = { ...rawEntry };
-  for (const field of PRIVATE_RETURN_ITEM_FIELDS) {
-    delete clean[field];
-  }
-  const itemKey = clean.objectId || clean.itemId;
-  const detailsStr = typeof clean.details === "string" ? clean.details : typeof clean.description === "string" ? clean.description : "";
-  const combined = `${String(clean.action || "")} ${detailsStr} ${String(clean.newValue || "")} ${String(clean.oldValue || "")}`;
-  const isReturnOrSensitive =
-    clean.action === "RETURNED" ||
-    clean.action === "DEVOLUCAO" ||
-    clean.action === "REOPENED" ||
-    clean.action === "REABERTURA_DEVOLUCAO" ||
-    /devolu[cç][aã]o|devolvido|restitu[ií]do|assinatura|recebedor|receptor|comprovante|validador|valida[cç][aã]o|cpf|rg|siape|matr[ií]cula|secretVerification/i.test(
-      combined
-    );
+const SENSITIVE_HISTORY_KEY_SET = new Set<string>([
+  ...PRIVATE_RETURN_ITEM_FIELDS.map((f) => f.toLowerCase()),
+  "contactinfo",
+  "contact",
+  "phone",
+  "telefone",
+  "celular",
+  "whatsapp",
+  "email",
+  "useremail",
+  "actoremail",
+  "cpf",
+  "rg",
+  "siape",
+  "matricula",
+  "matrícula",
+  "recipient",
+  "signature",
+  "token",
+  "secret",
+  "password",
+  "senha",
+]);
 
-  if (isReturnOrSensitive) {
+const SAFE_PUBLIC_HISTORY_FIELD_CHANGED = new Set<string>([
+  "status",
+  "status_inicial",
+  "title",
+  "category",
+  "location",
+  "description",
+  "type",
+  "color",
+  "brand",
+  "date",
+]);
+
+const SENSITIVE_PUBLIC_TEXT_REGEX =
+  /devolu[cç][aã]o|devolvido|restitu[ií]do|assinatura|recebedor|receptor|comprovante|validador|valida[cç][aã]o|\bcpf\b|\brg\b|siape|matr[ií]cula|secretVerification|contactInfo|\bcontato\b|whatsapp|telefone|celular/i;
+const EMAIL_TEXT_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+const PHONE_TEXT_REGEX =
+  /(?:\+?\d{1,3}[\s.-]?)?(?:\(\d{2,3}\)\s*|\b\d{2}[\s.-]?)(?:9\s*)?\d{4,5}[\s.-]?\d{4}\b/;
+const CPF_TEXT_REGEX = /\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b/;
+const RG_TEXT_REGEX = /\b(?:rg[:\s#-]*[\d.xX-]{5,14}|\d{1,2}\.\d{3}\.\d{3}-[\dXx])\b/i;
+
+function containsSensitivePublicHistoryText(value: string): boolean {
+  if (!value) return false;
+  return (
+    SENSITIVE_PUBLIC_TEXT_REGEX.test(value) ||
+    EMAIL_TEXT_REGEX.test(value) ||
+    PHONE_TEXT_REGEX.test(value) ||
+    CPF_TEXT_REGEX.test(value) ||
+    RG_TEXT_REGEX.test(value)
+  );
+}
+
+function inspectNestedHistoryValue(
+  value: unknown,
+  visited = new WeakSet<object>(),
+  depth = 0
+): { hasPrivateKeys: boolean; textSnippets: string[] } {
+  if (value === null || value === undefined || depth > 8) {
+    return { hasPrivateKeys: false, textSnippets: [] };
+  }
+  if (typeof value === "string") {
+    return { hasPrivateKeys: false, textSnippets: value ? [value] : [] };
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return { hasPrivateKeys: false, textSnippets: [String(value)] };
+  }
+  if (typeof value !== "object") {
+    return { hasPrivateKeys: false, textSnippets: [] };
+  }
+  if (visited.has(value)) {
+    return { hasPrivateKeys: false, textSnippets: [] };
+  }
+  visited.add(value);
+
+  let hasPrivateKeys = false;
+  const textSnippets: string[] = [];
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const sub = inspectNestedHistoryValue(item, visited, depth + 1);
+      if (sub.hasPrivateKeys) hasPrivateKeys = true;
+      if (sub.textSnippets.length > 0) textSnippets.push(...sub.textSnippets);
+    }
+    return { hasPrivateKeys, textSnippets };
+  }
+
+  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+    const normKey = key.trim().toLowerCase();
+    if (SENSITIVE_HISTORY_KEY_SET.has(normKey)) {
+      hasPrivateKeys = true;
+    }
+    const sub = inspectNestedHistoryValue(val, visited, depth + 1);
+    if (sub.hasPrivateKeys) hasPrivateKeys = true;
+    if (sub.textSnippets.length > 0) textSnippets.push(...sub.textSnippets);
+  }
+
+  return { hasPrivateKeys, textSnippets };
+}
+
+function normalizePublicActorRole(rawRole: unknown): "ADMIN" | "SERVIDOR" | "ALUNO" | "SISTEMA" {
+  if (typeof rawRole !== "string") return "SERVIDOR";
+  const upper = rawRole.trim().toUpperCase();
+  if (upper === "ADMIN" || upper === "SERVIDOR" || upper === "ALUNO" || upper === "SISTEMA") {
+    return upper;
+  }
+  return "SERVIDOR";
+}
+
+function readSafePrimitiveText(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (typeof value === "boolean") {
+    return String(value);
+  }
+  return undefined;
+}
+
+export function sanitizePublicHistoryEntry(rawInput: unknown): Record<string, any> | null {
+  if (!rawInput || typeof rawInput !== "object" || Array.isArray(rawInput)) return null;
+  const rawEntry = rawInput as Record<string, any>;
+
+  const { hasPrivateKeys: hasNestedPrivateKeys, textSnippets } = inspectNestedHistoryValue(rawEntry);
+
+  const safeId = typeof rawEntry.id === "string" && rawEntry.id.trim().length > 0 ? rawEntry.id.trim() : undefined;
+  const rawObjectId =
+    typeof rawEntry.objectId === "string" && rawEntry.objectId.trim().length > 0
+      ? rawEntry.objectId.trim()
+      : undefined;
+  const rawItemId =
+    typeof rawEntry.itemId === "string" && rawEntry.itemId.trim().length > 0
+      ? rawEntry.itemId.trim()
+      : undefined;
+  const itemKey = rawObjectId || rawItemId;
+
+  const rawAction = typeof rawEntry.action === "string" ? rawEntry.action.trim() : "";
+  const rawDetails = typeof rawEntry.details === "string" ? rawEntry.details.trim() : "";
+  const rawDesc = typeof rawEntry.description === "string" ? rawEntry.description.trim() : "";
+  const rawFieldChanged =
+    typeof rawEntry.fieldChanged === "string" ? rawEntry.fieldChanged.trim() : "";
+
+  const actorRole = normalizePublicActorRole(rawEntry.actorRole ?? rawEntry.userRole);
+  const timestamp =
+    typeof rawEntry.timestamp === "string"
+      ? rawEntry.timestamp
+      : typeof rawEntry.date === "string"
+      ? rawEntry.date
+      : "";
+
+  const isReturnAction =
+    rawAction === "RETURNED" ||
+    rawAction === "DEVOLUCAO" ||
+    rawAction === "REOPENED" ||
+    rawAction === "REABERTURA_DEVOLUCAO" ||
+    /devolu[cç][aã]o|devolvido|restitu[ií]do|assinatura/i.test(rawAction) ||
+    /devolu[cç][aã]o|devolvido|restitu[ií]do|assinatura/i.test(`${rawDetails} ${rawDesc}`);
+
+  if (isReturnAction) {
     const isReopen =
-      clean.action === "REOPENED" ||
-      clean.action === "REABERTURA_DEVOLUCAO" ||
-      String(clean.action || "").toLowerCase().includes("reaberta");
+      rawAction === "REOPENED" ||
+      rawAction === "REABERTURA_DEVOLUCAO" ||
+      rawAction.toLowerCase().includes("reaberta");
     return {
-      id: clean.id,
-      ...(clean.itemId ? { itemId: clean.itemId } : itemKey ? { itemId: itemKey } : {}),
+      ...(safeId ? { id: safeId } : {}),
+      ...(rawItemId ? { itemId: rawItemId } : itemKey ? { itemId: itemKey } : {}),
       ...(itemKey ? { objectId: itemKey } : {}),
       action: isReopen ? "Devolução reaberta" : "Devolução institucional registrada",
-      actorRole: clean.actorRole || clean.userRole || "SERVIDOR",
-      timestamp: clean.timestamp || clean.date || "",
+      actorRole,
+      timestamp,
       details: isReopen
         ? "Registro de devolução reaberto administrativamente."
         : "Movimentação formal de devolução registrada no sistema.",
     };
   }
 
-  return {
-    id: clean.id,
-    ...(clean.itemId ? { itemId: clean.itemId } : itemKey ? { itemId: itemKey } : {}),
+  const isSensitiveFieldChanged =
+    rawFieldChanged.length > 0 &&
+    (SENSITIVE_HISTORY_KEY_SET.has(rawFieldChanged.toLowerCase()) ||
+      !SAFE_PUBLIC_HISTORY_FIELD_CHANGED.has(rawFieldChanged));
+
+  const hasSensitiveTextAnywhere = textSnippets.some((snippet) =>
+    containsSensitivePublicHistoryText(snippet)
+  );
+
+  const safeAction =
+    rawAction.length > 0 && rawAction.length <= 120 && !containsSensitivePublicHistoryText(rawAction)
+      ? rawAction
+      : "Atualização registrada";
+
+  const result: Record<string, any> = {
+    ...(safeId ? { id: safeId } : {}),
+    ...(rawItemId ? { itemId: rawItemId } : itemKey ? { itemId: itemKey } : {}),
     ...(itemKey ? { objectId: itemKey } : {}),
-    action: clean.action || "Atualização registrada",
-    ...(clean.actorName ? { actorName: clean.actorName } : clean.userName ? { actorName: clean.userName } : {}),
-    actorRole: clean.actorRole || clean.userRole || "SERVIDOR",
-    timestamp: clean.timestamp || clean.date || "",
-    ...(clean.details ? { details: clean.details } : {}),
-    ...(clean.fieldChanged ? { fieldChanged: clean.fieldChanged } : {}),
-    ...(clean.oldValue !== undefined ? { oldValue: clean.oldValue } : {}),
-    ...(clean.newValue !== undefined ? { newValue: clean.newValue } : {}),
+    action: safeAction,
+    actorRole,
+    timestamp,
   };
+
+  if (isSensitiveFieldChanged || hasNestedPrivateKeys || hasSensitiveTextAnywhere) {
+    result.details = "Atualização institucional registrada (dados privados omitidos na projeção pública).";
+    return result;
+  }
+
+  if (rawDetails.length > 0) {
+    result.details = rawDetails;
+  }
+  if (rawFieldChanged && SAFE_PUBLIC_HISTORY_FIELD_CHANGED.has(rawFieldChanged)) {
+    result.fieldChanged = rawFieldChanged;
+  }
+
+  const safeOldValue = readSafePrimitiveText(rawEntry.oldValue);
+  if (safeOldValue !== undefined && !containsSensitivePublicHistoryText(safeOldValue)) {
+    result.oldValue = safeOldValue;
+  }
+
+  const safeNewValue = readSafePrimitiveText(rawEntry.newValue);
+  if (safeNewValue !== undefined && !containsSensitivePublicHistoryText(safeNewValue)) {
+    result.newValue = safeNewValue;
+  }
+
+  return result;
 }
 
 export function mergePublicAndPrivateItemData(
@@ -8148,20 +8330,163 @@ export async function executeAdminReopenReturn(
   }
 }
 
+export const DEFAULT_PUBLIC_PAGE_LIMIT = 50;
+export const MAX_PUBLIC_PAGE_LIMIT = 100;
+
+export function parsePublicPaginationParams(query: Record<string, any> | undefined):
+  | { ok: true; limit: number; cursor: string | null }
+  | { ok: false; statusCode: number; code: "INVALID_LIMIT" | "INVALID_CURSOR"; error: string } {
+  const rawLimit = query?.limit;
+  let limit = DEFAULT_PUBLIC_PAGE_LIMIT;
+
+  if (rawLimit !== undefined && rawLimit !== "") {
+    if (Array.isArray(rawLimit) || (typeof rawLimit !== "string" && typeof rawLimit !== "number")) {
+      return {
+        ok: false,
+        statusCode: 400,
+        code: "INVALID_LIMIT",
+        error: "Parâmetro 'limit' inválido. Informe um inteiro positivo.",
+      };
+    }
+    const limitStr = String(rawLimit).trim();
+    if (!/^\d+$/.test(limitStr)) {
+      return {
+        ok: false,
+        statusCode: 400,
+        code: "INVALID_LIMIT",
+        error: "Parâmetro 'limit' inválido. Deve ser um número inteiro positivo.",
+      };
+    }
+    const parsedLimit = Number(limitStr);
+    if (!Number.isSafeInteger(parsedLimit) || parsedLimit <= 0) {
+      return {
+        ok: false,
+        statusCode: 400,
+        code: "INVALID_LIMIT",
+        error: "Parâmetro 'limit' deve ser maior que zero.",
+      };
+    }
+    limit = Math.min(parsedLimit, MAX_PUBLIC_PAGE_LIMIT);
+  }
+
+  const rawCursor = query?.cursor;
+  let cursor: string | null = null;
+  if (rawCursor !== undefined && rawCursor !== "") {
+    if (typeof rawCursor !== "string") {
+      return {
+        ok: false,
+        statusCode: 400,
+        code: "INVALID_CURSOR",
+        error: "Parâmetro 'cursor' inválido.",
+      };
+    }
+    const trimmedCursor = rawCursor.trim();
+    if (
+      !trimmedCursor ||
+      trimmedCursor.length > 256 ||
+      trimmedCursor.includes("/") ||
+      trimmedCursor.includes("..") ||
+      !/^[A-Za-z0-9_.:@-]+$/.test(trimmedCursor)
+    ) {
+      return {
+        ok: false,
+        statusCode: 400,
+        code: "INVALID_CURSOR",
+        error: "Cursor de paginação inválido.",
+      };
+    }
+    cursor = trimmedCursor;
+  }
+
+  return { ok: true, limit, cursor };
+}
+
+export async function executePaginatedPublicCollectionRead<T>(
+  adminDb: any,
+  collectionName: "items" | "item_history",
+  pagination: { limit: number; cursor: string | null },
+  sanitizer: (raw: Record<string, any>) => T | null
+): Promise<
+  | { ok: true; records: T[]; nextCursor: string | null; hasMore: boolean; limit: number }
+  | { ok: false; statusCode: number; code: "INVALID_CURSOR"; error: string }
+> {
+  const colRef = adminDb.collection(collectionName);
+  let queryRef: any = colRef.orderBy("__name__");
+
+  if (pagination.cursor) {
+    const cursorSnap = await colRef.doc(pagination.cursor).get();
+    if (!cursorSnap || !cursorSnap.exists) {
+      return {
+        ok: false,
+        statusCode: 400,
+        code: "INVALID_CURSOR",
+        error: "Cursor de paginação inválido ou inexistente.",
+      };
+    }
+    queryRef = queryRef.startAfter(cursorSnap);
+  }
+
+  const snap = await queryRef.limit(pagination.limit + 1).get();
+  const fetchedDocs: any[] = snap?.docs || [];
+  const hasMore = fetchedDocs.length > pagination.limit;
+  const pageDocs = hasMore ? fetchedDocs.slice(0, pagination.limit) : fetchedDocs;
+  const lastDoc = pageDocs.length > 0 ? pageDocs[pageDocs.length - 1] : null;
+  const nextCursor = hasMore && lastDoc?.id ? String(lastDoc.id) : null;
+
+  const records = pageDocs
+    .map((d: any) => {
+      const raw = (typeof d.data === "function" ? d.data() : d.data) || {};
+      return sanitizer({ ...raw, id: raw.id || d.id });
+    })
+    .filter((entry): entry is T => Boolean(entry));
+
+  return {
+    ok: true,
+    records,
+    nextCursor,
+    hasMore,
+    limit: pagination.limit,
+  };
+}
+
 // API Endpoint: Public Sanitized Catalog Projection (Zero-PII fallback for visitors/students)
-app.get(["/api/items/public-catalog", "/items/public-catalog"], generalRateLimiter, async (_req, res) => {
+app.get(["/api/items/public-catalog", "/items/public-catalog"], generalRateLimiter, async (req, res) => {
   try {
     const adminDb = getAdminFirestore();
     if (!adminDb) {
       return res.status(503).json({ success: false, error: "Catálogo indisponível no momento." });
     }
-    const snap = await adminDb.collection("items").get();
-    const docs = snap?.docs || [];
-    const items = docs.map((d: any) => {
-      const raw = (typeof d.data === "function" ? d.data() : d.data) || {};
-      return sanitizePublicItemDocument({ ...raw, id: raw.id || d.id });
+    const parsedParams = parsePublicPaginationParams(req.query as Record<string, any>);
+    if ("error" in parsedParams) {
+      return res.status(parsedParams.statusCode).json({
+        success: false,
+        code: parsedParams.code,
+        error: parsedParams.error,
+      });
+    }
+
+    const page = await executePaginatedPublicCollectionRead(
+      adminDb,
+      "items",
+      { limit: parsedParams.limit, cursor: parsedParams.cursor },
+      (raw) => sanitizePublicItemDocument(raw)
+    );
+    if ("error" in page) {
+      return res.status(page.statusCode).json({
+        success: false,
+        code: page.code,
+        error: page.error,
+      });
+    }
+
+    res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+    return res.json({
+      success: true,
+      items: page.records,
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+      limit: page.limit,
     });
-    return res.json({ success: true, items });
   } catch (err: any) {
     console.error("Erro ao consultar projeção pública do catálogo:", err?.message || err);
     return res.status(500).json({ success: false, error: "Erro interno ao carregar catálogo público." });
@@ -8169,21 +8494,43 @@ app.get(["/api/items/public-catalog", "/items/public-catalog"], generalRateLimit
 });
 
 // API Endpoint: Public Sanitized Item History Projection (Zero-PII fallback for visitors/students)
-app.get(["/api/items/public-history", "/items/public-history"], generalRateLimiter, async (_req, res) => {
+app.get(["/api/items/public-history", "/items/public-history"], generalRateLimiter, async (req, res) => {
   try {
     const adminDb = getAdminFirestore();
     if (!adminDb) {
       return res.status(503).json({ success: false, error: "Histórico público indisponível no momento." });
     }
-    const snap = await adminDb.collection("item_history").get();
-    const docs = snap?.docs || [];
-    const entries = docs
-      .map((d: any) => {
-        const raw = (typeof d.data === "function" ? d.data() : d.data) || {};
-        return sanitizePublicHistoryEntry({ ...raw, id: raw.id || d.id });
-      })
-      .filter(Boolean);
-    return res.json({ success: true, entries });
+    const parsedParams = parsePublicPaginationParams(req.query as Record<string, any>);
+    if ("error" in parsedParams) {
+      return res.status(parsedParams.statusCode).json({
+        success: false,
+        code: parsedParams.code,
+        error: parsedParams.error,
+      });
+    }
+
+    const page = await executePaginatedPublicCollectionRead(
+      adminDb,
+      "item_history",
+      { limit: parsedParams.limit, cursor: parsedParams.cursor },
+      (raw) => sanitizePublicHistoryEntry(raw)
+    );
+    if ("error" in page) {
+      return res.status(page.statusCode).json({
+        success: false,
+        code: page.code,
+        error: page.error,
+      });
+    }
+
+    res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+    return res.json({
+      success: true,
+      entries: page.records,
+      nextCursor: page.nextCursor,
+      hasMore: page.hasMore,
+      limit: page.limit,
+    });
   } catch (err: any) {
     console.error("Erro ao consultar projeção pública do histórico de itens:", err?.message || err);
     return res.status(500).json({ success: false, error: "Erro interno ao carregar histórico público." });

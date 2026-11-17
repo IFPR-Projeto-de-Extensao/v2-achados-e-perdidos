@@ -214,7 +214,9 @@ describe("ETAPA 5 — Unit Tests: devolutionAuth, Listeners RBAC (13 coleções)
       expect(ctxSrc).toContain("canSubscribeStaffItemCollections({ authLoading, firebaseUser, currentUser })");
       expect(ctxSrc).toContain("getClaimsListenerScope({ authLoading, firebaseUser, currentUser })");
       expect(ctxSrc).toContain("getNotificationsListenerScope({ authLoading, firebaseUser, currentUser })");
-      expect(ctxSrc).toContain('fetch("/api/items/public-history")');
+      expect(ctxSrc).toContain('fetchAllPaginatedPublicRecords<ItemHistoryLog>("/api/items/public-history", "entries")');
+      expect(ctxSrc).toContain("fetchAllPaginatedPublicRecords<LostFoundItem>(");
+      expect(ctxSrc).toContain('"/api/items/public-catalog"');
 
       const sanitizedHistory = sanitizePublicHistoryEntry({
         id: "hist-1",
@@ -231,6 +233,28 @@ describe("ETAPA 5 — Unit Tests: devolutionAuth, Listeners RBAC (13 coleções)
       expect((sanitizedHistory as any).recipientDocument).toBeUndefined();
       expect((sanitizedHistory as any).receiptValidationCode).toBeUndefined();
       expect(sanitizedHistory?.details).not.toContain("João da Silva");
+    });
+
+    it("AppContext.tsx inicializa estados administrativos neutros, limpa caches em logout/troca de conta e bloqueia bypass de Root/Admin", () => {
+      const ctxSrc = readSrc("src/context/AppContext.tsx");
+
+      // Fix 1: addItem usa isVerifiedRootAdminAuthUser e exige emailVerified antes de verificar Root Admin
+      expect(ctxSrc).toContain("const isRootAdmin = isVerifiedRootAdminAuthUser(authUser);");
+      expect(ctxSrc).not.toContain("if (!authUser.emailVerified && !isRootAdmin)");
+
+      // Fix 4: syncOfflineQueue usa evaluateOfflineSyncOwnership e não possui bypass isApprovedAdminSync
+      expect(ctxSrc).toContain("evaluateOfflineSyncOwnership(");
+      expect(ctxSrc).not.toContain("isApprovedAdminSync");
+
+      // Fix 5: sem seed fictícia de backup e com limpeza explícita de caches administrativos sem localStorage.clear()
+      expect(ctxSrc).not.toContain("backup-init-1");
+      expect(ctxSrc).not.toContain("Carlos Eduardo Machado");
+      expect(ctxSrc).toContain("clearAdminAndPrivateSessionState");
+      expect(ctxSrc).toContain('localStorage.removeItem("ifpr_generated_documents_cache")');
+      expect(ctxSrc).toContain('localStorage.removeItem("ifpr_document_templates_cache")');
+      expect(ctxSrc).toContain('localStorage.removeItem("ifpr_project_settings_cache")');
+      expect(ctxSrc).toContain("localStorage.removeItem(LOCAL_STORAGE_ALL_USERS_KEY)");
+      expect(ctxSrc).not.toContain("localStorage.clear()");
     });
   });
 
@@ -285,7 +309,7 @@ describe("ETAPA 5 — Unit Tests: devolutionAuth, Listeners RBAC (13 coleções)
       const getDocPos = fnBody.indexOf("const existingRemoteSnap = await getDoc(itemRef)");
       const evalPos = fnBody.indexOf("evaluateExistingRemoteItem(");
       const conflictPos = fnBody.indexOf('remoteEvaluation.action === "CONFLICT_STOP"');
-      const batchCreatePos = fnBody.indexOf("syncBatch.set(itemRef, sanitizedPayload)");
+      const batchCreatePos = fnBody.indexOf("syncBatch.set(itemRef,");
 
       expect(getDocPos).toBeGreaterThan(-1);
       expect(evalPos).toBeGreaterThan(getDocPos);

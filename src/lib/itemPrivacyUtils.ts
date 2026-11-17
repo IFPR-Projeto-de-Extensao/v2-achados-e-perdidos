@@ -9,6 +9,7 @@ import { LostFoundItem, ItemHistoryLog } from "../types";
 export const PRIVATE_ITEM_FIELDS = [
   "recipientName",
   "recipientEmail",
+  "recipientContact",
   "recipientBond",
   "recipientDocument",
   "recipientUid",
@@ -22,6 +23,7 @@ export const PRIVATE_ITEM_FIELDS = [
   "recipientSignatureEmail",
   "recipientSignatureBond",
   "recipientSignatureDate",
+  "signatureData",
   "staffSignatureStatus",
   "staffSignatureMethod",
   "staffSignatureUrl",

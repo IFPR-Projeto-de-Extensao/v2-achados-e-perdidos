@@ -32,6 +32,7 @@ import { sortUsersByCreationDesc, isAccountBlocked } from "../lib/accountStatusU
 import {
   canOperateFormalReturn,
   canReopenFormalReturn,
+  isVerifiedRootAdminAuthUser,
   ROOT_ADMIN_EMAIL,
   ROOT_ADMIN_UID,
 } from "../lib/devolutionAuth";
@@ -45,7 +46,11 @@ import {
   getClaimsListenerScope,
   getNotificationsListenerScope,
 } from "../lib/listenerGuards";
-import { evaluateExistingRemoteItem } from "../lib/offlineSyncRecovery";
+import {
+  evaluateExistingRemoteItem,
+  evaluateOfflineSyncOwnership,
+} from "../lib/offlineSyncRecovery";
+import { fetchAllPaginatedPublicRecords } from "../lib/publicApiPagination";
 import {
   sanitizePublicItemProjection,
   sanitizePublicHistoryLogs,
@@ -1160,34 +1165,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           continue;
         }
 
-        // 3.5. DEFENSIVE AUTHENTICATION GUARD BEFORE SETDOC
+        // 3.5. DEFENSIVE AUTHENTICATION & AUTHORSHIP GUARD BEFORE SETDOC
         const currentAuthUser = auth.currentUser;
-        if (!currentAuthUser || !currentAuthUser.uid) {
-          console.warn(`[Offline Sync Auth Guard] Usuário não autenticado no Firebase Auth. Sincronização do item #${itemToSave.id} pausada.`);
+        const ownershipCheck = evaluateOfflineSyncOwnership(
+          itemToSave.registeredByUserId,
+          currentAuthUser?.uid
+        );
+        if (!ownershipCheck.allowed || !currentAuthUser?.uid) {
+          console.warn(
+            `[Offline Sync Auth Guard] Item #${itemToSave.id} bloqueado (${ownershipCheck.errorCode}): ${ownershipCheck.statusMessage}`
+          );
           updateUploadTask(taskId, {
             status: "ERROR",
-            error: "AUTH_REQUIRED",
-            statusMessage: "Faça login com sua conta institucional para sincronizar este item.",
-          });
-          continue;
-        }
-
-        const isRootAuthIdentity =
-          currentAuthUser.uid === ROOT_ADMIN_UID &&
-          (currentAuthUser.email || "").trim().toLowerCase() === ROOT_ADMIN_EMAIL.toLowerCase();
-        const isApprovedAdminSync =
-          isRootAuthIdentity ||
-          (currentUser?.id === currentAuthUser.uid &&
-            currentUser?.role === "ADMIN" &&
-            currentUser?.approvalStatus === "APROVADO" &&
-            !isAccountBlocked(currentUser));
-
-        if (itemToSave.registeredByUserId && itemToSave.registeredByUserId !== currentAuthUser.uid && !isApprovedAdminSync) {
-          console.warn(`[Offline Sync Auth Guard] Item #${itemToSave.id} pertence a outro UID (${itemToSave.registeredByUserId} !== ${currentAuthUser.uid}). Sincronização bloqueada.`);
-          updateUploadTask(taskId, {
-            status: "ERROR",
-            error: "AUTH_MISMATCH",
-            statusMessage: "Este item foi cadastrado por outra conta. Faça login com a conta criadora original para sincronizar.",
+            error: ownershipCheck.errorCode || "AUTH_MISMATCH",
+            statusMessage:
+              ownershipCheck.statusMessage ||
+              "Faça login com a conta criadora original para sincronizar este item.",
           });
           continue;
         }
@@ -1239,17 +1232,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             })
           );
 
-          const rawInitHistory = Array.isArray(itemToSave.history) && itemToSave.history.length > 0
+        const rawInitHistory = Array.isArray(itemToSave.history) && itemToSave.history.length > 0
             ? itemToSave.history[0]
             : {
                 id: `hist-${itemToSave.id}-init`,
                 action: "Ocorrência cadastrada",
-                actorId: itemToSave.registeredByUserId || currentAuthUser.uid,
+                actorId: currentAuthUser.uid,
                 actorName: itemToSave.registeredByName || currentAuthUser.displayName || "Usuário IFPR",
-                actorRole: itemToSave.registeredByRole || (isApprovedAdminSync ? "ADMIN" : "SERVIDOR"),
-                userId: itemToSave.registeredByUserId || currentAuthUser.uid,
+                actorRole:
+                  itemToSave.registeredByRole ||
+                  (currentUser?.id === currentAuthUser.uid && currentUser?.role === "ADMIN"
+                    ? "ADMIN"
+                    : "SERVIDOR"),
+                userId: currentAuthUser.uid,
                 userName: itemToSave.registeredByName || currentAuthUser.displayName || "Usuário IFPR",
-                userRole: itemToSave.registeredByRole || (isApprovedAdminSync ? "ADMIN" : "SERVIDOR"),
+                userRole:
+                  itemToSave.registeredByRole ||
+                  (currentUser?.id === currentAuthUser.uid && currentUser?.role === "ADMIN"
+                    ? "ADMIN"
+                    : "SERVIDOR"),
                 timestamp: itemToSave.createdAt || new Date().toISOString(),
                 details: `Ocorrência registrada no sistema do IFPR Campus Ivaiporã como ${itemToSave.type}.`,
                 objectId: itemToSave.id,
@@ -1318,7 +1319,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                   privRef,
                   sanitizeFirestoreData({
                     itemId: itemToSave.id,
-                    registeredByUserId: itemToSave.registeredByUserId || currentAuthUser.uid,
+                    registeredByUserId: currentAuthUser.uid,
                     secretVerificationHint: itemToSave.secretVerificationHint,
                     secretVerificationKey: itemToSave.secretVerificationKey,
                     updatedAt: new Date().toISOString(),
@@ -1341,7 +1342,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           } else {
             // 4b. Criação inédita atômica via writeBatch: /items/{id}, /item_history/{entryId} e condicional /item_private/{id}
             const syncBatch = writeBatch(db);
-            syncBatch.set(itemRef, sanitizedPayload);
+            syncBatch.set(itemRef, {
+              ...sanitizedPayload,
+              registeredByUserId: currentAuthUser.uid,
+            });
             syncBatch.set(
               doc(db, "item_history", histEntryId),
               sanitizeFirestoreData({
@@ -1357,7 +1361,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 doc(db, "item_private", itemToSave.id),
                 sanitizeFirestoreData({
                   itemId: itemToSave.id,
-                  registeredByUserId: itemToSave.registeredByUserId || currentAuthUser.uid,
+                  registeredByUserId: currentAuthUser.uid,
                   secretVerificationHint: itemToSave.secretVerificationHint,
                   secretVerificationKey: itemToSave.secretVerificationKey,
                   updatedAt: new Date().toISOString(),
@@ -1699,23 +1703,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     (currentUser as any)?.blockExpiresAt,
   ]);
 
-  const [allUsers, setAllUsers] = useState<User[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_ALL_USERS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const valid = parsed.filter((u: User) => u && u.id && !u.id.startsWith("u-") && u.id !== "guest_visitor");
-          if (valid.length > 0) {
-            return sanitizeUserList(valid);
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("Erro ao carregar usuários salvos do localStorage:", e);
-    }
-    return [];
-  });
+  const [allUsers, setAllUsers] = useState<User[]>([]);
 
   // Keep non-sensitive user metadata synced for offline cache if authenticated
   useEffect(() => {
@@ -1730,14 +1718,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [currentUser]);
 
-  // Persist All Users list to LocalStorage
+  // Persist All Users directory cache strictly for verified & approved admins
   useEffect(() => {
-    if (allUsers && allUsers.length > 0) {
+    if (authLoading) return;
+    if (canSubscribeUsersDirectory({ authLoading, firebaseUser, currentUser }) && allUsers.length > 0) {
       try {
         localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(allUsers));
       } catch (_) {}
+    } else {
+      try {
+        localStorage.removeItem(LOCAL_STORAGE_ALL_USERS_KEY);
+      } catch (_) {}
     }
-  }, [allUsers]);
+  }, [
+    allUsers,
+    authLoading,
+    firebaseUser?.uid,
+    firebaseUser?.email,
+    firebaseUser?.emailVerified,
+    currentUser?.id,
+    currentUser?.role,
+    currentUser?.approvalStatus,
+    currentUser?.status,
+    (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
+  ]);
 
   // Foreground Firebase Cloud Messaging Listener
   useEffect(() => {
@@ -1765,44 +1771,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // System Audit Logs state (Immutable Institutional Traceability)
   const [systemAuditLogs, setSystemAuditLogs] = useState<SystemAuditLog[]>([]);
 
-  // Document Templates & Generated Documents State (Módulo de Documentos PDF Editáveis)
-  const [documentTemplates, setDocumentTemplates] = useState<DocumentTemplate[]>(() => {
-    try {
-      const saved = localStorage.getItem("ifpr_document_templates_cache");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const cachedIds = new Set(parsed.map((t: DocumentTemplate) => t.id));
-          const missingDefaults = DEFAULT_DOCUMENT_TEMPLATES.filter((def) => !cachedIds.has(def.id));
-          return [...parsed, ...missingDefaults];
-        }
-      }
-    } catch (_) {}
-    return DEFAULT_DOCUMENT_TEMPLATES;
-  });
+  // Document Templates & Generated Documents State (hydrated exclusively from Firestore after Admin verification)
+  const [documentTemplates, setDocumentTemplates] = useState<DocumentTemplate[]>(DEFAULT_DOCUMENT_TEMPLATES);
 
-  const [generatedDocuments, setGeneratedDocuments] = useState<GeneratedDocumentRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem("ifpr_generated_documents_cache");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (_) {}
-    return [];
-  });
+  const [generatedDocuments, setGeneratedDocuments] = useState<GeneratedDocumentRecord[]>([]);
 
-  // Project Settings (Dados Permanentes do Projeto InovaIF, Equipe, Docente e Campus)
-  const [projectSettings, setProjectSettings] = useState<ProjectSettings>(() => {
-    try {
-      const saved = localStorage.getItem("ifpr_project_settings_cache");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && typeof parsed === "object" && parsed.teamName) return parsed;
-      }
-    } catch (_) {}
-    return DEFAULT_PROJECT_SETTINGS;
-  });
+  // Project Settings (hydrated exclusively from Firestore after Admin verification)
+  const [projectSettings, setProjectSettings] = useState<ProjectSettings>(DEFAULT_PROJECT_SETTINGS);
 
   // Internationalization (i18n) State
   const [language, setLanguageState] = useState<SupportedLanguage>(() => {
@@ -1939,29 +1914,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     "⚠️ ATENÇÃO: O SISTEMA ESTÁ EM MODO DE MANUTENÇÃO / ATUALIZAÇÃO PROGRAMADA NO CAMPUS IVAIPORÃ"
   );
 
-  // Backup State
-  const [backupLogs, setBackupLogs] = useState<BackupLog[]>([
-    {
-      id: "backup-init-1",
-      adminId: "u3",
-      adminName: "Carlos Eduardo Machado",
-      filename: "backup_firestore_ifpr_2026-08-10-02-00.json",
-      fileSizeBytes: 48500,
-      itemCount: 12,
-      userCount: 6,
-      triggerType: "PROGRAMADO",
-      status: "SUCESSO",
-      timestamp: "2026-08-10T02:00:00Z",
-    },
-  ]);
-
-  const [backupScheduleConfig, setBackupScheduleConfig] = useState<BackupScheduleConfig>({
-    enabled: true,
+  // Backup State (neutro até autenticação confirmada de ADMIN aprovado)
+  const DEFAULT_BACKUP_SCHEDULE_CONFIG: BackupScheduleConfig = {
+    enabled: false,
     frequency: "DIARIO_0200",
     autoDownload: true,
-    lastBackupTimestamp: "2026-08-10T02:00:00Z",
-    nextBackupTimestamp: "2026-08-13T02:00:00Z",
-  });
+  };
+  const [backupLogs, setBackupLogs] = useState<BackupLog[]>([]);
+  const [backupScheduleConfig, setBackupScheduleConfig] = useState<BackupScheduleConfig>(
+    DEFAULT_BACKUP_SCHEDULE_CONFIG
+  );
 
   // Sync Maintenance mode & custom message from Firestore & Server API
   useEffect(() => {
@@ -2035,7 +1997,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync Backup Schedule Config from Firestore (Verified & Approved Admin Only)
   useEffect(() => {
-    if (!canSubscribeAdminOnlyLogs({ authLoading, firebaseUser, currentUser })) return;
+    if (!canSubscribeAdminOnlyLogs({ authLoading, firebaseUser, currentUser })) {
+      setBackupScheduleConfig(DEFAULT_BACKUP_SCHEDULE_CONFIG);
+      return;
+    }
     const unsubscribe = onSnapshot(
       doc(db, "system", "backup_config"),
       (snapshot) => {
@@ -3275,12 +3240,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
   }, []);
 
+  const clearAdminAndPrivateSessionState = () => {
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_ALL_USERS_KEY);
+      localStorage.removeItem("ifpr_generated_documents_cache");
+      localStorage.removeItem("ifpr_document_templates_cache");
+      localStorage.removeItem("ifpr_project_settings_cache");
+      localStorage.removeItem(LOCAL_STORAGE_CURRENT_USER_KEY);
+    } catch (_) {}
+
+    setAllUsers([]);
+    setGeneratedDocuments([]);
+    setDocumentTemplates(DEFAULT_DOCUMENT_TEMPLATES);
+    setProjectSettings(DEFAULT_PROJECT_SETTINGS);
+    setBackupLogs([]);
+    setBackupScheduleConfig(DEFAULT_BACKUP_SCHEDULE_CONFIG);
+    setClaims([]);
+    setNotifications([]);
+    setActivityLogs([]);
+    setSystemAuditLogs([]);
+    setErrorLogsList([]);
+
+    privateReturnRecordsRef.current = {};
+    privateItemHintsRef.current = {};
+    itemHistoryEntriesRef.current = {};
+    if (rawPublicItemsRef.current.length > 0) {
+      const publicOnly = rawPublicItemsRef.current.map((it) => sanitizePublicItemProjection(it));
+      setItems(publicOnly);
+      setSelectedItemForDetail((prev) => (prev ? sanitizePublicItemProjection(prev) : null));
+    }
+  };
+
   // Listen to Firebase Auth
+  const previousAuthUidRef = useRef<string | null>(null);
   useEffect(() => {
     let unsubscribeProfileSnapshot: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
       authProfileResolvedRef.current = false;
+      const nextUid = fbUser?.uid || null;
+      const previousUid = previousAuthUidRef.current;
+      if (previousUid && previousUid !== nextUid) {
+        clearAdminAndPrivateSessionState();
+      }
+      previousAuthUidRef.current = nextUid;
       setFirebaseUser(fbUser);
 
       // Clean up previous profile listener if any
@@ -3290,6 +3293,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (!fbUser) {
+        clearAdminAndPrivateSessionState();
         setCurrentUser(DEFAULT_GUEST_USER);
         setAuthLoading(false);
         return;
@@ -3618,15 +3622,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       async (error) => {
         handleFirestoreError(error, OperationType.GET, "items");
-        // Fallback 1: Sanitized public catalog endpoint (handles legacy unsanitized docs safely)
+        // Fallback 1: Sanitized public catalog endpoint (paginated cursor traversal)
         try {
-          const res = await fetch("/api/items/public-catalog");
-          if (res.ok) {
-            const payload = await res.json();
-            if (Array.isArray(payload?.items)) {
-              applyPrivacyMerge(payload.items as LostFoundItem[]);
-              return;
-            }
+          const catalogResult = await fetchAllPaginatedPublicRecords<LostFoundItem>(
+            "/api/items/public-catalog",
+            "items"
+          );
+          if (catalogResult.ok && isMounted) {
+            applyPrivacyMerge(catalogResult.records);
+            return;
           }
         } catch (_) {}
 
@@ -3653,6 +3657,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     currentUser?.status,
     currentUser?.approvalStatus,
     (currentUser as any)?.active,
+    (currentUser as any)?.suspendedUntil,
+    (currentUser as any)?.blockExpiresAt,
   ]);
 
   // Sync Immutable Item History Timeline (/item_history for staff; safe sanitized /api/items/public-history for students/visitors)
@@ -3678,15 +3684,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     if (mode === "PUBLIC_API") {
-      itemHistoryEntriesRef.current = {};
-      fetch("/api/items/public-history")
-        .then(async (res) => {
-          if (!res.ok) return null;
-          return res.json();
-        })
-        .then((payload) => {
-          if (!isMounted || !Array.isArray(payload?.entries)) return;
-          const sanitizedEntries = sanitizePublicHistoryLogs(payload.entries as ItemHistoryLog[]) || [];
+      // Limpa síncronamente o histórico de staff anterior antes do fetch público paginado
+      applyHistoryMap({}, false);
+      fetchAllPaginatedPublicRecords<ItemHistoryLog>("/api/items/public-history", "entries")
+        .then((result) => {
+          if (!isMounted || !result.ok) return;
+          const sanitizedEntries = sanitizePublicHistoryLogs(result.records) || [];
           const nextMap: Record<string, ItemHistoryLog[]> = {};
           for (const entry of sanitizedEntries) {
             const key = (entry as any).objectId || (entry as any).itemId;
@@ -4175,6 +4178,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Sync Document Templates from Firestore (Verified & Approved Admin Only)
   useEffect(() => {
     if (!canSubscribeAdminOnlyLogs({ authLoading, firebaseUser, currentUser })) {
+      setDocumentTemplates(DEFAULT_DOCUMENT_TEMPLATES);
+      try {
+        localStorage.removeItem("ifpr_document_templates_cache");
+      } catch (_) {}
       return;
     }
     const unsubscribe = onSnapshot(
@@ -4238,6 +4245,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Sync Project Settings from Firestore (Real-time updates - Verified & Approved Admin Only)
   useEffect(() => {
     if (!canSubscribeAdminOnlyLogs({ authLoading, firebaseUser, currentUser })) {
+      setProjectSettings(DEFAULT_PROJECT_SETTINGS);
+      try {
+        localStorage.removeItem("ifpr_project_settings_cache");
+      } catch (_) {}
       return;
     }
     const unsubscribe = onSnapshot(
@@ -4307,6 +4318,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!canSubscribeAdminOnlyLogs({ authLoading, firebaseUser, currentUser })) {
       setGeneratedDocuments([]);
+      try {
+        localStorage.removeItem("ifpr_generated_documents_cache");
+      } catch (_) {}
       return;
     }
     const unsubscribe = onSnapshot(
@@ -4772,9 +4786,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         localStorage.removeItem(`ifpr_achados_register_draft_${activeUid}`);
       }
       localStorage.removeItem("ifpr_achados_register_draft");
-      localStorage.removeItem(LOCAL_STORAGE_CURRENT_USER_KEY);
       sessionStorage.removeItem("ifpr_pending_post_login");
     } catch (_) {}
+    clearAdminAndPrivateSessionState();
+    previousAuthUidRef.current = null;
     setPendingPostLoginActionState(null);
     setCurrentUser(DEFAULT_GUEST_USER);
     if (activeTab === "register") {
@@ -5101,10 +5116,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error("É necessário fazer login com sua conta institucional para cadastrar um item.");
     }
 
-    const isRootAdmin = safeToLower(authUser.email) === "paulocauan39@gmail.com";
-    if (!authUser.emailVerified && !isRootAdmin) {
+    if (authUser.emailVerified !== true) {
       throw new Error("Seu e-mail institucional precisa ser verificado para cadastrar itens no sistema.");
     }
+
+    const isRootAdmin = isVerifiedRootAdminAuthUser(authUser);
 
     const isDeviceOnline = typeof navigator === "undefined" || navigator.onLine;
     let effectiveUserRole: UserRole | undefined = isRootAdmin ? "ADMIN" : undefined;

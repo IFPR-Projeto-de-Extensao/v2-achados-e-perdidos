@@ -9,12 +9,68 @@ import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, 
 import fs from "fs";
 import path from "path";
 
-import net from "net";
-
 let testEnv: RulesTestEnvironment | null = null;
-let emulatorAvailable = false;
 
 const isEmulatorAvailable = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
+
+async function verifyFirestoreEmulatorSignature(host: string, port: number): Promise<void> {
+  if (host !== "127.0.0.1" && host !== "localhost") {
+    throw new Error(
+      `[FirestoreRules] Violação de isolamento: FIRESTORE_EMULATOR_HOST aponta para host não-local ('${host}:${port}').`
+    );
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000);
+  try {
+    const hubHost = process.env.FIREBASE_EMULATOR_HUB;
+    if (hubHost) {
+      const hubRes = await fetch(`http://${hubHost}/emulators`, { signal: controller.signal });
+      if (hubRes.ok && (hubRes.headers.get("content-type") || "").includes("application/json")) {
+        const emulators = (await hubRes.json()) as Record<string, { host?: string; port?: number }>;
+        if (emulators?.firestore?.port === port) {
+          return;
+        }
+      }
+    }
+
+    const rootUrl = `http://${host}:${port}/`;
+    const rootRes = await fetch(rootUrl, { signal: controller.signal });
+    const rootContentType = rootRes.headers.get("content-type") || "";
+    const bodyText = await rootRes.text();
+
+    if (rootContentType.includes("text/html") || bodyText.trimStart().startsWith("<")) {
+      throw new Error(
+        `[FirestoreRules] Endpoint ${rootUrl} respondeu HTML (${rootContentType || rootRes.status}), indicando servidor web e não Cloud Firestore Emulator.`
+      );
+    }
+
+    const hasKnownSignature =
+      bodyText.includes("Cloud Firestore emulator") ||
+      rootRes.headers.has("firebase-emulator-version") ||
+      rootRes.headers.has("x-emulator-version");
+
+    if (hasKnownSignature) {
+      return;
+    }
+
+    // Cloud Firestore Emulator atual responde "Ok" em GET / e JSON em /v1/projects/.../documents
+    const restProbe = await fetch(
+      `http://${host}:${port}/v1/projects/localiza-plus-emulator-test/databases/(default)/documents`,
+      { signal: controller.signal }
+    );
+    const restContentType = restProbe.headers.get("content-type") || "";
+    if (rootRes.ok && bodyText.trim() === "Ok" && restContentType.includes("application/json")) {
+      return;
+    }
+
+    throw new Error(
+      `[FirestoreRules] Endpoint ${rootUrl} respondeu HTTP ${rootRes.status} sem assinatura válida do Cloud Firestore Emulator. Resposta: "${bodyText.slice(0, 120)}"`
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real Security Rules Validation", () => {
   beforeAll(async () => {
@@ -22,12 +78,17 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
     const rules = fs.readFileSync(rulesPath, "utf-8");
 
     const hostAndPort = process.env.FIRESTORE_EMULATOR_HOST?.split(":") || ["127.0.0.1", "8080"];
+    const host = hostAndPort[0] || "127.0.0.1";
+    const port = Number(hostAndPort[1]) || 8080;
+
+    await verifyFirestoreEmulatorSignature(host, port);
+
     testEnv = await initializeTestEnvironment({
       projectId: "localiza-plus-emulator-test",
       firestore: {
         rules: rules,
-        host: hostAndPort[0] || "127.0.0.1",
-        port: Number(hostAndPort[1]) || 8080,
+        host,
+        port,
       },
     });
   });
@@ -2263,6 +2324,188 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
         email_verified: true,
       }).firestore();
       await assertFails(runRegisterBatch(dbServActiveFalse, "serv_active_false", "SERVIDOR", "serv_active_false"));
+    });
+
+    it("49. Consultas de /notifications para ADMIN, SERVIDOR e ALUNO respeitam isolamento e broadcasts", async () => {
+      await setupUserDoc(ROOT_UID, {
+        id: ROOT_UID,
+        email: ROOT_EMAIL,
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+      await setupUserDoc("serv_notif_ok", {
+        id: "serv_notif_ok",
+        email: "serv.notif@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+      await setupUserDoc("aluno_notif_1", {
+        id: "aluno_notif_1",
+        email: "aluno1.notif@estudantes.ifpr.edu.br",
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+      await setupUserDoc("aluno_notif_2", {
+        id: "aluno_notif_2",
+        email: "aluno2.notif@estudantes.ifpr.edu.br",
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        const seedDb = ctx.firestore();
+        await setDoc(doc(seedDb, "notifications", "n_aluno_1"), {
+          id: "n_aluno_1",
+          userId: "aluno_notif_1",
+          title: "Aviso Individual",
+          message: "Sua reivindicação foi recebida.",
+          read: false,
+          timestamp: new Date().toISOString(),
+        });
+        await setDoc(doc(seedDb, "notifications", "n_aluno_2"), {
+          id: "n_aluno_2",
+          userId: "aluno_notif_2",
+          title: "Aviso Privado Outro Aluno",
+          message: "Mensagem exclusiva do aluno 2.",
+          read: false,
+          timestamp: new Date().toISOString(),
+        });
+        await setDoc(doc(seedDb, "notifications", "n_broadcast"), {
+          id: "n_broadcast",
+          userId: "all",
+          isGlobal: true,
+          title: "Comunicado Institucional",
+          message: "Horário da secretaria atualizado.",
+          read: false,
+          timestamp: new Date().toISOString(),
+        });
+      });
+
+      const dbRoot = testEnv!.authenticatedContext(ROOT_UID, {
+        email: ROOT_EMAIL,
+        email_verified: true,
+      }).firestore();
+      const dbAluno1 = testEnv!.authenticatedContext("aluno_notif_1", {
+        email: "aluno1.notif@estudantes.ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      const dbServ = testEnv!.authenticatedContext("serv_notif_ok", {
+        email: "serv.notif@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      // ADMIN consulta todas as notificações
+      const adminSnap = await assertSucceeds(getDocs(collection(dbRoot, "notifications")));
+      expect(adminSnap.size).toBe(3);
+
+      // ALUNO e SERVIDOR consultam com filtro explícito idêntico ao AppContext.tsx
+      const alunoSnap = await assertSucceeds(
+        getDocs(query(collection(dbAluno1, "notifications"), where("userId", "in", ["aluno_notif_1", "all", "todos_alunos", "todos"])))
+      );
+      expect(alunoSnap.docs.map((d) => d.id).sort()).toEqual(["n_aluno_1", "n_broadcast"]);
+
+      const servSnap = await assertSucceeds(
+        getDocs(query(collection(dbServ, "notifications"), where("userId", "in", ["serv_notif_ok", "all", "todos_alunos", "todos"])))
+      );
+      expect(servSnap.docs.map((d) => d.id)).toEqual(["n_broadcast"]);
+
+      // Consulta global sem filtro ou dirigida a outro UID é negada para não-admin
+      await assertFails(getDocs(collection(dbAluno1, "notifications")));
+      await assertFails(getDocs(query(collection(dbAluno1, "notifications"), where("userId", "==", "aluno_notif_2"))));
+    });
+
+    it("50. Token com custom claim obsoleta role=INTRUSO mas users/{uid} SERVIDOR/APROVADO/active mantém permissão de cadastro, e vice-versa é negado", async () => {
+      const servStaleUid = "serv_stale_intruso_claim";
+      await setupUserDoc(servStaleUid, {
+        id: servStaleUid,
+        email: "serv.stale@gmail.com",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+
+      const dbServStaleClaim = testEnv!.authenticatedContext(servStaleUid, {
+        email: "serv.stale@gmail.com",
+        email_verified: true,
+        role: "INTRUSO",
+      }).firestore();
+
+      await assertSucceeds(runRegisterBatch(dbServStaleClaim, servStaleUid, "SERVIDOR", "serv_stale_claim"));
+
+      // Vice-versa: token com role=ADMIN mas users/{uid} SERVIDOR PENDENTE deve ser negado
+      const servPendAdminClaimUid = "serv_pend_admin_claim";
+      await setupUserDoc(servPendAdminClaimUid, {
+        id: servPendAdminClaimUid,
+        email: "serv.pend.claim@gmail.com",
+        role: "SERVIDOR",
+        approvalStatus: "PENDENTE",
+        status: "active",
+      });
+
+      const dbPendAdminClaim = testEnv!.authenticatedContext(servPendAdminClaimUid, {
+        email: "serv.pend.claim@gmail.com",
+        email_verified: true,
+        role: "ADMIN",
+        admin: true,
+      }).firestore();
+
+      await assertFails(runRegisterBatch(dbPendAdminClaim, servPendAdminClaimUid, "ADMIN", "pend_admin_claim"));
+
+      // Rebaixamento explícito: usuário rebaixado para ALUNO em users/{uid} com claim antiga de ADMIN não mantém privilégios
+      const demotedAlunoUid = "demoted_admin_to_aluno";
+      await setupUserDoc(demotedAlunoUid, {
+        id: demotedAlunoUid,
+        email: "ex.admin@estudantes.ifpr.edu.br",
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+
+      const dbDemotedAdminClaim = testEnv!.authenticatedContext(demotedAlunoUid, {
+        email: "ex.admin@estudantes.ifpr.edu.br",
+        email_verified: true,
+        role: "ADMIN",
+        admin: true,
+      }).firestore();
+
+      await assertFails(runRegisterBatch(dbDemotedAdminClaim, demotedAlunoUid, "ADMIN", "demoted_admin_claim"));
+    });
+
+    it("51. ADMIN não-root com active: false e SERVIDOR com status: 'banned' são negados no writeBatch de cadastro", async () => {
+      const adminInactiveUid = "admin_inactive_false";
+      await setupUserDoc(adminInactiveUid, {
+        id: adminInactiveUid,
+        email: "admin.inactive@gmail.com",
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: false,
+      });
+
+      const servBannedUid = "serv_banned_uid";
+      await setupUserDoc(servBannedUid, {
+        id: servBannedUid,
+        email: "serv.banned@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "banned",
+      });
+
+      const dbAdminInactive = testEnv!.authenticatedContext(adminInactiveUid, {
+        email: "admin.inactive@gmail.com",
+        email_verified: true,
+      }).firestore();
+      await assertFails(runRegisterBatch(dbAdminInactive, adminInactiveUid, "ADMIN", "admin_inactive"));
+
+      const dbServBanned = testEnv!.authenticatedContext(servBannedUid, {
+        email: "serv.banned@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      await assertFails(runRegisterBatch(dbServBanned, servBannedUid, "SERVIDOR", "serv_banned"));
     });
   });
 });

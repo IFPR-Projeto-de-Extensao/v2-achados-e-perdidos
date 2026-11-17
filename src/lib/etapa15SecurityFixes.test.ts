@@ -93,16 +93,28 @@ const hoisted = vi.hoisted(() => {
     },
   });
 
-  const makeQuery = (colName: string, filters: Array<{ field: string; value: any }> = []) => ({
+  const makeQuery = (
+    colName: string,
+    filters: Array<{ field: string; value: any }> = [],
+    orderField: string | null = null,
+    startAfterId: string | null = null,
+    limitCount: number | null = null
+  ) => ({
     where(field: string, _op: string, value: any) {
-      return makeQuery(colName, [...filters, { field, value }]);
+      return makeQuery(colName, [...filters, { field, value }], orderField, startAfterId, limitCount);
     },
-    limit(_n: number) {
-      return this;
+    orderBy(field: string) {
+      return makeQuery(colName, filters, field, startAfterId, limitCount);
+    },
+    startAfter(cursorSnap: any) {
+      return makeQuery(colName, filters, orderField, cursorSnap?.id || null, limitCount);
+    },
+    limit(n: number) {
+      return makeQuery(colName, filters, orderField, startAfterId, n);
     },
     async get() {
       const col = store[colName] || new Map();
-      const matchedDocs: any[] = [];
+      let matchedDocs: any[] = [];
       for (const [docId, docData] of col.entries()) {
         const matches = filters.every((f) => docData?.[f.field] === f.value);
         if (matches) {
@@ -112,6 +124,18 @@ const hoisted = vi.hoisted(() => {
             data: () => structuredClone(docData),
           });
         }
+      }
+      if (orderField === "__name__") {
+        matchedDocs.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+      }
+      if (startAfterId) {
+        const idx = matchedDocs.findIndex((d) => d.id === startAfterId);
+        if (idx >= 0) {
+          matchedDocs = matchedDocs.slice(idx + 1);
+        }
+      }
+      if (typeof limitCount === "number" && limitCount > 0) {
+        matchedDocs = matchedDocs.slice(0, limitCount);
       }
       return { docs: matchedDocs, size: matchedDocs.length, empty: matchedDocs.length === 0 };
     },
@@ -123,7 +147,9 @@ const hoisted = vi.hoisted(() => {
         doc: (docId: string) => makeDocRef(colName, docId),
         where: (field: string, _op: string, value: any) =>
           makeQuery(colName, [{ field, value }]),
-        limit: (n: number) => makeQuery(colName, []).limit(n),
+        orderBy: (field: string) => makeQuery(colName, [], field),
+        startAfter: (cursorSnap: any) => makeQuery(colName, [], null, cursorSnap?.id || null),
+        limit: (n: number) => makeQuery(colName, [], null, null, n),
         get: () => makeQuery(colName, []).get(),
       };
     },

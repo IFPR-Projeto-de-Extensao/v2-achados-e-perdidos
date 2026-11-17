@@ -71,3 +71,50 @@ export function evaluateExistingRemoteItem(
     conflictingFields,
   };
 }
+
+export interface OfflineSyncOwnershipCheck {
+  allowed: boolean;
+  errorCode?: "AUTH_REQUIRED" | "MISSING_ORIGINAL_AUTHOR" | "AUTH_MISMATCH";
+  statusMessage?: string;
+}
+
+/**
+ * Garante que toda criação via Client SDK na fila offline utilize exatamente
+ * `registeredByUserId === currentAuthUid`. Nenhuma conta (nem ADMIN) pode assumir
+ * ou sobrescrever a autoria de um cadastro feito por outro usuário.
+ */
+export function evaluateOfflineSyncOwnership(
+  registeredByUserId: unknown,
+  currentAuthUid: string | null | undefined
+): OfflineSyncOwnershipCheck {
+  const authUid = typeof currentAuthUid === "string" ? currentAuthUid.trim() : "";
+  if (!authUid) {
+    return {
+      allowed: false,
+      errorCode: "AUTH_REQUIRED",
+      statusMessage: "Faça login com sua conta institucional para sincronizar este item.",
+    };
+  }
+
+  const originalUid = typeof registeredByUserId === "string" ? registeredByUserId.trim() : "";
+  if (!originalUid) {
+    return {
+      allowed: false,
+      errorCode: "MISSING_ORIGINAL_AUTHOR",
+      statusMessage:
+        "Registro offline sem autor original identificado. A sincronização permanece preservada no dispositivo aguardando a conta responsável.",
+    };
+  }
+
+  if (originalUid !== authUid) {
+    return {
+      allowed: false,
+      errorCode: "AUTH_MISMATCH",
+      statusMessage:
+        "Este item foi cadastrado por outra conta. A sincronização depende do login da conta responsável original; o registro permanece seguro na fila.",
+    };
+  }
+
+  return { allowed: true };
+}
+

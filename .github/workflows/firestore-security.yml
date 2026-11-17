@@ -5,6 +5,7 @@ on:
     branches: [ main, master, develop ]
   pull_request:
     branches: [ main, master, develop ]
+  workflow_dispatch:
 
 jobs:
   security-rules-test:
@@ -20,14 +21,55 @@ jobs:
           node-version: '22.x'
           cache: 'npm'
 
-      - name: Setup Java (Required for Firebase Emulator)
+      - name: Setup Java 21 (Required for Firebase Emulator)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '21'
 
+      - name: Cache Firebase Emulators
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: ${{ runner.os }}-firebase-emulators-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-firebase-emulators-
+
       - name: Install Dependencies
         run: npm ci
 
-      - name: Run Firestore Security Rules Tests in Emulator
-        run: npx firebase emulators:exec --only firestore --project localiza-plus-emulator-test "npx vitest run src/lib/firestoreRules.emulator.test.ts src/lib/institutionalIdentityAndClaimsSecurity.test.ts src/lib/claimsRulesTokenAndSecurity.test.ts"
+      - name: Log Runtime Versions
+        run: |
+          java -version
+          node -v
+          npx firebase --version
+
+      - name: Verify TypeScript Before Emulator Run
+        run: npx tsc --noEmit
+
+      - name: Run All Firestore Security Rules Tests in Java 21 Emulator
+        shell: bash
+        run: |
+          set -o pipefail
+          npx firebase emulators:exec --only firestore --project localiza-plus-emulator-test '
+            set -o pipefail
+            echo "FIRESTORE_EMULATOR_HOST=${FIRESTORE_EMULATOR_HOST:-unset}"
+            test -n "${FIRESTORE_EMULATOR_HOST}"
+            npx vitest run --no-file-parallelism --reporter=verbose \
+              src/lib/firestoreRules.emulator.test.ts \
+              src/__tests__/claimsRulesHomologation.test.ts \
+              src/lib/institutionalIdentityAndClaimsSecurity.test.ts \
+              src/lib/claimsRulesTokenAndSecurity.test.ts 2>&1 | tee emulator-homologation.log
+          '
+
+      - name: Preserve Homologation & Emulator Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firestore-security-logs
+          path: |
+            emulator-homologation.log
+            firebase-debug.log
+            firestore-debug.log
+          if-no-files-found: ignore
+          retention-days: 14

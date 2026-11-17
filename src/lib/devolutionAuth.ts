@@ -25,6 +25,16 @@ export function isVerifiedRootAdminIdentity(
 }
 
 /**
+ * Avalia exclusivamente pela sessão Firebase Auth (sem fallback de documento Firestore)
+ * se o usuário autenticado é o Root Admin legítimo (UID fixo + e-mail case-insensitive + emailVerified === true).
+ */
+export function isVerifiedRootAdminAuthUser(
+  authInfo?: AuthContextIdentity | null
+): boolean {
+  return isVerifiedRootAdminIdentity(null, authInfo);
+}
+
+/**
  * Pure helper evaluating whether an authenticated user has institutional standing
  * to initiate or register a formal item return (DEVE ser SERVIDOR ou ADMIN aprovado,
  * com conta ativa, vínculo UID consistente e e-mail verificado no Firebase Auth).

@@ -79,7 +79,8 @@ const ALUNO_2_EMAIL = "aluno2.teste@estudantes.ifpr.edu.br";
 const SUSPENDED_UID = "aluno_suspenso_uid";
 const SUSPENDED_EMAIL = "aluno.suspenso@estudantes.ifpr.edu.br";
 
-const ROOT_ADMIN_UID = "root_admin_uid_cauan";
+const ROOT_ADMIN_UID = "hCG5mDgK1fRaTojULzlM7dXvb7n2";
+const SPOOF_ROOT_ADMIN_UID = "root_admin_uid_cauan";
 const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
 
 const SERVIDOR_UID = "servidor_homologacao_uid";
@@ -124,20 +125,53 @@ async function verifyEmulatorAvailability(host: string, port: number): Promise<{
   }
 
   const url = `http://${host}:${port}/`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2000);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
+    const hubHost = process.env.FIREBASE_EMULATOR_HUB;
+    if (hubHost) {
+      try {
+        const hubRes = await fetch(`http://${hubHost}/emulators`, { signal: controller.signal });
+        if (hubRes.ok && (hubRes.headers.get("content-type") || "").includes("application/json")) {
+          const emulators = (await hubRes.json()) as Record<string, { host?: string; port?: number }>;
+          if (emulators?.firestore?.port === port) {
+            return { isReady: true };
+          }
+        }
+      } catch {
+        // Continua para verificação HTTP direta no endpoint do Firestore Emulator
+      }
+    }
 
+    const res = await fetch(url, { signal: controller.signal });
+    const contentType = res.headers.get("content-type") || "";
     const bodyText = await res.text();
-    const hasEmulatorSignature =
+
+    if (contentType.includes("text/html") || bodyText.trimStart().startsWith("<")) {
+      return {
+        isReady: false,
+        reason: `Endpoint ${url} respondeu HTML (${contentType || `HTTP ${res.status}`}), indicando servidor web e não Cloud Firestore Emulator. Resposta: "${bodyText.slice(0, 100)}"`,
+      };
+    }
+
+    const hasKnownSignature =
       bodyText.includes("Cloud Firestore emulator") ||
       res.headers.has("firebase-emulator-version") ||
       res.headers.has("x-emulator-version");
 
-    if (hasEmulatorSignature) {
+    if (hasKnownSignature) {
       return { isReady: true };
+    }
+
+    if (res.ok && bodyText.trim() === "Ok") {
+      const restProbe = await fetch(
+        `http://${host}:${port}/v1/projects/${PROJECT_ID}/databases/(default)/documents`,
+        { signal: controller.signal }
+      );
+      const restContentType = restProbe.headers.get("content-type") || "";
+      if (restContentType.includes("application/json")) {
+        return { isReady: true };
+      }
     }
 
     return {
@@ -146,6 +180,8 @@ async function verifyEmulatorAvailability(host: string, port: number): Promise<{
     };
   } catch (err: any) {
     return { isReady: false, reason: err?.message || "Conexão recusada ao emulador local (127.0.0.1:8080)" };
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -257,11 +293,23 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
         createdAt: "2026-01-01T00:00:00.000Z",
       });
 
-      // Root Admin (documento Firestore propositalmente contendo role: 'INTRUSO' para testar precedência)
+      // Root Admin legítimo (documento Firestore contendo role: 'INTRUSO' para validar precedência do UID+e-mail pinados)
       await setDoc(doc(db, "users", ROOT_ADMIN_UID), {
         id: ROOT_ADMIN_UID,
         email: ROOT_ADMIN_EMAIL,
         name: "Super Admin Root",
+        role: "INTRUSO",
+        status: "active",
+        approvalStatus: "APROVADO",
+        emailVerified: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+
+      // UID divergente tentando usar o mesmo e-mail do Root Admin (deve ser negado por UID Pinning)
+      await setDoc(doc(db, "users", SPOOF_ROOT_ADMIN_UID), {
+        id: SPOOF_ROOT_ADMIN_UID,
+        email: ROOT_ADMIN_EMAIL,
+        name: "Spoof Root Admin",
         role: "INTRUSO",
         status: "active",
         approvalStatus: "APROVADO",
@@ -767,20 +815,34 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
   // CENÁRIOS C-14 A C-15: Precedência de Intruso vs Root Admin
   // =========================================================================
 
-  it("C-14: Root Admin com perfil Firestore contendo role: 'INTRUSO' (sem claim JWT) mantém privilégios administrativos (200)", async () => {
-    // Insere claim prévia para avaliação administrativa
+  it("C-14: Root Admin real (UID hCG5mDgK1fRaTojULzlM7dXvb7n2 + e-mail verificado) mantém privilégios mesmo com role: 'INTRUSO' no doc, enquanto UID divergente com mesmo e-mail é barrado (403)", async () => {
     const claimPayload = getValidClaimPayload(ITEM_ENCONTRADO_ID);
     await testEnv.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), "claims", claimPayload.id), claimPayload);
     });
 
-    // Root Admin autenticado com seu e-mail verificado, sem claim customizada 'role' no JWT
     const rootAdminDb = testEnv.authenticatedContext(ROOT_ADMIN_UID, {
       email: ROOT_ADMIN_EMAIL,
       email_verified: true,
     }).firestore();
 
-    // A regra (isDocIntruso() && !isRootAdmin()) resulta em FALSE, não classificando o Root Admin como intruso
+    const spoofRootDb = testEnv.authenticatedContext(SPOOF_ROOT_ADMIN_UID, {
+      email: ROOT_ADMIN_EMAIL,
+      email_verified: true,
+    }).firestore();
+
+    // UID divergente NÃO obtém privilégios de Root Admin
+    await assertFails(
+      updateDoc(doc(spoofRootDb, "claims", claimPayload.id), {
+        status: "APROVADO",
+        reviewedByUserId: SPOOF_ROOT_ADMIN_UID,
+        reviewedByName: "Spoof",
+        reviewedByRole: "ADMIN",
+        reviewedAt: new Date().toISOString(),
+      })
+    );
+
+    // Root Admin real mantém privilégios administrativos
     await assertSucceeds(
       updateDoc(doc(rootAdminDb, "claims", claimPayload.id), {
         status: "APROVADO",
@@ -795,33 +857,46 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     expect(checkSnap.data()?.status).toBe("APROVADO");
   });
 
-  it("C-15: Token JWT contendo explicitamente a claim customizada role: 'INTRUSO' é barrado mesmo com e-mail de Root Admin (403)", async () => {
+  it("C-15: Claim JWT antiga role: 'INTRUSO' não bloqueia Root Admin verificado, mas Root Admin com e-mail não verificado ou UID divergente é barrado (403)", async () => {
     const claimPayload = getValidClaimPayload(ITEM_ENCONTRADO_ID);
     await testEnv.withSecurityRulesDisabled(async (context) => {
       await setDoc(doc(context.firestore(), "claims", claimPayload.id), claimPayload);
     });
 
-    // Token JWT com injeção explícita de role: 'INTRUSO'
-    const intrusoAdminDb = testEnv.authenticatedContext(ROOT_ADMIN_UID, {
+    // Root Admin sem email_verified deve ser barrado mesmo com UID e e-mail corretos
+    const unverifiedRootDb = testEnv.authenticatedContext(ROOT_ADMIN_UID, {
       email: ROOT_ADMIN_EMAIL,
-      email_verified: true,
+      email_verified: false,
       role: "INTRUSO",
     }).firestore();
 
-    // A condição request.auth.token.role == 'INTRUSO' possui precedência absoluta e bloqueia
     await assertFails(
-      updateDoc(doc(intrusoAdminDb, "claims", claimPayload.id), {
+      updateDoc(doc(unverifiedRootDb, "claims", claimPayload.id), {
         status: "APROVADO",
         reviewedByUserId: ROOT_ADMIN_UID,
         reviewedAt: new Date().toISOString(),
       })
     );
 
-    // Confere que a tentativa negada não alterou o estado do documento original (integridade)
-    await testEnv.withSecurityRulesDisabled(async (context) => {
-      const snap = await getDoc(doc(context.firestore(), "claims", claimPayload.id));
-      expect(snap.data()?.status).toBe("PENDENTE");
-    });
+    // Root Admin real verificado com claim antiga role: 'INTRUSO' no JWT mantém privilégios (v1.10.13)
+    const staleClaimRootDb = testEnv.authenticatedContext(ROOT_ADMIN_UID, {
+      email: ROOT_ADMIN_EMAIL,
+      email_verified: true,
+      role: "INTRUSO",
+    }).firestore();
+
+    await assertSucceeds(
+      updateDoc(doc(staleClaimRootDb, "claims", claimPayload.id), {
+        status: "APROVADO",
+        reviewedByUserId: ROOT_ADMIN_UID,
+        reviewedByName: "Super Admin Root",
+        reviewedByRole: "ADMIN",
+        reviewedAt: new Date().toISOString(),
+      })
+    );
+
+    const checkSnap = await assertSucceeds(getDoc(doc(staleClaimRootDb, "claims", claimPayload.id)));
+    expect(checkSnap.data()?.status).toBe("APROVADO");
   });
 
   // =========================================================================
@@ -1108,7 +1183,7 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     expect(checkSnap.exists()).toBe(false);
   });
 
-  it("C-26: Bloqueio de usuário autenticado cujo documento em /users/{uid} não possui o campo 'status' (403)", async () => {
+  it("C-26: Compatibilidade legada quando 'status' está ausente em users/{uid} ativo, mas bloqueio estrito quando status: null ou active: false (403)", async () => {
     const noStatusDb = testEnv.authenticatedContext(NO_STATUS_UID, {
       email: NO_STATUS_EMAIL,
       email_verified: true,
@@ -1116,12 +1191,29 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
 
     const claimPayload = getValidClaimPayload(ITEM_ENCONTRADO_ID, NO_STATUS_UID, NO_STATUS_EMAIL);
 
-    // Bloqueado pois isAccountActive() exige explicitamente a presença e valor válido do campo 'status'
-    await assertFails(setDoc(doc(noStatusDb, "claims", claimPayload.id), claimPayload));
+    // Regra v1.10.13: isUserDocActive() trata status ausente como 'active' para perfis legados com papel válido
+    await assertSucceeds(setDoc(doc(noStatusDb, "claims", claimPayload.id), claimPayload));
 
-    // Verificação de não-criação
-    const checkSnap = await assertSucceeds(getDoc(doc(noStatusDb, "claims", claimPayload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Documento com status: null explícito deve continuar estritamente bloqueado
+    const nullStatusUid = "aluno_status_null_c26";
+    const nullStatusEmail = "null.status.c26@estudantes.ifpr.edu.br";
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", nullStatusUid), {
+        id: nullStatusUid,
+        email: nullStatusEmail,
+        role: "ALUNO",
+        status: null,
+        approvalStatus: "APROVADO",
+        emailVerified: true,
+      });
+    });
+
+    const nullStatusDb = testEnv.authenticatedContext(nullStatusUid, {
+      email: nullStatusEmail,
+      email_verified: true,
+    }).firestore();
+    const deniedPayload = getValidClaimPayload(ITEM_ENCONTRADO_ID, nullStatusUid, nullStatusEmail);
+    await assertFails(setDoc(doc(nullStatusDb, "claims", deniedPayload.id), deniedPayload));
   });
 
   it("C-27: Bloqueio de usuário com conta suspensa (status: 'suspended') de criar claim (403) e garantia de não-mutação", async () => {
@@ -1189,39 +1281,62 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     expect(checkSnap.data()?.status).toBe("PENDENTE");
   });
 
-  it("C-31: Bloqueio de cancelamento de claim própria PENDENTE por usuário com JWT contendo role: 'INTRUSO' (403) com preservação de integridade", async () => {
+  it("C-31: Claim JWT antiga role: 'INTRUSO' não bloqueia ALUNO com users/{uid} válido de cancelar sua claim PENDENTE, mas documento users/{uid} com role: 'INTRUSO' é barrado (403)", async () => {
     const claimPayload = getValidClaimPayload(ITEM_ENCONTRADO_ID, INTRUDER_UID, INTRUDER_EMAIL);
+    const realIntruderUid = "real_intruso_doc_c31";
+    const realIntruderEmail = "intruso.real@gmail.com";
+    const realIntruderClaim = getValidClaimPayload(ITEM_ENCONTRADO_2_ID, realIntruderUid, realIntruderEmail);
+
     await testEnv.withSecurityRulesDisabled(async (context) => {
-      await setDoc(doc(context.firestore(), "claims", claimPayload.id), claimPayload);
+      const db = context.firestore();
+      await setDoc(doc(db, "claims", claimPayload.id), claimPayload);
+      await setDoc(doc(db, "users", realIntruderUid), {
+        id: realIntruderUid,
+        email: realIntruderEmail,
+        role: "INTRUSO",
+        status: "active",
+        approvalStatus: "APROVADO",
+      });
+      await setDoc(doc(db, "claims", realIntruderClaim.id), realIntruderClaim);
     });
 
-    const intruderDb = testEnv.authenticatedContext(INTRUDER_UID, {
-      email: INTRUDER_EMAIL,
+    // 1. Documento users/{uid} marcado como INTRUSO é bloqueado
+    const realIntruderDb = testEnv.authenticatedContext(realIntruderUid, {
+      email: realIntruderEmail,
       email_verified: true,
-      role: "INTRUSO",
     }).firestore();
-
-    // Bloqueado pela salvaguarda !isIntruso() na regra allow update de cancelamento
     await assertFails(
-      updateDoc(doc(intruderDb, "claims", claimPayload.id), {
+      updateDoc(doc(realIntruderDb, "claims", realIntruderClaim.id), {
         status: "CANCELADO",
         cancelledAt: new Date().toISOString(),
       })
     );
 
-    // Integridade: A claim permanece PENDENTE e intacta
-    await testEnv.withSecurityRulesDisabled(async (context) => {
-      const snap = await getDoc(doc(context.firestore(), "claims", claimPayload.id));
-      expect(snap.data()?.status).toBe("PENDENTE");
-      expect(snap.data()?.cancelledAt).toBeUndefined();
-    });
+    // 2. Documento users/{uid} válido como ALUNO ativo mantém direito mesmo com claim JWT antiga role: 'INTRUSO'
+    const staleClaimAlunoDb = testEnv.authenticatedContext(INTRUDER_UID, {
+      email: INTRUDER_EMAIL,
+      email_verified: true,
+      role: "INTRUSO",
+    }).firestore();
+
+    await assertSucceeds(
+      updateDoc(doc(staleClaimAlunoDb, "claims", claimPayload.id), {
+        status: "CANCELADO",
+        cancelledAt: new Date().toISOString(),
+      })
+    );
   });
 
-  it("C-32: Bloqueio de exclusão de item próprio por usuário com JWT contendo role: 'INTRUSO' (403) com integridade do item preservada", async () => {
-    const intruderItemId = "item_cadastrado_por_intruso_previamente";
+  it("C-32: Exclusão de item próprio por documento users/{uid} INTRUSO é barrada (403), enquanto ALUNO válido com claim JWT antiga role: 'INTRUSO' mantém exclusão do próprio item", async () => {
+    const alunoItemId = "item_cadastrado_por_aluno_claim_antiga";
+    const realIntruderUid = "real_intruso_doc_c32";
+    const realIntruderEmail = "intruso.item@gmail.com";
+    const intruderDocItemId = "item_cadastrado_por_intruso_doc";
+
     await testEnv.withSecurityRulesDisabled(async (context) => {
-      await setDoc(doc(context.firestore(), "items", intruderItemId), {
-        id: intruderItemId,
+      const db = context.firestore();
+      await setDoc(doc(db, "items", alunoItemId), {
+        id: alunoItemId,
         title: "Casaco de Lã Azul",
         category: "Roupas & Calçados",
         location: "Ginásio",
@@ -1230,20 +1345,37 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
         registeredByRole: "SERVIDOR",
         createdAt: "2026-01-01T10:00:00.000Z",
       });
+      await setDoc(doc(db, "users", realIntruderUid), {
+        id: realIntruderUid,
+        email: realIntruderEmail,
+        role: "INTRUSO",
+        status: "active",
+        approvalStatus: "APROVADO",
+      });
+      await setDoc(doc(db, "items", intruderDocItemId), {
+        id: intruderDocItemId,
+        title: "Objeto Intruso Real",
+        category: "Outros",
+        location: "Pátio",
+        status: "ENCONTRADO",
+        registeredByUserId: realIntruderUid,
+        registeredByRole: "SERVIDOR",
+        createdAt: "2026-01-01T10:00:00.000Z",
+      });
     });
 
-    const intruderDb = testEnv.authenticatedContext(INTRUDER_UID, {
+    const realIntruderDb = testEnv.authenticatedContext(realIntruderUid, {
+      email: realIntruderEmail,
+      email_verified: true,
+    }).firestore();
+    await assertFails(deleteDoc(doc(realIntruderDb, "items", intruderDocItemId)));
+
+    const staleClaimAlunoDb = testEnv.authenticatedContext(INTRUDER_UID, {
       email: INTRUDER_EMAIL,
       email_verified: true,
       role: "INTRUSO",
     }).firestore();
-
-    // Bloqueado pela salvaguarda !isIntruso() na regra allow delete de /items/{itemId}
-    await assertFails(deleteDoc(doc(intruderDb, "items", intruderItemId)));
-
-    // Integridade: O item continua existindo no banco
-    const checkSnap = await assertSucceeds(getDoc(doc(intruderDb, "items", intruderItemId)));
-    expect(checkSnap.exists()).toBe(true);
+    await assertSucceeds(deleteDoc(doc(staleClaimAlunoDb, "items", alunoItemId)));
   });
 
   it("C-33: Permissão para usuário institucional ativo legítimo (ALUNO) cancelar sua própria claim PENDENTE com sucesso", async () => {
