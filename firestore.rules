@@ -22,10 +22,23 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function hasVerifiedEmailToken() {
+      let tok = request.auth.token;
+      return ('email_verified' in tok) && tok.email_verified == true;
+    }
+
     function isEmailVerified() {
       return isSignedIn() && 
              ('email_verified' in request.auth.token) && 
              request.auth.token.email_verified == true;
+    }
+
+    function isRootIdentity() {
+      let tok = request.auth.token;
+      return request.auth.uid == 'hCG5mDgK1fRaTojULzlM7dXvb7n2' &&
+             ('email' in tok) &&
+             tok.email != null &&
+             tok.email.lower() == 'paulocauan39@gmail.com';
     }
 
     function userDocExists() {
@@ -36,42 +49,22 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    function isTemporaryBlockActive(userData) {
-      return (
-        ('blockExpiresAt' in userData && userData.blockExpiresAt is timestamp && request.time < userData.blockExpiresAt) ||
-        ('suspendedUntil' in userData && userData.suspendedUntil is timestamp && request.time < userData.suspendedUntil)
-      );
+    function isStandingActive(u) {
+      let hasB = 'blockExpiresAt' in u;
+      let hasS = 'suspendedUntil' in u;
+      let statusVal = ('status' in u) ? u.status : 'active';
+      return (!('active' in u) || u.active != false) &&
+             (!hasB || (u.blockExpiresAt is timestamp && request.time >= u.blockExpiresAt)) &&
+             (!hasS || (u.suspendedUntil is timestamp && request.time >= u.suspendedUntil)) &&
+             (statusVal == 'active' || (statusVal == 'suspended' && (hasB || hasS)));
     }
 
-    function hasInvalidTemporaryBlockField(userData) {
-      return (
-        ('blockExpiresAt' in userData && !(userData.blockExpiresAt is timestamp)) ||
-        ('suspendedUntil' in userData && !(userData.suspendedUntil is timestamp))
-      );
-    }
-
-    function isTemporaryBlockExpired(userData) {
-      return !isTemporaryBlockActive(userData) &&
-             !hasInvalidTemporaryBlockField(userData) &&
-             (
-               ('blockExpiresAt' in userData && userData.blockExpiresAt is timestamp) ||
-               ('suspendedUntil' in userData && userData.suspendedUntil is timestamp)
-             );
+    function isUserDocActiveData(u) {
+      return (!('role' in u) || u.role != 'INTRUSO') && isStandingActive(u);
     }
 
     function isUserDocBlocked() {
-      let u = getUserData();
-      let statusVal = ('status' in u) ? u.status : 'active';
-      return ('active' in u && u.active == false) ||
-             isTemporaryBlockActive(u) ||
-             hasInvalidTemporaryBlockField(u) ||
-             (
-               statusVal != 'active' &&
-               !(statusVal == 'suspended' && (
-                 ('blockExpiresAt' in u && u.blockExpiresAt is timestamp) ||
-                 ('suspendedUntil' in u && u.suspendedUntil is timestamp)
-               ))
-             );
+      return !isStandingActive(getUserData());
     }
 
     function isAccountBlocked() {
@@ -81,25 +74,13 @@ service cloud.firestore {
     }
 
     function isUserDocActive() {
-      let u = getUserData();
-      let statusVal = ('status' in u) ? u.status : 'active';
-      return (!('active' in u) || u.active != false) &&
-             (!('role' in u) || u.role != 'INTRUSO') &&
-             !isTemporaryBlockActive(u) &&
-             !hasInvalidTemporaryBlockField(u) &&
-             (
-               statusVal == 'active' ||
-               (statusVal == 'suspended' && (
-                 ('blockExpiresAt' in u && u.blockExpiresAt is timestamp) ||
-                 ('suspendedUntil' in u && u.suspendedUntil is timestamp)
-               ))
-             );
+      return isUserDocActiveData(getUserData());
     }
 
     function isAccountActive() {
       // (!('active' in getUserData()) || getUserData().active != false)
       return isSignedIn() && (
-        isRootAdmin() || (
+        (hasVerifiedEmailToken() && isRootIdentity()) || (
           userDocExists() &&
           isUserDocActive()
         )
@@ -111,11 +92,33 @@ service cloud.firestore {
       return ('role' in u) && u.role == 'ADMIN' && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO';
     }
 
+    function hasApprovedAdminRole(u) {
+      return ('role' in u) && u.role == 'ADMIN' && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO';
+    }
+
+    function hasApprovedServidorRole(u) {
+      return ('role' in u) && u.role == 'SERVIDOR' && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO';
+    }
+
+    function hasApprovedStaffOrAdminRole(u) {
+      return ('role' in u) && (u.role == 'SERVIDOR' || u.role == 'ADMIN') && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO';
+    }
+
+    function isActiveAdminDoc() {
+      let u = getUserData();
+      return isUserDocActiveData(u) && hasApprovedAdminRole(u);
+    }
+
+    function isActiveStaffOrAdminDoc() {
+      let u = getUserData();
+      return isUserDocActiveData(u) && hasApprovedStaffOrAdminRole(u);
+    }
+
     function hasAdminClaim() {
       // Claims são confiadas quando emitidas pelo Firebase Admin SDK. Se o perfil existir,
       // o papel ADMIN aprovado deve concordar; claims obsoletas não sobrepõem o perfil.
       return isSignedIn() && 
-             isEmailVerified() &&
+             hasVerifiedEmailToken() &&
              (('role' in request.auth.token && request.auth.token.role == 'ADMIN') || 
               ('admin' in request.auth.token && request.auth.token.admin == true)) &&
              (!userDocExists() || isAdminUserDoc());
@@ -132,31 +135,27 @@ service cloud.firestore {
 
     function isDocAdmin() {
       return isSignedIn() && 
-             isEmailVerified() &&
+             hasVerifiedEmailToken() &&
              userDocExists() &&
              isAdminUserDoc();
     }
 
     function isAdmin() {
-      return isRootAdmin() ||
-             (isAccountActive() && isEmailVerified() && isAdminUserDoc());
+      return isSignedIn() && hasVerifiedEmailToken() && (
+        isRootIdentity() ||
+        (userDocExists() && isActiveAdminDoc())
+      );
     }
 
     function isDocServidorIdentity() {
       // O documento Firestore users/{uid} é autoritativo para atribuições administrativas de SERVIDOR.
       // Contas externas (ex: Gmail) aprovadas por administrador não são rejeitadas por claims antigas.
+      let u = getUserData();
       return isSignedIn() && 
-             isEmailVerified() &&
+             hasVerifiedEmailToken() &&
              userDocExists() &&
-             ('role' in getUserData()) &&
-             getUserData().role == 'SERVIDOR';
-    }
-
-    function isDocServidor() {
-      return isSignedIn() &&
-             isEmailVerified() &&
-             userDocExists() &&
-             isApprovedServidorDoc();
+             ('role' in u) &&
+             u.role == 'SERVIDOR';
     }
 
     function isApprovedServidorDoc() {
@@ -164,43 +163,50 @@ service cloud.firestore {
       return ('role' in u) && u.role == 'SERVIDOR' && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO';
     }
 
-    function isDocAluno() {
-      return isSignedIn() && 
-             isEmailVerified() &&
+    function isDocServidor() {
+      return isSignedIn() &&
+             hasVerifiedEmailToken() &&
              userDocExists() &&
-             ('role' in getUserData()) &&
-             getUserData().role == 'ALUNO';
+             isApprovedServidorDoc();
     }
 
-    function isDocIntruso() {
-      return isSignedIn() && 
-             userDocExists() &&
-             ('role' in getUserData()) &&
-             getUserData().role == 'INTRUSO';
+    function isLowerInstStudentEmail(lowerEmail) {
+      return lowerEmail.matches('.*@([a-zA-Z0-9-]+\\.)*(estudantes|estudante|aluno|alunos)[.]ifpr[.]edu[.]br');
+    }
+
+    function isLowerInstStaffEmail(lowerEmail) {
+      return lowerEmail.matches('.*@([a-zA-Z0-9-]+\\.)*ifpr[.]edu[.]br') &&
+             !lowerEmail.matches('.*@([a-zA-Z0-9-]+\\.)*(aluno|alunos|estudante|estudantes|escola)[.]ifpr[.]edu[.]br');
     }
 
     function isInstitutionalStudentEmail() {
-      return isSignedIn() && isEmailVerified() && ('email' in request.auth.token) && request.auth.token.email != null && (
+      let tok = request.auth.token;
+      return isSignedIn() && hasVerifiedEmailToken() && ('email' in tok) && tok.email != null && (
         request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*(estudantes|estudante|aluno)[.]ifpr[.]edu[.]br') ||
-        request.auth.token.email.lower().matches('.*@([a-zA-Z0-9-]+\\.)*(estudantes|estudante|aluno|alunos)[.]ifpr[.]edu[.]br')
+        isLowerInstStudentEmail(tok.email.lower())
       );
     }
 
     function isInstitutionalStaffEmail() {
-      return isSignedIn() && isEmailVerified() && ('email' in request.auth.token) && request.auth.token.email != null && (
+      let tok = request.auth.token;
+      return isSignedIn() && hasVerifiedEmailToken() && ('email' in tok) && tok.email != null && (
         (
           request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*ifpr[.]edu[.]br') &&
           !request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*(aluno|alunos|estudante|estudantes|escola)[.]ifpr[.]edu[.]br')
         ) ||
-        (
-          request.auth.token.email.lower().matches('.*@([a-zA-Z0-9-]+\\.)*ifpr[.]edu[.]br') &&
-          !request.auth.token.email.lower().matches('.*@([a-zA-Z0-9-]+\\.)*(aluno|alunos|estudante|estudantes|escola)[.]ifpr[.]edu[.]br')
-        )
+        isLowerInstStaffEmail(tok.email.lower())
       );
     }
 
     function isServidor() {
       return isAccountActive() && isDocServidor();
+    }
+
+    function isStaffOrAdminActive() {
+      return isSignedIn() && hasVerifiedEmailToken() && (
+        isRootIdentity() ||
+        (userDocExists() && isActiveStaffOrAdminDoc())
+      );
     }
 
     function isApprovedStaffOrAdminDoc() {
@@ -211,16 +217,15 @@ service cloud.firestore {
     function canRegisterItems() {
       // Contas aprovadas como SERVIDOR (institucionais ou externas atribuídas por administrador) e administradores
       return isSignedIn() &&
-             isEmailVerified() &&
+             hasVerifiedEmailToken() &&
              (
                (userDocExists() && isApprovedStaffOrAdminDoc()) || 
                hasAdminClaim() || 
-               isRootAdmin()
+               isRootIdentity()
              );
     }
 
-    function isRecognizedUserDocRole() {
-      let u = getUserData();
+    function isRecognizedUserDocRoleData(u) {
       return ('role' in u) && (
         u.role == 'ALUNO' ||
         u.role == 'SERVIDOR' ||
@@ -228,20 +233,46 @@ service cloud.firestore {
       );
     }
 
+    function isNonIntrusoRoleOrEmail(u) {
+      let tok = request.auth.token;
+      let hasEmail = ('email' in tok) && tok.email != null;
+      let lowerEmail = hasEmail ? tok.email.lower() : '';
+      return isRecognizedUserDocRoleData(u) || (
+        (!('role' in u) || u.role != 'INTRUSO') &&
+        (!hasEmail || isLowerInstStudentEmail(lowerEmail) || isLowerInstStaffEmail(lowerEmail))
+      );
+    }
+
+    function isActiveVerifiedMember() {
+      return isSignedIn() && hasVerifiedEmailToken() && (
+        isRootIdentity() ||
+        (userDocExists() && isActiveNonIntrusoDoc())
+      );
+    }
+
+    function isActiveNonIntrusoDoc() {
+      let u = getUserData();
+      return isUserDocActiveData(u) && isNonIntrusoRoleOrEmail(u);
+    }
+
     function isIntruso() {
+      let tok = request.auth.token;
+      let hasEmail = ('email' in tok) && tok.email != null;
+      let lowerEmail = hasEmail ? tok.email.lower() : '';
+      let hasDoc = userDocExists();
       return isSignedIn() && (
-        !isEmailVerified() ||
+        !hasVerifiedEmailToken() ||
         (
-          !(userDocExists() && isRecognizedUserDocRole()) &&
-          !isRootAdmin() &&
-          !hasAdminClaim() &&
+          !isRootIdentity() &&
           (
-            isDocIntruso() ||
-            (
-              ('email' in request.auth.token) && request.auth.token.email != null &&
-              !isInstitutionalStudentEmail() &&
-              !isInstitutionalStaffEmail()
-            )
+            hasDoc
+              ? !isNonIntrusoRoleOrEmail(getUserData())
+              : (
+                  !((('role' in tok && tok.role == 'ADMIN') || ('admin' in tok && tok.admin == true))) &&
+                  hasEmail &&
+                  !isLowerInstStudentEmail(lowerEmail) &&
+                  !isLowerInstStaffEmail(lowerEmail)
+                )
           )
         )
       );
@@ -370,12 +401,11 @@ service cloud.firestore {
 
     function isAuthorSafeMetadataEdit() {
       return isSignedIn() &&
-             isAccountActive() &&
+             hasVerifiedEmailToken() &&
              (!('status' in existing()) ? !('status' in incoming()) : incoming().status == existing().status) &&
              ('registeredByUserId' in existing()) &&
              existing().registeredByUserId == request.auth.uid &&
-             isEmailVerified() &&
-             !isIntruso() &&
+             isActiveVerifiedMember() &&
              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                'title',
                'description',
@@ -396,7 +426,7 @@ service cloud.firestore {
 
     function isStaffOrAdminNonReturnItemUpdate() {
       return (!('status' in incoming()) || incoming().status != 'DEVOLVIDO') &&
-             canRegisterItems() &&
+             isStaffOrAdminActive() &&
              request.resource.data.diff(resource.data).affectedKeys().hasOnly([
                'title',
                'description',
@@ -430,6 +460,47 @@ service cloud.firestore {
              ));
     }
 
+    function canCreateCatalogItem() {
+      let inc = incoming();
+      return isSignedIn() &&
+             hasVerifiedEmailToken() &&
+             incoming().registeredByUserId == request.auth.uid &&
+             (inc.registeredByRole == 'SERVIDOR' || inc.registeredByRole == 'ADMIN') &&
+             (!('status' in inc) || (inc.status != 'DEVOLVIDO' && inc.status != 'ENCERRADO')) &&
+             hasNoReturnOrSignatureFields(inc) &&
+             (
+               isRootIdentity() ||
+               (
+                 userDocExists() &&
+                 isActiveStaffOrAdminForRole(getUserData(), inc.registeredByRole)
+               )
+             );
+    }
+
+    function isActiveStaffOrAdminForRole(u, role) {
+      return isUserDocActiveData(u) &&
+             ('approvalStatus' in u) && u.approvalStatus == 'APROVADO' &&
+             ('role' in u) && (
+               (role == 'ADMIN' && u.role == 'ADMIN') ||
+               (role == 'SERVIDOR' && (u.role == 'SERVIDOR' || u.role == 'ADMIN'))
+             );
+    }
+
+    function canUpdateCatalogItemBase() {
+      let ext = existing();
+      return (!('status' in ext) || (ext.status != 'DEVOLVIDO' && ext.status != 'ENCERRADO')) &&
+             areItemCoreImmutableFieldsPreserved() &&
+             hasNoProtectedReturnOrSignatureMutation();
+    }
+
+    function canDeleteNonReturnedCatalogItem() {
+      return isAdmin() || (
+        isActiveVerifiedMember() &&
+        existing().registeredByUserId == request.auth.uid &&
+        (!('status' in existing()) || existing().status != 'ENCERRADO')
+      );
+    }
+
     // ==========================================
     // 0. Role Assignments Collection (Protected Administrative Assignments)
     // ==========================================
@@ -448,138 +519,118 @@ service cloud.firestore {
     // 1. Users Collection (Least Privilege & Anti-Enumeration)
     // ==========================================
     match /users/{userId} {
+      function canCreateOwnUserDoc() {
+        let inc = incoming();
+        let tok = request.auth.token;
+        let verified = ('email_verified' in tok) && tok.email_verified == true;
+        let hasEmail = ('email' in tok) && tok.email != null;
+        let lowerTokEmail = hasEmail ? tok.email.lower() : '';
+        let emailMatches = hasEmail && (inc.email == tok.email || inc.email.lower() == lowerTokEmail);
+        let isAdminCreator = verified && (
+          isRootIdentity() ||
+          (
+            (('role' in tok && tok.role == 'ADMIN') || ('admin' in tok && tok.admin == true)) &&
+            (!userDocExists() || isAdminUserDoc())
+          )
+        );
+        return isSignedIn() &&
+               request.auth.uid == userId &&
+               inc.id == userId &&
+               emailMatches &&
+               (
+                 isAdminCreator ||
+                 (
+                   (!('admin' in inc) || inc.admin == false) &&
+                   !('roleAssignedBy' in inc) &&
+                   !('roleAssignedAt' in inc) &&
+                   (
+                     (inc.role == 'INTRUSO' && inc.approvalStatus in ['PENDENTE', 'APROVADO']) ||
+                     (verified && hasEmail && (
+                       (inc.role == 'ALUNO' && inc.approvalStatus in ['PENDENTE', 'APROVADO'] && isLowerInstStudentEmail(lowerTokEmail)) ||
+                       ((incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail()) && inc.approvalStatus == 'PENDENTE')
+                     ))
+                   )
+                 )
+               );
+      }
+
+      function areUserControlFieldsImmutable(ext, inc) {
+        return (!('roleAssignedBy' in inc) || ('roleAssignedBy' in ext && inc.roleAssignedBy == ext.roleAssignedBy)) &&
+               (!('roleAssignedAt' in inc) || ('roleAssignedAt' in ext && inc.roleAssignedAt == ext.roleAssignedAt)) &&
+               (('status' in existing() && incoming().status == existing().status) || (!('status' in ext) && (!('status' in inc) || inc.status == 'active'))) &&
+               (('suspendedUntil' in existing() && incoming().suspendedUntil == existing().suspendedUntil) || (!('suspendedUntil' in ext) && !('suspendedUntil' in inc))) &&
+               (('blockExpiresAt' in ext && inc.blockExpiresAt == ext.blockExpiresAt) || (!('blockExpiresAt' in ext) && !('blockExpiresAt' in inc))) &&
+               (('reputationScore' in ext && inc.reputationScore == ext.reputationScore) || (!('reputationScore' in ext) && (!('reputationScore' in inc) || inc.reputationScore == 100)));
+      }
+
       // 1. Get: Users can ONLY read their own profile doc (isAuthUser(userId)); Only Admins can read other users' documents
-      // Blocked: Non-admin users (students, staff, visitors) cannot inspect other users' personal documents
       allow get: if isAuthUser(userId) || isAdmin();
 
       // 2. List: Only Admins can list/enumerate the users directory.
       // Individual authenticated users can only query specifically for their own authenticated email (where email == auth.token.email).
-      // Blocked: Global listing and user enumeration by students and regular staff are strictly forbidden.
       allow list: if isAdmin() || 
                      (isSignedIn() && isAccountActive() && resource != null && 
                       (resource.data.email == request.auth.token.email || resource.data.email.lower() == request.auth.token.email.lower()));
 
       // 3. Create: User can ONLY create their own document with their real UID and verified email.
-      // Privilege escalation prevention:
-      // - Cannot set role to 'ADMIN' unless isRootAdmin() or hasAdminClaim()
-      // - Cannot set role to 'ALUNO' unless possessing verified institutional student email
-      // - Cannot set role to 'SERVIDOR' unless possesses verified institutional staff credentials
-      // - Cannot inject admin=true claim
-      // - Unverified emails can strictly only register as INTRUSO
-      allow create: if isSignedIn() && 
-                       request.auth.uid == userId && 
-                       incoming().id == userId && 
-                       (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) &&
-                       (
-                         isRootAdmin() || hasAdminClaim() ||
-                         (
-                           (
-                             (incoming().role == 'ALUNO' && isInstitutionalStudentEmail()) || 
-                             (incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail()) ||
-                             incoming().role == 'INTRUSO'
-                           ) &&
-                           (!('admin' in incoming()) || incoming().admin == false) &&
-                           (!('roleAssignedBy' in incoming())) &&
-                           (!('roleAssignedAt' in incoming())) &&
-                           (
-                             incoming().approvalStatus == 'PENDENTE' || 
-                             (incoming().approvalStatus == 'APROVADO' && (
-                               incoming().role == 'INTRUSO' ||
-                               (incoming().role == 'ALUNO' && isInstitutionalStudentEmail())
-                             ))
-                           )
-                         )
-                       );
+      allow create: if canCreateOwnUserDoc();
 
       // 4. Update: 
-      // - Admins can update any user profile (roles, approvals, status: active, suspended, banned)
-      //   * Promoting to ADMIN strictly reserved to Root Admin
-      // - Legitimate Institutional Promotion (INTRUSO -> ALUNO / SERVIDOR):
-      //   * Requires authenticated user updating strictly their own profile
-      //   * Requires existing doc to have role == 'INTRUSO'
-      //   * Requires verified institutional email matching student or staff domains
-      //   * Enforces immutability of id, email, approvalStatus, status, admin, suspension, reputation
-      // - Legitimate Self-Profile Updates (Active Non-Admin users):
-      //   * Account must be active (isAccountActive())
-      //   * Role is immutable (incoming.role == existing.role)
-      //   * Cannot escalate to admin (incoming.admin == existing.admin == false)
-      //   * Cannot change approvalStatus, email, id, status, suspension, reputation, roleAssignedBy
       allow update: if (
         (
           isAdmin() && (
-            incoming().role != 'ADMIN' || isRootAdmin() || ('role' in existing() && existing().role == 'ADMIN')
+            incoming().role != 'ADMIN' || isRootIdentity() || ('role' in existing() && existing().role == 'ADMIN')
           )
         ) || (
-        // Branch 1: Promoção institucional legítima (INTRUSO -> ALUNO ou SERVIDOR)
-        (
-          isSignedIn() && 
-          request.auth.uid == userId && 
-          incoming().id == userId && 
-          (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) && 
-          (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) && 
+          isSignedIn() &&
+          request.auth.uid == userId &&
+          incoming().id == userId &&
+          (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) &&
           ('role' in existing()) &&
-          existing().role == 'INTRUSO' && 
-          !isAccountBlocked() && 
-          (!('admin' in incoming()) || incoming().admin == false) && 
-          (!('admin' in existing()) || existing().admin == false) && 
-          (!('roleAssignedBy' in incoming()) || ('roleAssignedBy' in existing() && incoming().roleAssignedBy == existing().roleAssignedBy)) &&
-          (!('roleAssignedAt' in incoming()) || ('roleAssignedAt' in existing() && incoming().roleAssignedAt == existing().roleAssignedAt)) && 
+          isStandingActive(existing()) &&
           (
-            ('approvalStatus' in existing() && incoming().approvalStatus == existing().approvalStatus && incoming().role != 'SERVIDOR') ||
-            (incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail() && incoming().approvalStatus == 'PENDENTE')
-          ) && 
-          (('status' in existing() && incoming().status == existing().status) || (!('status' in existing()) && (!('status' in incoming()) || incoming().status == 'active'))) && 
-          (('suspendedUntil' in existing() && incoming().suspendedUntil == existing().suspendedUntil) || (!('suspendedUntil' in existing()) && !('suspendedUntil' in incoming()))) && 
-          (('blockExpiresAt' in existing() && incoming().blockExpiresAt == existing().blockExpiresAt) || (!('blockExpiresAt' in existing()) && !('blockExpiresAt' in incoming()))) && 
-          (('reputationScore' in existing() && incoming().reputationScore == existing().reputationScore) || (!('reputationScore' in existing()) && (!('reputationScore' in incoming()) || incoming().reputationScore == 100))) && 
-          (
-            // Promoção para ALUNO (requer e-mail institucional de estudante verificado)
-            (incoming().role == 'ALUNO' && isInstitutionalStudentEmail()) || 
-            // Promoção para SERVIDOR (requer e-mail institucional de servidor e preserva approvalStatus PENDENTE)
-            (incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail())
-          )
-        ) ||
-        // Branch 2: Atualizações normais de perfil próprio por usuários com conta ativa
-        (
-          isSignedIn() && 
-          isAccountActive() && 
-          request.auth.uid == userId && 
-          incoming().id == userId && 
-          (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) && 
-          ('role' in existing()) &&
-          incoming().role == existing().role && 
-          (!('admin' in incoming()) || incoming().admin == existing().admin) && 
-          (!('roleAssignedBy' in incoming()) || ('roleAssignedBy' in existing() && incoming().roleAssignedBy == existing().roleAssignedBy)) &&
-          (!('roleAssignedAt' in incoming()) || ('roleAssignedAt' in existing() && incoming().roleAssignedAt == existing().roleAssignedAt)) &&
-          ('approvalStatus' in existing()) &&
-          (incoming().approvalStatus == existing().approvalStatus) && 
-          (('status' in existing() && incoming().status == existing().status) || (!('status' in existing()) && (!('status' in incoming()) || incoming().status == 'active'))) && 
-          (('suspendedUntil' in existing() && incoming().suspendedUntil == existing().suspendedUntil) || (!('suspendedUntil' in existing()) && !('suspendedUntil' in incoming()))) && 
-          (('blockExpiresAt' in existing() && incoming().blockExpiresAt == existing().blockExpiresAt) || (!('blockExpiresAt' in existing()) && !('blockExpiresAt' in incoming()))) && 
-          (('reputationScore' in existing() && incoming().reputationScore == existing().reputationScore) || (!('reputationScore' in existing()) && (!('reputationScore' in incoming()) || incoming().reputationScore == 100)))
-        ) ||
-        // Branch 3: Inicialização de status para perfis institucionais legados sem o campo status
-        (
-          isSignedIn() && 
-          request.auth.uid == userId && 
-          incoming().id == userId && 
-          (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) && 
-          (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) && 
-          !isAccountBlocked() &&
-          ('role' in existing()) &&
-          (existing().role == 'ALUNO' || existing().role == 'SERVIDOR') &&
-          incoming().role == existing().role && 
-          (!('admin' in incoming()) || incoming().admin == false) && 
-          (!('admin' in existing()) || existing().admin == false) && 
-          (!('approvalStatus' in existing()) || incoming().approvalStatus == existing().approvalStatus) && 
-          (!('status' in existing()) && incoming().status == 'active') && 
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
-          (
-            (existing().role == 'ALUNO' && isInstitutionalStudentEmail()) || 
-            (existing().role == 'SERVIDOR' && isInstitutionalStaffEmail())
+            // Branch 1: Promoção institucional legítima (INTRUSO -> ALUNO ou SERVIDOR)
+            (
+              existing().role == 'INTRUSO' &&
+              (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) &&
+              (!('admin' in incoming()) || incoming().admin == false) &&
+              (!('admin' in existing()) || existing().admin == false) &&
+              areUserControlFieldsImmutable(existing(), incoming()) &&
+              (
+                (
+                  (incoming().role == 'ALUNO' && isInstitutionalStudentEmail()) &&
+                  ('approvalStatus' in existing() && incoming().approvalStatus == existing().approvalStatus)
+                ) ||
+                (incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail() && incoming().approvalStatus == 'PENDENTE')
+              )
+            ) ||
+            // Branch 2: Atualizações normais de perfil próprio por usuários com conta ativa
+            (
+              existing().role != 'INTRUSO' &&
+              incoming().role == existing().role &&
+              (!('admin' in incoming()) || incoming().admin == existing().admin) &&
+              areUserControlFieldsImmutable(existing(), incoming()) &&
+              ('approvalStatus' in existing()) &&
+              (incoming().approvalStatus == existing().approvalStatus)
+            ) ||
+            // Branch 3: Inicialização de status para perfis institucionais legados sem o campo status
+            (
+              (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) &&
+              (existing().role == 'ALUNO' || existing().role == 'SERVIDOR') &&
+              incoming().role == existing().role &&
+              (!('admin' in incoming()) || incoming().admin == false) &&
+              (!('admin' in existing()) || existing().admin == false) &&
+              (!('approvalStatus' in existing()) || incoming().approvalStatus == existing().approvalStatus) &&
+              (!('status' in existing()) && incoming().status == 'active') &&
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+              (
+                (existing().role == 'ALUNO' && isInstitutionalStudentEmail()) ||
+                (existing().role == 'SERVIDOR' && isInstitutionalStaffEmail())
+              )
+            )
           )
         )
-      ));
+      );
 
       // 5. Delete: Only Admin can delete accounts (and cannot delete their own active account)
       allow delete: if isAdmin() && request.auth.uid != userId;
@@ -589,132 +640,27 @@ service cloud.firestore {
     // 2. Lost & Found Items Collection
     // ==========================================
     match /items/{itemId} {
-      // Public catalog read: unauthenticated visitors and general users can ONLY read documents
-      // that are clean public projections (free of personal return data, signatures, and secrets).
-      // Any document containing personal return/signature data can ONLY be read by active SERVIDOR or ADMIN.
       allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
-      allow list: if (isSignedIn() && isAccountActive() && (isAdmin() || isServidor())) || hasNoReturnOrSignatureFields(resource.data);
-
-      // Creation: ONLY Authenticated users with verified email, real UID and active account standing:
-      // - Author ID must match request.auth.uid
-      // - Cannot falsify author role as ADMIN or SERVIDOR unless possessing real credentials
-      // - Text fields must obey ITEM_FIELD_LIMITS (title <= 100, description <= 1000, location <= 120, etc.)
-      allow create: if isSignedIn() &&
-                    incoming().registeredByUserId == request.auth.uid && 
-                    isEmailVerified() && 
-                    (incoming().registeredByRole == 'SERVIDOR' || incoming().registeredByRole == 'ADMIN') &&
-                    isValidItemTextFields(incoming()) &&
-                    (!('status' in incoming()) || (incoming().status != 'DEVOLVIDO' && incoming().status != 'ENCERRADO')) &&
-                    hasNoReturnOrSignatureFields(incoming()) &&
-                    isAccountActive() &&
-                    !isIntruso() &&
-                    (
-                      (incoming().registeredByRole == 'SERVIDOR' && canRegisterItems()) ||
-                      (incoming().registeredByRole == 'ADMIN' && (hasAdminClaim() || isRootAdmin() || isDocAdmin()))
-                    );
-
-      // Update: Formal return (DEVOLVIDO) and reopening are server-authoritative via Admin SDK only.
-      // Authors can ONLY edit safe metadata on unresolved items (no status changes).
-      // Approved/Active Staff & Admins can edit metadata, apply non-return statuses, or register ENCERRADO destination.
-      allow update: if isAccountActive() &&
-                       isValidItemTextFields(incoming()) &&
-                       (!('status' in existing()) || (existing().status != 'DEVOLVIDO' && existing().status != 'ENCERRADO')) &&
-                       areItemCoreImmutableFieldsPreserved() &&
-                       hasNoProtectedReturnOrSignatureMutation() &&
-                       (
-                         isStaffOrAdminNonReturnItemUpdate() ||
-                         isAuthorSafeMetadataEdit()
-                       );
-
-      // Delete: Items already marked DEVOLVIDO cannot be deleted via Client SDK (must reopen via Admin backend first).
-      // Author deletion is also blocked for ENCERRADO items.
-      allow delete: if (!('status' in existing()) || existing().status != 'DEVOLVIDO') &&
-                       (
-                         isAdmin() ||
-                         (
-                           isSignedIn() &&
-                           isAccountActive() &&
-                           !isIntruso() &&
-                           existing().registeredByUserId == request.auth.uid &&
-                           (!('status' in existing()) || existing().status != 'ENCERRADO')
-                         )
-                       );
+      allow list: if isStaffOrAdminActive() || hasNoReturnOrSignatureFields(resource.data);
+      allow create: if isValidItemTextFields(incoming()) && canCreateCatalogItem();
+      allow update: if isValidItemTextFields(incoming()) && canUpdateCatalogItemBase() && (isStaffOrAdminNonReturnItemUpdate() || isAuthorSafeMetadataEdit());
+      allow delete: if (!('status' in existing()) || existing().status != 'DEVOLVIDO') && canDeleteNonReturnedCatalogItem();
     }
 
     match /found_items/{itemId} {
       allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
-      allow list: if (isSignedIn() && isAccountActive() && (isAdmin() || isServidor())) || hasNoReturnOrSignatureFields(resource.data);
-      allow create: if isSignedIn() &&
-                    incoming().registeredByUserId == request.auth.uid && 
-                    isEmailVerified() && 
-                    (incoming().registeredByRole == 'SERVIDOR' || incoming().registeredByRole == 'ADMIN') &&
-                    isValidItemTextFields(incoming()) &&
-                    (!('status' in incoming()) || (incoming().status != 'DEVOLVIDO' && incoming().status != 'ENCERRADO')) &&
-                    hasNoReturnOrSignatureFields(incoming()) &&
-                    isAccountActive() &&
-                    !isIntruso() &&
-                    (
-                      (incoming().registeredByRole == 'SERVIDOR' && canRegisterItems()) ||
-                      (incoming().registeredByRole == 'ADMIN' && (hasAdminClaim() || isRootAdmin() || isDocAdmin()))
-                    );
-      allow update: if isAccountActive() &&
-                       isValidItemTextFields(incoming()) &&
-                       (!('status' in existing()) || (existing().status != 'DEVOLVIDO' && existing().status != 'ENCERRADO')) &&
-                       areItemCoreImmutableFieldsPreserved() &&
-                       hasNoProtectedReturnOrSignatureMutation() &&
-                       (
-                         isStaffOrAdminNonReturnItemUpdate() ||
-                         isAuthorSafeMetadataEdit()
-                       );
-      allow delete: if (!('status' in existing()) || existing().status != 'DEVOLVIDO') &&
-                       (
-                         isAdmin() ||
-                         (
-                           isSignedIn() &&
-                           isAccountActive() &&
-                           !isIntruso() &&
-                           existing().registeredByUserId == request.auth.uid &&
-                           (!('status' in existing()) || existing().status != 'ENCERRADO')
-                         )
-                       );
+      allow list: if isStaffOrAdminActive() || hasNoReturnOrSignatureFields(resource.data);
+      allow create: if isValidItemTextFields(incoming()) && canCreateCatalogItem();
+      allow update: if isValidItemTextFields(incoming()) && canUpdateCatalogItemBase() && (isStaffOrAdminNonReturnItemUpdate() || isAuthorSafeMetadataEdit());
+      allow delete: if (!('status' in existing()) || existing().status != 'DEVOLVIDO') && canDeleteNonReturnedCatalogItem();
     }
 
     match /lost_items/{itemId} {
       allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
-      allow list: if (isSignedIn() && isAccountActive() && (isAdmin() || isServidor())) || hasNoReturnOrSignatureFields(resource.data);
-      allow create: if isSignedIn() &&
-                    incoming().registeredByUserId == request.auth.uid && 
-                    isEmailVerified() && 
-                    (incoming().registeredByRole == 'SERVIDOR' || incoming().registeredByRole == 'ADMIN') &&
-                    isValidItemTextFields(incoming()) &&
-                    (!('status' in incoming()) || (incoming().status != 'DEVOLVIDO' && incoming().status != 'ENCERRADO')) &&
-                    hasNoReturnOrSignatureFields(incoming()) &&
-                    isAccountActive() &&
-                    !isIntruso() &&
-                    (
-                      (incoming().registeredByRole == 'SERVIDOR' && canRegisterItems()) ||
-                      (incoming().registeredByRole == 'ADMIN' && (hasAdminClaim() || isRootAdmin() || isDocAdmin()))
-                    );
-      allow update: if isAccountActive() &&
-                       isValidItemTextFields(incoming()) &&
-                       (!('status' in existing()) || (existing().status != 'DEVOLVIDO' && existing().status != 'ENCERRADO')) &&
-                       areItemCoreImmutableFieldsPreserved() &&
-                       hasNoProtectedReturnOrSignatureMutation() &&
-                       (
-                         isStaffOrAdminNonReturnItemUpdate() ||
-                         isAuthorSafeMetadataEdit()
-                       );
-      allow delete: if (!('status' in existing()) || existing().status != 'DEVOLVIDO') &&
-                       (
-                         isAdmin() ||
-                         (
-                           isSignedIn() &&
-                           isAccountActive() &&
-                           !isIntruso() &&
-                           existing().registeredByUserId == request.auth.uid &&
-                           (!('status' in existing()) || existing().status != 'ENCERRADO')
-                         )
-                       );
+      allow list: if isStaffOrAdminActive() || hasNoReturnOrSignatureFields(resource.data);
+      allow create: if isValidItemTextFields(incoming()) && canCreateCatalogItem();
+      allow update: if isValidItemTextFields(incoming()) && canUpdateCatalogItemBase() && (isStaffOrAdminNonReturnItemUpdate() || isAuthorSafeMetadataEdit());
+      allow delete: if (!('status' in existing()) || existing().status != 'DEVOLVIDO') && canDeleteNonReturnedCatalogItem();
     }
 
     // ==========================================
@@ -745,48 +691,23 @@ service cloud.firestore {
     // ==========================================
     match /item_private/{itemId} {
       // Get: Only active approved SERVIDOR, ADMIN, or the item author can read private verification hints/keys.
-      allow get: if isSignedIn() && isAccountActive() && (
-        isAdmin() ||
-        isServidor() ||
-        (resource != null && 'registeredByUserId' in resource.data && resource.data.registeredByUserId == request.auth.uid) ||
-        (exists(/databases/$(database)/documents/items/$(itemId)) &&
-         get(/databases/$(database)/documents/items/$(itemId)).data.registeredByUserId == request.auth.uid)
+      allow get: if isStaffOrAdminActive() || (
+        isSignedIn() && isAccountActive() && (
+          (resource != null && 'registeredByUserId' in resource.data && resource.data.registeredByUserId == request.auth.uid) ||
+          (exists(/databases/$(database)/documents/items/$(itemId)) &&
+           get(/databases/$(database)/documents/items/$(itemId)).data.registeredByUserId == request.auth.uid)
+        )
       );
       // List: Only active approved SERVIDOR or ADMIN can list private verification metadata.
-      allow list: if isSignedIn() && isAccountActive() && (isAdmin() || isServidor());
-      // Create / Update: Active verified staff/admin or authorized item registrar.
-      allow create: if isSignedIn() &&
-                       isEmailVerified() &&
-                       isAccountActive() &&
-                       !isIntruso() &&
-                       (
-                         isAdmin() ||
-                         isServidor() ||
-                         (canRegisterItems() && incoming().registeredByUserId == request.auth.uid)
-                       ) &&
+      allow list: if isStaffOrAdminActive();
+      // Create / Update: Active verified approved SERVIDOR or ADMIN.
+      allow create: if isStaffOrAdminActive() &&
                        (!('itemId' in incoming()) || incoming().itemId == itemId);
-      allow update: if isSignedIn() &&
-                       isEmailVerified() &&
-                       isAccountActive() &&
-                       !isIntruso() &&
-                       (
-                         isAdmin() ||
-                         isServidor() ||
-                         (
-                           canRegisterItems() &&
-                           (
-                             ('registeredByUserId' in existing() && existing().registeredByUserId == request.auth.uid) ||
-                             (exists(/databases/$(database)/documents/items/$(itemId)) &&
-                              get(/databases/$(database)/documents/items/$(itemId)).data.registeredByUserId == request.auth.uid)
-                           )
-                         )
-                       ) &&
+      allow update: if isStaffOrAdminActive() &&
                        (!('registeredByUserId' in existing()) || incoming().registeredByUserId == existing().registeredByUserId) &&
                        (!('itemId' in incoming()) || incoming().itemId == itemId);
       allow delete: if isAdmin() || (
-        isSignedIn() &&
-        isAccountActive() &&
-        !isIntruso() &&
+        isActiveVerifiedMember() &&
         exists(/databases/$(database)/documents/items/$(itemId)) &&
         get(/databases/$(database)/documents/items/$(itemId)).data.registeredByUserId == request.auth.uid &&
         get(/databases/$(database)/documents/items/$(itemId)).data.status != 'DEVOLVIDO'
@@ -805,18 +726,32 @@ service cloud.firestore {
     // 2e. Immutable Item History Timeline (/item_history)
     // ==========================================
     match /item_history/{entryId} {
-      // Public timeline read strictly free of private return/signature/secret fields;
-      // active ADMIN and SERVIDOR keep full historical read access including legacy entries.
+      function canUserDocCreateItemHistory(inc, u) {
+        let hasRoleField = 'actorRole' in inc;
+        let isAdm = hasApprovedAdminRole(u);
+        let isServ = hasApprovedServidorRole(u);
+        let itemPath = /databases/$(database)/documents/items/$(inc.objectId);
+        return isUserDocActiveData(u) && (
+          (isAdm && (!hasRoleField || inc.actorRole in ['ADMIN', 'SERVIDOR'])) ||
+          (isServ && (!hasRoleField || inc.actorRole == 'SERVIDOR')) ||
+          (
+            isNonIntrusoRoleOrEmail(u) &&
+            (!hasRoleField || inc.actorRole == 'ALUNO') &&
+            exists(itemPath) &&
+            get(itemPath).data.registeredByUserId == request.auth.uid
+          )
+        );
+      }
+
+      // Public get strictly free of private return/signature/secret fields;
+      // list & full historical read (including legacy PII entries) strictly restricted to active ADMIN and approved SERVIDOR.
       allow get: if resource == null ||
-                    (isSignedIn() && isAccountActive() && (isAdmin() || isServidor())) ||
+                    isStaffOrAdminActive() ||
                     hasNoReturnOrSignatureFields(resource.data);
-      allow list: if (isSignedIn() && isAccountActive() && (isAdmin() || isServidor())) ||
-                     hasNoReturnOrSignatureFields(resource.data);
+      allow list: if isStaffOrAdminActive();
       // Append-only creation by active verified non-intruso users matching their own auth.uid & non-escalated role.
       allow create: if isSignedIn() &&
-                       isEmailVerified() &&
-                       isAccountActive() &&
-                       !isIntruso() &&
+                       hasVerifiedEmailToken() &&
                        incoming().actorId == request.auth.uid &&
                        incoming().objectId is string &&
                        incoming().objectId.size() > 0 &&
@@ -824,13 +759,8 @@ service cloud.firestore {
                        incoming().action.size() > 0 &&
                        hasNoReturnOrSignatureFields(incoming()) &&
                        (
-                         (isAdmin() && (!('actorRole' in incoming()) || incoming().actorRole in ['ADMIN', 'SERVIDOR'])) ||
-                         (isServidor() && (!('actorRole' in incoming()) || incoming().actorRole == 'SERVIDOR')) ||
-                         (
-                           (!('actorRole' in incoming()) || incoming().actorRole == 'ALUNO') &&
-                           exists(/databases/$(database)/documents/items/$(incoming().objectId)) &&
-                           get(/databases/$(database)/documents/items/$(incoming().objectId)).data.registeredByUserId == request.auth.uid
-                         )
+                         (isRootIdentity() && (!('actorRole' in incoming()) || incoming().actorRole in ['ADMIN', 'SERVIDOR'])) ||
+                         (userDocExists() && canUserDocCreateItemHistory(incoming(), getUserData()))
                        );
       allow update, delete: if false;
     }
@@ -860,8 +790,66 @@ service cloud.firestore {
                incoming().distinctiveFeatures == existing().distinctiveFeatures;
       }
 
+      function isClaimableItem(itemId) {
+        let itemPath = /databases/$(database)/documents/items/$(itemId);
+        return exists(itemPath) && !(get(itemPath).data.status in ['DEVOLVIDO', 'ENCERRADO']);
+      }
+
+      function isValidClaimBody(inc) {
+        return inc.distinctiveFeatures is string &&
+               inc.distinctiveFeatures.size() > 0 &&
+               inc.distinctiveFeatures.size() <= 1000 &&
+               (!('additionalInfo' in inc) || inc.additionalInfo == null || (inc.additionalInfo is string && inc.additionalInfo.size() <= 1000)) &&
+               isClaimableItem(inc.itemId);
+      }
+
+      function isValidStaffClaimTransition(ext, inc) {
+        return areImmutableFieldsPreserved() &&
+               ext.status != 'CONCLUIDO' &&
+               ext.status != 'CANCELADO' &&
+               (
+                 (ext.status == 'PENDENTE' && inc.status in ['APROVADO', 'REJEITADO', 'CANCELADO']) ||
+                 (ext.status == 'APROVADO' && inc.status in ['CONCLUIDO', 'REJEITADO']) ||
+                 (ext.status == 'REJEITADO' && inc.status == 'APROVADO') ||
+                 (inc.status == ext.status && ext.status in ['PENDENTE', 'APROVADO'])
+               ) &&
+               (inc.status != 'REJEITADO' || (inc.rejectionReason is string && inc.rejectionReason.size() > 0)) &&
+               (inc.status != 'CONCLUIDO' || (inc.completedAt is string && inc.completedAt.size() > 0));
+      }
+
+      function canUserDocUpdateClaim(u, ext, inc) {
+        let isNonIntruso = isNonIntrusoRoleOrEmail(u);
+        return isUserDocActiveData(u) && (
+          // 1. Claimant Cancellation (Strict least privilege: only status & cancelledAt)
+          (
+            isNonIntruso &&
+            ext.claimerId == request.auth.uid &&
+            ext.status == 'PENDENTE' &&
+            inc.status == 'CANCELADO' &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt'])
+          ) ||
+          // 2. Claimant Resubmission (If previous claim was CANCELADO or REJEITADO)
+          (
+            isNonIntruso &&
+            ext.claimerId == request.auth.uid &&
+            ext.status in ['CANCELADO', 'REJEITADO'] &&
+            inc.status == 'PENDENTE' &&
+            inc.id == ext.id &&
+            inc.claimerId == request.auth.uid &&
+            inc.itemId == ext.itemId &&
+            inc.createdAt == ext.createdAt &&
+            hasNoAdminReviewFields(inc) &&
+            isValidClaimBody(inc)
+          ) ||
+          // 3. Staff / Admin Review & Lifecycle Transitions
+          (
+            hasApprovedStaffOrAdminRole(u) &&
+            isValidStaffClaimTransition(ext, inc)
+          )
+        );
+      }
+
       // Claims can only be read by active claimers, the item author, or Admin/Active Servidor
-      // Supports transactional reads (transaction.get) exclusively on non-existent deterministic claim IDs
       allow get: if isSignedIn() && (
         // 1. Leitura tolerante EXCLUSIVA para documentos inexistentes (resource == null) com ID determinístico do solicitante
         (resource == null && isAccountActive() && request.auth.uid != null && claimId.matches('claim_' + request.auth.uid + '_.*')) ||
@@ -875,7 +863,7 @@ service cloud.firestore {
                get(/databases/$(database)/documents/items/$(existing().itemId)).data.registeredByUserId == request.auth.uid)
             )) ||
             // 3. Privilégios operacionais e administrativos (isAccountActive já validado acima)
-            (isEmailVerified() && (isApprovedServidorDoc() || isAdminUserDoc()))
+            (hasVerifiedEmailToken() && (isApprovedServidorDoc() || isAdminUserDoc()))
           )
         )
       );
@@ -884,90 +872,27 @@ service cloud.firestore {
         (
           isAccountActive() && (
             resource.data.claimerId == request.auth.uid ||
-            (isEmailVerified() && (isApprovedServidorDoc() || isAdminUserDoc()))
+            (hasVerifiedEmailToken() && (isApprovedServidorDoc() || isAdminUserDoc()))
           )
         )
       );
 
       // Create: Authenticated user making a claim with their own real user id, verified email and active account.
-      // - Must begin with status 'PENDENTE'
-      // - Cannot inject administrative review fields
-      // - Item must actually exist in the database and cannot be DEVOLVIDO or ENCERRADO
-      // - Required text fields must not be empty and must respect length limits
-      allow create: if isEmailVerified() && 
-                    isAccountActive() && 
-                    !isIntruso() && 
+      allow create: if isActiveVerifiedMember() &&
                     claimId == 'claim_' + request.auth.uid + '_' + incoming().itemId &&
                     incoming().claimerId == request.auth.uid &&
                     incoming().status == 'PENDENTE' &&
                     incoming().itemId is string && incoming().itemId.size() > 0 &&
-                    incoming().distinctiveFeatures is string && 
-                    incoming().distinctiveFeatures.size() > 0 && 
-                    incoming().distinctiveFeatures.size() <= 1000 &&
-                    (!('additionalInfo' in incoming()) || incoming().additionalInfo == null || (incoming().additionalInfo is string && incoming().additionalInfo.size() <= 1000)) &&
                     hasNoAdminReviewFields(incoming()) &&
-                    exists(/databases/$(database)/documents/items/$(incoming().itemId)) &&
-                    get(/databases/$(database)/documents/items/$(incoming().itemId)).data.status != 'DEVOLVIDO' &&
-                    get(/databases/$(database)/documents/items/$(incoming().itemId)).data.status != 'ENCERRADO';
+                    isValidClaimBody(incoming());
 
       // Update:
-      // 1. Claimant can ONLY cancel their own PENDENTE claim (strictly status & cancelledAt keys)
-      // 2. Claimant can resubmit if previously CANCELADO or REJEITADO (resets to PENDENTE, no admin fields)
-      // 3. Staff / Admin can review and transition claims according to valid lifecycle
-      allow update: if 
-        // 1. Claimant Cancellation (Strict least privilege: only status & cancelledAt)
-        (
-          isSignedIn() && 
-          existing().claimerId == request.auth.uid && 
-          existing().status == 'PENDENTE' &&
-          incoming().status == 'CANCELADO' &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt']) &&
-          isAccountActive() && 
-          !isIntruso()
-        ) ||
-        // 2. Claimant Resubmission (If previous claim was CANCELADO or REJEITADO)
-        (
-          isSignedIn() && 
-          existing().claimerId == request.auth.uid &&
-          existing().status in ['CANCELADO', 'REJEITADO'] &&
-          incoming().status == 'PENDENTE' &&
-          incoming().id == existing().id &&
-          incoming().claimerId == request.auth.uid &&
-          incoming().itemId == existing().itemId &&
-          incoming().createdAt == existing().createdAt &&
-          incoming().distinctiveFeatures is string &&
-          incoming().distinctiveFeatures.size() > 0 &&
-          incoming().distinctiveFeatures.size() <= 1000 &&
-          (!('additionalInfo' in incoming()) || incoming().additionalInfo == null || (incoming().additionalInfo is string && incoming().additionalInfo.size() <= 1000)) &&
-          hasNoAdminReviewFields(incoming()) &&
-          isAccountActive() && 
-          !isIntruso() &&
-          exists(/databases/$(database)/documents/items/$(incoming().itemId)) &&
-          get(/databases/$(database)/documents/items/$(incoming().itemId)).data.status != 'DEVOLVIDO' &&
-          get(/databases/$(database)/documents/items/$(incoming().itemId)).data.status != 'ENCERRADO'
-        ) ||
-        // 3. Staff / Admin Review & Lifecycle Transitions
-        (
-          areImmutableFieldsPreserved() &&
-          // Settled terminal states cannot be altered
-          existing().status != 'CONCLUIDO' &&
-          existing().status != 'CANCELADO' &&
-          (isRootAdmin() || (isAccountActive() && isEmailVerified() && (isAdminUserDoc() || isApprovedServidorDoc()))) &&
-          (
-            // PENDENTE -> APROVADO, REJEITADO, CANCELADO
-            (existing().status == 'PENDENTE' && incoming().status in ['APROVADO', 'REJEITADO', 'CANCELADO']) ||
-            // APROVADO -> CONCLUIDO (physical return) or REJEITADO (revocation upon conflicting evidence)
-            (existing().status == 'APROVADO' && incoming().status in ['CONCLUIDO', 'REJEITADO']) ||
-            // REJEITADO -> APROVADO (Secretariat re-evaluation upon physical verification at counter)
-            (existing().status == 'REJEITADO' && incoming().status == 'APROVADO') ||
-            // Updating notes or evaluation details without status change (strictly while PENDENTE or APROVADO)
-            (incoming().status == existing().status && existing().status in ['PENDENTE', 'APROVADO'])
-          ) &&
-          // When REJEITADO, rejectionReason is mandatory
-          (incoming().status != 'REJEITADO' || (incoming().rejectionReason is string && incoming().rejectionReason.size() > 0)) &&
-          // When CONCLUIDO, completedAt is mandatory
-          (incoming().status != 'CONCLUIDO' || (incoming().completedAt is string && incoming().completedAt.size() > 0))
-        );
+      allow update: if isSignedIn() &&
+                       hasVerifiedEmailToken() &&
+                       (
+                         (isRootIdentity() && isValidStaffClaimTransition(existing(), incoming())) ||
+                         (userDocExists() && canUserDocUpdateClaim(getUserData(), existing(), incoming()))
+                       );
 
       // Delete: Admin only
       allow delete: if isAdmin();
@@ -1235,7 +1160,7 @@ service cloud.firestore {
     match /fcm_subscriptions/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow list: if isAdmin();
-      allow create, update: if isAdmin() || (isSignedIn() && request.auth.uid == userId && isAccountActive() && isEmailVerified() && !isIntruso());
+      allow create, update: if isAdmin() || (request.auth.uid == userId && isActiveVerifiedMember());
       allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == userId && isAccountActive());
     }
 

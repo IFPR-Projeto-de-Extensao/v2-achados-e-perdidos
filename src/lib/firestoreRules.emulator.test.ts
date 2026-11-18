@@ -5,7 +5,7 @@ import {
   assertSucceeds,
   assertFails,
 } from "@firebase/rules-unit-testing";
-import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, writeBatch, Timestamp } from "firebase/firestore";
+import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, deleteField, query, where, writeBatch, Timestamp } from "firebase/firestore";
 import fs from "fs";
 import path from "path";
 
@@ -2601,6 +2601,208 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
           status: "PENDENTE",
           distinctiveFeatures: "Adesivo verde na lateral",
           createdAt: new Date().toISOString(),
+        })
+      );
+    });
+
+    it("53. Legitimidade positiva sem estouro CEL nas regras otimizadas (/users, /items, /found_items, /lost_items, /item_private, /item_history, /claims)", async () => {
+      // 1. /users create: ALUNO institucional, SERVIDOR institucional PENDENTE e INTRUSO
+      const alunoNewUid = "aluno_create_cel";
+      const dbAlunoNew = testEnv!.authenticatedContext(alunoNewUid, {
+        email: "novo.aluno@estudantes.ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      await assertSucceeds(
+        setDoc(doc(dbAlunoNew, "users", alunoNewUid), {
+          id: alunoNewUid,
+          email: "novo.aluno@estudantes.ifpr.edu.br",
+          name: "Aluno Novo",
+          role: "ALUNO",
+          approvalStatus: "APROVADO",
+          status: "active",
+        })
+      );
+
+      const servNewUid = "serv_create_cel";
+      const dbServNew = testEnv!.authenticatedContext(servNewUid, {
+        email: "novo.serv@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      await assertSucceeds(
+        setDoc(doc(dbServNew, "users", servNewUid), {
+          id: servNewUid,
+          email: "novo.serv@ifpr.edu.br",
+          name: "Servidor Novo",
+          role: "SERVIDOR",
+          approvalStatus: "PENDENTE",
+          status: "active",
+        })
+      );
+
+      // 2. /users update Branch 1 (promoção), Branch 2 (self-update) e Branch 3 (legacy status init)
+      const promoUid = "intruso_promo_cel";
+      await setupUserDoc(promoUid, {
+        id: promoUid,
+        email: "promo@estudantes.ifpr.edu.br",
+        name: "Promo",
+        role: "INTRUSO",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+      const dbPromo = testEnv!.authenticatedContext(promoUid, {
+        email: "promo@estudantes.ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      await assertSucceeds(updateDoc(doc(dbPromo, "users", promoUid), { role: "ALUNO" }));
+
+      await assertSucceeds(updateDoc(doc(dbAlunoNew, "users", alunoNewUid), { name: "Aluno Atualizado" }));
+
+      const legacyAlunoUid = "aluno_legacy_status_cel";
+      await setupUserDoc(legacyAlunoUid, {
+        id: legacyAlunoUid,
+        email: "legado@estudantes.ifpr.edu.br",
+        name: "Legado",
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+      });
+      const dbLegacyAluno = testEnv!.authenticatedContext(legacyAlunoUid, {
+        email: "legado@estudantes.ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      await assertSucceeds(updateDoc(doc(dbLegacyAluno, "users", legacyAlunoUid), { status: "active" }));
+
+      // 3. /items, /found_items, /lost_items create + update (staff update e author safe metadata edit) + /item_private create/update
+      const servOkUid = "serv_cel_ok";
+      await setupUserDoc(servOkUid, {
+        id: servOkUid,
+        email: "serv.cel@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+      const dbServOk = testEnv!.authenticatedContext(servOkUid, {
+        email: "serv.cel@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      for (const col of ["items", "found_items", "lost_items"] as const) {
+        const docId = `${col}_cel_1`;
+        await assertSucceeds(
+          setDoc(doc(dbServOk, col, docId), {
+            id: docId,
+            title: "Item Teste CEL",
+            description: "Descrição válida",
+            category: "Outros",
+            location: "Bloco B",
+            status: "ENCONTRADO",
+            type: col === "lost_items" ? "PERDIDO" : "ENCONTRADO",
+            registeredByUserId: servOkUid,
+            registeredByRole: "SERVIDOR",
+            createdAt: new Date().toISOString(),
+          })
+        );
+        await assertSucceeds(
+          updateDoc(doc(dbServOk, col, docId), {
+            title: "Item Editado Staff",
+            status: "EM_ANALISE",
+          })
+        );
+      }
+
+      // Author safe metadata edit (ramo direito de allow update em /items) para item legado de ALUNO
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        await setDoc(doc(ctx.firestore(), "items", "item_aluno_legacy_cel"), {
+          id: "item_aluno_legacy_cel",
+          title: "Caderno Aluno",
+          description: "Original",
+          category: "Materiais",
+          location: "Sala 4",
+          status: "PERDIDO",
+          type: "PERDIDO",
+          registeredByUserId: alunoNewUid,
+          registeredByRole: "ALUNO",
+          createdAt: new Date().toISOString(),
+        });
+      });
+      await assertSucceeds(
+        updateDoc(doc(dbAlunoNew, "items", "item_aluno_legacy_cel"), {
+          description: "Descrição editada pelo autor",
+        })
+      );
+
+      // /item_private create & update
+      await assertSucceeds(
+        setDoc(doc(dbServOk, "item_private", "items_cel_1"), {
+          itemId: "items_cel_1",
+          registeredByUserId: servOkUid,
+          secretVerificationHint: "Marca inicial",
+        })
+      );
+      await assertSucceeds(
+        updateDoc(doc(dbServOk, "item_private", "items_cel_1"), {
+          secretVerificationHint: "Marca atualizada",
+        })
+      );
+
+      // 4. /item_history create por SERVIDOR e por ALUNO autor (terceiro ramo de allow create)
+      await assertSucceeds(
+        setDoc(doc(dbServOk, "item_history", "hist_serv_cel_1"), {
+          id: "hist_serv_cel_1",
+          objectId: "items_cel_1",
+          action: "CADASTRO",
+          actorId: servOkUid,
+          actorRole: "SERVIDOR",
+          timestamp: new Date().toISOString(),
+        })
+      );
+      await assertSucceeds(
+        setDoc(doc(dbAlunoNew, "item_history", "hist_aluno_cel_1"), {
+          id: "hist_aluno_cel_1",
+          objectId: "item_aluno_legacy_cel",
+          action: "EDIT_OCORRENCIA",
+          actorId: alunoNewUid,
+          actorRole: "ALUNO",
+          timestamp: new Date().toISOString(),
+        })
+      );
+
+      // 5. /claims create + update Branch 1 (cancel) + Branch 2 (resubmit) + Branch 3 (staff review CONCLUIDO)
+      const claimId = `claim_${alunoNewUid}_items_cel_1`;
+      await assertSucceeds(
+        setDoc(doc(dbAlunoNew, "claims", claimId), {
+          id: claimId,
+          itemId: "items_cel_1",
+          claimerId: alunoNewUid,
+          status: "PENDENTE",
+          distinctiveFeatures: "Chaveiro vermelho",
+          createdAt: new Date().toISOString(),
+        })
+      );
+      await assertSucceeds(
+        updateDoc(doc(dbAlunoNew, "claims", claimId), {
+          status: "CANCELADO",
+          cancelledAt: new Date().toISOString(),
+        })
+      );
+      await assertSucceeds(
+        updateDoc(doc(dbAlunoNew, "claims", claimId), {
+          status: "PENDENTE",
+          distinctiveFeatures: "Chaveiro vermelho com etiqueta",
+          cancelledAt: deleteField(),
+        })
+      );
+      await assertSucceeds(
+        updateDoc(doc(dbServOk, "claims", claimId), {
+          status: "APROVADO",
+          reviewedByUserId: servOkUid,
+          reviewedByRole: "SERVIDOR",
+          reviewedAt: new Date().toISOString(),
+        })
+      );
+      await assertSucceeds(
+        updateDoc(doc(dbServOk, "claims", claimId), {
+          status: "CONCLUIDO",
+          completedAt: new Date().toISOString(),
         })
       );
     });
