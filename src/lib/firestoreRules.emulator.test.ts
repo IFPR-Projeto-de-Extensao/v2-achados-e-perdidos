@@ -5,7 +5,7 @@ import {
   assertSucceeds,
   assertFails,
 } from "@firebase/rules-unit-testing";
-import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, writeBatch } from "firebase/firestore";
+import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, query, where, writeBatch, Timestamp } from "firebase/firestore";
 import fs from "fs";
 import path from "path";
 
@@ -2226,6 +2226,17 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
           recipientName: "Nome Legado Protegido",
           timestamp: new Date().toISOString(),
         });
+        // Documento público limpo em /item_history sem campos privados/PII
+        await setDoc(doc(adminSeed, "item_history", "hist_publico_limpo"), {
+          id: "hist_publico_limpo",
+          itemId: "item_1",
+          objectId: "item_1",
+          action: "CADASTRO",
+          actorId: "serv_inst",
+          actorRole: "SERVIDOR",
+          details: "Objeto catalogado na secretaria",
+          timestamp: new Date().toISOString(),
+        });
         await setDoc(doc(adminSeed, "item_private", "item_1"), {
           itemId: "item_1",
           registeredByUserId: "serv_inst",
@@ -2247,8 +2258,10 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
       ];
 
       for (const db of allowedContexts) {
-        await assertSucceeds(getDocs(collection(db, "item_history")));
+        const histSnap = await assertSucceeds(getDocs(collection(db, "item_history")));
+        expect(histSnap.size).toBe(2);
         await assertSucceeds(getDoc(doc(db, "item_history", "hist_legado_pii")));
+        await assertSucceeds(getDoc(doc(db, "item_history", "hist_publico_limpo")));
         await assertSucceeds(getDocs(collection(db, "item_private")));
         await assertSucceeds(getDocs(collection(db, "item_return_records")));
       }
@@ -2261,8 +2274,11 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
       ];
 
       for (const db of deniedContexts) {
-        await assertFails(getDocs(collection(db, "item_history")));
+        // Entrada limpa continua legível via getDoc, mantendo histórico público acessível
+        await assertSucceeds(getDoc(doc(db, "item_history", "hist_publico_limpo")));
+        // Entrada privada/legada e listagem completa contendo entrada privada são negadas
         await assertFails(getDoc(doc(db, "item_history", "hist_legado_pii")));
+        await assertFails(getDocs(collection(db, "item_history")));
         await assertFails(getDocs(collection(db, "item_private")));
         await assertFails(getDocs(collection(db, "item_return_records")));
       }
@@ -2506,6 +2522,87 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
         email_verified: true,
       }).firestore();
       await assertFails(runRegisterBatch(dbServBanned, servBannedUid, "SERVIDOR", "serv_banned"));
+    });
+
+    it("52. Bloqueios com prazos inconsistentes (null/número/vazio) bloqueiam staff, prazos Timestamp expirados recuperam acesso e Gmail atribuído como ALUNO mantém claims sem privilégios de staff", async () => {
+      const pastTs = Timestamp.fromDate(new Date(Date.now() - 86400000));
+
+      // 1. SERVIDOR com blockExpiresAt expirado mas suspendedUntil: null -> bloqueado
+      const servInconsistentNullUid = "serv_inconsistent_null";
+      await setupUserDoc(servInconsistentNullUid, {
+        id: servInconsistentNullUid,
+        email: "serv.inc.null@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "suspended",
+        blockExpiresAt: pastTs,
+        suspendedUntil: null,
+      });
+      const dbServIncNull = testEnv!.authenticatedContext(servInconsistentNullUid, {
+        email: "serv.inc.null@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      await assertFails(runRegisterBatch(dbServIncNull, servInconsistentNullUid, "SERVIDOR", "serv_inc_null"));
+
+      // 2. SERVIDOR com suspendedUntil expirado mas blockExpiresAt numérico -> bloqueado
+      const servInconsistentNumUid = "serv_inconsistent_num";
+      await setupUserDoc(servInconsistentNumUid, {
+        id: servInconsistentNumUid,
+        email: "serv.inc.num@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "suspended",
+        suspendedUntil: pastTs,
+        blockExpiresAt: 123456789,
+      });
+      const dbServIncNum = testEnv!.authenticatedContext(servInconsistentNumUid, {
+        email: "serv.inc.num@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      await assertFails(runRegisterBatch(dbServIncNum, servInconsistentNumUid, "SERVIDOR", "serv_inc_num"));
+
+      // 3. SERVIDOR com ambos prazos Timestamp válidos expirados -> recuperação permitida
+      const servRecoveredUid = "serv_recovered_ok";
+      await setupUserDoc(servRecoveredUid, {
+        id: servRecoveredUid,
+        email: "serv.rec@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "suspended",
+        blockExpiresAt: pastTs,
+        suspendedUntil: pastTs,
+      });
+      const dbServRecovered = testEnv!.authenticatedContext(servRecoveredUid, {
+        email: "serv.rec@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      await assertSucceeds(runRegisterBatch(dbServRecovered, servRecoveredUid, "SERVIDOR", "serv_recovered"));
+
+      // 4. Conta Gmail atribuída administrativamente como ALUNO mantém direito de reivindicação, mas não cadastra itens
+      const gmailAlunoUid = "aluno_gmail_assigned";
+      await setupUserDoc(gmailAlunoUid, {
+        id: gmailAlunoUid,
+        email: "aluno.externo@gmail.com",
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+        status: "active",
+        roleAssignedBy: ROOT_EMAIL,
+      });
+      const dbGmailAluno = testEnv!.authenticatedContext(gmailAlunoUid, {
+        email: "aluno.externo@gmail.com",
+        email_verified: true,
+      }).firestore();
+      await assertFails(runRegisterBatch(dbGmailAluno, gmailAlunoUid, "ALUNO", "gmail_aluno"));
+      await assertSucceeds(
+        setDoc(doc(dbGmailAluno, "claims", `claim_${gmailAlunoUid}_item_batch_serv_recovered`), {
+          id: `claim_${gmailAlunoUid}_item_batch_serv_recovered`,
+          itemId: "item_batch_serv_recovered",
+          claimerId: gmailAlunoUid,
+          status: "PENDENTE",
+          distinctiveFeatures: "Adesivo verde na lateral",
+          createdAt: new Date().toISOString(),
+        })
+      );
     });
   });
 });

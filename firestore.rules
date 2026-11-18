@@ -38,41 +38,40 @@ service cloud.firestore {
 
     function isTemporaryBlockActive(userData) {
       return (
-        ('blockExpiresAt' in userData && (
-          (userData.blockExpiresAt is timestamp && request.time < userData.blockExpiresAt) ||
-          (userData.blockExpiresAt is number && request.time < timestamp.value(userData.blockExpiresAt))
-        )) ||
-        ('suspendedUntil' in userData && (
-          (userData.suspendedUntil is timestamp && request.time < userData.suspendedUntil) ||
-          (userData.suspendedUntil is number && request.time < timestamp.value(userData.suspendedUntil))
-        ))
+        ('blockExpiresAt' in userData && userData.blockExpiresAt is timestamp && request.time < userData.blockExpiresAt) ||
+        ('suspendedUntil' in userData && userData.suspendedUntil is timestamp && request.time < userData.suspendedUntil)
+      );
+    }
+
+    function hasInvalidTemporaryBlockField(userData) {
+      return (
+        ('blockExpiresAt' in userData && !(userData.blockExpiresAt is timestamp)) ||
+        ('suspendedUntil' in userData && !(userData.suspendedUntil is timestamp))
       );
     }
 
     function isTemporaryBlockExpired(userData) {
       return !isTemporaryBlockActive(userData) &&
-        (
-          ('blockExpiresAt' in userData && (
-            userData.blockExpiresAt is timestamp ||
-            userData.blockExpiresAt is number
-          )) ||
-          ('suspendedUntil' in userData && (
-            userData.suspendedUntil is timestamp ||
-            userData.suspendedUntil is number
-          ))
-        );
+             !hasInvalidTemporaryBlockField(userData) &&
+             (
+               ('blockExpiresAt' in userData && userData.blockExpiresAt is timestamp) ||
+               ('suspendedUntil' in userData && userData.suspendedUntil is timestamp)
+             );
     }
 
     function isUserDocBlocked() {
       let u = getUserData();
-      let blockActive = isTemporaryBlockActive(u);
-      return (
-        ('status' in u && (
-          u.status == 'banned' ||
-          (u.status == 'suspended' && blockActive)
-        )) ||
-        blockActive
-      );
+      let statusVal = ('status' in u) ? u.status : 'active';
+      return ('active' in u && u.active == false) ||
+             isTemporaryBlockActive(u) ||
+             hasInvalidTemporaryBlockField(u) ||
+             (
+               statusVal != 'active' &&
+               !(statusVal == 'suspended' && (
+                 ('blockExpiresAt' in u && u.blockExpiresAt is timestamp) ||
+                 ('suspendedUntil' in u && u.suspendedUntil is timestamp)
+               ))
+             );
     }
 
     function isAccountBlocked() {
@@ -83,17 +82,18 @@ service cloud.firestore {
 
     function isUserDocActive() {
       let u = getUserData();
-      let blockActive = isTemporaryBlockActive(u);
       let statusVal = ('status' in u) ? u.status : 'active';
       return (!('active' in u) || u.active != false) &&
+             (!('role' in u) || u.role != 'INTRUSO') &&
+             !isTemporaryBlockActive(u) &&
+             !hasInvalidTemporaryBlockField(u) &&
              (
-               (statusVal == 'active' && !blockActive) ||
-               (statusVal == 'suspended' && !blockActive && (
-                 ('blockExpiresAt' in u && (u.blockExpiresAt is timestamp || u.blockExpiresAt is number)) ||
-                 ('suspendedUntil' in u && (u.suspendedUntil is timestamp || u.suspendedUntil is number))
+               statusVal == 'active' ||
+               (statusVal == 'suspended' && (
+                 ('blockExpiresAt' in u && u.blockExpiresAt is timestamp) ||
+                 ('suspendedUntil' in u && u.suspendedUntil is timestamp)
                ))
-             ) &&
-             (!('role' in u) || u.role != 'INTRUSO');
+             );
     }
 
     function isAccountActive() {
@@ -139,7 +139,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isRootAdmin() ||
-             (isAccountActive() && (hasAdminClaim() || isDocAdmin()));
+             (isAccountActive() && isEmailVerified() && isAdminUserDoc());
     }
 
     function isDocServidorIdentity() {
@@ -593,7 +593,7 @@ service cloud.firestore {
       // that are clean public projections (free of personal return data, signatures, and secrets).
       // Any document containing personal return/signature data can ONLY be read by active SERVIDOR or ADMIN.
       allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
-      allow list: if hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
+      allow list: if (isSignedIn() && isAccountActive() && (isAdmin() || isServidor())) || hasNoReturnOrSignatureFields(resource.data);
 
       // Creation: ONLY Authenticated users with verified email, real UID and active account standing:
       // - Author ID must match request.auth.uid
@@ -643,7 +643,7 @@ service cloud.firestore {
 
     match /found_items/{itemId} {
       allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
-      allow list: if hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
+      allow list: if (isSignedIn() && isAccountActive() && (isAdmin() || isServidor())) || hasNoReturnOrSignatureFields(resource.data);
       allow create: if isSignedIn() &&
                     incoming().registeredByUserId == request.auth.uid && 
                     isEmailVerified() && 
@@ -681,7 +681,7 @@ service cloud.firestore {
 
     match /lost_items/{itemId} {
       allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
-      allow list: if hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
+      allow list: if (isSignedIn() && isAccountActive() && (isAdmin() || isServidor())) || hasNoReturnOrSignatureFields(resource.data);
       allow create: if isSignedIn() &&
                     incoming().registeredByUserId == request.auth.uid && 
                     isEmailVerified() && 
@@ -808,10 +808,10 @@ service cloud.firestore {
       // Public timeline read strictly free of private return/signature/secret fields;
       // active ADMIN and SERVIDOR keep full historical read access including legacy entries.
       allow get: if resource == null ||
-                    hasNoReturnOrSignatureFields(resource.data) ||
-                    (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
-      allow list: if hasNoReturnOrSignatureFields(resource.data) ||
-                     (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
+                    (isSignedIn() && isAccountActive() && (isAdmin() || isServidor())) ||
+                    hasNoReturnOrSignatureFields(resource.data);
+      allow list: if (isSignedIn() && isAccountActive() && (isAdmin() || isServidor())) ||
+                     hasNoReturnOrSignatureFields(resource.data);
       // Append-only creation by active verified non-intruso users matching their own auth.uid & non-escalated role.
       allow create: if isSignedIn() &&
                        isEmailVerified() &&
@@ -865,20 +865,28 @@ service cloud.firestore {
       allow get: if isSignedIn() && (
         // 1. Leitura tolerante EXCLUSIVA para documentos inexistentes (resource == null) com ID determinístico do solicitante
         (resource == null && isAccountActive() && request.auth.uid != null && claimId.matches('claim_' + request.auth.uid + '_.*')) ||
-        // 2. Documentos existentes (resource != null): verificação estrita de titularidade (claimerId) ou autoria do item
-        (resource != null && isAccountActive() && (
-          existing().claimerId == request.auth.uid || 
-          (exists(/databases/$(database)/documents/items/$(existing().itemId)) && 
-           get(/databases/$(database)/documents/items/$(existing().itemId)).data.registeredByUserId == request.auth.uid)
-        )) ||
-        // 3. Privilégios operacionais e administrativos
-        (isServidor() && isAccountActive()) || 
-        isAdmin()
+        isRootAdmin() ||
+        (
+          isAccountActive() && (
+            // 2. Documentos existentes (resource != null): verificação estrita de titularidade (claimerId) ou autoria do item
+            (resource != null && (
+              existing().claimerId == request.auth.uid || 
+              (exists(/databases/$(database)/documents/items/$(existing().itemId)) && 
+               get(/databases/$(database)/documents/items/$(existing().itemId)).data.registeredByUserId == request.auth.uid)
+            )) ||
+            // 3. Privilégios operacionais e administrativos (isAccountActive já validado acima)
+            (isEmailVerified() && (isApprovedServidorDoc() || isAdminUserDoc()))
+          )
+        )
       );
       allow list: if isSignedIn() && (
-        (isServidor() && isAccountActive()) || 
-        isAdmin() || 
-        (isAccountActive() && resource.data.claimerId == request.auth.uid)
+        isRootAdmin() ||
+        (
+          isAccountActive() && (
+            resource.data.claimerId == request.auth.uid ||
+            (isEmailVerified() && (isApprovedServidorDoc() || isAdminUserDoc()))
+          )
+        )
       );
 
       // Create: Authenticated user making a claim with their own real user id, verified email and active account.
@@ -944,7 +952,7 @@ service cloud.firestore {
           // Settled terminal states cannot be altered
           existing().status != 'CONCLUIDO' &&
           existing().status != 'CANCELADO' &&
-          (isAdmin() || (isServidor() && isAccountActive())) &&
+          (isRootAdmin() || (isAccountActive() && isEmailVerified() && (isAdminUserDoc() || isApprovedServidorDoc()))) &&
           (
             // PENDENTE -> APROVADO, REJEITADO, CANCELADO
             (existing().status == 'PENDENTE' && incoming().status in ['APROVADO', 'REJEITADO', 'CANCELADO']) ||

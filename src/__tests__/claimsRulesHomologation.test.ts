@@ -1178,9 +1178,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado pois isAccountActive() exige exists(...) do documento do usuário
     await assertFails(setDoc(doc(noDocDb, "claims", claimPayload.id), claimPayload));
 
-    // Verificação de integridade: a claim não foi criada no banco
-    const checkSnap = await assertSucceeds(getDoc(doc(noDocDb, "claims", claimPayload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Verificação de integridade: a claim não foi criada no banco (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", claimPayload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-26: Compatibilidade legada quando 'status' está ausente em users/{uid} ativo, mas bloqueio estrito quando status: null ou active: false (403)", async () => {
@@ -1227,9 +1229,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado por isAccountBlocked() e isAccountActive()
     await assertFails(setDoc(doc(suspendedDb, "claims", claimPayload.id), claimPayload));
 
-    // Verificação de integridade: documento de claim não foi persistido
-    const checkSnap = await assertSucceeds(getDoc(doc(suspendedDb, "claims", claimPayload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Verificação de integridade: documento de claim não foi persistido (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", claimPayload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-28: Bloqueio de usuário com conta banida (status: 'banned') de criar claim (403) e garantia de não-mutação", async () => {
@@ -1243,9 +1247,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado permanentemente por status == 'banned'
     await assertFails(setDoc(doc(bannedDb, "claims", claimPayload.id), claimPayload));
 
-    // Verificação de não-criação
-    const checkSnap = await assertSucceeds(getDoc(doc(bannedDb, "claims", claimPayload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Verificação de não-criação (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", claimPayload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-29: Bloqueio de usuário com bloqueio temporário ativo (blockExpiresAt no futuro) de criar claim (403)", async () => {
@@ -1259,9 +1265,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado temporariamente por isTemporaryBlockActive()
     await assertFails(setDoc(doc(tempBlockedDb, "claims", claimPayload.id), claimPayload));
 
-    // Verificação de não-criação
-    const checkSnap = await assertSucceeds(getDoc(doc(tempBlockedDb, "claims", claimPayload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Verificação de não-criação (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", claimPayload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-30: Concessão de permissão para usuário com bloqueio temporário expirado (blockExpiresAt no passado e status active) criar claim", async () => {
@@ -1471,9 +1479,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado porque o bloqueio vigente (suspendedUntil) prevalece sobre o expirado
     await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
 
-    // Integridade documental: a claim não foi persistida
-    const checkSnap = await assertSucceeds(getDoc(doc(userDb, "claims", payload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Integridade documental: a claim não foi persistida (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", payload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-36: Bloqueio quando 'blockExpiresAt' está futuro mas 'suspendedUntil' está expirado (403)", async () => {
@@ -1501,9 +1511,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado porque o bloqueio vigente (blockExpiresAt) prevalece sobre o expirado
     await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
 
-    // Integridade: não gravado
-    const checkSnap = await assertSucceeds(getDoc(doc(userDb, "claims", payload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Integridade: não gravado (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", payload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-37: Desbloqueio permitido quando AMBOS 'blockExpiresAt' e 'suspendedUntil' estão expirados com status 'suspended' (200)", async () => {
@@ -1561,9 +1573,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado pelo suspendedUntil ativo
     await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
 
-    // Integridade: não gravado
-    const checkSnap = await assertSucceeds(getDoc(doc(userDb, "claims", payload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Integridade: não gravado (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", payload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-39: Desbloqueio permitido quando somente 'suspendedUntil' está configurado e está expirado com status 'suspended' (200)", async () => {
@@ -1621,9 +1635,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado permanentemente por status == 'banned'
     await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
 
-    // Integridade: não persistido
-    const checkSnap = await assertSucceeds(getDoc(doc(userDb, "claims", payload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Integridade: não persistido (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", payload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-41: Bloqueio de usuário com 'status: suspended' sem campos de expiração (suspensão indefinida) (403)", async () => {
@@ -1650,9 +1666,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado: status suspenso sem prazo de expiração válido não pode auto-liberar
     await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
 
-    // Integridade: não persistido
-    const checkSnap = await assertSucceeds(getDoc(doc(userDb, "claims", payload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Integridade: não persistido (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", payload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-42: Permissão para usuário com 'status: active' com campos de bloqueio ausentes (200)", async () => {
@@ -1714,9 +1732,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado porque campo inválido não pode ser interpretado como expirado
     await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
 
-    // Integridade documental: a claim não foi persistida
-    const checkSnap = await assertSucceeds(getDoc(doc(userDb, "claims", payload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Integridade documental: a claim não foi persistida (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", payload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-44: Bloqueio quando 'suspendedUntil' está expirado mas 'blockExpiresAt' contém valor inválido (403)", async () => {
@@ -1744,9 +1764,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado porque o tipo inválido invalida a liberação automática
     await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
 
-    // Integridade: não gravado
-    const checkSnap = await assertSucceeds(getDoc(doc(userDb, "claims", payload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Integridade: não gravado (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", payload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-45: Bloqueio de conta suspensa quando ambos os campos possuem valores inválidos (403)", async () => {
@@ -1774,9 +1796,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado: nenhum prazo válido existe
     await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
 
-    // Integridade: não gravado
-    const checkSnap = await assertSucceeds(getDoc(doc(userDb, "claims", payload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Integridade: não gravado (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", payload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-46: Bloqueio de conta ativa quando 'blockExpiresAt' está no futuro (403)", async () => {
@@ -1803,9 +1827,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado pelo blockExpiresAt temporário vigente
     await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
 
-    // Integridade: não gravado
-    const checkSnap = await assertSucceeds(getDoc(doc(userDb, "claims", payload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Integridade: não gravado (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", payload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-47: Bloqueio de conta ativa quando 'suspendedUntil' está no futuro (403)", async () => {
@@ -1832,9 +1858,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado pelo suspendedUntil temporário vigente
     await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
 
-    // Integridade: não gravado
-    const checkSnap = await assertSucceeds(getDoc(doc(userDb, "claims", payload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Integridade: não gravado (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", payload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-48: Bloqueio quando 'blockExpiresAt' está expirado mas 'suspendedUntil' está presente com valor null (403)", async () => {
@@ -1862,9 +1890,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado: null existente não é timestamp, impedindo liberação automática
     await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
 
-    // Integridade: claim não foi persistida
-    const checkSnap = await assertSucceeds(getDoc(doc(userDb, "claims", payload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Integridade: claim não foi persistida (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", payload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-49: Bloqueio quando 'blockExpiresAt' está expirado mas 'suspendedUntil' está presente com string vazia (403)", async () => {
@@ -1892,9 +1922,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado: string vazia não é timestamp
     await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
 
-    // Integridade: não gravado
-    const checkSnap = await assertSucceeds(getDoc(doc(userDb, "claims", payload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Integridade: não gravado (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", payload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-50: Bloqueio quando 'suspendedUntil' está expirado mas 'blockExpiresAt' está presente com valor null (403)", async () => {
@@ -1922,9 +1954,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado: null não é timestamp
     await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
 
-    // Integridade: não gravado
-    const checkSnap = await assertSucceeds(getDoc(doc(userDb, "claims", payload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Integridade: não gravado (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", payload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 
   it("C-51: Bloqueio quando 'suspendedUntil' está expirado mas 'blockExpiresAt' está presente com string vazia (403)", async () => {
@@ -1952,9 +1986,11 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     // Bloqueado: string de espaços não é timestamp
     await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
 
-    // Integridade: não gravado
-    const checkSnap = await assertSucceeds(getDoc(doc(userDb, "claims", payload.id)));
-    expect(checkSnap.exists()).toBe(false);
+    // Integridade: não gravado (via contexto privilegiado)
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const checkSnap = await getDoc(doc(context.firestore(), "claims", payload.id));
+      expect(checkSnap.exists()).toBe(false);
+    });
   });
 });
 
