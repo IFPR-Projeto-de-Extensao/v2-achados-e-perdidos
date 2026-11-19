@@ -1,0 +1,571 @@
+name: Firestore Candidate Rules Homologation (Isolated)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: 'Branch isolada autorizada para homologacao (proibido main/master)'
+        required: true
+        default: 'homologation/firestore-candidate-rules'
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-rules-homologation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate Workflow Definition Origin & Target Branch Before Checkout
+        shell: bash
+        env:
+          INPUT_TARGET_REF: ${{ inputs.target_ref }}
+          DISPATCH_REF: ${{ github.ref }}
+          DISPATCH_REF_NAME: ${{ github.ref_name }}
+          DISPATCH_SHA: ${{ github.sha }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          REPO_FULL_NAME: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          AUTHORIZED_BRANCH="homologation/firestore-candidate-rules"
+          EXPECTED_WORKFLOW_REF="${REPO_FULL_NAME}/.github/workflows/firestore-candidate-homologation.yml@refs/heads/main"
+
+          echo "=== Workflow Definition Origin (Dispatch) ==="
+          echo "github.workflow_ref=${WORKFLOW_REF}"
+          echo "github.ref=${DISPATCH_REF}"
+          echo "github.ref_name=${DISPATCH_REF_NAME}"
+          echo "github.sha=${DISPATCH_SHA}"
+          echo "inputs.target_ref=${INPUT_TARGET_REF}"
+
+          if [ "${DISPATCH_REF}" != "refs/heads/main" ] || [ "${DISPATCH_REF_NAME}" != "main" ]; then
+            echo "ERROR: O disparo manual deve ocorrer obrigatoriamente a partir de 'main' (recebido ref='${DISPATCH_REF}', ref_name='${DISPATCH_REF_NAME}')."
+            exit 1
+          fi
+
+          if [ "${WORKFLOW_REF}" != "${EXPECTED_WORKFLOW_REF}" ]; then
+            echo "ERROR: github.workflow_ref '${WORKFLOW_REF}' diverge da origem esperada '${EXPECTED_WORKFLOW_REF}'."
+            exit 1
+          fi
+
+          if [ -z "${INPUT_TARGET_REF}" ]; then
+            echo "ERROR: Input 'target_ref' vazio."
+            exit 1
+          fi
+
+          case "${INPUT_TARGET_REF}" in
+            main|master|refs/heads/main|refs/heads/master)
+              echo "ERROR: Branch '${INPUT_TARGET_REF}' proibida. Somente '${AUTHORIZED_BRANCH}' e autorizada."
+              exit 1
+              ;;
+          esac
+
+          if [ "${INPUT_TARGET_REF}" != "${AUTHORIZED_BRANCH}" ]; then
+            echo "ERROR: Branch '${INPUT_TARGET_REF}' nao autorizada. Esperada exclusivamente '${AUTHORIZED_BRANCH}'."
+            exit 1
+          fi
+
+          echo "OK: Origem do workflow confirmada em main (${DISPATCH_SHA}) e target_ref autorizado (${INPUT_TARGET_REF})."
+
+      - name: Checkout Repository (Isolated Branch)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_ref }}
+          fetch-depth: 1
+
+      - name: Verify Workflow Sync, Isolated Commit, Fixed SHA-256 Pins & 30 Test Files
+        shell: bash
+        env:
+          INPUT_TARGET_REF: ${{ inputs.target_ref }}
+          DISPATCH_SHA: ${{ github.sha }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          AUTHORIZED_BRANCH="homologation/firestore-candidate-rules"
+          CANDIDATE_FILE="firestore.refactor.candidate.rules"
+
+          EXPECTED_ACTIVE_RULES_SHA256="c750c81aa30bc5815889a21e01fad63a32feae9552ce183efdab2ebfdd4afb3d"
+          EXPECTED_FIREBASE_JSON_SHA256="8a34cd0636fc97eb37dd3fdcab1fc3907b2bc5258fe6a989c77fd10f47dda5bf"
+          EXPECTED_PROD_WORKFLOW_SHA256="53452c4403330260f71d1449ff85fc929a142c4f87bd330a1d37b00e129100ad"
+          EXPECTED_CANDIDATE_RULES_SHA256="ed9c8281abf06a49ea5aebbbf9854c0189e2dd74e02bf560acd631efe79dfd93"
+          EXPECTED_EMULATOR_CONFIG_SHA256="f4241321f38dfbba3b4137e88d9ca143be07906bea9b7cf711da40177b0bc141"
+          EXPECTED_PRELOAD_SHA256="e3505354df738ede2ba1cb4a18b97f870bf4158749778282a18d96e5a2c2e837"
+
+          CHECKED_OUT_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+          CHECKED_OUT_COMMIT="$(git rev-parse HEAD)"
+          REMOTE_AUTHORIZED_COMMIT="$(git ls-remote origin "refs/heads/${AUTHORIZED_BRANCH}" | awk '{print $1}')"
+          REMOTE_MAIN_COMMIT="$(git ls-remote origin "refs/heads/main" | awk '{print $1}')"
+
+          echo "=== Workflow vs Candidate Commit Separation ==="
+          echo "Workflow definition ref:   ${WORKFLOW_REF}"
+          echo "Workflow definition SHA:   ${DISPATCH_SHA} (remote main=${REMOTE_MAIN_COMMIT:-UNRESOLVED})"
+          echo "Candidate target branch:   ${CHECKED_OUT_BRANCH:-DETACHED} (expected=${AUTHORIZED_BRANCH})"
+          echo "Candidate commit (HEAD):   ${CHECKED_OUT_COMMIT} (remote=${REMOTE_AUTHORIZED_COMMIT:-UNRESOLVED})"
+
+          if [ -z "${REMOTE_MAIN_COMMIT}" ] || [ "${DISPATCH_SHA}" != "${REMOTE_MAIN_COMMIT}" ]; then
+            echo "ERROR: Commit da definicao do workflow (${DISPATCH_SHA}) diverge de origin/main (${REMOTE_MAIN_COMMIT:-UNRESOLVED})."
+            exit 1
+          fi
+
+          if [ "${CHECKED_OUT_BRANCH}" != "${AUTHORIZED_BRANCH}" ]; then
+            echo "ERROR: Branch carregada '${CHECKED_OUT_BRANCH:-DETACHED}' diverge da autorizada '${AUTHORIZED_BRANCH}'."
+            exit 1
+          fi
+
+          if [ -z "${REMOTE_AUTHORIZED_COMMIT}" ] || [ "${CHECKED_OUT_COMMIT}" != "${REMOTE_AUTHORIZED_COMMIT}" ]; then
+            echo "ERROR: Commit da candidata '${CHECKED_OUT_COMMIT}' diverge de origin/${AUTHORIZED_BRANCH} ('${REMOTE_AUTHORIZED_COMMIT:-UNRESOLVED}')."
+            exit 1
+          fi
+
+          if [ "${CHECKED_OUT_COMMIT}" = "${DISPATCH_SHA}" ]; then
+            echo "ERROR: Commit da candidata coincide com o commit de main (${DISPATCH_SHA}). Homologacao isolada exige commit dedicado."
+            exit 1
+          fi
+
+          git fetch --no-tags --depth=1 origin "${DISPATCH_SHA}"
+          MAIN_WORKFLOW_SHA="$(git show "${DISPATCH_SHA}:.github/workflows/firestore-candidate-homologation.yml" | sha256sum | awk '{print $1}')"
+          ISOLATED_WORKFLOW_SHA="$(sha256sum .github/workflows/firestore-candidate-homologation.yml | awk '{print $1}')"
+          echo "Workflow SHA-256 (main):     ${MAIN_WORKFLOW_SHA}"
+          echo "Workflow SHA-256 (isolada):  ${ISOLATED_WORKFLOW_SHA}"
+          if [ "${MAIN_WORKFLOW_SHA}" != "${ISOLATED_WORKFLOW_SHA}" ]; then
+            echo "ERROR: Definicao do workflow em main (${MAIN_WORKFLOW_SHA}) diverge da versao no branch isolado (${ISOLATED_WORKFLOW_SHA})."
+            exit 1
+          fi
+
+          verify_pin() {
+            local file_path="$1"
+            local expected_sha="$2"
+            if [ ! -f "${file_path}" ]; then
+              echo "ERROR: Arquivo obrigatorio ausente: ${file_path}"
+              echo "Expected SHA-256: ${expected_sha}"
+              exit 1
+            fi
+            local actual_sha
+            actual_sha="$(sha256sum "${file_path}" | awk '{print $1}')"
+            echo "${file_path}: expected=${expected_sha} actual=${actual_sha}"
+            if [ "${actual_sha}" != "${expected_sha}" ]; then
+              echo "ERROR: Divergencia de SHA-256 em '${file_path}'!"
+              echo "  Esperado:   ${expected_sha}"
+              echo "  Encontrado: ${actual_sha}"
+              exit 1
+            fi
+          }
+
+          echo "=== Pre-Run Fixed SHA-256 Verification (All 6 Files + Homologation Workflow) ==="
+          verify_pin "firestore.rules" "${EXPECTED_ACTIVE_RULES_SHA256}"
+          verify_pin "firebase.json" "${EXPECTED_FIREBASE_JSON_SHA256}"
+          verify_pin ".github/workflows/firestore-security.yml" "${EXPECTED_PROD_WORKFLOW_SHA256}"
+          verify_pin "${CANDIDATE_FILE}" "${EXPECTED_CANDIDATE_RULES_SHA256}"
+          verify_pin "firebase.candidate.emulator.json" "${EXPECTED_EMULATOR_CONFIG_SHA256}"
+          verify_pin "scripts/candidate-rules-preload.cjs" "${EXPECTED_PRELOAD_SHA256}"
+
+          node - <<'JS'
+          const fs = require('node:fs');
+          const cfg = JSON.parse(fs.readFileSync('firebase.candidate.emulator.json', 'utf8'));
+          if (cfg?.firestore?.rules !== 'firestore.refactor.candidate.rules') {
+            throw new Error(
+              `firebase.candidate.emulator.json aponta para '${cfg?.firestore?.rules}', esperado 'firestore.refactor.candidate.rules'.`
+            );
+          }
+          const prodCfg = JSON.parse(fs.readFileSync('firebase.json', 'utf8'));
+          if (prodCfg?.firestore?.rules !== 'firestore.rules') {
+            throw new Error(
+              `firebase.json aponta para '${prodCfg?.firestore?.rules}', esperado 'firestore.rules'.`
+            );
+          }
+          console.log('OK: firebase.candidate.emulator.json e firebase.json validados.');
+          JS
+
+          TEST_FILES=(
+            "src/lib/firestoreRules.emulator.test.ts"
+            "src/__tests__/claimsRulesHomologation.test.ts"
+            "src/lib/institutionalIdentityAndClaimsSecurity.test.ts"
+            "src/lib/claimsRulesTokenAndSecurity.test.ts"
+            "src/lib/securityRulesAudit.test.ts"
+            "src/lib/securityFindingsSec01To04.test.ts"
+            "src/lib/securityFindingsSec05And06.test.ts"
+            "src/lib/usersLeastPrivilegeSecurity.test.ts"
+            "src/lib/notificationSecurity.test.ts"
+            "src/lib/auditLogsIntegrityHardening.test.ts"
+            "src/lib/auditLogsSecurity.test.ts"
+            "src/lib/devolutionSecurityFlow.test.ts"
+            "src/lib/operationalCollectionsLeastPrivilegeSecurity.test.ts"
+            "src/lib/firestoreTextFieldLimitsSecurity.test.ts"
+            "src/lib/etapa11ResidualFixes.test.ts"
+            "src/lib/authProfileReconcileAndSync.test.ts"
+            "src/lib/testErrorLogsSecurityAudit.test.ts"
+            "src/lib/roleAssignmentsSecurity.test.ts"
+            "src/lib/claimWorkflowAndSecurity.test.ts"
+            "src/lib/commentsListenerSecurity.test.ts"
+            "src/lib/systemConfigSecurity.test.ts"
+            "src/lib/rootAdminConfigSecurity.test.ts"
+            "src/lib/digitalSignatureSecurity.test.ts"
+            "src/lib/etapa13SignatureSecurity.test.ts"
+            "src/lib/accountStatusUtils.test.ts"
+            "src/lib/profileRolePrecedence.test.ts"
+            "src/lib/claimsSubmissionLifecycle.test.ts"
+            "src/lib/registerObjectFlow.test.ts"
+            "src/lib/listenerAndOfflineSyncSecurity.test.ts"
+            "src/__tests__/auth-security.test.ts"
+          )
+
+          echo "=== Verifying 30 Expected Test Suites ==="
+          if [ "${#TEST_FILES[@]}" -ne 30 ]; then
+            echo "ERROR: Quantidade de arquivos de teste inesperada: ${#TEST_FILES[@]} (esperado 30)."
+            exit 1
+          fi
+          for tf in "${TEST_FILES[@]}"; do
+            if [ ! -f "${tf}" ]; then
+              echo "ERROR: Suite de teste obrigatoria ausente: ${tf}"
+              exit 1
+            fi
+          done
+          echo "OK: Todas as 30 suites de teste verificadas."
+
+          {
+            echo "ACTIVE_RULES_SHA256=${EXPECTED_ACTIVE_RULES_SHA256}"
+            echo "FIREBASE_JSON_SHA256=${EXPECTED_FIREBASE_JSON_SHA256}"
+            echo "PROD_WORKFLOW_SHA256=${EXPECTED_PROD_WORKFLOW_SHA256}"
+            echo "CANDIDATE_RULES_SHA256=${EXPECTED_CANDIDATE_RULES_SHA256}"
+            echo "EMULATOR_CONFIG_SHA256=${EXPECTED_EMULATOR_CONFIG_SHA256}"
+            echo "PRELOAD_SHA256=${EXPECTED_PRELOAD_SHA256}"
+            echo "HOMOLOGATION_WORKFLOW_SHA256=${ISOLATED_WORKFLOW_SHA}"
+            echo "CANDIDATE_RULES_FILE=${CANDIDATE_FILE}"
+            echo "CHECKED_OUT_BRANCH=${CHECKED_OUT_BRANCH}"
+            echo "CHECKED_OUT_COMMIT=${CHECKED_OUT_COMMIT}"
+            echo "WORKFLOW_DEFINITION_SHA=${DISPATCH_SHA}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Setup Java 21 (Required for Cloud Firestore Emulator)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache Firebase Emulators
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: ${{ runner.os }}-firebase-emulators-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-firebase-emulators-
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Log Runtime Versions & Pre-Emulator Fingerprints
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version
+          node -v
+          npx firebase --version
+          sha256sum \
+            firestore.rules \
+            firebase.json \
+            .github/workflows/firestore-security.yml \
+            "${CANDIDATE_RULES_FILE}" \
+            firebase.candidate.emulator.json \
+            scripts/candidate-rules-preload.cjs \
+            .github/workflows/firestore-candidate-homologation.yml
+          wc -l firestore.rules "${CANDIDATE_RULES_FILE}"
+
+      - name: Verify TypeScript Before Emulator Homologation
+        run: npx tsc --noEmit
+
+      - name: Run All 30 Security Suites (696 Tests) in Java 21 Cloud Firestore Emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f candidate-rules-evidence.jsonl candidate-homologation-report.json candidate-homologation.log
+
+          RUN_STARTED_MS="$(node -e 'console.log(Date.now())')"
+          echo "HOMOLOGATION_RUN_STARTED_MS=${RUN_STARTED_MS}" >> "${GITHUB_ENV}"
+
+          export FIRESTORE_CANDIDATE_RULES_FILE="${CANDIDATE_RULES_FILE}"
+          export CANDIDATE_RULES_EVIDENCE_LOG="$(pwd)/candidate-rules-evidence.jsonl"
+          export NODE_OPTIONS="--require $(pwd)/scripts/candidate-rules-preload.cjs"
+
+          npx firebase emulators:exec \
+            --config firebase.candidate.emulator.json \
+            --only firestore \
+            --project localiza-plus-emulator-test '
+              set -euo pipefail
+              echo "FIRESTORE_EMULATOR_HOST=${FIRESTORE_EMULATOR_HOST:-unset}"
+              test -n "${FIRESTORE_EMULATOR_HOST}"
+              npx vitest run --no-file-parallelism \
+                --reporter=verbose \
+                --reporter=json \
+                --outputFile=candidate-homologation-report.json \
+                src/lib/firestoreRules.emulator.test.ts \
+                src/__tests__/claimsRulesHomologation.test.ts \
+                src/lib/institutionalIdentityAndClaimsSecurity.test.ts \
+                src/lib/claimsRulesTokenAndSecurity.test.ts \
+                src/lib/securityRulesAudit.test.ts \
+                src/lib/securityFindingsSec01To04.test.ts \
+                src/lib/securityFindingsSec05And06.test.ts \
+                src/lib/usersLeastPrivilegeSecurity.test.ts \
+                src/lib/notificationSecurity.test.ts \
+                src/lib/auditLogsIntegrityHardening.test.ts \
+                src/lib/auditLogsSecurity.test.ts \
+                src/lib/devolutionSecurityFlow.test.ts \
+                src/lib/operationalCollectionsLeastPrivilegeSecurity.test.ts \
+                src/lib/firestoreTextFieldLimitsSecurity.test.ts \
+                src/lib/etapa11ResidualFixes.test.ts \
+                src/lib/authProfileReconcileAndSync.test.ts \
+                src/lib/testErrorLogsSecurityAudit.test.ts \
+                src/lib/roleAssignmentsSecurity.test.ts \
+                src/lib/claimWorkflowAndSecurity.test.ts \
+                src/lib/commentsListenerSecurity.test.ts \
+                src/lib/systemConfigSecurity.test.ts \
+                src/lib/rootAdminConfigSecurity.test.ts \
+                src/lib/digitalSignatureSecurity.test.ts \
+                src/lib/etapa13SignatureSecurity.test.ts \
+                src/lib/accountStatusUtils.test.ts \
+                src/lib/profileRolePrecedence.test.ts \
+                src/lib/claimsSubmissionLifecycle.test.ts \
+                src/lib/registerObjectFlow.test.ts \
+                src/lib/listenerAndOfflineSyncSecurity.test.ts \
+                src/__tests__/auth-security.test.ts 2>&1 | tee candidate-homologation.log
+            '
+
+      - name: Enforce 696/696 Gate, Fresh Evidence, Vitest Schema & Post-Run File Integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          verify_post_pin() {
+            local file_path="$1"
+            local expected_sha="$2"
+            if [ ! -f "${file_path}" ]; then
+              echo "ERROR: Arquivo ausente apos execucao: ${file_path}"
+              exit 1
+            fi
+            local actual_sha
+            actual_sha="$(sha256sum "${file_path}" | awk '{print $1}')"
+            echo "POST ${file_path}: expected=${expected_sha} actual=${actual_sha}"
+            if [ "${actual_sha}" != "${expected_sha}" ]; then
+              echo "ERROR: '${file_path}' alterado durante a homologacao! Esperado=${expected_sha} Encontrado=${actual_sha}"
+              exit 1
+            fi
+          }
+
+          echo "=== Post-Run Integrity Verification (All 7 Files) ==="
+          verify_post_pin "firestore.rules" "${ACTIVE_RULES_SHA256}"
+          verify_post_pin "firebase.json" "${FIREBASE_JSON_SHA256}"
+          verify_post_pin ".github/workflows/firestore-security.yml" "${PROD_WORKFLOW_SHA256}"
+          verify_post_pin "${CANDIDATE_RULES_FILE}" "${CANDIDATE_RULES_SHA256}"
+          verify_post_pin "firebase.candidate.emulator.json" "${EMULATOR_CONFIG_SHA256}"
+          verify_post_pin "scripts/candidate-rules-preload.cjs" "${PRELOAD_SHA256}"
+          verify_post_pin ".github/workflows/firestore-candidate-homologation.yml" "${HOMOLOGATION_WORKFLOW_SHA256}"
+
+          node - <<'JS'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          if (!fs.existsSync('candidate-homologation-report.json')) {
+            throw new Error('Relatorio JSON ausente: candidate-homologation-report.json.');
+          }
+          if (!fs.existsSync('candidate-rules-evidence.jsonl')) {
+            throw new Error('Log de evidencias ausente: candidate-rules-evidence.jsonl.');
+          }
+
+          const report = JSON.parse(fs.readFileSync('candidate-homologation-report.json', 'utf8'));
+          if (!report || typeof report !== 'object') {
+            throw new Error('Relatorio JSON invalido.');
+          }
+
+          const runStartedMs = Number(process.env.HOMOLOGATION_RUN_STARTED_MS);
+          if (!Number.isFinite(runStartedMs) || runStartedMs <= 0) {
+            throw new Error(`HOMOLOGATION_RUN_STARTED_MS invalido: ${process.env.HOMOLOGATION_RUN_STARTED_MS}`);
+          }
+
+          const requiredNumericFields = [
+            'numTotalTestSuites',
+            'numPassedTestSuites',
+            'numFailedTestSuites',
+            'numTotalTests',
+            'numPassedTests',
+            'numFailedTests',
+            'numPendingTests',
+            'numTodoTests',
+            'startTime',
+          ];
+          for (const field of requiredNumericFields) {
+            if (typeof report[field] !== 'number' || !Number.isFinite(report[field])) {
+              throw new Error(`Campo obrigatorio ausente ou invalido no relatorio JSON: ${field}`);
+            }
+          }
+          if (report.success !== true) {
+            throw new Error(`Relatorio Vitest indicou success=${report.success} (esperado true).`);
+          }
+          if (report.startTime < runStartedMs) {
+            throw new Error(
+              `Relatorio JSON obsoleto: startTime=${report.startTime} < runStartedMs=${runStartedMs}.`
+            );
+          }
+
+          const fileResults = Array.isArray(report.testResults) ? report.testResults : null;
+          if (!fileResults || fileResults.length !== 30) {
+            throw new Error(`Esperados 30 arquivos em testResults, obtidos ${fileResults ? fileResults.length : 'null'}.`);
+          }
+
+          const expectedTestFiles = [
+            'src/lib/firestoreRules.emulator.test.ts',
+            'src/__tests__/claimsRulesHomologation.test.ts',
+            'src/lib/institutionalIdentityAndClaimsSecurity.test.ts',
+            'src/lib/claimsRulesTokenAndSecurity.test.ts',
+            'src/lib/securityRulesAudit.test.ts',
+            'src/lib/securityFindingsSec01To04.test.ts',
+            'src/lib/securityFindingsSec05And06.test.ts',
+            'src/lib/usersLeastPrivilegeSecurity.test.ts',
+            'src/lib/notificationSecurity.test.ts',
+            'src/lib/auditLogsIntegrityHardening.test.ts',
+            'src/lib/auditLogsSecurity.test.ts',
+            'src/lib/devolutionSecurityFlow.test.ts',
+            'src/lib/operationalCollectionsLeastPrivilegeSecurity.test.ts',
+            'src/lib/firestoreTextFieldLimitsSecurity.test.ts',
+            'src/lib/etapa11ResidualFixes.test.ts',
+            'src/lib/authProfileReconcileAndSync.test.ts',
+            'src/lib/testErrorLogsSecurityAudit.test.ts',
+            'src/lib/roleAssignmentsSecurity.test.ts',
+            'src/lib/claimWorkflowAndSecurity.test.ts',
+            'src/lib/commentsListenerSecurity.test.ts',
+            'src/lib/systemConfigSecurity.test.ts',
+            'src/lib/rootAdminConfigSecurity.test.ts',
+            'src/lib/digitalSignatureSecurity.test.ts',
+            'src/lib/etapa13SignatureSecurity.test.ts',
+            'src/lib/accountStatusUtils.test.ts',
+            'src/lib/profileRolePrecedence.test.ts',
+            'src/lib/claimsSubmissionLifecycle.test.ts',
+            'src/lib/registerObjectFlow.test.ts',
+            'src/lib/listenerAndOfflineSyncSecurity.test.ts',
+            'src/__tests__/auth-security.test.ts',
+          ];
+
+          for (const tr of fileResults) {
+            if (tr.status !== 'passed') {
+              throw new Error(`Arquivo de teste nao aprovado: ${tr.name} (status=${tr.status})`);
+            }
+          }
+          for (const expectedRel of expectedTestFiles) {
+            const absSuffix = path.sep + expectedRel.split('/').join(path.sep);
+            const found = fileResults.some(
+              (tr) => typeof tr.name === 'string' && (tr.name.endsWith(absSuffix) || tr.name.endsWith(expectedRel))
+            );
+            if (!found) {
+              throw new Error(`Arquivo de teste esperado ausente em testResults: ${expectedRel}`);
+            }
+          }
+
+          const rawLines = fs
+            .readFileSync('candidate-rules-evidence.jsonl', 'utf8')
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean);
+          if (rawLines.length === 0) {
+            throw new Error('Log de evidencias vazio (candidate-rules-evidence.jsonl).');
+          }
+          const evidenceLines = rawLines.map((line) => JSON.parse(line));
+
+          console.log('=== Homologation Summary ===');
+          console.log(`Workflow Definition SHA: ${process.env.WORKFLOW_DEFINITION_SHA}`);
+          console.log(`Candidate Branch:        ${process.env.CHECKED_OUT_BRANCH}`);
+          console.log(`Candidate Commit:        ${process.env.CHECKED_OUT_COMMIT}`);
+          console.log(`Test Files:              ${fileResults.length}`);
+          console.log(`Total Test Suites:       ${report.numTotalTestSuites}`);
+          console.log(`Passed Test Suites:      ${report.numPassedTestSuites}`);
+          console.log(`Failed Test Suites:      ${report.numFailedTestSuites}`);
+          console.log(`Total Tests:             ${report.numTotalTests}`);
+          console.log(`Passed Tests:            ${report.numPassedTests}`);
+          console.log(`Failed Tests:            ${report.numFailedTests}`);
+          console.log(`Skipped Tests:           ${report.numPendingTests}`);
+          console.log(`Todo Tests:              ${report.numTodoTests}`);
+          console.log(`Evidence Entries:        ${evidenceLines.length}`);
+
+          if (report.numFailedTestSuites > 0 || report.numPassedTestSuites !== report.numTotalTestSuites) {
+            throw new Error(
+              `Falha de suites: passed=${report.numPassedTestSuites}, total=${report.numTotalTestSuites}, failed=${report.numFailedTestSuites}.`
+            );
+          }
+          if (report.numFailedTests > 0) {
+            throw new Error(`Homologation failed: ${report.numFailedTests} failed test(s).`);
+          }
+          if (report.numPendingTests > 0 || report.numTodoTests > 0) {
+            throw new Error(
+              `Homologation incomplete: pending=${report.numPendingTests}, todo=${report.numTodoTests} (expected 0).`
+            );
+          }
+          if (report.numTotalTests !== 696 || report.numPassedTests !== 696) {
+            throw new Error(
+              `Expected strictly 696/696 tests passed, got ${report.numPassedTests}/${report.numTotalTests}.`
+            );
+          }
+
+          const expectedSha = 'ed9c8281abf06a49ea5aebbbf9854c0189e2dd74e02bf560acd631efe79dfd93';
+          const expectedFile = 'firestore.refactor.candidate.rules';
+
+          for (const e of evidenceLines) {
+            if (e.loadedFile !== expectedFile || e.sha256 !== expectedSha) {
+              throw new Error(
+                `Evidencia invalida: loadedFile=${e.loadedFile}, sha256=${e.sha256}`
+              );
+            }
+            const tsMs = Date.parse(e.timestamp);
+            if (!Number.isFinite(tsMs) || tsMs < runStartedMs) {
+              throw new Error(
+                `Evidencia obsoleta ou timestamp invalido: timestamp=${e.timestamp} (${tsMs}) < runStartedMs=${runStartedMs}`
+              );
+            }
+          }
+
+          const expectedReaders = [
+            'src/lib/firestoreRules.emulator.test.ts',
+            'src/__tests__/claimsRulesHomologation.test.ts',
+            'src/lib/devolutionSecurityFlow.test.ts',
+            'src/lib/authProfileReconcileAndSync.test.ts',
+            'src/lib/claimsRulesTokenAndSecurity.test.ts',
+            'src/lib/institutionalIdentityAndClaimsSecurity.test.ts',
+            'src/lib/operationalCollectionsLeastPrivilegeSecurity.test.ts',
+            'src/lib/usersLeastPrivilegeSecurity.test.ts',
+            'src/lib/auditLogsIntegrityHardening.test.ts',
+            'src/lib/etapa11ResidualFixes.test.ts',
+            'src/lib/securityRulesAudit.test.ts',
+            'src/lib/firestoreTextFieldLimitsSecurity.test.ts',
+            'src/lib/auditLogsSecurity.test.ts',
+            'src/lib/securityFindingsSec01To04.test.ts',
+            'src/lib/testErrorLogsSecurityAudit.test.ts',
+            'src/lib/notificationSecurity.test.ts',
+            'src/lib/securityFindingsSec05And06.test.ts',
+            'src/lib/commentsListenerSecurity.test.ts',
+          ];
+
+          for (const reader of expectedReaders) {
+            const matched = evidenceLines.some((e) => String(e.caller).includes(reader));
+            if (!matched) {
+              throw new Error(`Evidencia ausente para suite leitora '${reader}'.`);
+            }
+          }
+
+          console.log('OK: 696/696 testes aprovados (0 skips, 0 falhas), todas as 18 suites leitoras (incluindo os 2 Emulators) comprovaram o SHA-256 da candidata nesta execucao e todos os 7 arquivos permaneceram intactos.');
+          JS
+
+      - name: Upload Candidate Homologation Evidence Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: firestore-candidate-homologation-evidence
+          path: |
+            candidate-homologation.log
+            candidate-homologation-report.json
+            candidate-rules-evidence.jsonl
+            firebase-debug.log
+            firestore-debug.log
+          if-no-files-found: ignore
+          retention-days: 14

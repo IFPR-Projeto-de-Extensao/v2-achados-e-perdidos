@@ -15,8 +15,18 @@ export const AccountStatusBanner: React.FC<AccountStatusBannerProps> = ({ user }
   if (resolved.status === "active") return null;
 
   const isBanned = resolved.status === "banned";
-  const untilDate = resolved.suspendedUntil ? safeParseDate(resolved.suspendedUntil) : null;
-  const untilStr = untilDate
+  const hasInvalidFields = resolved.suspendedUntilEval.isInvalid || resolved.blockExpiresAtEval.isInvalid;
+  const activeDeadlineRaw = resolved.suspendedUntilEval.isActive
+    ? user.suspendedUntil
+    : resolved.blockExpiresAtEval.isActive
+    ? user.blockExpiresAt
+    : undefined;
+  const untilDate = activeDeadlineRaw ? safeParseDate(activeDeadlineRaw) : null;
+  const untilStr = resolved.isDeactivated
+    ? "conta desativada"
+    : hasInvalidFields
+    ? "inconsistência cadastral"
+    : untilDate
     ? `até ${untilDate.toLocaleDateString("pt-BR")} às ${untilDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
     : "por tempo indeterminado";
 
@@ -48,7 +58,15 @@ export const AccountStatusBanner: React.FC<AccountStatusBannerProps> = ({ user }
 
           <div className="space-y-0.5">
             <h4 className="text-xs sm:text-sm font-bold flex flex-wrap items-center gap-2">
-              <span>{isBanned ? "Conta Banida Institucionalmente" : "Conta Temporariamente Suspensa"}</span>
+              <span>
+                {isBanned
+                  ? "Conta Banida Institucionalmente"
+                  : resolved.isDeactivated
+                  ? "Conta Administrativamente Desativada"
+                  : hasInvalidFields
+                  ? "Conta Temporariamente Bloqueada por Inconsistência"
+                  : "Conta Temporariamente Suspensa"}
+              </span>
               {!isBanned && (
                 <span className="px-2 py-0.5 rounded-full bg-amber-200/80 dark:bg-amber-900/70 text-amber-900 dark:text-amber-200 text-[10px] font-semibold uppercase tracking-wide">
                   {untilStr}
@@ -65,7 +83,9 @@ export const AccountStatusBanner: React.FC<AccountStatusBannerProps> = ({ user }
                 : ""}
               {isBanned
                 ? "As operações de cadastro, reivindicação e comentários estão permanentemente bloqueadas nesta conta."
-                : "Seu acesso a novas ocorrências e reivindicações está pausado durante a suspensão."}
+                : hasInvalidFields
+                ? "Há um registro temporal incompatível no seu perfil que exige reativação ou normalização administrativa."
+                : "Seu acesso a novas ocorrências e reivindicações está pausado durante o bloqueio."}
             </p>
           </div>
         </div>

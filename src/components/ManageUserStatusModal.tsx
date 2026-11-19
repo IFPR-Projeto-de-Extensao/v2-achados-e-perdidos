@@ -1,10 +1,12 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { User, AccountStatus } from "../types";
 import {
   resolveAccountStatus,
   SUSPENSION_PRESET_OPTIONS,
   calculateSuspensionDeadline,
   formatAccountStatusDetails,
+  formatLocalDateTimeInput,
+  parseLocalDateTimeInput,
 } from "../lib/accountStatusUtils";
 import { getSafeAvatarUrl, handleAvatarError } from "../lib/avatarUtils";
 import { formatDate, safeParseDate, vibrateClick, vibrateSuccess, vibrateWarning } from "../lib/utils";
@@ -33,6 +35,20 @@ interface ManageUserStatusModalProps {
   currentAdminId: string;
 }
 
+function getInitialCustomUntilLocal(targetUser: User | null): string {
+  if (targetUser) {
+    const candidateRaw = targetUser.suspendedUntil ?? targetUser.blockExpiresAt;
+    if (candidateRaw) {
+      const parsed = safeParseDate(candidateRaw);
+      if (parsed && !Number.isNaN(parsed.getTime()) && parsed.getTime() > Date.now()) {
+        const formatted = formatLocalDateTimeInput(parsed);
+        if (formatted) return formatted;
+      }
+    }
+  }
+  return formatLocalDateTimeInput(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+}
+
 export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
   user,
   isOpen,
@@ -40,28 +56,46 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
   onUpdateStatus,
   currentAdminId,
 }) => {
+  const initialResolved = user ? resolveAccountStatus(user) : null;
+
+  const [selectedStatus, setSelectedStatus] = useState<AccountStatus>(
+    initialResolved?.status || "active"
+  );
+  const [suspensionPreset, setSuspensionPreset] = useState<string>("7_days");
+  const [customUntilDate, setCustomUntilDate] = useState<string>(() =>
+    getInitialCustomUntilLocal(user)
+  );
+  const [reason, setReason] = useState<string>(user?.statusReason || "");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !user) return;
+    const resolved = resolveAccountStatus(user);
+    setSelectedStatus(resolved.status);
+    setSuspensionPreset("7_days");
+    setCustomUntilDate(getInitialCustomUntilLocal(user));
+    setReason(user.statusReason || "");
+    setErrorMessage(null);
+    setIsSubmitting(false);
+  }, [
+    isOpen,
+    user?.id,
+    user?.status,
+    user?.active,
+    user?.suspendedUntil,
+    user?.blockExpiresAt,
+    user?.statusReason,
+  ]);
+
   if (!isOpen || !user) return null;
 
   const isSelf = user.id === currentAdminId;
   const currentResolved = resolveAccountStatus(user);
-
-  const [selectedStatus, setSelectedStatus] = useState<AccountStatus>(currentResolved.status);
-  const [suspensionPreset, setSuspensionPreset] = useState<string>("7_days");
-  const [customUntilDate, setCustomUntilDate] = useState<string>(() => {
-    if (user.suspendedUntil) {
-      try {
-        const d = safeParseDate(user.suspendedUntil);
-        if (d) return d.toISOString().slice(0, 16);
-      } catch (_) {}
-    }
-    const defaultDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    return defaultDate.toISOString().slice(0, 16);
-  });
-  const [reason, setReason] = useState<string>(user.statusReason || "");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
   const currentStatusDisplay = formatAccountStatusDetails(user);
+  const minLocalDateTime = formatLocalDateTimeInput(new Date());
+  const parsedCustomPreview =
+    suspensionPreset === "custom" ? parseLocalDateTimeInput(customUntilDate) : null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,18 +122,26 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
     let calculatedUntil: string | undefined;
     if (selectedStatus === "suspended") {
       if (suspensionPreset === "custom") {
-        if (!customUntilDate) {
+        if (!customUntilDate || !customUntilDate.trim()) {
+          vibrateWarning();
           setErrorMessage("Selecione a data e horário limite da suspensão.");
           return;
         }
-        const customDateObj = new Date(customUntilDate);
-        if (isNaN(customDateObj.getTime()) || customDateObj.getTime() <= Date.now()) {
-          setErrorMessage("A data personalizada da suspensão deve estar no futuro.");
+        const customDateObj = parseLocalDateTimeInput(customUntilDate);
+        if (!customDateObj || customDateObj.getTime() <= Date.now()) {
+          vibrateWarning();
+          setErrorMessage("A data e hora personalizadas da suspensão devem ser válidas e estar no futuro.");
           return;
         }
         calculatedUntil = customDateObj.toISOString();
       } else {
-        calculatedUntil = calculateSuspensionDeadline(suspensionPreset);
+        try {
+          calculatedUntil = calculateSuspensionDeadline(suspensionPreset);
+        } catch (calcErr: any) {
+          vibrateWarning();
+          setErrorMessage(calcErr?.message || "Prazo de suspensão inválido.");
+          return;
+        }
       }
     }
 
@@ -207,6 +249,24 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
             </div>
           )}
 
+          {/* Legacy / Security Rules Inconsistency Diagnostic */}
+          {currentResolved.hasLegacyInconsistency && currentResolved.inconsistencyReasons.length > 0 && (
+            <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300/70 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs space-y-1.5">
+              <p className="font-bold flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>Inconsistência Cadastral / Legado Detectada</span>
+              </p>
+              <ul className="list-disc list-inside space-y-0.5 text-[11px] opacity-90">
+                {currentResolved.inconsistencyReasons.map((item, idx) => (
+                  <li key={idx}>{item}</li>
+                ))}
+              </ul>
+              <p className="text-[10px] text-amber-800/80 dark:text-amber-300/80">
+                Ao confirmar um novo status (como <strong>Ativo</strong>), os campos residuais ou incompatíveis serão normalizados e limpos no Firestore.
+              </p>
+            </div>
+          )}
+
           {/* Current Status Info Box if suspended/banned */}
           {currentResolved.status !== "active" && (
             <div className="p-3.5 rounded-2xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 text-xs space-y-1">
@@ -266,7 +326,7 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
               >
                 <Clock className="w-5 h-5 text-amber-600" />
                 <span className="text-xs font-bold">Suspender</span>
-                <span className="text-[10px] text-neutral-400 font-normal">Temporário</span>
+                <span className="text-[10px] text-neutral-400 font-normal">Temporário / Indef.</span>
               </button>
 
               {/* Option 3: Banido */}
@@ -311,7 +371,7 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
               {suspensionPreset === "custom" && (
                 <div className="space-y-1 pt-1">
                   <label className="block text-[11px] font-semibold text-neutral-600 dark:text-neutral-400">
-                    Data e Hora do Término da Suspensão:
+                    Data e Hora do Término da Suspensão (horário local):
                   </label>
                   <div className="relative">
                     <Calendar className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -319,16 +379,28 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
                       type="datetime-local"
                       value={customUntilDate}
                       onChange={(e) => setCustomUntilDate(e.target.value)}
-                      min={new Date().toISOString().slice(0, 16)}
+                      min={minLocalDateTime}
                       className="w-full pl-9 pr-3 py-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500"
                     />
                   </div>
+                  {parsedCustomPreview && parsedCustomPreview.getTime() > Date.now() && (
+                    <p className="text-[10px] text-amber-800 dark:text-amber-300 font-medium">
+                      Término previsto: {parsedCustomPreview.toLocaleDateString("pt-BR")} às{" "}
+                      {parsedCustomPreview.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  )}
                 </div>
               )}
 
-              <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80">
-                Após expirar o prazo, o status é automaticamente recalculado para <strong>Ativo</strong> pelo sistema sem necessidade de intervenção manual.
-              </p>
+              {suspensionPreset === "indefinite" ? (
+                <p className="text-[10px] text-amber-800 dark:text-amber-300 font-medium leading-relaxed">
+                  <strong>Suspensão por tempo indeterminado:</strong> esta conta NÃO expira automaticamente e permanecerá bloqueada até que um administrador execute a reativação manual. Prazos temporais residuais serão removidos.
+                </p>
+              ) : (
+                <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80">
+                  Após expirar o prazo em Timestamp nativo do Firestore, o status é automaticamente recalculado para <strong>Ativo</strong> pelo sistema sem necessidade de intervenção manual.
+                </p>
+              )}
             </div>
           )}
 

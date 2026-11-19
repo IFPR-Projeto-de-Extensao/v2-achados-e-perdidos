@@ -1,5 +1,5 @@
 import { User } from "../types";
-import { isAccountBlocked } from "./accountStatusUtils";
+import { isAccountBlocked, isUserAccountActive } from "./accountStatusUtils";
 import {
   AuthContextIdentity,
   canOperateFormalReturn,
@@ -62,12 +62,9 @@ export function evaluateListenerSession(
   const isEmailVerified = input.firebaseUser?.emailVerified === true;
   const isRootAdmin = isVerifiedRootAdminIdentity(user, input.firebaseUser);
 
-  const normStatus = String(user.status || "active").trim().toLowerCase();
   const isBlockedOrInactive =
+    !isUserAccountActive(user) ||
     isAccountBlocked(user) ||
-    normStatus === "suspended" ||
-    normStatus === "banned" ||
-    normStatus === "inactive" ||
     (user as any).active === false;
 
   const isAccountActive = !isBlockedOrInactive && user.role !== "INTRUSO";

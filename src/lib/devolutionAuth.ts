@@ -1,4 +1,4 @@
-import { isAccountBlocked } from "./accountStatusUtils";
+import { isAccountBlocked, isUserAccountActive } from "./accountStatusUtils";
 import { LostFoundItem, User } from "../types";
 
 export const ROOT_ADMIN_EMAIL = "paulocauan39@gmail.com";
@@ -55,17 +55,7 @@ export function canOperateFormalReturn(
     return false;
   }
 
-  if (isAccountBlocked(user)) {
-    return false;
-  }
-
-  const normStatus = String(user.status || "active").trim().toLowerCase();
-  if (
-    normStatus === "suspended" ||
-    normStatus === "banned" ||
-    normStatus === "inactive" ||
-    (user as any).active === false
-  ) {
+  if (isAccountBlocked(user) || !isUserAccountActive(user) || (user as any).active === false) {
     return false;
   }
 

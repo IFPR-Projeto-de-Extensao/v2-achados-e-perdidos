@@ -2520,25 +2520,44 @@ export const DashboardView: React.FC = () => {
                                     </select>
                                   </td>
                                   <td className="p-3.5">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        vibrateClick();
-                                        setUserForStatusModal(u);
-                                      }}
-                                      title="Clique para gerenciar o status desta conta (Suspender/Banir/Reativar)"
-                                      className={`inline-flex flex-col items-start gap-0.5 px-2.5 py-1 rounded-xl border text-[11px] font-extrabold cursor-pointer transition-all hover:scale-105 ${statusDetails.badgeClass}`}
-                                    >
-                                      <span className="flex items-center space-x-1.5">
-                                        <span className={`w-1.5 h-1.5 rounded-full ${statusDetails.dotClass}`} />
-                                        <span>{statusDetails.label}</span>
-                                      </span>
-                                      {u.status === "suspended" && u.suspendedUntil && (
-                                        <span className="text-[9px] font-normal opacity-80">
-                                          Até {safeParseDate(u.suspendedUntil)?.toLocaleDateString("pt-BR")}
-                                        </span>
-                                      )}
-                                    </button>
+                                    {(() => {
+                                      const resolvedRowStatus = resolveAccountStatus(u);
+                                      const activeDeadlineRaw = resolvedRowStatus.suspendedUntilEval.isActive
+                                        ? u.suspendedUntil
+                                        : resolvedRowStatus.blockExpiresAtEval.isActive
+                                        ? u.blockExpiresAt
+                                        : undefined;
+                                      const activeDeadlineDate = activeDeadlineRaw ? safeParseDate(activeDeadlineRaw) : null;
+                                      return (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            vibrateClick();
+                                            setUserForStatusModal(u);
+                                          }}
+                                          title={
+                                            statusDetails.inconsistencyAlert ||
+                                            "Clique para gerenciar o status desta conta (Suspender/Banir/Reativar)"
+                                          }
+                                          className={`inline-flex flex-col items-start gap-0.5 px-2.5 py-1 rounded-xl border text-[11px] font-extrabold cursor-pointer transition-all hover:scale-105 ${statusDetails.badgeClass}`}
+                                        >
+                                          <span className="flex items-center space-x-1.5">
+                                            <span className={`w-1.5 h-1.5 rounded-full ${statusDetails.dotClass}`} />
+                                            <span>{statusDetails.label}</span>
+                                          </span>
+                                          {resolvedRowStatus.status === "suspended" && activeDeadlineDate && (
+                                            <span className="text-[9px] font-normal opacity-80">
+                                              Até {activeDeadlineDate.toLocaleDateString("pt-BR")}
+                                            </span>
+                                          )}
+                                          {resolvedRowStatus.hasLegacyInconsistency && (
+                                            <span className="text-[9px] font-semibold text-amber-700 dark:text-amber-300 opacity-90">
+                                              {resolvedRowStatus.isDeactivated ? "active: false" : "Revisar registro"}
+                                            </span>
+                                          )}
+                                        </button>
+                                      );
+                                    })()}
                                   </td>
                                   <td className="p-3.5 text-right whitespace-nowrap">
                                     <button

@@ -330,11 +330,12 @@ describe("ETAPA 13 — Blindagem de Assinatura Remota, Reabertura Transacional e
       expect(redacted).toContain("token=[REDACTED]");
     });
 
-    it("detecta bloqueios temporais ativos em string ISO, number ms e Firestore Timestamp", () => {
+    it("detecta bloqueios temporais ativos em Firestore Timestamp e falha fechado para tipos incompatíveis com as Rules", () => {
       expect(hasUserActiveTemporalBlock({ blockExpiresAt: new Date(Date.now() + 60_000).toISOString() })).toBe(true);
       expect(hasUserActiveTemporalBlock({ suspendedUntil: Date.now() + 60_000 })).toBe(true);
       expect(hasUserActiveTemporalBlock({ blockExpiresAt: { toMillis: () => Date.now() + 60_000 } })).toBe(true);
-      expect(hasUserActiveTemporalBlock({ blockExpiresAt: new Date(Date.now() - 60_000).toISOString() })).toBe(false);
+      expect(hasUserActiveTemporalBlock({ blockExpiresAt: new Date(Date.now() - 60_000).toISOString() })).toBe(true);
+      expect(hasUserActiveTemporalBlock({ blockExpiresAt: { toMillis: () => Date.now() - 60_000 } })).toBe(false);
     });
   });
 

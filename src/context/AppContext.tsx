@@ -28,7 +28,12 @@ import {
 } from "../types";
 import { DEFAULT_DOCUMENT_TEMPLATES } from "../lib/defaultDocumentTemplates";
 import { DEFAULT_PROJECT_SETTINGS } from "../lib/projectSettingsConstants";
-import { sortUsersByCreationDesc, isAccountBlocked } from "../lib/accountStatusUtils";
+import {
+  sortUsersByCreationDesc,
+  isAccountBlocked,
+  isUserAccountActive,
+  parseLocalDateTimeInput,
+} from "../lib/accountStatusUtils";
 import {
   canOperateFormalReturn,
   canReopenFormalReturn,
@@ -469,9 +474,120 @@ export function isPersistedUserDocActive(docData: Partial<User> | Record<string,
   if (!docData || typeof docData !== "object") return false;
   if ((docData as Record<string, any>).active === false) return false;
   if (docData.role === "INTRUSO") return false;
-  const effectiveStatus = (docData.status || "active") as AccountStatus;
-  if (String(effectiveStatus).trim().toLowerCase() === "inactive") return false;
-  return !isAccountBlocked({ ...docData, status: effectiveStatus });
+  return isUserAccountActive(docData as Partial<User>) && !isAccountBlocked(docData as Partial<User>);
+}
+
+export interface UserStatusTransitionData {
+  firestorePayload: Record<string, any>;
+  applyToLocalUser: (prevUser: User) => User;
+  parsedSuspendedUntil: Date | null;
+  trimmedReason: string;
+}
+
+/**
+ * Pure builder for updateUserStatus() Firestore payload + React local-state merger.
+ * - Fails loudly when an invalid `suspendedUntil` deadline is provided.
+ * - Writes `active: true` and `deleteField()` for `suspendedUntil` + `blockExpiresAt` on reactivation.
+ * - Clears residual `blockExpiresAt` on suspend/ban as well so no leftover block unlocks an
+ *   indefinite suspension or violates Firestore Rules.
+ * - Never injects `undefined` properties into React state (deletes cleared keys cleanly).
+ */
+export function buildUserStatusTransitionData(params: {
+  newStatus: AccountStatus;
+  reason?: string;
+  suspendedUntil?: string | Date | Timestamp | null;
+  actorId: string;
+  actorName: string;
+  actorEmail: string;
+  nowIso?: string;
+}): UserStatusTransitionData {
+  const { newStatus, reason, suspendedUntil, actorId, actorName, actorEmail } = params;
+  if (newStatus !== "active" && newStatus !== "suspended" && newStatus !== "banned") {
+    throw new Error(`Status de conta inválido: '${String(newStatus)}'.`);
+  }
+
+  const nowIso = params.nowIso || new Date().toISOString();
+  const trimmedReason = typeof reason === "string" ? reason.trim() : "";
+
+  let parsedSuspendedUntil: Date | null = null;
+  if (newStatus === "suspended" && suspendedUntil !== undefined) {
+    if (suspendedUntil === null) {
+      throw new Error("Prazo de suspensão inválido (null). Informe uma data futura válida ou escolha suspensão por tempo indeterminado.");
+    }
+    if (typeof suspendedUntil === "string") {
+      const trimmedDeadline = suspendedUntil.trim();
+      if (!trimmedDeadline) {
+        throw new Error("Prazo de suspensão vazio. Informe uma data futura válida ou escolha suspensão por tempo indeterminado.");
+      }
+      const isLocalInput = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(trimmedDeadline);
+      parsedSuspendedUntil = isLocalInput
+        ? parseLocalDateTimeInput(trimmedDeadline)
+        : safeParseDate(trimmedDeadline);
+    } else {
+      parsedSuspendedUntil = safeParseDate(suspendedUntil);
+    }
+
+    if (!parsedSuspendedUntil || Number.isNaN(parsedSuspendedUntil.getTime()) || parsedSuspendedUntil.getTime() <= 0) {
+      throw new Error("Prazo de suspensão inválido: informe uma data válida no futuro ou escolha suspensão por tempo indeterminado.");
+    }
+  }
+
+  const firestoreSuspendedUntil =
+    newStatus === "suspended" && parsedSuspendedUntil
+      ? Timestamp.fromDate(parsedSuspendedUntil)
+      : deleteField();
+
+  const firestoreReason = trimmedReason ? trimmedReason : deleteField();
+
+  const firestorePayload: Record<string, any> = sanitizeFirestoreData({
+    status: newStatus,
+    ...(newStatus === "active" || newStatus === "suspended" ? { active: true } : {}),
+    statusUpdatedAt: nowIso,
+    statusUpdatedBy: actorName || actorEmail || "Administrador",
+    statusChangedAt: nowIso,
+    statusChangedBy: actorId,
+    statusChangedByName: actorName || actorEmail || "Administrador",
+    statusChangedByEmail: actorEmail || "",
+    statusReason: firestoreReason,
+    suspendedUntil: firestoreSuspendedUntil,
+    blockExpiresAt: deleteField(),
+  });
+
+  const applyToLocalUser = (prevUser: User): User => {
+    const nextUser: Record<string, any> = {
+      ...prevUser,
+      status: newStatus,
+      ...(newStatus === "active" || newStatus === "suspended" ? { active: true } : {}),
+      statusUpdatedAt: nowIso,
+      statusUpdatedBy: actorName || actorEmail || "Administrador",
+      statusChangedAt: nowIso,
+      statusChangedBy: actorId,
+      statusChangedByName: actorName || actorEmail || "Administrador",
+      statusChangedByEmail: actorEmail || "",
+    };
+
+    if (trimmedReason) {
+      nextUser.statusReason = trimmedReason;
+    } else {
+      delete nextUser.statusReason;
+    }
+
+    if (newStatus === "suspended" && parsedSuspendedUntil) {
+      nextUser.suspendedUntil = Timestamp.fromDate(parsedSuspendedUntil);
+    } else {
+      delete nextUser.suspendedUntil;
+    }
+
+    delete nextUser.blockExpiresAt;
+    return nextUser as User;
+  };
+
+  return {
+    firestorePayload,
+    applyToLocalUser,
+    parsedSuspendedUntil,
+    trimmedReason,
+  };
 }
 
 export function isPersistedDocEligibleForItemWrite(docData: Partial<User> | Record<string, any> | null | undefined): boolean {
@@ -2056,9 +2172,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const nextStatus = approved ? "APROVADO" : "REJEITADO";
     const userObj = allUsers.find((u) => u.id === userId);
     const userName = userObj ? userObj.name : userId;
-    const isBlocked = userObj
-      ? isAccountBlocked({ ...userObj, status: userObj.status || "active" })
-      : false;
+    const isBlocked = userObj ? isAccountBlocked(userObj) : false;
     const approvalPayload: Record<string, any> = {
       approvalStatus: nextStatus,
       ...(approved && !isBlocked
@@ -2081,9 +2195,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
       addToast(
         approved
-          ? `✅ Acesso do usuário '${userName}' aprovado com sucesso!`
+          ? isBlocked
+            ? `✅ Aprovação de '${userName}' registrada, mantendo o bloqueio/restrição de conta vigente.`
+            : `✅ Acesso do usuário '${userName}' aprovado com sucesso!`
           : `❌ Acesso do usuário '${userName}' rejeitado.`,
-        approved ? "success" : "info"
+        approved ? (isBlocked ? "warning" : "success") : "info"
       );
     } catch (e) {
       console.error("Erro ao atualizar aprovação no Firestore:", e);
@@ -2106,7 +2222,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const batch = writeBatch(db);
       for (const u of pendingList) {
-        const isBlocked = isAccountBlocked({ ...u, status: u.status || "active" });
+        const isBlocked = isAccountBlocked(u);
         batch.set(
           doc(db, "users", u.id),
           {
@@ -2127,7 +2243,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAllUsers((prev) =>
         prev.map((u) => {
           if (u.approvalStatus !== "PENDENTE") return u;
-          const isBlocked = isAccountBlocked({ ...u, status: u.status || "active" });
+          const isBlocked = isAccountBlocked(u);
           return isBlocked
             ? { ...u, approvalStatus: "APROVADO" }
             : {
@@ -2932,13 +3048,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const safePersistRole = isAttemptingDowngradeToIntruso ? existingData.role : targetRole;
         const safeApprovalStatus = isAttemptingDowngradeToIntruso ? existingData.approvalStatus : resolvedApprovalStatus;
 
+        const hasExistingStatusKey =
+          Object.prototype.hasOwnProperty.call(existingData, "status") &&
+          existingData.status !== undefined;
+        const shouldInitializeMissingStatus =
+          !hasExistingStatusKey && !isAccountBlocked(existingData);
+
         const updatedUser: User = sanitizeFirestoreData({
           ...existingData,
           id: fbUser.uid,
           email: userEmail || existingData.email || "",
           name: resolvedName,
           role: safePersistRole,
-          status: existingData.status || "active",
+          ...(hasExistingStatusKey
+            ? { status: existingData.status }
+            : shouldInitializeMissingStatus
+            ? { status: "active" }
+            : {}),
           avatarUrl: resolvedAvatar,
           courseOrDept: resolvedCourse,
           registrationNumber: resolvedRegistration,
@@ -2963,7 +3089,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           !existingData.id ||
           existingData.id !== fbUser.uid ||
           roleLegitimatelyChanged ||
-          !existingData.status ||
+          shouldInitializeMissingStatus ||
           !existingData.email ||
           existingData.emailVerified !== isVerified ||
           !existingData.createdAt ||
@@ -3068,13 +3194,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const resolvedRegistration = pendingData?.registrationNumber || legacyData.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
           const isVerified = Boolean(fbUser.emailVerified);
 
+          const hasLegacyStatusKey =
+            Object.prototype.hasOwnProperty.call(legacyData, "status") &&
+            legacyData.status !== undefined;
+          const shouldInitLegacyStatus =
+            !hasLegacyStatusKey && !isAccountBlocked(legacyData);
+
           const migratedUser: User = sanitizeFirestoreData({
             ...legacyData,
             id: fbUser.uid,
             email: userEmail,
             name: resolvedName,
             role: targetRole,
-            status: legacyData.status || "active",
+            ...(hasLegacyStatusKey
+              ? { status: legacyData.status }
+              : shouldInitLegacyStatus
+              ? { status: "active" }
+              : {}),
             avatarUrl: resolvedAvatar,
             courseOrDept: resolvedCourse,
             registrationNumber: resolvedRegistration,
@@ -4761,8 +4897,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           console.warn("[Auth Profile Sync Notice]:", authProfileErr);
         }
       }
-      await setDoc(doc(db, "users", updatedUser.id), updatedUser, { merge: true });
-      setCurrentUser(updatedUser);
+      const sanitizedProfilePayload = sanitizeFirestoreData({
+        id: updatedUser.id,
+        name: updatedUser.name,
+        courseOrDept: updatedUser.courseOrDept,
+        registrationNumber: updatedUser.registrationNumber,
+        phone: updatedUser.phone,
+        avatarUrl: updatedUser.avatarUrl,
+        updatedAt: new Date().toISOString(),
+      });
+      await setDoc(doc(db, "users", updatedUser.id), sanitizedProfilePayload, { merge: true });
+      setCurrentUser((prev) => ({
+        ...prev,
+        ...sanitizedProfilePayload,
+      }));
       addToast("Perfil atualizado no banco de dados!", "success");
     } catch (e) {
       handleFirestoreError(e, OperationType.WRITE, `users/${updatedUser.id}`);
@@ -4910,52 +5058,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const targetUser = allUsers.find((u) => u.id === targetUserId);
-    const nowIso = new Date().toISOString();
 
-    const parsedSuspendedUntil = (newStatus === "suspended" && suspendedUntil)
-      ? safeParseDate(suspendedUntil)
-      : null;
-
-    const firestoreSuspendedUntil = parsedSuspendedUntil
-      ? Timestamp.fromDate(parsedSuspendedUntil)
-      : deleteField();
-
-    const firestoreUpdatePayload: Record<string, any> = {
-      status: newStatus,
-      statusUpdatedAt: nowIso,
-      statusUpdatedBy: currentUser.name || currentUser.email || "Administrador",
-      statusChangedAt: nowIso,
-      statusChangedBy: currentUser.id,
-      statusChangedByName: currentUser.name || currentUser.email || "Administrador",
-      statusChangedByEmail: currentUser.email || "",
-      statusReason: reason?.trim() || undefined,
-      suspendedUntil: firestoreSuspendedUntil,
-      ...(newStatus === "active" ? { blockExpiresAt: deleteField() } : {}),
-    };
-
-    const localUserPayload: Partial<User> = {
-      status: newStatus,
-      statusUpdatedAt: nowIso,
-      statusUpdatedBy: currentUser.name || currentUser.email || "Administrador",
-      statusChangedAt: nowIso,
-      statusChangedBy: currentUser.id,
-      statusChangedByName: currentUser.name || currentUser.email || "Administrador",
-      statusChangedByEmail: currentUser.email || "",
-      statusReason: reason?.trim() || undefined,
-      suspendedUntil: parsedSuspendedUntil ? parsedSuspendedUntil.toISOString() : undefined,
-      ...(newStatus === "active" ? { blockExpiresAt: undefined } : {}),
-    };
+    let transition: UserStatusTransitionData;
+    try {
+      transition = buildUserStatusTransitionData({
+        newStatus,
+        reason,
+        suspendedUntil,
+        actorId: currentUser.id,
+        actorName: currentUser.name || currentUser.email || "Administrador",
+        actorEmail: currentUser.email || "",
+      });
+    } catch (validationErr: any) {
+      addToast(validationErr?.message || "Prazo de suspensão inválido.", "error");
+      throw validationErr;
+    }
 
     try {
       const userRef = doc(db, "users", targetUserId);
-      await setDoc(userRef, sanitizeFirestoreData(firestoreUpdatePayload), { merge: true });
+      await setDoc(userRef, transition.firestorePayload, { merge: true });
 
       setAllUsers((prev) =>
-        prev.map((u) => (u.id === targetUserId ? { ...u, ...localUserPayload } : u))
+        prev.map((u) => (u.id === targetUserId ? transition.applyToLocalUser(u) : u))
       );
 
       if (currentUser.id === targetUserId) {
-        setCurrentUser((prev) => ({ ...prev, ...localUserPayload }));
+        setCurrentUser((prev) => transition.applyToLocalUser(prev));
       }
 
       const actionType =
@@ -4973,12 +5101,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fieldChanged: "status",
         oldValue: targetUser?.status || "active",
         newValue: newStatus,
-        details: `Status do usuário '${targetUser?.name || targetUserId}' (${targetUser?.email || ""}) alterado de '${targetUser?.status || "active"}' para '${newStatus}'. Motivo: ${reason || "Não informado"}${suspendedUntil ? ` | Até: ${suspendedUntil}` : ""}`,
+        details: `Status do usuário '${targetUser?.name || targetUserId}' (${targetUser?.email || ""}) alterado de '${targetUser?.status || "active"}' para '${newStatus}'. Motivo: ${transition.trimmedReason || "Não informado"}${transition.parsedSuspendedUntil ? ` | Até: ${transition.parsedSuspendedUntil.toISOString()}` : ""}`,
       });
 
       await logAdminAction(
         actionType as any,
-        `Alterou status da conta de '${targetUser?.name || targetUserId}' para '${newStatus}'. Motivo: ${reason || "Não informado"}`
+        `Alterou status da conta de '${targetUser?.name || targetUserId}' para '${newStatus}'. Motivo: ${transition.trimmedReason || "Não informado"}`
       );
 
       const statusLabels: Record<AccountStatus, string> = {

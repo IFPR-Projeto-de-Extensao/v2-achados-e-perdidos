@@ -658,31 +658,95 @@ export function parseUserExpiryMs(val: any): number | null {
   return null;
 }
 
+function extractFirestoreStandingTimestampMs(val: unknown): number | null {
+  if (!val || typeof val !== "object" || Array.isArray(val) || val instanceof Date) {
+    return null;
+  }
+  const candidate = val as Record<string, any>;
+  try {
+    if (typeof candidate.toMillis === "function") {
+      const ms = candidate.toMillis();
+      return typeof ms === "number" && Number.isFinite(ms) && ms > 0 ? ms : null;
+    }
+    if (typeof candidate.toDate === "function") {
+      const d = candidate.toDate();
+      if (d instanceof Date) {
+        const ms = d.getTime();
+        return Number.isFinite(ms) && ms > 0 ? ms : null;
+      }
+      return null;
+    }
+    const sec =
+      typeof candidate.seconds === "number" && Number.isFinite(candidate.seconds)
+        ? candidate.seconds
+        : typeof candidate._seconds === "number" && Number.isFinite(candidate._seconds)
+        ? candidate._seconds
+        : null;
+    if (sec !== null) {
+      const rawNanos =
+        typeof candidate.seconds === "number" ? candidate.nanoseconds : candidate._nanoseconds;
+      if (rawNanos !== undefined && (typeof rawNanos !== "number" || !Number.isFinite(rawNanos))) {
+        return null;
+      }
+      const nanos = rawNanos ?? 0;
+      const ms = sec * 1000 + Math.floor(nanos / 1_000_000);
+      return Number.isFinite(ms) && ms > 0 ? ms : null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function evaluateFirestoreStandingDeadline(
+  udata: Record<string, any>,
+  fieldKey: "blockExpiresAt" | "suspendedUntil",
+  nowMs: number = Date.now()
+): { isPresent: boolean; isValid: boolean; isInvalid: boolean; isActive: boolean; isExpired: boolean } {
+  if (!udata || typeof udata !== "object" || !Object.prototype.hasOwnProperty.call(udata, fieldKey) || udata[fieldKey] === undefined) {
+    return { isPresent: false, isValid: false, isInvalid: false, isActive: false, isExpired: false };
+  }
+  const ms = extractFirestoreStandingTimestampMs(udata[fieldKey]);
+  if (ms === null) {
+    return { isPresent: true, isValid: false, isInvalid: true, isActive: false, isExpired: false };
+  }
+  return {
+    isPresent: true,
+    isValid: true,
+    isInvalid: false,
+    isActive: ms > nowMs,
+    isExpired: ms <= nowMs,
+  };
+}
+
 export function hasUserActiveTemporalBlock(udata: Record<string, any> | null | undefined): boolean {
   if (!udata || typeof udata !== "object") return false;
   const nowMs = Date.now();
-  const blockExpiresMs = parseUserExpiryMs(udata.blockExpiresAt);
-  const suspendedUntilMs = parseUserExpiryMs(udata.suspendedUntil);
-  return Boolean(
-    (blockExpiresMs !== null && blockExpiresMs > nowMs) ||
-    (suspendedUntilMs !== null && suspendedUntilMs > nowMs)
-  );
+  const blockEval = evaluateFirestoreStandingDeadline(udata, "blockExpiresAt", nowMs);
+  const suspendedEval = evaluateFirestoreStandingDeadline(udata, "suspendedUntil", nowMs);
+  return Boolean(blockEval.isInvalid || suspendedEval.isInvalid || blockEval.isActive || suspendedEval.isActive);
 }
 
 export function isUserBlockedOrInactive(udata: Record<string, any> | null | undefined): boolean {
   if (!udata || typeof udata !== "object") return false;
-  const normStatus = String(udata.status || "").trim().toLowerCase();
   if (udata.active === false) return true;
-  if (hasUserActiveTemporalBlock(udata)) return true;
-  if (normStatus === "banned" || normStatus === "inactive") return true;
-  if (normStatus === "suspended") {
-    const blockExpiresMs = parseUserExpiryMs(udata.blockExpiresAt);
-    const suspendedUntilMs = parseUserExpiryMs(udata.suspendedUntil);
-    const hasExpiredDate =
-      (blockExpiresMs !== null || suspendedUntilMs !== null) &&
-      (blockExpiresMs === null || blockExpiresMs <= Date.now()) &&
-      (suspendedUntilMs === null || suspendedUntilMs <= Date.now());
-    if (!hasExpiredDate) return true;
+
+  const hasStatusKey = Object.prototype.hasOwnProperty.call(udata, "status") && udata.status !== undefined;
+  if (hasStatusKey && udata.status !== "active" && udata.status !== "suspended") {
+    return true;
+  }
+  const effectiveStatus = hasStatusKey ? (udata.status as string) : "active";
+
+  const nowMs = Date.now();
+  const blockEval = evaluateFirestoreStandingDeadline(udata, "blockExpiresAt", nowMs);
+  const suspendedEval = evaluateFirestoreStandingDeadline(udata, "suspendedUntil", nowMs);
+
+  if (blockEval.isInvalid || suspendedEval.isInvalid) return true;
+  if (blockEval.isActive || suspendedEval.isActive) return true;
+
+  if (effectiveStatus === "suspended") {
+    // Paridade com `statusVal == 'suspended' && hasS`: apenas suspendedUntil expirado válido desbloqueia
+    return !(suspendedEval.isValid && suspendedEval.isExpired);
   }
   return false;
 }
@@ -1288,18 +1352,10 @@ export async function validateStaffOrAdminAccess(
     }
 
     const udata = (typeof userDoc.data === "function" ? userDoc.data() : userDoc.data) || {};
-    const normStatus = String(udata.status || "").trim().toLowerCase();
-    const hasActiveTemporalBlock = hasUserActiveTemporalBlock(udata);
 
-    // 1. Strict status check: reject suspended, banned, inactive, active === false, or active temporal suspension
-    if (
-      normStatus === "suspended" ||
-      normStatus === "banned" ||
-      normStatus === "inactive" ||
-      udata.active === false ||
-      hasActiveTemporalBlock
-    ) {
-      console.warn(`[Auth RBAC Security] Usuário ${authUser.uid} com status bloqueado ('${normStatus}', active=${udata.active}, temporalBlock=${hasActiveTemporalBlock}). Operação negada.`);
+    // 1. Strict standing check with full Firestore Rules parity (isUserBlockedOrInactive)
+    if (isUserBlockedOrInactive(udata)) {
+      console.warn(`[Auth RBAC Security] Usuário ${authUser.uid} com status bloqueado ou incompatível ('${String(udata.status)}', active=${udata.active}). Operação negada.`);
       return {
         authorized: false,
         statusCode: 403,
@@ -8053,15 +8109,7 @@ export async function executeAdminReopenReturn(
       return { success: false, statusCode: 403, error: "Perfil administrativo não encontrado no sistema." };
     }
     const udata = (typeof userDoc.data === "function" ? userDoc.data() : userDoc.data) || {};
-    const normStatus = String(udata.status || "").trim().toLowerCase();
-    const hasActiveTemporalBlock = hasUserActiveTemporalBlock(udata);
-    if (
-      normStatus === "suspended" ||
-      normStatus === "banned" ||
-      normStatus === "inactive" ||
-      udata.active === false ||
-      hasActiveTemporalBlock
-    ) {
+    if (isUserBlockedOrInactive(udata)) {
       return { success: false, statusCode: 403, error: "Conta administrativa suspensa ou inativa." };
     }
 

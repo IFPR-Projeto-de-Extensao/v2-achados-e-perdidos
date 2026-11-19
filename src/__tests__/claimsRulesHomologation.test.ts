@@ -1992,6 +1992,221 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
       expect(checkSnap.exists()).toBe(false);
     });
   });
+
+  it("C-52: Bloqueio fail-closed quando status='active' mas 'blockExpiresAt' é string ISO-8601 expirada (403)", async () => {
+    const uid = "aluno_c52_uid";
+    const email = "aluno.c52@estudantes.ifpr.edu.br";
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", uid), {
+        id: uid,
+        email,
+        name: "Estudante C-52",
+        role: "ALUNO",
+        status: "active",
+        active: true,
+        blockExpiresAt: new Date(Date.now() - 86400000).toISOString(),
+        approvalStatus: "APROVADO",
+        emailVerified: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+    });
+
+    const userDb = testEnv.authenticatedContext(uid, { email, email_verified: true }).firestore();
+    const payload = getValidClaimPayload(ITEM_ENCONTRADO_ID, uid, email);
+    await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
+  });
+
+  it("C-53: Bloqueio fail-closed quando status='active' mas 'suspendedUntil' é string ISO-8601 futura (403)", async () => {
+    const uid = "aluno_c53_uid";
+    const email = "aluno.c53@estudantes.ifpr.edu.br";
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", uid), {
+        id: uid,
+        email,
+        name: "Estudante C-53",
+        role: "ALUNO",
+        status: "active",
+        active: true,
+        suspendedUntil: new Date(Date.now() + 86400000).toISOString(),
+        approvalStatus: "APROVADO",
+        emailVerified: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+    });
+
+    const userDb = testEnv.authenticatedContext(uid, { email, email_verified: true }).firestore();
+    const payload = getValidClaimPayload(ITEM_ENCONTRADO_ID, uid, email);
+    await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
+  });
+
+  it("C-54: Bloqueio fail-closed quando 'blockExpiresAt' possui valor boolean (403)", async () => {
+    const uid = "aluno_c54_uid";
+    const email = "aluno.c54@estudantes.ifpr.edu.br";
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", uid), {
+        id: uid,
+        email,
+        name: "Estudante C-54",
+        role: "ALUNO",
+        status: "active",
+        active: true,
+        blockExpiresAt: true,
+        approvalStatus: "APROVADO",
+        emailVerified: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+    });
+
+    const userDb = testEnv.authenticatedContext(uid, { email, email_verified: true }).firestore();
+    const payload = getValidClaimPayload(ITEM_ENCONTRADO_ID, uid, email);
+    await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
+  });
+
+  it("C-55: Bloqueio fail-closed quando 'blockExpiresAt' possui valor array (403)", async () => {
+    const uid = "aluno_c55_uid";
+    const email = "aluno.c55@estudantes.ifpr.edu.br";
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", uid), {
+        id: uid,
+        email,
+        name: "Estudante C-55",
+        role: "ALUNO",
+        status: "active",
+        active: true,
+        blockExpiresAt: ["2026-01-01"],
+        approvalStatus: "APROVADO",
+        emailVerified: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+    });
+
+    const userDb = testEnv.authenticatedContext(uid, { email, email_verified: true }).firestore();
+    const payload = getValidClaimPayload(ITEM_ENCONTRADO_ID, uid, email);
+    await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
+  });
+
+  it("C-56: Bloqueio fail-closed quando 'suspendedUntil' possui valor object/map não Timestamp (403)", async () => {
+    const uid = "aluno_c56_uid";
+    const email = "aluno.c56@estudantes.ifpr.edu.br";
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", uid), {
+        id: uid,
+        email,
+        name: "Estudante C-56",
+        role: "ALUNO",
+        status: "active",
+        active: true,
+        suspendedUntil: { foo: "bar" },
+        approvalStatus: "APROVADO",
+        emailVerified: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+    });
+
+    const userDb = testEnv.authenticatedContext(uid, { email, email_verified: true }).firestore();
+    const payload = getValidClaimPayload(ITEM_ENCONTRADO_ID, uid, email);
+    await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
+  });
+
+  it("C-57: Bloqueio quando status='active' mas active=false (403)", async () => {
+    const uid = "aluno_c57_uid";
+    const email = "aluno.c57@estudantes.ifpr.edu.br";
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", uid), {
+        id: uid,
+        email,
+        name: "Estudante C-57",
+        role: "ALUNO",
+        status: "active",
+        active: false,
+        approvalStatus: "APROVADO",
+        emailVerified: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+    });
+
+    const userDb = testEnv.authenticatedContext(uid, { email, email_verified: true }).firestore();
+    const payload = getValidClaimPayload(ITEM_ENCONTRADO_ID, uid, email);
+    await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
+  });
+
+  it("C-58: Liberação permitida quando status='active', active=true e blockExpiresAt é Timestamp expirado (200)", async () => {
+    const uid = "aluno_c58_uid";
+    const email = "aluno.c58@estudantes.ifpr.edu.br";
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", uid), {
+        id: uid,
+        email,
+        name: "Estudante C-58",
+        role: "ALUNO",
+        status: "active",
+        active: true,
+        blockExpiresAt: Timestamp.fromDate(new Date(Date.now() - 86400000)),
+        approvalStatus: "APROVADO",
+        emailVerified: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+    });
+
+    const userDb = testEnv.authenticatedContext(uid, { email, email_verified: true }).firestore();
+    const payload = getValidClaimPayload(ITEM_ENCONTRADO_ID, uid, email);
+    await assertSucceeds(setDoc(doc(userDb, "claims", payload.id), payload));
+  });
+
+  it("C-59: Bloqueio mantido quando status='suspended' sem 'suspendedUntil' mesmo com 'blockExpiresAt' Timestamp expirado (403 — correção hasS)", async () => {
+    const uid = "aluno_c59_uid";
+    const email = "aluno.c59@estudantes.ifpr.edu.br";
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", uid), {
+        id: uid,
+        email,
+        name: "Estudante C-59",
+        role: "ALUNO",
+        status: "suspended",
+        active: true,
+        blockExpiresAt: Timestamp.fromDate(new Date(Date.now() - 86400000)),
+        approvalStatus: "APROVADO",
+        emailVerified: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+    });
+
+    const userDb = testEnv.authenticatedContext(uid, { email, email_verified: true }).firestore();
+    const payload = getValidClaimPayload(ITEM_ENCONTRADO_ID, uid, email);
+    await assertFails(setDoc(doc(userDb, "claims", payload.id), payload));
+  });
+
+  it("C-60: Desbloqueio automático quando status='suspended', suspendedUntil é Timestamp expirado e blockExpiresAt está ausente (200)", async () => {
+    const uid = "aluno_c60_uid";
+    const email = "aluno.c60@estudantes.ifpr.edu.br";
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", uid), {
+        id: uid,
+        email,
+        name: "Estudante C-60",
+        role: "ALUNO",
+        status: "suspended",
+        active: true,
+        suspendedUntil: Timestamp.fromDate(new Date(Date.now() - 86400000)),
+        approvalStatus: "APROVADO",
+        emailVerified: true,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+    });
+
+    const userDb = testEnv.authenticatedContext(uid, { email, email_verified: true }).firestore();
+    const payload = getValidClaimPayload(ITEM_ENCONTRADO_ID, uid, email);
+    await assertSucceeds(setDoc(doc(userDb, "claims", payload.id), payload));
+  });
 });
 
 describe("LOCALIZA+ v1.10.9 — Auditoria Unitária TypeScript: Paridade de resolveAccountStatus com Firestore Rules", () => {
@@ -2043,11 +2258,11 @@ describe("LOCALIZA+ v1.10.9 — Auditoria Unitária TypeScript: Paridade de reso
     expect(res.isExpiredSuspension).toBe(false);
   });
 
-  it("UT-06: Paridade com C-37 (suspended + ambos expirados -> active/liberado)", () => {
+  it("UT-06: Paridade com C-37 (suspended + ambos Timestamps expirados -> active/liberado)", () => {
     const res = resolveAccountStatus({
       status: "suspended",
-      blockExpiresAt: new Date(Date.now() - 86400000).toISOString(),
-      suspendedUntil: new Date(Date.now() - 3600000).toISOString(),
+      blockExpiresAt: Timestamp.fromDate(new Date(Date.now() - 86400000)),
+      suspendedUntil: Timestamp.fromDate(new Date(Date.now() - 3600000)),
     });
     expect(res.status).toBe("active");
     expect(res.isExpiredSuspension).toBe(true);
@@ -2184,14 +2399,14 @@ describe("LOCALIZA+ v1.10.9 — Auditoria Unitária TypeScript: Paridade de reso
     expect(evalResult.isExpired).toBe(false);
   });
 
-  it("UT-21: usuário sem propriedade 'status' (não presume active, retorna suspended e isUserAccountActive === false)", () => {
+  it("UT-21: Paridade com C-26 — usuário sem propriedade 'status' mantém compatibilidade legada como active e sinaliza inconsistência", () => {
     const user = { id: "u-no-status", role: "ALUNO" as const };
     const res = resolveAccountStatus(user);
-    expect(res.status).not.toBe("active");
-    expect(res.status).toBe("suspended");
-    expect(res.isExpiredSuspension).toBe(false);
-    expect(isUserAccountActive(user)).toBe(false);
-    expect(isAccountBlocked(user)).toBe(true);
+    expect(res.status).toBe("active");
+    expect(res.hasMissingStatusField).toBe(true);
+    expect(res.hasLegacyInconsistency).toBe(true);
+    expect(isUserAccountActive(user)).toBe(true);
+    expect(isAccountBlocked(user)).toBe(false);
   });
 
   it("UT-21b: usuário nulo ou indefinido (não presume active, retorna suspended e isUserAccountActive === false)", () => {
@@ -2206,14 +2421,14 @@ describe("LOCALIZA+ v1.10.9 — Auditoria Unitária TypeScript: Paridade de reso
     expect(isAccountBlocked(undefined)).toBe(true);
   });
 
-  it("UT-22: usuário com 'status: undefined' (não presume active, retorna suspended e isUserAccountActive === false)", () => {
+  it("UT-22: Paridade com C-26 — usuário com 'status: undefined' (chave ausente no Firestore) mantém compatibilidade legada", () => {
     const user = { id: "u-undef-status", role: "ALUNO" as const, status: undefined };
     const res = resolveAccountStatus(user);
-    expect(res.status).not.toBe("active");
-    expect(res.status).toBe("suspended");
-    expect(res.isExpiredSuspension).toBe(false);
-    expect(isUserAccountActive(user)).toBe(false);
-    expect(isAccountBlocked(user)).toBe(true);
+    expect(res.status).toBe("active");
+    expect(res.hasMissingStatusField).toBe(true);
+    expect(res.hasLegacyInconsistency).toBe(true);
+    expect(isUserAccountActive(user)).toBe(true);
+    expect(isAccountBlocked(user)).toBe(false);
   });
 
   it("UT-23: usuário com 'status: null' (não presume active, retorna suspended e isUserAccountActive === false)", () => {
@@ -2265,13 +2480,13 @@ describe("LOCALIZA+ v1.10.9 — Auditoria Unitária TypeScript: Paridade de reso
     expect(isAccountBlocked(user)).toBe(false);
   });
 
-  it("UT-28: usuário com 'status: \"suspended\"' continua sujeito à lógica temporal", () => {
+  it("UT-28: usuário com 'status: \"suspended\"' continua sujeito à lógica temporal (Timestamp nativo)", () => {
     // 28.1 - Prazo futuro: permanece suspenso
     const userFuturo = {
       id: "u-susp-future",
       role: "ALUNO" as const,
       status: "suspended" as const,
-      suspendedUntil: new Date(Date.now() + 86400000).toISOString(),
+      suspendedUntil: Timestamp.fromDate(new Date(Date.now() + 86400000)),
     };
     const resFuturo = resolveAccountStatus(userFuturo);
     expect(resFuturo.status).toBe("suspended");
@@ -2279,12 +2494,12 @@ describe("LOCALIZA+ v1.10.9 — Auditoria Unitária TypeScript: Paridade de reso
     expect(isUserAccountActive(userFuturo)).toBe(false);
     expect(isAccountBlocked(userFuturo)).toBe(true);
 
-    // 28.2 - Prazo expirado válido: auto-liberação para active
+    // 28.2 - Prazo expirado válido (Timestamp): auto-liberação para active
     const userExpirado = {
       id: "u-susp-past",
       role: "ALUNO" as const,
       status: "suspended" as const,
-      suspendedUntil: new Date(Date.now() - 86400000).toISOString(),
+      suspendedUntil: Timestamp.fromDate(new Date(Date.now() - 86400000)),
     };
     const resExpirado = resolveAccountStatus(userExpirado);
     expect(resExpirado.status).toBe("active");

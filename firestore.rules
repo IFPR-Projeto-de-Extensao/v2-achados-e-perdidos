@@ -56,7 +56,7 @@ service cloud.firestore {
       return (!('active' in u) || u.active != false) &&
              (!hasB || (u.blockExpiresAt is timestamp && request.time >= u.blockExpiresAt)) &&
              (!hasS || (u.suspendedUntil is timestamp && request.time >= u.suspendedUntil)) &&
-             (statusVal == 'active' || (statusVal == 'suspended' && (hasB || hasS)));
+             (statusVal == 'active' || (statusVal == 'suspended' && hasS));
     }
 
     function isUserDocActiveData(u) {

@@ -347,19 +347,38 @@ export const AccountManagementView: React.FC = () => {
 
                       {/* Status Badge */}
                       <td className="p-3.5">
-                        <div className="flex flex-col items-start gap-0.5">
-                          <span
-                            className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${statusDetails.badgeClass}`}
-                          >
-                            <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${statusDetails.dotClass}`} />
-                            {statusDetails.label}
-                          </span>
-                          {resolved.status === "suspended" && resolved.suspendedUntil && (
-                            <span className="text-[9px] text-slate-400 font-mono">
-                              Até {safeParseDate(resolved.suspendedUntil)?.toLocaleDateString("pt-BR")}
-                            </span>
-                          )}
-                        </div>
+                        {(() => {
+                          const activeDeadlineRaw = resolved.suspendedUntilEval.isActive
+                            ? u.suspendedUntil
+                            : resolved.blockExpiresAtEval.isActive
+                            ? u.blockExpiresAt
+                            : undefined;
+                          const activeDeadlineDate = activeDeadlineRaw ? safeParseDate(activeDeadlineRaw) : null;
+                          return (
+                            <div className="flex flex-col items-start gap-0.5">
+                              <span
+                                title={statusDetails.inconsistencyAlert || statusDetails.description}
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border ${statusDetails.badgeClass}`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${statusDetails.dotClass}`} />
+                                {statusDetails.label}
+                              </span>
+                              {resolved.status === "suspended" && activeDeadlineDate && (
+                                <span className="text-[9px] text-slate-400 font-mono">
+                                  Até {activeDeadlineDate.toLocaleDateString("pt-BR")}
+                                </span>
+                              )}
+                              {resolved.hasLegacyInconsistency && (
+                                <span
+                                  title={statusDetails.inconsistencyAlert}
+                                  className="text-[9px] text-amber-600 dark:text-amber-400 font-medium"
+                                >
+                                  {resolved.isDeactivated ? "active: false" : "Registro legado/incompatível"}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
 
                       {/* Direct Actions by Status */}

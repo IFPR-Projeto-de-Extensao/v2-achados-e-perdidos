@@ -382,15 +382,27 @@ describe("Revisão Estática Itens 1, 2 e 3 — Auth, Bloqueios e Timestamp Fail
       }
     });
 
-    it("permite conta com status=suspended cuja data blockExpiresAt já expirou e active !== false", async () => {
+    it("mantém bloqueio para status=suspended sem suspendedUntil mesmo com blockExpiresAt expirado e libera apenas com suspendedUntil Timestamp expirado", async () => {
       const pastDate = new Date(Date.now() - 10 * 60 * 1000);
+
+      // Caso 1: Suspensão indefinida (sem suspendedUntil) com blockExpiresAt residual expirado -> DEVE permanecer bloqueada (paridade hasS)
+      const indefiniteResidualDoc = {
+        uid: "uid-indefinite-residual",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "suspended",
+        blockExpiresAt: { seconds: Math.floor(pastDate.getTime() / 1000), nanoseconds: 0 },
+      };
+      expect(isUserBlockedOrInactive(indefiniteResidualDoc)).toBe(true);
+
+      // Caso 2: Suspensão temporária com suspendedUntil Timestamp expirado e active !== false -> liberada
       const uid = "uid-expired-suspension";
       const doc = {
         uid,
         role: "SERVIDOR",
         approvalStatus: "APROVADO",
         status: "suspended",
-        blockExpiresAt: { seconds: Math.floor(pastDate.getTime() / 1000), nanoseconds: 0 },
+        suspendedUntil: { seconds: Math.floor(pastDate.getTime() / 1000), nanoseconds: 0 },
       };
 
       expect(isUserBlockedOrInactive(doc)).toBe(false);
