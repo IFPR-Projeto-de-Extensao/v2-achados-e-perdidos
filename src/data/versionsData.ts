@@ -46,6 +46,20 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "ADMIN",
         tag: "D3 Engine & Métricas",
       },
+      {
+        id: "v11013-add-etapa33-reconstrucao-integral-firestore-rules",
+        title: "Etapa 33: Reconstrução Integral das Firestore Security Rules, Matriz de Permissões e Runbook de Publicação",
+        description: "Mapeamento estático completo das 32 coleções (0 subcoleções) do LOCALIZA+ e reconstrução integral da arquitetura Zero-Trust em arquivo candidato isolado (scripts/audit/candidates/etapa33-reconstrucao/firestore.rules, 55 funções auxiliares, 34 blocos match e 147 operações explícitas, preservando firestore.rules raiz inalterado): blindagem dos 16 campos de governança/standing em /users contra autoedição, proteção do Root Admin (UID pinning) contra ADMIN comum, declaração explícita de bloqueio das 4 coleções server-only/legadas/sonda (/ai_audit_logs, /analytics_events, /perdas, /test), anti-spoofing R-03 em /item_private com compatibilidade para editItem retroativo, e-mail case-insensitive R-02 em 5 coleções de auditoria/suporte e política fail-closed isStandingActive(u). Homologação real no Cloud Firestore Emulator (OpenJDK 21) com 165/165 testes aprovados (0 falhas, 0 ignorados) cobrindo os 20 domínios de segurança, além de PERMISSIONS_MATRIX.md e PUBLICATION_RUNBOOK.md para o banco nomeado ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1. Nenhuma regra foi publicada em produção nesta etapa.",
+        module: "FIRESTORE",
+        tag: "Etapa 33 • Arquitetura de Segurança",
+      },
+      {
+        id: "v11013-add-etapa34-auditoria-publicacao-banco-nomeado-e-rollback",
+        title: "Etapa 34: Auditoria Final de Publicação, Validação do Banco Nomeado no Firebase CLI e Script de Backup/Rollback",
+        description: "Verificação empírica contra o motor real do firebase-tools@15.34.1 (Config.load, getFirestoreConfig, RulesDeploy e requirePermissions) confirmando que o arquivo candidato da Etapa 33 e o firestore.rules raiz permanecem íntegros (SHA-256 inalterados), detectando erro de caminho relativo em firebase.publish.json da Etapa 33 com --config e insuficiência do conjunto IAM anterior frente às verificações datastore.indexes.* e firebase.projects.get do CLI; criação do pacote validado com scripts/audit/candidates/firebase.publish.etapa34.json (validado via RulesDeploy.addFile exclusivamente para o banco nomeado ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1 sem travessia de diretório) e scripts/audit/candidates/etapa34-publicacao/ (backup-and-rollback.sh via Firebase Rules API v1 independente de git checkout HEAD e ETAPA34_PUBLICATION_AUDIT.md documentando erratas e o impacto separado das Cloud Functions em (default)). Nenhuma regra foi publicada em produção; publicação aguarda autenticação e autorização expressa do operador.",
+        module: "FIRESTORE",
+        tag: "Etapa 34 • Publicação & Rollback",
+      },
     ],
     bugFixes: [
       {
@@ -141,7 +155,7 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
       },
     ],
     stats: {
-      additionsCount: 2,
+      additionsCount: 4,
       fixesCount: 13,
     },
   },
