@@ -8,6 +8,7 @@ import { normalizeCategory, CANONICAL_ITEM_CATEGORIES } from "../lib/categoryUti
 import { getUploadTaskId } from "../lib/indexedDB";
 import { auth } from "../lib/firebase";
 import { isAccountBlocked, resolveAccountStatus } from "../lib/accountStatusUtils";
+import { evaluateRegisterViewAccess } from "../lib/itemRegistrationPipeline";
 import {
   triggerVibration,
   vibrateClick,
@@ -217,13 +218,14 @@ export const RegisterItemView: React.FC = () => {
       "Apenas usuários autenticados podem cadastrar novos itens no IFPR. Faça login para continuar.",
   });
 
-  // Strict Access Guard: only evaluate unauthorized role AFTER auth finishes hydrating and user is not guest
-  const isUnauthorized =
-    !isAuthLoading &&
-    !isGuest &&
-    (currentUser?.role === "ALUNO" ||
-      currentUser?.role === "INTRUSO" ||
-      (currentUser?.role === "SERVIDOR" && currentUser?.approvalStatus !== "APROVADO"));
+  // Strict Access Guard: aligned with 8-profile permission matrix AFTER auth finishes hydrating and user is not guest
+  const registerAccess = evaluateRegisterViewAccess({
+    isAuthLoading,
+    isGuest,
+    currentUser,
+    authUser: auth.currentUser,
+  });
+  const isUnauthorized = registerAccess.isUnauthorized;
 
   useEffect(() => {
     if (isUnauthorized) {
@@ -1005,6 +1007,8 @@ export const RegisterItemView: React.FC = () => {
         setRegistrationFeedback({
           status: "ERROR",
           item: res.newItem,
+          error: classifiedMsg,
+          taskId: getUploadTaskId(res.newItem.id),
         });
       } else {
         vibrateSuccess();
@@ -1017,6 +1021,7 @@ export const RegisterItemView: React.FC = () => {
         setRegistrationFeedback({
           status: "PENDING_SYNC",
           item: res.newItem,
+          taskId: getUploadTaskId(res.newItem.id),
         });
       }
 
@@ -2285,6 +2290,18 @@ export const RegisterItemView: React.FC = () => {
                   </strong>{" "}
                   foi protegido com segurança no banco local (IndexedDB) para não se perder.
                 </p>
+                {registrationFeedback.error && (
+                  <div
+                    role="alert"
+                    className="mt-3 max-w-lg mx-auto rounded-xl border border-rose-200 dark:border-rose-800/80 bg-rose-50/80 dark:bg-rose-950/30 px-4 py-3 text-left text-xs text-rose-800 dark:text-rose-200"
+                  >
+                    <p className="font-bold mb-0.5">Detalhe do diagnóstico:</p>
+                    <p className="leading-relaxed">{registrationFeedback.error}</p>
+                    <p className="mt-1 font-mono text-[11px] opacity-80">
+                      ID preservado na fila local: {registrationFeedback.item.id}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3 pt-4 max-w-md mx-auto">

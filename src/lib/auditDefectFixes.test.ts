@@ -762,8 +762,8 @@ describe("Auditoria Final — Validação dos 5 Defeitos Comprovados (v1.10.13)"
     it("4.8 preserva a fila IndexedDB em falhas de autoria/permissão/conflito em AppContext.tsx", () => {
       const ctxSrc = fs.readFileSync(path.resolve(process.cwd(), "src/context/AppContext.tsx"), "utf8");
       const fnIdx = ctxSrc.indexOf("const syncOfflineQueue = async");
-      const fnEnd = ctxSrc.indexOf("const retryFailedSyncEntry", fnIdx);
-      const syncBody = ctxSrc.slice(fnIdx, fnEnd > fnIdx ? fnEnd : fnIdx + 20000);
+      const fnEnd = ctxSrc.indexOf("const handleSwMessage", fnIdx);
+      const syncBody = ctxSrc.slice(fnIdx, fnEnd > fnIdx ? fnEnd : fnIdx + 30000);
 
       expect(syncBody).toContain("evaluateOfflineSyncOwnership(");
       expect(syncBody).not.toContain("isApprovedAdminSync");

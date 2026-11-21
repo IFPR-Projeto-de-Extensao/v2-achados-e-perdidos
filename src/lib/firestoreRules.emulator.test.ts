@@ -8,6 +8,8 @@ import {
 import { collection, doc, setDoc, getDoc, getDocs, updateDoc, deleteDoc, deleteField, query, where, writeBatch, Timestamp } from "firebase/firestore";
 import fs from "fs";
 import path from "path";
+import { buildItemRegistrationWritePlan } from "./itemRegistrationPipeline";
+import { buildUserStatusTransitionData } from "../context/AppContext";
 
 let testEnv: RulesTestEnvironment | null = null;
 
@@ -74,7 +76,8 @@ async function verifyFirestoreEmulatorSignature(host: string, port: number): Pro
 
 describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real Security Rules Validation", () => {
   beforeAll(async () => {
-    const rulesPath = path.resolve(process.cwd(), "firestore.rules");
+    const configuredRulesPath = process.env.FIRESTORE_RULES_PATH || "firestore.rules";
+    const rulesPath = path.resolve(process.cwd(), configuredRulesPath);
     const rules = fs.readFileSync(rulesPath, "utf-8");
 
     const hostAndPort = process.env.FIRESTORE_EMULATOR_HOST?.split(":") || ["127.0.0.1", "8080"];
@@ -2807,6 +2810,618 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
       );
     });
   });
+
+  describe("AUDITORIA INTEGRAL DO CADASTRO — Batch Atômico Real (/items + /item_history + /item_private) e Atomicidade", () => {
+    const ROOT_UID = "hCG5mDgK1fRaTojULzlM7dXvb7n2";
+    const ROOT_EMAIL = "paulocauan39@gmail.com";
+
+    const commitRealWritePlan = async (
+      db: any,
+      params: {
+        itemId: string;
+        uid: string;
+        actorName: string;
+        role: "ADMIN" | "SERVIDOR";
+        secretVerificationHint?: string;
+        corruptHistoryActorId?: string;
+      }
+    ) => {
+      const plan = buildItemRegistrationWritePlan({
+        item: {
+          id: params.itemId,
+          title: "Garrafa Térmica Azul 750ml",
+          description: "Encontrada no Bloco 2 próximo ao bebedouro central.",
+          category: "Garrafas & Marmitas",
+          type: "ENCONTRADO",
+          status: "ENCONTRADO",
+          color: "Azul",
+          brand: "Kouda",
+          location: "Bloco 2",
+          date: "2026-11-20",
+          imageUrl: "",
+          contactInfo: "Guarita Principal IFPR",
+          createdAt: new Date().toISOString(),
+          qrCodeId: `QR-${params.itemId}`,
+          registeredByUserId: params.uid,
+          registeredByName: params.actorName,
+          registeredByRole: params.role,
+          storageDeadlineDays: 90,
+          storageDeadlineDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+          ...(params.secretVerificationHint ? { secretVerificationHint: params.secretVerificationHint } : {}),
+        },
+        authUid: params.uid,
+        actorName: params.actorName,
+        effectiveRole: params.role,
+      });
+
+      const batch = writeBatch(db);
+      batch.set(doc(db, "items", plan.itemId), plan.itemPayload);
+      batch.set(doc(db, "item_history", plan.historyEntryId), {
+        ...plan.historyPayload,
+        ...(params.corruptHistoryActorId ? { actorId: params.corruptHistoryActorId } : {}),
+      });
+      if (plan.privatePayload) {
+        batch.set(doc(db, "item_private", plan.itemId), plan.privatePayload);
+      }
+      await batch.commit();
+      return plan;
+    };
+
+    const assertNoPartialDocuments = async (itemId: string, historyEntryId: string) => {
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        const adminDb = ctx.firestore();
+        const itemSnap = await getDoc(doc(adminDb, "items", itemId));
+        const histSnap = await getDoc(doc(adminDb, "item_history", historyEntryId));
+        const privSnap = await getDoc(doc(adminDb, "item_private", itemId));
+        expect(itemSnap.exists()).toBe(false);
+        expect(histSnap.exists()).toBe(false);
+        expect(privSnap.exists()).toBe(false);
+      });
+    };
+
+    it("54. ADMIN (Root com active: null e institucional) + SERVIDOR aprovado + Gmail SERVIDOR atribuído persistem batch completo (/items, /item_history, /item_private)", async () => {
+      await setupUserDoc(ROOT_UID, {
+        id: ROOT_UID,
+        email: ROOT_EMAIL,
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: null,
+      });
+      const dbRoot = testEnv!.authenticatedContext(ROOT_UID, {
+        email: ROOT_EMAIL,
+        email_verified: true,
+      }).firestore();
+
+      const rootPlan = await assertSucceeds(
+        commitRealWritePlan(dbRoot, {
+          itemId: "ifpr-EMU-ROOT-01",
+          uid: ROOT_UID,
+          actorName: "Root Admin",
+          role: "ADMIN",
+          secretVerificationHint: "Etiqueta interna azul",
+        })
+      );
+
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        const adminDb = ctx.firestore();
+        const iSnap = await getDoc(doc(adminDb, "items", rootPlan.itemId));
+        const hSnap = await getDoc(doc(adminDb, "item_history", rootPlan.historyEntryId));
+        const pSnap = await getDoc(doc(adminDb, "item_private", rootPlan.itemId));
+        expect(iSnap.exists()).toBe(true);
+        expect(iSnap.data()?.secretVerificationHint).toBeUndefined();
+        expect(hSnap.exists()).toBe(true);
+        expect(hSnap.data()?.objectId).toBe(rootPlan.itemId);
+        expect(pSnap.exists()).toBe(true);
+        expect(pSnap.data()?.secretVerificationHint).toBe("Etiqueta interna azul");
+      });
+
+      const servGmailUid = "emu_serv_gmail_assigned";
+      await setupUserDoc(servGmailUid, {
+        id: servGmailUid,
+        email: "tae.designado@gmail.com",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+        roleAssignedBy: ROOT_EMAIL,
+      });
+      const dbServGmail = testEnv!.authenticatedContext(servGmailUid, {
+        email: "tae.designado@gmail.com",
+        email_verified: true,
+      }).firestore();
+
+      const servPlan = await assertSucceeds(
+        commitRealWritePlan(dbServGmail, {
+          itemId: "ifpr-EMU-GMAIL-SERV-01",
+          uid: servGmailUid,
+          actorName: "TAE Designado",
+          role: "SERVIDOR",
+        })
+      );
+
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        const adminDb = ctx.firestore();
+        expect((await getDoc(doc(adminDb, "items", servPlan.itemId))).exists()).toBe(true);
+        expect((await getDoc(doc(adminDb, "item_history", servPlan.historyEntryId))).exists()).toBe(true);
+        expect((await getDoc(doc(adminDb, "item_private", servPlan.itemId))).exists()).toBe(false);
+      });
+    });
+
+    it("55. Usuário não autenticado, Gmail sem atribuição, SERVIDOR pendente, ALUNO e INTRUSO são negados sem gravação parcial", async () => {
+      const dbUnauth = testEnv!.unauthenticatedContext().firestore();
+      await assertFails(
+        commitRealWritePlan(dbUnauth, {
+          itemId: "ifpr-EMU-UNAUTH-01",
+          uid: "guest_uid",
+          actorName: "Visitante",
+          role: "SERVIDOR",
+        })
+      );
+      await assertNoPartialDocuments("ifpr-EMU-UNAUTH-01", "hist-ifpr-EMU-UNAUTH-01-init");
+
+      const gmailNoDocUid = "emu_gmail_no_doc";
+      const dbGmailNoDoc = testEnv!.authenticatedContext(gmailNoDocUid, {
+        email: "externo.sem.cargo@gmail.com",
+        email_verified: true,
+      }).firestore();
+      await assertFails(
+        commitRealWritePlan(dbGmailNoDoc, {
+          itemId: "ifpr-EMU-GMAIL-NODOC-01",
+          uid: gmailNoDocUid,
+          actorName: "Externo",
+          role: "SERVIDOR",
+        })
+      );
+      await assertNoPartialDocuments("ifpr-EMU-GMAIL-NODOC-01", "hist-ifpr-EMU-GMAIL-NODOC-01-init");
+
+      const alunoUid = "emu_aluno_spoof";
+      await setupUserDoc(alunoUid, {
+        id: alunoUid,
+        email: "aluno@estudantes.ifpr.edu.br",
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+      });
+      const dbAluno = testEnv!.authenticatedContext(alunoUid, {
+        email: "aluno@estudantes.ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      await assertFails(
+        commitRealWritePlan(dbAluno, {
+          itemId: "ifpr-EMU-ALUNO-01",
+          uid: alunoUid,
+          actorName: "Aluno",
+          role: "SERVIDOR",
+        })
+      );
+      await assertNoPartialDocuments("ifpr-EMU-ALUNO-01", "hist-ifpr-EMU-ALUNO-01-init");
+    });
+
+    it("56. Falha em /item_history dentro do writeBatch aborta atomicamente o lote inteiro (zero gravação parcial em /items ou /item_private)", async () => {
+      await setupUserDoc(ROOT_UID, {
+        id: ROOT_UID,
+        email: ROOT_EMAIL,
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+      const dbRoot = testEnv!.authenticatedContext(ROOT_UID, {
+        email: ROOT_EMAIL,
+        email_verified: true,
+      }).firestore();
+
+      await assertFails(
+        commitRealWritePlan(dbRoot, {
+          itemId: "ifpr-EMU-ATOMIC-FAIL-01",
+          uid: ROOT_UID,
+          actorName: "Root Admin",
+          role: "ADMIN",
+          secretVerificationHint: "Segredo que não deve ser gravado",
+          corruptHistoryActorId: "uid-terceiro-forjado",
+        })
+      );
+      await assertNoPartialDocuments("ifpr-EMU-ATOMIC-FAIL-01", "hist-ifpr-EMU-ATOMIC-FAIL-01-init");
+    });
+
+    it("57. [Etapa 31 — isStandingActive(u)] Validação completa dos 10 cenários de standing (ausente, null fail-closed, futuro, expirado, suspenso, reativado via deleteField, ADMIN e SERVIDOR)", async () => {
+      const futureTs = Timestamp.fromDate(new Date(Date.now() + 86_400_000));
+      const pastTs = Timestamp.fromDate(new Date(Date.now() - 86_400_000));
+
+      // 1. Usuário ativo sem os campos de bloqueio -> PERMITIDO
+      const uid1 = "etapa31_standing_1_clean";
+      await setupUserDoc(uid1, {
+        id: uid1,
+        email: "standing1@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+      });
+      const db1 = testEnv!.authenticatedContext(uid1, { email: "standing1@ifpr.edu.br", email_verified: true }).firestore();
+      await assertSucceeds(commitRealWritePlan(db1, { itemId: "ifpr-E31-S1", uid: uid1, actorName: "S1", role: "SERVIDOR" }));
+
+      // 2. Usuário ativo com blockExpiresAt: null -> BLOQUEADO (paridade fail-closed Etapa 10 / accountStatusUtils / server.ts)
+      const uid2 = "etapa31_standing_2_null_block";
+      await setupUserDoc(uid2, {
+        id: uid2,
+        email: "standing2@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+        blockExpiresAt: null,
+      });
+      const db2 = testEnv!.authenticatedContext(uid2, { email: "standing2@ifpr.edu.br", email_verified: true }).firestore();
+      await assertFails(commitRealWritePlan(db2, { itemId: "ifpr-E31-S2", uid: uid2, actorName: "S2", role: "SERVIDOR" }));
+      await assertNoPartialDocuments("ifpr-E31-S2", "hist-ifpr-E31-S2-init");
+
+      // 3. Usuário ativo com suspendedUntil: null -> BLOQUEADO (paridade fail-closed Etapa 10)
+      const uid3 = "etapa31_standing_3_null_susp";
+      await setupUserDoc(uid3, {
+        id: uid3,
+        email: "standing3@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+        suspendedUntil: null,
+      });
+      const db3 = testEnv!.authenticatedContext(uid3, { email: "standing3@ifpr.edu.br", email_verified: true }).firestore();
+      await assertFails(commitRealWritePlan(db3, { itemId: "ifpr-E31-S3", uid: uid3, actorName: "S3", role: "SERVIDOR" }));
+      await assertNoPartialDocuments("ifpr-E31-S3", "hist-ifpr-E31-S3-init");
+
+      // 4. Usuário ativo com ambos nulos -> BLOQUEADO (paridade fail-closed Etapa 10)
+      const uid4 = "etapa31_standing_4_both_null";
+      await setupUserDoc(uid4, {
+        id: uid4,
+        email: "standing4@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+        blockExpiresAt: null,
+        suspendedUntil: null,
+      });
+      const db4 = testEnv!.authenticatedContext(uid4, { email: "standing4@ifpr.edu.br", email_verified: true }).firestore();
+      await assertFails(commitRealWritePlan(db4, { itemId: "ifpr-E31-S4", uid: uid4, actorName: "S4", role: "SERVIDOR" }));
+      await assertNoPartialDocuments("ifpr-E31-S4", "hist-ifpr-E31-S4-init");
+
+      // 5. Usuário com bloqueio futuro (blockExpiresAt futuro e suspendedUntil futuro) -> BLOQUEADO
+      const uid5a = "etapa31_standing_5a_future_block";
+      await setupUserDoc(uid5a, {
+        id: uid5a,
+        email: "standing5a@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+        blockExpiresAt: futureTs,
+      });
+      const db5a = testEnv!.authenticatedContext(uid5a, { email: "standing5a@ifpr.edu.br", email_verified: true }).firestore();
+      await assertFails(commitRealWritePlan(db5a, { itemId: "ifpr-E31-S5A", uid: uid5a, actorName: "S5A", role: "SERVIDOR" }));
+      await assertNoPartialDocuments("ifpr-E31-S5A", "hist-ifpr-E31-S5A-init");
+
+      const uid5b = "etapa31_standing_5b_future_susp";
+      await setupUserDoc(uid5b, {
+        id: uid5b,
+        email: "standing5b@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+        suspendedUntil: futureTs,
+      });
+      const db5b = testEnv!.authenticatedContext(uid5b, { email: "standing5b@ifpr.edu.br", email_verified: true }).firestore();
+      await assertFails(commitRealWritePlan(db5b, { itemId: "ifpr-E31-S5B", uid: uid5b, actorName: "S5B", role: "SERVIDOR" }));
+      await assertNoPartialDocuments("ifpr-E31-S5B", "hist-ifpr-E31-S5B-init");
+
+      // 6. Usuário com bloqueio expirado (Timestamp passado) -> PERMITIDO
+      const uid6 = "etapa31_standing_6_expired";
+      await setupUserDoc(uid6, {
+        id: uid6,
+        email: "standing6@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+        blockExpiresAt: pastTs,
+        suspendedUntil: pastTs,
+      });
+      const db6 = testEnv!.authenticatedContext(uid6, { email: "standing6@ifpr.edu.br", email_verified: true }).firestore();
+      await assertSucceeds(commitRealWritePlan(db6, { itemId: "ifpr-E31-S6", uid: uid6, actorName: "S6", role: "SERVIDOR" }));
+
+      // 7. Usuário suspenso (indeterminado, temporário futuro e C-50 suspenso+expirado+blockExpiresAt: null) -> BLOQUEADO
+      const uid7a = "etapa31_standing_7a_susp_indef";
+      await setupUserDoc(uid7a, {
+        id: uid7a,
+        email: "standing7a@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "suspended",
+        active: true,
+      });
+      const db7a = testEnv!.authenticatedContext(uid7a, { email: "standing7a@ifpr.edu.br", email_verified: true }).firestore();
+      await assertFails(commitRealWritePlan(db7a, { itemId: "ifpr-E31-S7A", uid: uid7a, actorName: "S7A", role: "SERVIDOR" }));
+      await assertNoPartialDocuments("ifpr-E31-S7A", "hist-ifpr-E31-S7A-init");
+
+      const uid7b = "etapa31_standing_7b_susp_c50";
+      await setupUserDoc(uid7b, {
+        id: uid7b,
+        email: "standing7b@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "suspended",
+        active: true,
+        suspendedUntil: pastTs,
+        blockExpiresAt: null,
+      });
+      const db7b = testEnv!.authenticatedContext(uid7b, { email: "standing7b@ifpr.edu.br", email_verified: true }).firestore();
+      await assertFails(commitRealWritePlan(db7b, { itemId: "ifpr-E31-S7B", uid: uid7b, actorName: "S7B", role: "SERVIDOR" }));
+      await assertNoPartialDocuments("ifpr-E31-S7B", "hist-ifpr-E31-S7B-init");
+
+      // 8. Usuário reativado pelo payload real de produção (buildUserStatusTransitionData com deleteField()) -> PERMITIDO
+      const uid8 = "etapa31_standing_8_reactivated";
+      await setupUserDoc(uid8, {
+        id: uid8,
+        email: "standing8@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "suspended",
+        active: false,
+        blockExpiresAt: null,
+        suspendedUntil: futureTs,
+      });
+      const reactivateTransition = buildUserStatusTransitionData({
+        newStatus: "active",
+        reason: "",
+        actorId: ROOT_UID,
+        actorName: "Root Admin",
+        actorEmail: ROOT_EMAIL,
+      });
+      await setupUserDoc(ROOT_UID, {
+        id: ROOT_UID,
+        email: ROOT_EMAIL,
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+      });
+      const dbRootAdmin = testEnv!.authenticatedContext(ROOT_UID, { email: ROOT_EMAIL, email_verified: true }).firestore();
+      await assertSucceeds(updateDoc(doc(dbRootAdmin, "users", uid8), reactivateTransition.firestorePayload));
+
+      const db8 = testEnv!.authenticatedContext(uid8, { email: "standing8@ifpr.edu.br", email_verified: true }).firestore();
+      await assertSucceeds(commitRealWritePlan(db8, { itemId: "ifpr-E31-S8", uid: uid8, actorName: "S8", role: "SERVIDOR" }));
+
+      // 9. ADMIN ativo (institucional não-root sem bloqueio) -> PERMITIDO
+      const uid9 = "etapa31_standing_9_admin";
+      await setupUserDoc(uid9, {
+        id: uid9,
+        email: "admin.ativo@ifpr.edu.br",
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+      });
+      const db9 = testEnv!.authenticatedContext(uid9, { email: "admin.ativo@ifpr.edu.br", email_verified: true }).firestore();
+      await assertSucceeds(
+        commitRealWritePlan(db9, {
+          itemId: "ifpr-E31-S9",
+          uid: uid9,
+          actorName: "Admin Ativo",
+          role: "ADMIN",
+          secretVerificationHint: "Marca interna E31",
+        })
+      );
+
+      // 10. SERVIDOR aprovado e ativo (institucional) -> PERMITIDO
+      const uid10 = "etapa31_standing_10_servidor";
+      await setupUserDoc(uid10, {
+        id: uid10,
+        email: "servidor.ativo@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+      });
+      const db10 = testEnv!.authenticatedContext(uid10, { email: "servidor.ativo@ifpr.edu.br", email_verified: true }).firestore();
+      await assertSucceeds(
+        commitRealWritePlan(db10, {
+          itemId: "ifpr-E31-S10",
+          uid: uid10,
+          actorName: "Servidor Ativo",
+          role: "SERVIDOR",
+          secretVerificationHint: "Chaveiro interno E31",
+        })
+      );
+    });
+
+    it("58. [Etapa 31 — Lote Completo buildItemRegistrationWritePlan] Matriz completa de 8 perfis + anti-spoofing de registeredByRole + zero gravação parcial", async () => {
+      // A) ADMIN institucional aprovado -> PERMITIDO (3 coleções confirmadas via getDoc)
+      const adminInstUid = "e31_admin_inst";
+      await setupUserDoc(adminInstUid, {
+        id: adminInstUid,
+        email: "direcao@ifpr.edu.br",
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+      });
+      const dbAdminInst = testEnv!.authenticatedContext(adminInstUid, { email: "direcao@ifpr.edu.br", email_verified: true }).firestore();
+      const adminPlan = await assertSucceeds(
+        commitRealWritePlan(dbAdminInst, {
+          itemId: "ifpr-E31-ADMIN-INST",
+          uid: adminInstUid,
+          actorName: "Direção IFPR",
+          role: "ADMIN",
+          secretVerificationHint: "Etiqueta direção",
+        })
+      );
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        const adb = ctx.firestore();
+        expect((await getDoc(doc(adb, "items", adminPlan.itemId))).exists()).toBe(true);
+        expect((await getDoc(doc(adb, "item_history", adminPlan.historyEntryId))).exists()).toBe(true);
+        expect((await getDoc(doc(adb, "item_private", adminPlan.itemId))).exists()).toBe(true);
+      });
+
+      // B) SERVIDOR institucional aprovado -> PERMITIDO (3 coleções confirmadas via getDoc)
+      const servInstUid = "e31_serv_inst";
+      await setupUserDoc(servInstUid, {
+        id: servInstUid,
+        email: "tae.secretaria@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+      });
+      const dbServInst = testEnv!.authenticatedContext(servInstUid, { email: "tae.secretaria@ifpr.edu.br", email_verified: true }).firestore();
+      const servInstPlan = await assertSucceeds(
+        commitRealWritePlan(dbServInst, {
+          itemId: "ifpr-E31-SERV-INST",
+          uid: servInstUid,
+          actorName: "TAE Secretaria",
+          role: "SERVIDOR",
+          secretVerificationHint: "Número de série",
+        })
+      );
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        const adb = ctx.firestore();
+        expect((await getDoc(doc(adb, "items", servInstPlan.itemId))).exists()).toBe(true);
+        expect((await getDoc(doc(adb, "item_history", servInstPlan.historyEntryId))).exists()).toBe(true);
+        expect((await getDoc(doc(adb, "item_private", servInstPlan.itemId))).exists()).toBe(true);
+      });
+
+      // C) SERVIDOR aprovado tentando falsificar registeredByRole: "ADMIN" -> NEGADO sem gravação parcial
+      await assertFails(
+        commitRealWritePlan(dbServInst, {
+          itemId: "ifpr-E31-SPOOF-ROLE",
+          uid: servInstUid,
+          actorName: "TAE Spoof",
+          role: "ADMIN",
+          secretVerificationHint: "Não deve persistir",
+        })
+      );
+      await assertNoPartialDocuments("ifpr-E31-SPOOF-ROLE", "hist-ifpr-E31-SPOOF-ROLE-init");
+
+      // D) SERVIDOR pendente -> NEGADO sem gravação parcial
+      const servPendUid = "e31_serv_pend";
+      await setupUserDoc(servPendUid, {
+        id: servPendUid,
+        email: "tae.pendente@ifpr.edu.br",
+        role: "SERVIDOR",
+        approvalStatus: "PENDENTE",
+        status: "active",
+        active: true,
+      });
+      const dbServPend = testEnv!.authenticatedContext(servPendUid, { email: "tae.pendente@ifpr.edu.br", email_verified: true }).firestore();
+      await assertFails(
+        commitRealWritePlan(dbServPend, {
+          itemId: "ifpr-E31-SERV-PEND",
+          uid: servPendUid,
+          actorName: "TAE Pendente",
+          role: "SERVIDOR",
+          secretVerificationHint: "Bloqueado",
+        })
+      );
+      await assertNoPartialDocuments("ifpr-E31-SERV-PEND", "hist-ifpr-E31-SERV-PEND-init");
+
+      // E) ALUNO (tentando falsificar SERVIDOR e ADMIN) -> NEGADO sem gravação parcial
+      const alunoUid = "e31_aluno_uid";
+      await setupUserDoc(alunoUid, {
+        id: alunoUid,
+        email: "estudante.e31@estudantes.ifpr.edu.br",
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+      });
+      const dbAluno = testEnv!.authenticatedContext(alunoUid, { email: "estudante.e31@estudantes.ifpr.edu.br", email_verified: true }).firestore();
+      await assertFails(
+        commitRealWritePlan(dbAluno, {
+          itemId: "ifpr-E31-ALUNO-SPOOF-SERV",
+          uid: alunoUid,
+          actorName: "Aluno",
+          role: "SERVIDOR",
+          secretVerificationHint: "Bloqueado",
+        })
+      );
+      await assertNoPartialDocuments("ifpr-E31-ALUNO-SPOOF-SERV", "hist-ifpr-E31-ALUNO-SPOOF-SERV-init");
+      await assertFails(
+        commitRealWritePlan(dbAluno, {
+          itemId: "ifpr-E31-ALUNO-SPOOF-ADMIN",
+          uid: alunoUid,
+          actorName: "Aluno",
+          role: "ADMIN",
+        })
+      );
+      await assertNoPartialDocuments("ifpr-E31-ALUNO-SPOOF-ADMIN", "hist-ifpr-E31-ALUNO-SPOOF-ADMIN-init");
+
+      // F) INTRUSO (Gmail sem atribuição com doc INTRUSO) -> NEGADO sem gravação parcial
+      const intrusoUid = "e31_intruso_uid";
+      await setupUserDoc(intrusoUid, {
+        id: intrusoUid,
+        email: "visitante.externo@gmail.com",
+        role: "INTRUSO",
+        approvalStatus: "REJEITADO",
+        status: "active",
+      });
+      const dbIntruso = testEnv!.authenticatedContext(intrusoUid, { email: "visitante.externo@gmail.com", email_verified: true }).firestore();
+      await assertFails(
+        commitRealWritePlan(dbIntruso, {
+          itemId: "ifpr-E31-INTRUSO",
+          uid: intrusoUid,
+          actorName: "Intruso",
+          role: "SERVIDOR",
+          secretVerificationHint: "Bloqueado",
+        })
+      );
+      await assertNoPartialDocuments("ifpr-E31-INTRUSO", "hist-ifpr-E31-INTRUSO-init");
+
+      // G) Gmail com atribuição administrativa válida de SERVIDOR aprovado -> PERMITIDO
+      const gmailServUid = "e31_gmail_serv_ok";
+      await setupUserDoc(gmailServUid, {
+        id: gmailServUid,
+        email: "coordenador.externo@gmail.com",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+        roleAssignedBy: ROOT_EMAIL,
+      });
+      const dbGmailServ = testEnv!.authenticatedContext(gmailServUid, {
+        email: "coordenador.externo@gmail.com",
+        email_verified: true,
+      }).firestore();
+      const gmailPlan = await assertSucceeds(
+        commitRealWritePlan(dbGmailServ, {
+          itemId: "ifpr-E31-GMAIL-OK",
+          uid: gmailServUid,
+          actorName: "Coordenador Gmail",
+          role: "SERVIDOR",
+          secretVerificationHint: "Marca Gmail",
+        })
+      );
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        const adb = ctx.firestore();
+        expect((await getDoc(doc(adb, "items", gmailPlan.itemId))).exists()).toBe(true);
+        expect((await getDoc(doc(adb, "item_history", gmailPlan.historyEntryId))).exists()).toBe(true);
+        expect((await getDoc(doc(adb, "item_private", gmailPlan.itemId))).exists()).toBe(true);
+      });
+
+      // H) Usuário não autenticado -> NEGADO sem gravação parcial
+      const dbAnon = testEnv!.unauthenticatedContext().firestore();
+      await assertFails(
+        commitRealWritePlan(dbAnon, {
+          itemId: "ifpr-E31-UNAUTH",
+          uid: "anon_uid",
+          actorName: "Anon",
+          role: "SERVIDOR",
+        })
+      );
+      await assertNoPartialDocuments("ifpr-E31-UNAUTH", "hist-ifpr-E31-UNAUTH-init");
+    });
+  });
 });
+
 
 

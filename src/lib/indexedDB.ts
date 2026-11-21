@@ -166,8 +166,10 @@ export async function queueOfflineItemRegistration(
 
         store.put(queueEntry);
 
-        // Also persist into local items store so user sees it in views immediately with isOfflineQueued: true
-        saveSingleItemIndexedDB(queueEntry.payload).catch(() => {});
+        // Only persist transient/pending items into local items_store so permanent/permission-denied failures never leak into the catalog on reload
+        if (queueEntry.status !== "ERRO_PERMANENTE") {
+          saveSingleItemIndexedDB(queueEntry.payload).catch(() => {});
+        }
 
         tx.oncomplete = () => {
           console.log(`[Offline Sync] Cadastro de objeto "${item.title}" (${resolvedItemId}) salvo deterministicamente na fila IndexedDB (${byteSize} bytes):`, queueEntry.id);

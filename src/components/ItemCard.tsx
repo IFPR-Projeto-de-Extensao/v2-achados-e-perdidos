@@ -160,6 +160,14 @@ export const ItemCard: React.FC<ItemCardProps> = ({
             <span className={`font-semibold ${getStatusTextClass()}`}>
               {getStatusLabel()}
             </span>
+            {item?.isOfflineQueued && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="font-semibold text-amber-600 dark:text-amber-400">
+                  Pendente de sincronização
+                </span>
+              </>
+            )}
             <span aria-hidden="true">·</span>
             <span>{displayCat}</span>
             <span aria-hidden="true">·</span>

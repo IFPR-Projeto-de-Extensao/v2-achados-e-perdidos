@@ -223,8 +223,9 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
       return;
     }
 
-    // 2. Leitura das regras do arquivo firestore.rules do projeto via caminho seguro em ESM
-    const rulesPath = resolve(process.cwd(), "firestore.rules");
+    // 2. Leitura das regras do arquivo firestore.rules (ou FIRESTORE_RULES_PATH) via caminho seguro em ESM
+    const configuredRulesPath = process.env.FIRESTORE_RULES_PATH || "firestore.rules";
+    const rulesPath = resolve(process.cwd(), configuredRulesPath);
     const rulesContent = readFileSync(rulesPath, "utf8");
 
     // 3. Inicialização do ambiente de teste isolado com o projeto demo

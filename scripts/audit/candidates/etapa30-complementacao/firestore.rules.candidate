@@ -1,0 +1,1276 @@
+// LOCALIZA+ v1.10.11 — Firestore Rules (Regras Integradas e Protegidas)
+// Identidade efetiva: documento users/{uid} para cargos atribuídos;
+// Claims antigas de role=INTRUSO não anulam atribuições administrativas válidas.
+// Governança: preservação de /role_assignments, /system_config e blindagem Root Admin.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ==========================================
+    // Core Security & Auth Helper Functions
+    // ==========================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAuthUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function hasVerifiedEmailToken() {
+      let tok = request.auth.token;
+      return ('email_verified' in tok) && tok.email_verified == true;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && 
+             ('email_verified' in request.auth.token) && 
+             request.auth.token.email_verified == true;
+    }
+
+    function isRootIdentity() {
+      let tok = request.auth.token;
+      return request.auth.uid == 'hCG5mDgK1fRaTojULzlM7dXvb7n2' &&
+             ('email' in tok) &&
+             tok.email != null &&
+             tok.email.lower() == 'paulocauan39@gmail.com';
+    }
+
+    function userDocExists() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isStandingActive(u) {
+      let hasB = 'blockExpiresAt' in u;
+      let hasS = 'suspendedUntil' in u;
+      let statusVal = ('status' in u) ? u.status : 'active';
+      return (!('active' in u) || u.active != false) &&
+             (!hasB || (u.blockExpiresAt is timestamp && request.time >= u.blockExpiresAt)) &&
+             (!hasS || (u.suspendedUntil is timestamp && request.time >= u.suspendedUntil)) &&
+             (statusVal == 'active' || (statusVal == 'suspended' && hasS));
+    }
+
+    function isUserDocActiveData(u) {
+      return (!('role' in u) || u.role != 'INTRUSO') && isStandingActive(u);
+    }
+
+    function isUserDocBlocked() {
+      return !isStandingActive(getUserData());
+    }
+
+    function isAccountBlocked() {
+      return isSignedIn() && 
+             userDocExists() &&
+             isUserDocBlocked();
+    }
+
+    function isUserDocActive() {
+      return isUserDocActiveData(getUserData());
+    }
+
+    function isAccountActive() {
+      // (!('active' in getUserData()) || getUserData().active != false)
+      return isSignedIn() && (
+        (hasVerifiedEmailToken() && isRootIdentity()) || (
+          userDocExists() &&
+          isUserDocActive()
+        )
+      );
+    }
+
+    function isAdminUserDoc() {
+      let u = getUserData();
+      return ('role' in u) && u.role == 'ADMIN' && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO';
+    }
+
+    function hasApprovedAdminRole(u) {
+      return ('role' in u) && u.role == 'ADMIN' && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO';
+    }
+
+    function hasApprovedServidorRole(u) {
+      return ('role' in u) && u.role == 'SERVIDOR' && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO';
+    }
+
+    function hasApprovedStaffOrAdminRole(u) {
+      return ('role' in u) && (u.role == 'SERVIDOR' || u.role == 'ADMIN') && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO';
+    }
+
+    function isActiveAdminDoc() {
+      let u = getUserData();
+      return isUserDocActiveData(u) && hasApprovedAdminRole(u);
+    }
+
+    function isActiveStaffOrAdminDoc() {
+      let u = getUserData();
+      return isUserDocActiveData(u) && hasApprovedStaffOrAdminRole(u);
+    }
+
+    function hasAdminClaim() {
+      // Claims são confiadas quando emitidas pelo Firebase Admin SDK. Se o perfil existir,
+      // o papel ADMIN aprovado deve concordar; claims obsoletas não sobrepõem o perfil.
+      return isSignedIn() && 
+             hasVerifiedEmailToken() &&
+             (('role' in request.auth.token && request.auth.token.role == 'ADMIN') || 
+              ('admin' in request.auth.token && request.auth.token.admin == true)) &&
+             (!userDocExists() || isAdminUserDoc());
+    }
+
+    function isRootAdmin() {
+      return isSignedIn() &&
+             isEmailVerified() &&
+             request.auth.uid == 'hCG5mDgK1fRaTojULzlM7dXvb7n2' &&
+             ('email' in request.auth.token) &&
+             request.auth.token.email != null &&
+             request.auth.token.email.lower() == 'paulocauan39@gmail.com';
+    }
+
+    function isDocAdmin() {
+      return isSignedIn() && 
+             hasVerifiedEmailToken() &&
+             userDocExists() &&
+             isAdminUserDoc();
+    }
+
+    function isAdmin() {
+      return isSignedIn() && hasVerifiedEmailToken() && (
+        isRootIdentity() ||
+        (userDocExists() && isActiveAdminDoc())
+      );
+    }
+
+    function isDocServidorIdentity() {
+      // O documento Firestore users/{uid} é autoritativo para atribuições administrativas de SERVIDOR.
+      // Contas externas (ex: Gmail) aprovadas por administrador não são rejeitadas por claims antigas.
+      let u = getUserData();
+      return isSignedIn() && 
+             hasVerifiedEmailToken() &&
+             userDocExists() &&
+             ('role' in u) &&
+             u.role == 'SERVIDOR';
+    }
+
+    function isApprovedServidorDoc() {
+      let u = getUserData();
+      return ('role' in u) && u.role == 'SERVIDOR' && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO';
+    }
+
+    function isDocServidor() {
+      return isSignedIn() &&
+             hasVerifiedEmailToken() &&
+             userDocExists() &&
+             isApprovedServidorDoc();
+    }
+
+    function isLowerInstStudentEmail(lowerEmail) {
+      return lowerEmail.matches('.*@([a-zA-Z0-9-]+\\.)*(estudantes|estudante|aluno|alunos)[.]ifpr[.]edu[.]br');
+    }
+
+    function isLowerInstStaffEmail(lowerEmail) {
+      return lowerEmail.matches('.*@([a-zA-Z0-9-]+\\.)*ifpr[.]edu[.]br') &&
+             !lowerEmail.matches('.*@([a-zA-Z0-9-]+\\.)*(aluno|alunos|estudante|estudantes|escola)[.]ifpr[.]edu[.]br');
+    }
+
+    function isInstitutionalStudentEmail() {
+      let tok = request.auth.token;
+      return isSignedIn() && hasVerifiedEmailToken() && ('email' in tok) && tok.email != null && (
+        request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*(estudantes|estudante|aluno)[.]ifpr[.]edu[.]br') ||
+        isLowerInstStudentEmail(tok.email.lower())
+      );
+    }
+
+    function isInstitutionalStaffEmail() {
+      let tok = request.auth.token;
+      return isSignedIn() && hasVerifiedEmailToken() && ('email' in tok) && tok.email != null && (
+        (
+          request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*ifpr[.]edu[.]br') &&
+          !request.auth.token.email.matches('.*@([a-zA-Z0-9-]+\\.)*(aluno|alunos|estudante|estudantes|escola)[.]ifpr[.]edu[.]br')
+        ) ||
+        isLowerInstStaffEmail(tok.email.lower())
+      );
+    }
+
+    function isServidor() {
+      return isAccountActive() && isDocServidor();
+    }
+
+    function isStaffOrAdminActive() {
+      return isSignedIn() && hasVerifiedEmailToken() && (
+        isRootIdentity() ||
+        (userDocExists() && isActiveStaffOrAdminDoc())
+      );
+    }
+
+    function isApprovedStaffOrAdminDoc() {
+      let u = getUserData();
+      return ('role' in u) && (u.role == 'SERVIDOR' || u.role == 'ADMIN') && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO';
+    }
+
+    function canRegisterItems() {
+      // Contas aprovadas como SERVIDOR (institucionais ou externas atribuídas por administrador) e administradores
+      return isSignedIn() &&
+             hasVerifiedEmailToken() &&
+             (
+               (userDocExists() && isApprovedStaffOrAdminDoc()) || 
+               hasAdminClaim() || 
+               isRootIdentity()
+             );
+    }
+
+    function isRecognizedUserDocRoleData(u) {
+      return ('role' in u) && (
+        u.role == 'ALUNO' ||
+        u.role == 'SERVIDOR' ||
+        (u.role == 'ADMIN' && ('approvalStatus' in u) && u.approvalStatus == 'APROVADO')
+      );
+    }
+
+    function isNonIntrusoRoleOrEmail(u) {
+      let tok = request.auth.token;
+      let hasEmail = ('email' in tok) && tok.email != null;
+      let lowerEmail = hasEmail ? tok.email.lower() : '';
+      return isRecognizedUserDocRoleData(u) || (
+        (!('role' in u) || u.role != 'INTRUSO') &&
+        (!hasEmail || isLowerInstStudentEmail(lowerEmail) || isLowerInstStaffEmail(lowerEmail))
+      );
+    }
+
+    function isActiveVerifiedMember() {
+      return isSignedIn() && hasVerifiedEmailToken() && (
+        isRootIdentity() ||
+        (userDocExists() && isActiveNonIntrusoDoc())
+      );
+    }
+
+    function isActiveNonIntrusoDoc() {
+      let u = getUserData();
+      return isUserDocActiveData(u) && isNonIntrusoRoleOrEmail(u);
+    }
+
+    function isIntruso() {
+      let tok = request.auth.token;
+      let hasEmail = ('email' in tok) && tok.email != null;
+      let lowerEmail = hasEmail ? tok.email.lower() : '';
+      let hasDoc = userDocExists();
+      return isSignedIn() && (
+        !hasVerifiedEmailToken() ||
+        (
+          !isRootIdentity() &&
+          (
+            hasDoc
+              ? !isNonIntrusoRoleOrEmail(getUserData())
+              : (
+                  !((('role' in tok && tok.role == 'ADMIN') || ('admin' in tok && tok.admin == true))) &&
+                  hasEmail &&
+                  !isLowerInstStudentEmail(lowerEmail) &&
+                  !isLowerInstStaffEmail(lowerEmail)
+                )
+          )
+        )
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Defensive input limits matching ITEM_FIELD_LIMITS (SEC-04 Hardening)
+    function isValidItemTextFields(data) {
+      return (!('title' in data) || (data.title is string && data.title.size() <= 100)) &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
+             (!('location' in data) || (data.location is string && data.location.size() <= 120)) &&
+             (!('color' in data) || data.color == null || (data.color is string && data.color.size() <= 50)) &&
+             (!('brand' in data) || data.brand == null || (data.brand is string && data.brand.size() <= 60)) &&
+             (!('contactInfo' in data) || data.contactInfo == null || (data.contactInfo is string && data.contactInfo.size() <= 150)) &&
+             (!('contact' in data) || data.contact == null || (data.contact is string && data.contact.size() <= 150)) &&
+             (!('aiPrompt' in data) || data.aiPrompt == null || (data.aiPrompt is string && data.aiPrompt.size() <= 500));
+    }
+
+    // ETAPA 11 & ETAPA 15: Strict protection of formal devolution, signature, receipt, PII, and staff-attestation fields.
+    // These fields can ONLY be written by trusted server-side Firebase Admin SDK transactions into /item_return_records,
+    // and can NEVER be injected into or exposed publicly from /items, /found_items, or /lost_items.
+    function hasNoReturnOrSignatureFields(data) {
+      return !data.keys().hasAny([
+        'returnedByUserId',
+        'returnedByName',
+        'returnedByRole',
+        'returnDate',
+        'returnTime',
+        'recipientName',
+        'recipientEmail',
+        'recipientBond',
+        'recipientDocument',
+        'recipientUid',
+        'returnObservations',
+        'receiptValidationCode',
+        'recipientSignatureUrl',
+        'recipientSignatureType',
+        'recipientSignatureMethod',
+        'recipientSignatureStatus',
+        'recipientSignatureEmail',
+        'recipientSignatureName',
+        'recipientSignatureBond',
+        'recipientSignatureDate',
+        'staffSignatureStatus',
+        'staffSignatureUrl',
+        'staffSignatureMethod',
+        'staffSignedAt',
+        'staffSignerUid',
+        'staffSignerName',
+        'staffSignerEmail',
+        'signatureToken',
+        'signatureTokenExpiresAt',
+        'signatureTokenUsed',
+        'signedAt',
+        'signatureIpOrDevice',
+        'secretVerificationKey',
+        'secretVerificationHint',
+        'requiresAdminClaimReview',
+        'devolutionNotified',
+        'returnEmailNotified',
+        'devolutionNotificationStatus',
+        'devolutionNotifiedAt',
+        'devolutionNotifiedBy'
+      ]);
+    }
+
+    function hasNoProtectedReturnOrSignatureMutation() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'returnedByUserId',
+        'returnedByName',
+        'returnedByRole',
+        'returnDate',
+        'returnTime',
+        'recipientName',
+        'recipientEmail',
+        'recipientBond',
+        'recipientDocument',
+        'recipientUid',
+        'returnObservations',
+        'receiptValidationCode',
+        'recipientSignatureUrl',
+        'recipientSignatureType',
+        'recipientSignatureMethod',
+        'recipientSignatureStatus',
+        'recipientSignatureEmail',
+        'recipientSignatureName',
+        'recipientSignatureBond',
+        'recipientSignatureDate',
+        'staffSignatureStatus',
+        'staffSignatureUrl',
+        'staffSignatureMethod',
+        'staffSignedAt',
+        'staffSignerUid',
+        'staffSignerName',
+        'staffSignerEmail',
+        'signatureToken',
+        'signatureTokenExpiresAt',
+        'signatureTokenUsed',
+        'signedAt',
+        'signatureIpOrDevice',
+        'secretVerificationKey',
+        'secretVerificationHint',
+        'requiresAdminClaimReview',
+        'devolutionNotified',
+        'returnEmailNotified',
+        'devolutionNotificationStatus',
+        'devolutionNotifiedAt',
+        'devolutionNotifiedBy'
+      ]);
+    }
+
+    function areItemCoreImmutableFieldsPreserved() {
+      return (!('registeredByUserId' in existing()) || incoming().registeredByUserId == existing().registeredByUserId) &&
+             (!('createdAt' in existing()) || incoming().createdAt == existing().createdAt) &&
+             (!('registeredByRole' in existing()) || incoming().registeredByRole == existing().registeredByRole) &&
+             (!('type' in existing()) || incoming().type == existing().type) &&
+             (!('id' in existing()) || incoming().id == existing().id);
+    }
+
+    function isAuthorSafeMetadataEdit() {
+      return isSignedIn() &&
+             hasVerifiedEmailToken() &&
+             (!('status' in existing()) ? !('status' in incoming()) : incoming().status == existing().status) &&
+             ('registeredByUserId' in existing()) &&
+             existing().registeredByUserId == request.auth.uid &&
+             isActiveVerifiedMember() &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+               'title',
+               'description',
+               'category',
+               'location',
+               'date',
+               'color',
+               'brand',
+               'contactInfo',
+               'imageUrl',
+               'additionalImages',
+               'lastEditedByUserId',
+               'lastEditedByName',
+               'lastEditedByRole',
+               'lastEditedAt'
+             ]);
+    }
+
+    function isStaffOrAdminNonReturnItemUpdate() {
+      return (!('status' in incoming()) || incoming().status != 'DEVOLVIDO') &&
+             isStaffOrAdminActive() &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+               'title',
+               'description',
+               'category',
+               'location',
+               'date',
+               'color',
+               'brand',
+               'contactInfo',
+               'imageUrl',
+               'additionalImages',
+               'status',
+               'resolutionDate',
+               'destinationType',
+               'destinationReason',
+               'destinationDate',
+               'destinationResponsible',
+               'matchedWithItemId',
+               'lastEditedByUserId',
+               'lastEditedByName',
+               'lastEditedByRole',
+               'lastEditedAt'
+             ]) &&
+             (!('status' in incoming()) || incoming().status != 'ENCERRADO' || (
+               ('destinationType' in incoming()) &&
+               incoming().destinationType is string &&
+               incoming().destinationType.size() > 0 &&
+               ('destinationReason' in incoming()) &&
+               incoming().destinationReason is string &&
+               incoming().destinationReason.size() > 0
+             ));
+    }
+
+    function canCreateCatalogItem() {
+      let inc = incoming();
+      return isSignedIn() &&
+             hasVerifiedEmailToken() &&
+             incoming().registeredByUserId == request.auth.uid &&
+             (inc.registeredByRole == 'SERVIDOR' || inc.registeredByRole == 'ADMIN') &&
+             (!('status' in inc) || (inc.status != 'DEVOLVIDO' && inc.status != 'ENCERRADO')) &&
+             hasNoReturnOrSignatureFields(inc) &&
+             (
+               isRootIdentity() ||
+               (
+                 userDocExists() &&
+                 isActiveStaffOrAdminForRole(getUserData(), inc.registeredByRole)
+               )
+             );
+    }
+
+    function isActiveStaffOrAdminForRole(u, role) {
+      return isUserDocActiveData(u) &&
+             ('approvalStatus' in u) && u.approvalStatus == 'APROVADO' &&
+             ('role' in u) && (
+               (role == 'ADMIN' && u.role == 'ADMIN') ||
+               (role == 'SERVIDOR' && (u.role == 'SERVIDOR' || u.role == 'ADMIN'))
+             );
+    }
+
+    function canUpdateCatalogItemBase() {
+      let ext = existing();
+      return (!('status' in ext) || (ext.status != 'DEVOLVIDO' && ext.status != 'ENCERRADO')) &&
+             areItemCoreImmutableFieldsPreserved() &&
+             hasNoProtectedReturnOrSignatureMutation();
+    }
+
+    function canDeleteNonReturnedCatalogItem() {
+      return isAdmin() || (
+        isActiveVerifiedMember() &&
+        existing().registeredByUserId == request.auth.uid &&
+        (!('status' in existing()) || existing().status != 'ENCERRADO')
+      );
+    }
+
+    // ==========================================
+    // 0. Role Assignments Collection (Protected Administrative Assignments)
+    // ==========================================
+    match /role_assignments/{targetUserId} {
+      // 1. Get: An authenticated user can only read their own role assignment; Admins can read any role assignment
+      allow get: if isSignedIn() && (request.auth.uid == targetUserId || isAdmin());
+
+      // 2. List: Only Admins can list or query the role assignments collection
+      allow list: if isAdmin();
+
+      // 3. Write: Client SDK writes are strictly forbidden. Writes are performed exclusively by Firebase Admin SDK (backend).
+      allow create, update, delete: if false;
+    }
+
+    // ==========================================
+    // 1. Users Collection (Least Privilege & Anti-Enumeration)
+    // ==========================================
+    match /users/{userId} {
+      function canCreateOwnUserDoc() {
+        let inc = incoming();
+        let tok = request.auth.token;
+        let verified = ('email_verified' in tok) && tok.email_verified == true;
+        let hasEmail = ('email' in tok) && tok.email != null;
+        let lowerTokEmail = hasEmail ? tok.email.lower() : '';
+        let emailMatches = hasEmail && (inc.email == tok.email || inc.email.lower() == lowerTokEmail);
+        let isAdminCreator = verified && (
+          isRootIdentity() ||
+          (
+            (('role' in tok && tok.role == 'ADMIN') || ('admin' in tok && tok.admin == true)) &&
+            (!userDocExists() || isAdminUserDoc())
+          )
+        );
+        return isSignedIn() &&
+               request.auth.uid == userId &&
+               inc.id == userId &&
+               emailMatches &&
+               (
+                 isAdminCreator ||
+                 (
+                   (!('admin' in inc) || inc.admin == false) &&
+                   !('roleAssignedBy' in inc) &&
+                   !('roleAssignedAt' in inc) &&
+                   (
+                     (inc.role == 'INTRUSO' && inc.approvalStatus in ['PENDENTE', 'APROVADO']) ||
+                     (verified && hasEmail && (
+                       (inc.role == 'ALUNO' && inc.approvalStatus in ['PENDENTE', 'APROVADO'] && isLowerInstStudentEmail(lowerTokEmail)) ||
+                       ((incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail()) && inc.approvalStatus == 'PENDENTE')
+                     ))
+                   )
+                 )
+               );
+      }
+
+      function areUserControlFieldsImmutable(ext, inc) {
+        return (!('roleAssignedBy' in inc) || ('roleAssignedBy' in ext && inc.roleAssignedBy == ext.roleAssignedBy)) &&
+               (!('roleAssignedAt' in inc) || ('roleAssignedAt' in ext && inc.roleAssignedAt == ext.roleAssignedAt)) &&
+               (('status' in existing() && incoming().status == existing().status) || (!('status' in ext) && (!('status' in inc) || inc.status == 'active'))) &&
+               (('suspendedUntil' in existing() && incoming().suspendedUntil == existing().suspendedUntil) || (!('suspendedUntil' in ext) && !('suspendedUntil' in inc))) &&
+               (('blockExpiresAt' in ext && inc.blockExpiresAt == ext.blockExpiresAt) || (!('blockExpiresAt' in ext) && !('blockExpiresAt' in inc))) &&
+               (('reputationScore' in ext && inc.reputationScore == ext.reputationScore) || (!('reputationScore' in ext) && (!('reputationScore' in inc) || inc.reputationScore == 100)));
+      }
+
+      // 1. Get: Users can ONLY read their own profile doc (isAuthUser(userId)); Only Admins can read other users' documents
+      allow get: if isAuthUser(userId) || isAdmin();
+
+      // 2. List: Only Admins can list/enumerate the users directory.
+      // Individual authenticated users can only query specifically for their own authenticated email (where email == auth.token.email).
+      allow list: if isAdmin() || 
+                     (isSignedIn() && isAccountActive() && resource != null && 
+                      (resource.data.email == request.auth.token.email || resource.data.email.lower() == request.auth.token.email.lower()));
+
+      // 3. Create: User can ONLY create their own document with their real UID and verified email.
+      allow create: if canCreateOwnUserDoc();
+
+      // 4. Update: 
+      allow update: if (
+        (
+          isAdmin() && (
+            incoming().role != 'ADMIN' || isRootIdentity() || ('role' in existing() && existing().role == 'ADMIN')
+          )
+        ) || (
+          isSignedIn() &&
+          request.auth.uid == userId &&
+          incoming().id == userId &&
+          (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) &&
+          ('role' in existing()) &&
+          isStandingActive(existing()) &&
+          (
+            // Branch 1: Promoção institucional legítima (INTRUSO -> ALUNO ou SERVIDOR)
+            (
+              existing().role == 'INTRUSO' &&
+              (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) &&
+              (!('admin' in incoming()) || incoming().admin == false) &&
+              (!('admin' in existing()) || existing().admin == false) &&
+              areUserControlFieldsImmutable(existing(), incoming()) &&
+              (
+                (
+                  (incoming().role == 'ALUNO' && isInstitutionalStudentEmail()) &&
+                  ('approvalStatus' in existing() && incoming().approvalStatus == existing().approvalStatus)
+                ) ||
+                (incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail() && incoming().approvalStatus == 'PENDENTE')
+              )
+            ) ||
+            // Branch 2: Atualizações normais de perfil próprio por usuários com conta ativa
+            (
+              existing().role != 'INTRUSO' &&
+              incoming().role == existing().role &&
+              (!('admin' in incoming()) || incoming().admin == existing().admin) &&
+              areUserControlFieldsImmutable(existing(), incoming()) &&
+              ('approvalStatus' in existing()) &&
+              (incoming().approvalStatus == existing().approvalStatus)
+            ) ||
+            // Branch 3: Inicialização de status para perfis institucionais legados sem o campo status
+            (
+              (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) &&
+              (existing().role == 'ALUNO' || existing().role == 'SERVIDOR') &&
+              incoming().role == existing().role &&
+              (!('admin' in incoming()) || incoming().admin == false) &&
+              (!('admin' in existing()) || existing().admin == false) &&
+              (!('approvalStatus' in existing()) || incoming().approvalStatus == existing().approvalStatus) &&
+              (!('status' in existing()) && incoming().status == 'active') &&
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+              (
+                (existing().role == 'ALUNO' && isInstitutionalStudentEmail()) ||
+                (existing().role == 'SERVIDOR' && isInstitutionalStaffEmail())
+              )
+            )
+          )
+        )
+      );
+
+      // 5. Delete: Only Admin can delete accounts (and cannot delete their own active account)
+      allow delete: if isAdmin() && request.auth.uid != userId;
+    }
+
+    // ==========================================
+    // 2. Lost & Found Items Collection
+    // ==========================================
+    match /items/{itemId} {
+      allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
+      allow list: if isStaffOrAdminActive() || hasNoReturnOrSignatureFields(resource.data);
+      allow create: if isValidItemTextFields(incoming()) && canCreateCatalogItem();
+      allow update: if isValidItemTextFields(incoming()) && canUpdateCatalogItemBase() && (isStaffOrAdminNonReturnItemUpdate() || isAuthorSafeMetadataEdit());
+      allow delete: if (!('status' in existing()) || existing().status != 'DEVOLVIDO') && canDeleteNonReturnedCatalogItem();
+    }
+
+    match /found_items/{itemId} {
+      allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
+      allow list: if isStaffOrAdminActive() || hasNoReturnOrSignatureFields(resource.data);
+      allow create: if isValidItemTextFields(incoming()) && canCreateCatalogItem();
+      allow update: if isValidItemTextFields(incoming()) && canUpdateCatalogItemBase() && (isStaffOrAdminNonReturnItemUpdate() || isAuthorSafeMetadataEdit());
+      allow delete: if (!('status' in existing()) || existing().status != 'DEVOLVIDO') && canDeleteNonReturnedCatalogItem();
+    }
+
+    match /lost_items/{itemId} {
+      allow get: if resource == null || hasNoReturnOrSignatureFields(resource.data) || (isSignedIn() && isAccountActive() && (isAdmin() || isServidor()));
+      allow list: if isStaffOrAdminActive() || hasNoReturnOrSignatureFields(resource.data);
+      allow create: if isValidItemTextFields(incoming()) && canCreateCatalogItem();
+      allow update: if isValidItemTextFields(incoming()) && canUpdateCatalogItemBase() && (isStaffOrAdminNonReturnItemUpdate() || isAuthorSafeMetadataEdit());
+      allow delete: if (!('status' in existing()) || existing().status != 'DEVOLVIDO') && canDeleteNonReturnedCatalogItem();
+    }
+
+    // ==========================================
+    // 2b. Signature Requests Collection (Server-Only / Admin SDK)
+    // ==========================================
+    match /signature_requests/{itemId} {
+      allow read, write: if false;
+    }
+
+    // ==========================================
+    // 2c. Private Item Return & Signature Records (Restricted PII / Signatures / Receipts)
+    // ==========================================
+    match /item_return_records/{itemId} {
+      // Get: Only active approved SERVIDOR, ADMIN, or the authenticated recipient (matching recipientUid) can read a private return record.
+      allow get: if isSignedIn() && isAccountActive() && (
+        isAdmin() ||
+        isServidor() ||
+        (resource != null && 'recipientUid' in resource.data && resource.data.recipientUid == request.auth.uid)
+      );
+      // List: Only active approved SERVIDOR or ADMIN can list/query private return records.
+      allow list: if isSignedIn() && isAccountActive() && (isAdmin() || isServidor());
+      // Writes are strictly server-authoritative via Firebase Admin SDK.
+      allow create, update, delete: if false;
+    }
+
+    // ==========================================
+    // 2c-bis. Private Item Verification Hints & Keys (/item_private)
+    // ==========================================
+    match /item_private/{itemId} {
+      // Get: Only active approved SERVIDOR, ADMIN, or the item author can read private verification hints/keys.
+      allow get: if isStaffOrAdminActive() || (
+        isSignedIn() && isAccountActive() && (
+          (resource != null && 'registeredByUserId' in resource.data && resource.data.registeredByUserId == request.auth.uid) ||
+          (exists(/databases/$(database)/documents/items/$(itemId)) &&
+           get(/databases/$(database)/documents/items/$(itemId)).data.registeredByUserId == request.auth.uid)
+        )
+      );
+      // List: Only active approved SERVIDOR or ADMIN can list private verification metadata.
+      allow list: if isStaffOrAdminActive();
+      // Create / Update: Active verified approved SERVIDOR or ADMIN.
+      allow create: if isStaffOrAdminActive() &&
+                       (!('itemId' in incoming()) || incoming().itemId == itemId) &&
+                       (!('registeredByUserId' in incoming()) || incoming().registeredByUserId == request.auth.uid);
+      allow update: if isStaffOrAdminActive() &&
+                       (!('registeredByUserId' in existing()) || incoming().registeredByUserId == existing().registeredByUserId) &&
+                       (!('itemId' in incoming()) || incoming().itemId == itemId);
+      allow delete: if isAdmin() || (
+        isActiveVerifiedMember() &&
+        exists(/databases/$(database)/documents/items/$(itemId)) &&
+        get(/databases/$(database)/documents/items/$(itemId)).data.registeredByUserId == request.auth.uid &&
+        get(/databases/$(database)/documents/items/$(itemId)).data.status != 'DEVOLVIDO'
+      );
+    }
+
+    // ==========================================
+    // 2d. Email Notifications Log Collection (Server-Only Writes / Staff & Admin Read)
+    // ==========================================
+    match /email_notifications/{notifId} {
+      allow get, list: if isSignedIn() && isAccountActive() && (isAdmin() || isServidor());
+      allow create, update, delete: if false;
+    }
+
+    // ==========================================
+    // 2e. Immutable Item History Timeline (/item_history)
+    // ==========================================
+    match /item_history/{entryId} {
+      function canUserDocCreateItemHistory(inc, u) {
+        let hasRoleField = 'actorRole' in inc;
+        let isAdm = hasApprovedAdminRole(u);
+        let isServ = hasApprovedServidorRole(u);
+        let itemPath = /databases/$(database)/documents/items/$(inc.objectId);
+        return isUserDocActiveData(u) && (
+          (isAdm && (!hasRoleField || inc.actorRole in ['ADMIN', 'SERVIDOR'])) ||
+          (isServ && (!hasRoleField || inc.actorRole == 'SERVIDOR')) ||
+          (
+            isNonIntrusoRoleOrEmail(u) &&
+            (!hasRoleField || inc.actorRole == 'ALUNO') &&
+            exists(itemPath) &&
+            get(itemPath).data.registeredByUserId == request.auth.uid
+          )
+        );
+      }
+
+      // Public get strictly free of private return/signature/secret fields;
+      // list & full historical read (including legacy PII entries) strictly restricted to active ADMIN and approved SERVIDOR.
+      allow get: if resource == null ||
+                    isStaffOrAdminActive() ||
+                    hasNoReturnOrSignatureFields(resource.data);
+      allow list: if isStaffOrAdminActive();
+      // Append-only creation by active verified non-intruso users matching their own auth.uid & non-escalated role.
+      allow create: if isSignedIn() &&
+                       hasVerifiedEmailToken() &&
+                       incoming().actorId == request.auth.uid &&
+                       incoming().objectId is string &&
+                       incoming().objectId.size() > 0 &&
+                       incoming().action is string &&
+                       incoming().action.size() > 0 &&
+                       hasNoReturnOrSignatureFields(incoming()) &&
+                       (
+                         (isRootIdentity() && (!('actorRole' in incoming()) || incoming().actorRole in ['ADMIN', 'SERVIDOR'])) ||
+                         (userDocExists() && canUserDocCreateItemHistory(incoming(), getUserData()))
+                       );
+      allow update, delete: if false;
+    }
+
+    // ==========================================
+    // 3. Item Claims Collection (Solicitações de Devolução)
+    // ==========================================
+    match /claims/{claimId} {
+      // Helper to ensure administrative review fields are absent on creation/resubmission
+      function hasNoAdminReviewFields(data) {
+        return !('reviewedByUserId' in data) &&
+               !('reviewedByName' in data) &&
+               !('reviewedByRole' in data) &&
+               !('reviewedAt' in data) &&
+               !('rejectionReason' in data) &&
+               !('decisionNotes' in data) &&
+               !('completedAt' in data) &&
+               !('cancelledAt' in data);
+      }
+
+      // Helper to validate immutable claim attributes
+      function areImmutableFieldsPreserved() {
+        return incoming().id == existing().id &&
+               incoming().itemId == existing().itemId &&
+               incoming().claimerId == existing().claimerId &&
+               incoming().createdAt == existing().createdAt &&
+               incoming().distinctiveFeatures == existing().distinctiveFeatures;
+      }
+
+      function isClaimableItem(itemId) {
+        let itemPath = /databases/$(database)/documents/items/$(itemId);
+        return exists(itemPath) && !(get(itemPath).data.status in ['DEVOLVIDO', 'ENCERRADO']);
+      }
+
+      function isValidClaimBody(inc) {
+        return inc.distinctiveFeatures is string &&
+               inc.distinctiveFeatures.size() > 0 &&
+               inc.distinctiveFeatures.size() <= 1000 &&
+               (!('additionalInfo' in inc) || inc.additionalInfo == null || (inc.additionalInfo is string && inc.additionalInfo.size() <= 1000)) &&
+               isClaimableItem(inc.itemId);
+      }
+
+      function isValidStaffClaimTransition(ext, inc) {
+        return areImmutableFieldsPreserved() &&
+               ext.status != 'CONCLUIDO' &&
+               ext.status != 'CANCELADO' &&
+               (
+                 (ext.status == 'PENDENTE' && inc.status in ['APROVADO', 'REJEITADO', 'CANCELADO']) ||
+                 (ext.status == 'APROVADO' && inc.status in ['CONCLUIDO', 'REJEITADO']) ||
+                 (ext.status == 'REJEITADO' && inc.status == 'APROVADO') ||
+                 (inc.status == ext.status && ext.status in ['PENDENTE', 'APROVADO'])
+               ) &&
+               (inc.status != 'REJEITADO' || (inc.rejectionReason is string && inc.rejectionReason.size() > 0)) &&
+               (inc.status != 'CONCLUIDO' || (inc.completedAt is string && inc.completedAt.size() > 0));
+      }
+
+      function canUserDocUpdateClaim(u, ext, inc) {
+        let isNonIntruso = isNonIntrusoRoleOrEmail(u);
+        return isUserDocActiveData(u) && (
+          // 1. Claimant Cancellation (Strict least privilege: only status & cancelledAt)
+          (
+            isNonIntruso &&
+            ext.claimerId == request.auth.uid &&
+            ext.status == 'PENDENTE' &&
+            inc.status == 'CANCELADO' &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt'])
+          ) ||
+          // 2. Claimant Resubmission (If previous claim was CANCELADO or REJEITADO)
+          (
+            isNonIntruso &&
+            ext.claimerId == request.auth.uid &&
+            ext.status in ['CANCELADO', 'REJEITADO'] &&
+            inc.status == 'PENDENTE' &&
+            inc.id == ext.id &&
+            inc.claimerId == request.auth.uid &&
+            inc.itemId == ext.itemId &&
+            inc.createdAt == ext.createdAt &&
+            hasNoAdminReviewFields(inc) &&
+            isValidClaimBody(inc)
+          ) ||
+          // 3. Staff / Admin Review & Lifecycle Transitions
+          (
+            hasApprovedStaffOrAdminRole(u) &&
+            isValidStaffClaimTransition(ext, inc)
+          )
+        );
+      }
+
+      // Claims can only be read by active claimers, the item author, or Admin/Active Servidor
+      allow get: if isSignedIn() && (
+        // 1. Leitura tolerante EXCLUSIVA para documentos inexistentes (resource == null) com ID determinístico do solicitante
+        (resource == null && isAccountActive() && request.auth.uid != null && claimId.matches('claim_' + request.auth.uid + '_.*')) ||
+        isRootAdmin() ||
+        (
+          isAccountActive() && (
+            // 2. Documentos existentes (resource != null): verificação estrita de titularidade (claimerId) ou autoria do item
+            (resource != null && (
+              existing().claimerId == request.auth.uid || 
+              (exists(/databases/$(database)/documents/items/$(existing().itemId)) && 
+               get(/databases/$(database)/documents/items/$(existing().itemId)).data.registeredByUserId == request.auth.uid)
+            )) ||
+            // 3. Privilégios operacionais e administrativos (isAccountActive já validado acima)
+            (hasVerifiedEmailToken() && (isApprovedServidorDoc() || isAdminUserDoc()))
+          )
+        )
+      );
+      allow list: if isSignedIn() && (
+        isRootAdmin() ||
+        (
+          isAccountActive() && (
+            resource.data.claimerId == request.auth.uid ||
+            (hasVerifiedEmailToken() && (isApprovedServidorDoc() || isAdminUserDoc()))
+          )
+        )
+      );
+
+      // Create: Authenticated user making a claim with their own real user id, verified email and active account.
+      allow create: if isActiveVerifiedMember() &&
+                    claimId == 'claim_' + request.auth.uid + '_' + incoming().itemId &&
+                    incoming().claimerId == request.auth.uid &&
+                    incoming().status == 'PENDENTE' &&
+                    incoming().itemId is string && incoming().itemId.size() > 0 &&
+                    hasNoAdminReviewFields(incoming()) &&
+                    isValidClaimBody(incoming());
+
+      // Update:
+      allow update: if isSignedIn() &&
+                       hasVerifiedEmailToken() &&
+                       (
+                         (isRootIdentity() && isValidStaffClaimTransition(existing(), incoming())) ||
+                         (userDocExists() && canUserDocUpdateClaim(getUserData(), existing(), incoming()))
+                       );
+
+      // Delete: Admin only
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 4. Notifications Collection (Notificações do Usuário)
+    // ==========================================
+    match /notifications/{notificationId} {
+      // 1. Read (Get): A user can ONLY read notifications addressed to them, or authorized broadcasts; Admins can read all for monitoring
+      allow get: if isSignedIn() && (
+        (resource != null && (
+          existing().userId == request.auth.uid || 
+          existing().userId == 'all' || 
+          existing().userId == 'todos_alunos' || 
+          existing().userId == 'todos' || 
+          existing().isGlobal == true
+        )) ||
+        isAdmin()
+      );
+
+      // 2. Read (List): A user query only returns documents matching their UID or authorized broadcasts; Admins can query all
+      allow list: if isSignedIn() && (
+        isAdmin() || 
+        (resource != null && (
+          resource.data.userId == request.auth.uid || 
+          resource.data.userId == 'all' || 
+          resource.data.userId == 'todos_alunos' || 
+          resource.data.userId == 'todos' || 
+          resource.data.isGlobal == true
+        ))
+      );
+
+      // 3. Create:
+      // - Admins and Active Servidores (Campus Staff) can create notifications for any user or institutional broadcasts.
+      // - Regular active users (Students/Others) can ONLY create notifications addressed strictly to themselves (request.auth.uid).
+      // - Suspended or banned users CANNOT create notifications.
+      // - Regular users CANNOT send notifications to other users (anti-spoofing).
+      // - Regular users CANNOT create broadcast notifications (isGlobal == true, 'all', etc.).
+      // - Regular users CANNOT forge SYSTEM type notifications.
+      allow create: if isSignedIn() && (
+        isAdmin() || 
+        (isServidor() && isAccountActive()) || 
+        (
+          isAccountActive() &&
+          incoming().userId == request.auth.uid &&
+          (!('isGlobal' in incoming()) || incoming().isGlobal != true) &&
+          incoming().userId != 'all' &&
+          incoming().userId != 'todos' &&
+          incoming().userId != 'todos_alunos' &&
+          incoming().userId != 'todos_servidores' &&
+          incoming().userId != 'global' &&
+          (!('type' in incoming()) || incoming().type != 'SYSTEM') &&
+          incoming().read == false
+        )
+      );
+
+      // 4. Update:
+      // - User can ONLY mark their OWN notification as read.
+      // - Strict immutability of core fields: userId (recipientId), title, message, type, isGlobal, timestamp, relatedItemId, id.
+      // - User CANNOT change recipientId from A to B.
+      // - User CANNOT change isGlobal to true.
+      // - User CANNOT mark another user's notification as read.
+      // - Admin can perform administrative updates if needed.
+      allow update: if (
+        isSignedIn() && 
+        isAccountActive() &&
+        existing().userId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']) &&
+        incoming().userId == existing().userId &&
+        incoming().title == existing().title &&
+        incoming().message == existing().message &&
+        (!('type' in existing()) || incoming().type == existing().type) &&
+        (!('isGlobal' in existing()) || incoming().isGlobal == existing().isGlobal) &&
+        (!('timestamp' in existing()) || incoming().timestamp == existing().timestamp) &&
+        (!('relatedItemId' in existing()) || incoming().relatedItemId == existing().relatedItemId) &&
+        (!('id' in existing()) || incoming().id == existing().id)
+      ) || isAdmin();
+
+      // 5. Delete:
+      // - User can ONLY delete their OWN notification (existing().userId == request.auth.uid).
+      // - User CANNOT delete another user's notification.
+      // - Admin can delete.
+      allow delete: if isSignedIn() && (
+        isAccountActive() && existing().userId == request.auth.uid || 
+        isAdmin()
+      );
+    }
+
+    // ==========================================
+    // 5. System Configuration Doc (Modo de Manutenção)
+    // ==========================================
+    match /system/{docId} {
+      // Anyone can read maintenance banner state
+      allow get: if true;
+      allow list: if true;
+
+      // Only verified Admin can modify system settings
+      allow write: if isAdmin();
+    }
+
+    // ==========================================
+    // 5b. System Config Root Admin (Protected Root Identity Pinning)
+    // ==========================================
+    match /system_config/{configId} {
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // ==========================================
+    // 6. Audit Logs Collection (Trilha de Auditoria Imutável)
+    // ==========================================
+    function isAllowedClientAuditAction(data) {
+      return 'action' in data &&
+             data.action is string &&
+             data.action.size() > 0 &&
+             !(data.action in [
+               'REGISTRO_DEVOLUCAO',
+               'REABERTURA_DEVOLUCAO',
+               'CONFIRMACAO_NOTIFICACAO_ASSINATURA',
+               'REEMISSAO_LINK_ASSINATURA',
+               'REENVIO_SOLICITACAO_ASSINATURA',
+               'RECUPERACAO_LINK_ASSINATURA',
+               'ROLE_ASSIGNED',
+               'ROLE_REVOKED',
+               'ACCOUNT_DELETED',
+               'ACCOUNT_DELETION_INCONSISTENCY',
+               'MASTER_WIPE_EXECUTED',
+               'UPDATE_SYSTEM_CONFIG',
+               'UNAUTHORIZED_AI_ATTEMPT'
+             ]);
+    }
+
+    match /activity_logs/{logId} {
+      // Only Admin and Active Servidor can inspect audit trail
+      allow get: if isAdmin() || (isServidor() && isAccountActive());
+      allow list: if isAdmin() || (isServidor() && isAccountActive());
+
+      // Create: Strict non-forgeable activity trail
+      // 1. User must be authenticated and active/admin
+      // 2. adminId / actorId MUST match real authenticated request.auth.uid (no cross-user spoofing)
+      // 3. actorEmail / adminEmail MUST match authenticated token email if present
+      // 4. Backend-only sensitive actions (REGISTRO_DEVOLUCAO, REABERTURA_DEVOLUCAO, ROLE_ASSIGNED, etc.) are blocked via Client SDK
+      // 5. actorRole must match user's real role (Admin can log as ADMIN/SERVIDOR; Servidor as SERVIDOR; Aluno as ALUNO)
+      // 6. Aluno can only log permitted item actions ('CADASTRO_OCORRENCIA', 'EDIT_OCORRENCIA', 'STATUS_OVERRIDE', 'EXCLUSAO_ITEM')
+      allow create: if isSignedIn() && (isAccountActive() || isAdmin()) &&
+        isAllowedClientAuditAction(incoming()) &&
+        (
+          (!('actorId' in incoming()) || incoming().actorId == request.auth.uid) &&
+          (!('adminId' in incoming()) || incoming().adminId == request.auth.uid) &&
+          (!('actorEmail' in incoming()) || request.auth.token.email == null || (incoming().actorEmail is string && incoming().actorEmail.lower() == request.auth.token.email.lower())) &&
+          (!('adminEmail' in incoming()) || request.auth.token.email == null || (incoming().adminEmail is string && incoming().adminEmail.lower() == request.auth.token.email.lower())) &&
+          (
+            (isAdmin() && (!('actorRole' in incoming()) || incoming().actorRole in ['ADMIN', 'SERVIDOR'])) ||
+            (isServidor() && isAccountActive() && (!('actorRole' in incoming()) || incoming().actorRole == 'SERVIDOR')) ||
+            (
+              (incoming().actorRole == 'ALUNO' || incoming().userRole == 'ALUNO') &&
+              incoming().action in ['CADASTRO_OCORRENCIA', 'EDIT_OCORRENCIA', 'STATUS_OVERRIDE', 'EXCLUSAO_ITEM']
+            )
+          )
+        );
+
+      // Strict Immutability: Activity logs can never be altered or deleted by ANY user
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /audit_logs/{logId} {
+      // Admins and Active Servidores can inspect comprehensive audit trail
+      allow get: if isAdmin() || (isServidor() && isAccountActive());
+      allow list: if isAdmin() || (isServidor() && isAccountActive());
+
+      // Create: Strict non-forgeable audit trail
+      // 1. User must be authenticated and active/admin
+      // 2. Backend-only sensitive actions are blocked via Client SDK (Admin SDK bypasses rules)
+      // 3. Client actorId MUST match real authenticated request.auth.uid (no cross-user spoofing)
+      // 4. actorEmail MUST match authenticated token email if present
+      // 5. actorRole must match user's real role (Admin can log as ADMIN/SERVIDOR; Servidor as SERVIDOR; Aluno as ALUNO)
+      // 6. Aluno can only log permitted item actions ('CADASTRO_OCORRENCIA', 'EDIT_OCORRENCIA', 'STATUS_OVERRIDE', 'EXCLUSAO_ITEM')
+      allow create: if isSignedIn() && (isAccountActive() || isAdmin()) &&
+        isAllowedClientAuditAction(incoming()) &&
+        incoming().actorId == request.auth.uid &&
+        (request.auth.token.email == null || (incoming().actorEmail is string && incoming().actorEmail.lower() == request.auth.token.email.lower())) &&
+        (
+          (isAdmin() && incoming().actorRole in ['ADMIN', 'SERVIDOR']) ||
+          (isServidor() && isAccountActive() && incoming().actorRole == 'SERVIDOR') ||
+          (
+            incoming().actorRole == 'ALUNO' &&
+            incoming().objectType == 'ITEM' &&
+            incoming().action in ['CADASTRO_OCORRENCIA', 'EDIT_OCORRENCIA', 'STATUS_OVERRIDE', 'EXCLUSAO_ITEM']
+          )
+        );
+
+      // Strict Immutability: Audit logs can NEVER be updated or deleted by ANY user
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ==========================================
+    // 7. Backup Logs Collection
+    // ==========================================
+    match /backup_logs/{logId} {
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin() && incoming().adminId == request.auth.uid;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 8. Error Logs Collection
+    // ==========================================
+    match /error_logs/{logId} {
+      allow get: if isAdmin() || isServidor();
+      allow list: if isAdmin() || isServidor();
+      allow create: if isSignedIn() && 
+                       isAccountActive() &&
+                       (!('userId' in incoming()) || incoming().userId == request.auth.uid) &&
+                       (!('userEmail' in incoming()) || request.auth.token.email == null || incoming().userEmail == request.auth.token.email);
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 9. System Metrics Collection
+    // ==========================================
+    match /system_metrics/{metricId} {
+      // Direct get: Only Admin or the public/authenticated heartbeat latency probe
+      allow get: if isAdmin() || (isSignedIn() && metricId == 'heartbeat');
+      allow list: if isAdmin();
+      // Only heartbeat document can be written by active client app instances to verify liveness/latency
+      allow create, update: if isAdmin() || (isSignedIn() && isAccountActive() && metricId == 'heartbeat');
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 10. Comments Collection
+    // ==========================================
+    match /comments/{commentId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() && 
+                       isAccountActive() && 
+                       incoming().userId == request.auth.uid &&
+                       (
+                         (!('userRole' in incoming())) ||
+                         (incoming().userRole == 'ALUNO') ||
+                         (incoming().userRole == 'SERVIDOR' && isServidor()) ||
+                         (incoming().userRole == 'ADMIN' && isAdmin())
+                       );
+      allow update: if isSignedIn() && 
+                       isAccountActive() && 
+                       existing().userId == request.auth.uid && 
+                       incoming().userId == existing().userId &&
+                       incoming().itemId == existing().itemId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (!('userRole' in incoming()) || incoming().userRole == existing().userRole);
+      allow delete: if isAdmin() || (isSignedIn() && isAccountActive() && existing().userId == request.auth.uid);
+    }
+
+    // ==========================================
+    // 11. FCM Subscriptions Collection
+    // ==========================================
+    match /fcm_subscriptions/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if isAdmin() || (request.auth.uid == userId && isActiveVerifiedMember());
+      allow delete: if isAdmin() || (isSignedIn() && request.auth.uid == userId && isAccountActive());
+    }
+
+    // ==========================================
+    // 12. Support & Feedback Tickets Collection
+    // ==========================================
+    match /support_tickets/{ticketId} {
+      // Get: Author can read their own ticket (resource.data.userId == request.auth.uid); Admins can read all tickets
+      allow get: if isSignedIn() && ((resource != null && resource.data.userId == request.auth.uid) || isAdmin());
+      // List: Admins can list all tickets; Authenticated users can list/query only their own tickets
+      allow list: if isAdmin() || (isSignedIn() && isAccountActive() && resource != null && resource.data.userId == request.auth.uid);
+      // Support tickets: allow creation by visitors (no userId/userRole allowed) or authenticated users (must match auth.uid and auth email)
+      allow create: if (
+        (isSignedIn() && 
+         isAccountActive() &&
+         incoming().userId == request.auth.uid && 
+         (!('email' in incoming()) || incoming().email == request.auth.token.email) &&
+         incoming().status == 'NOVO') ||
+        (!isSignedIn() && 
+         (!('userId' in incoming()) || incoming().userId == null || incoming().userId == '') && 
+         (!('userRole' in incoming()) || incoming().userRole == null) &&
+         incoming().status == 'NOVO')
+      );
+      // Updates and Deletes: Exclusively restricted to administrators
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 13. Document Templates Collection (Admin Only)
+    // ==========================================
+    match /document_templates/{templateId} {
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 14. Generated Documents Collection (Admin Only)
+    // ==========================================
+    match /generated_documents/{docId} {
+      allow get: if isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 15. Project Settings Collection (Admin Only Read & Write)
+    // ==========================================
+    match /project_settings/{settingsId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 16. Test Battery Executions & Governance (Admin, Servidor & Assigned Testers)
+    // ==========================================
+    match /test_executions/{executionId} {
+      // Reading: Admin, Servidor, or assigned test participants
+      allow get, list: if isSignedIn() && (
+        isAdmin() || 
+        isServidor() || 
+        exists(/databases/$(database)/documents/test_participants/$(request.auth.uid))
+      );
+      // Creating: Admin or Servidor (QA coordinators)
+      allow create: if isAdmin() || isServidor();
+      // Updating: Admin, Servidor, or assigned test participants
+      allow update: if (isAdmin() || isServidor() || (
+        isSignedIn() && 
+        isAccountActive() &&
+        exists(/databases/$(database)/documents/test_participants/$(request.auth.uid))
+      ));
+      // Deleting: Admin only
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 17. Test Battery Participants Registry
+    // ==========================================
+    match /test_participants/{participantId} {
+      // Reading: Participant can read their own assignment doc; Admin and Servidor can read/list all
+      allow get: if isSignedIn() && (request.auth.uid == participantId || isAdmin() || isServidor());
+      allow list: if isAdmin() || isServidor();
+      allow create, update: if isAdmin() || isServidor();
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // 18. Centralized Test Error Logs Collection
+    // ==========================================
+    match /test_error_logs/{logId} {
+      // Reading & Listing: Exclusively Admin and Servidor
+      allow get, list: if isAdmin() || isServidor();
+      // Creation: Authenticated active user logging their own error snapshot with strict schema validation
+      allow create: if isSignedIn() && 
+                       isAccountActive() &&
+                       incoming().batteryId is string && incoming().batteryId.size() > 0 && incoming().batteryId.size() <= 100 &&
+                       incoming().testId is string && incoming().testId.size() > 0 && incoming().testId.size() <= 100 &&
+                       incoming().action is string && incoming().action.size() > 0 && incoming().action.size() <= 50 &&
+                       incoming().errorMessage is string && incoming().errorMessage.size() > 0 && incoming().errorMessage.size() <= 5000 &&
+                       incoming().timestamp is string &&
+                       (!('userId' in incoming()) || incoming().userId == request.auth.uid) &&
+                       (!('userEmail' in incoming()) || request.auth.token.email == null || incoming().userEmail == request.auth.token.email);
+      // Immutability: Test error logs cannot be updated once written
+      allow update: if false;
+      // Deletion: Admin only
+      allow delete: if isAdmin();
+    }
+  }
+}

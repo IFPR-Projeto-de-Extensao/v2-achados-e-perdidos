@@ -62,6 +62,14 @@ import {
   mergeItemWithPrivateRecord,
   buildFirestoreItemCreatePayload,
 } from "../lib/itemPrivacyUtils";
+import {
+  evaluateItemRegistrationEligibility,
+  buildSanitizedInitialHistoryEntry,
+  buildSanitizedItemPrivatePayload,
+  mergeConfirmedItemIntoCatalogSnapshot,
+  shouldIncludeRegistrationItemInCatalog,
+  TARGET_FIRESTORE_DATABASE_ID,
+} from "../lib/itemRegistrationPipeline";
 import { buildItemStatusTransitionPatch, upsertItemPreservingFields } from "../lib/itemStateSync";
 import {
   assertClientItemDataUpdateAllowed,
@@ -1120,12 +1128,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       error: undefined,
     });
 
-    await syncOfflineQueue();
+    await syncOfflineQueue(false, true);
   };
 
   // Synchronize pending offline registration queue with Firestore (Idempotent)
-  const syncOfflineQueue = async (forceManual = false) => {
-    if (!forceManual && (!auth.currentUser || !authProfileResolvedRef.current)) {
+  const syncOfflineQueue = async (forceManual = false, isExplicitRetry = false) => {
+    if (!forceManual && !isExplicitRetry && (!auth.currentUser || !authProfileResolvedRef.current)) {
       console.log("[Offline Sync Guard] Aguardando autenticação e resolução final do perfil antes de sincronizar automaticamente.");
       return;
     }
@@ -1311,6 +1319,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           continue;
         }
 
+        let committedItemForLocalState: LostFoundItem | null = null;
+        let committedHistoryEntry: ItemHistoryLog | null = null;
+        let wasReconciledAlreadySynced = false;
+
         try {
           await updateSyncQueueEntry(entry.id, {
             status: "SINCRONIZANDO",
@@ -1319,9 +1331,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             payloadSizeBytes,
           });
 
-          // 🔍 Temporary Forensic Runtime Instrumentation (Diagnostic Only)
+          // 🔍 Forensic Runtime Instrumentation + Unified Pre-Commit Eligibility Guard
           const firebaseUser = auth.currentUser;
-          const tokenResult = firebaseUser ? await firebaseUser.getIdTokenResult(true).catch(() => null) : null;
+          let tokenResult = firebaseUser ? await firebaseUser.getIdTokenResult(true).catch(() => null) : null;
           let userDocExists = false;
           let userDocData: any = null;
           if (firebaseUser?.uid) {
@@ -1331,6 +1343,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               userDocData = userDocExists ? uSnap.data() : null;
             } catch (_) {}
           }
+
+          const isRootAdminSync = isVerifiedRootAdminAuthUser(firebaseUser);
+          if (!isRootAdminSync && firebaseUser?.emailVerified) {
+            const isDocEligibleInitial = isPersistedDocEligibleForItemWrite(userDocData);
+            const isTokenVerifiedInitial = tokenResult?.claims?.email_verified === true;
+            if (!isDocEligibleInitial || !isTokenVerifiedInitial) {
+              const reconcileRes = await reconcileOwnProfileWithServer(firebaseUser, {
+                force: true,
+                notifyOnError: false,
+              });
+              if (reconcileRes.ok) {
+                tokenResult = await firebaseUser.getIdTokenResult(true).catch(() => tokenResult);
+                try {
+                  const refreshedSnap = await getDoc(doc(db, "users", firebaseUser.uid));
+                  userDocExists = refreshedSnap.exists();
+                  userDocData = userDocExists ? refreshedSnap.data() : null;
+                } catch (_) {}
+              }
+            }
+          }
+
+          const syncEligibility = evaluateItemRegistrationEligibility({
+            authUser: firebaseUser,
+            isGuest: false,
+            isAuthLoading: false,
+            tokenEmailVerified:
+              tokenResult?.claims?.email_verified !== undefined
+                ? tokenResult.claims.email_verified === true
+                : null,
+            userDocData: userDocData ?? (isRootAdminSync ? null : currentUser),
+            isOnline: true,
+          });
+
+          const effectiveSyncRole: "ADMIN" | "SERVIDOR" =
+            syncEligibility.effectiveRole ||
+            (isRootAdminSync ? "ADMIN" : itemToSave.registeredByRole === "ADMIN" ? "ADMIN" : "SERVIDOR");
 
           console.log(
             formatForensicRuntimeLine({
@@ -1344,42 +1392,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               userDocApprovalStatus: userDocData?.approvalStatus ?? null,
               userDocStatus: userDocData?.status ?? null,
               userDocActive: userDocData?.active ?? null,
-              registeredByRole: itemToSave.registeredByRole ?? null,
+              registeredByRole: effectiveSyncRole,
             })
           );
 
-        const rawInitHistory = Array.isArray(itemToSave.history) && itemToSave.history.length > 0
-            ? itemToSave.history[0]
-            : {
-                id: `hist-${itemToSave.id}-init`,
-                action: "Ocorrência cadastrada",
-                actorId: currentAuthUser.uid,
-                actorName: itemToSave.registeredByName || currentAuthUser.displayName || "Usuário IFPR",
-                actorRole:
-                  itemToSave.registeredByRole ||
-                  (currentUser?.id === currentAuthUser.uid && currentUser?.role === "ADMIN"
-                    ? "ADMIN"
-                    : "SERVIDOR"),
-                userId: currentAuthUser.uid,
-                userName: itemToSave.registeredByName || currentAuthUser.displayName || "Usuário IFPR",
-                userRole:
-                  itemToSave.registeredByRole ||
-                  (currentUser?.id === currentAuthUser.uid && currentUser?.role === "ADMIN"
-                    ? "ADMIN"
-                    : "SERVIDOR"),
-                timestamp: itemToSave.createdAt || new Date().toISOString(),
-                details: `Ocorrência registrada no sistema do IFPR Campus Ivaiporã como ${itemToSave.type}.`,
-                objectId: itemToSave.id,
-                transactionId: `tx-init-${itemToSave.id}`,
-                newValue: `Tipo: ${itemToSave.type} | Local: ${itemToSave.location}`,
-              };
-          const histEntryId = String(rawInitHistory.id || `hist-${itemToSave.id}-init`);
+          if (!syncEligibility.allowed || !syncEligibility.effectiveRole) {
+            const authBlockMsg =
+              syncEligibility.userMessage ||
+              "Sincronização recusada por falta de autorização/permissão no Firestore. O item permanece preservado no dispositivo.";
+            console.warn(
+              `[Offline Sync Auth Guard] Item #${itemToSave.id} preservado na fila local (${syncEligibility.reasonCode || "UNAUTHORIZED"}): ${authBlockMsg}`
+            );
+            permanentErrorCount++;
+            await updateSyncQueueEntry(entry.id, {
+              status: "ERRO_PERMANENTE",
+              errorType: "AUTHORIZATION",
+              error: `AUTHORIZATION_${syncEligibility.reasonCode || "DENIED"}: ${authBlockMsg}`,
+              payloadSizeBytes,
+              lastAttempt: new Date().toISOString(),
+            });
+            updateUploadTask(taskId, {
+              status: "ERROR",
+              error: `AUTHORIZATION_${syncEligibility.reasonCode || "DENIED"}`,
+              statusMessage: authBlockMsg,
+            });
+            continue;
+          }
+
+          const alignedSanitizedPayload = sanitizeFirestoreData({
+            ...sanitizedPayload,
+            registeredByUserId: currentAuthUser.uid,
+            registeredByRole: effectiveSyncRole,
+          });
+
+          const rawHistoryCandidate =
+            Array.isArray(itemToSave.history) && itemToSave.history.length > 0
+              ? itemToSave.history[0]
+              : null;
+          const { entryId: histEntryId, payload: sanitizedHistoryPayload } =
+            buildSanitizedInitialHistoryEntry({
+              itemId: itemToSave.id,
+              itemType: String(itemToSave.type || "ENCONTRADO"),
+              itemLocation: String(itemToSave.location || ""),
+              authUid: currentAuthUser.uid,
+              actorName: itemToSave.registeredByName || currentAuthUser.displayName || "Usuário IFPR",
+              effectiveRole: effectiveSyncRole,
+              rawHistoryEntry: rawHistoryCandidate,
+              createdAt: itemToSave.createdAt,
+            });
+          const sanitizedPrivatePayload = buildSanitizedItemPrivatePayload({
+            itemId: itemToSave.id,
+            authUid: currentAuthUser.uid,
+            secretVerificationHint: itemToSave.secretVerificationHint,
+            secretVerificationKey: itemToSave.secretVerificationKey,
+          });
+          const targetCollections: string[] = sanitizedPrivatePayload
+            ? ["items", "item_history", "item_private"]
+            : ["items", "item_history"];
 
           // 4. Verificar existência remota antes de gravar para nunca sobrescrever registro já confirmado ou conflitante
           const itemRef = doc(db, "items", itemToSave.id);
           const existingRemoteSnap = await getDoc(itemRef);
           const remoteEvaluation = evaluateExistingRemoteItem(
-            sanitizedPayload,
+            alignedSanitizedPayload,
             existingRemoteSnap.exists() ? (existingRemoteSnap.data() as Record<string, any>) : null
           );
 
@@ -1402,7 +1477,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             continue;
           }
 
-          let itemForLocalState: LostFoundItem = itemToSave;
+          let itemForLocalState: LostFoundItem = {
+            ...itemToSave,
+            registeredByRole: effectiveSyncRole,
+          };
 
           if (remoteEvaluation.action === "CONFIRM_ALREADY_SYNCED") {
             const remoteItemData = existingRemoteSnap.data() as LostFoundItem;
@@ -1414,33 +1492,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const histRef = doc(db, "item_history", histEntryId);
             const existingHistSnap = await getDoc(histRef).catch(() => null);
             if (existingHistSnap && !existingHistSnap.exists()) {
-              companionBatch.set(
-                histRef,
-                sanitizeFirestoreData({
-                  ...rawInitHistory,
-                  id: histEntryId,
-                  itemId: itemToSave.id,
-                  objectId: itemToSave.id,
-                  actorId: currentAuthUser.uid,
-                })
-              );
+              companionBatch.set(histRef, sanitizedHistoryPayload);
               hasCompanionWrites = true;
             }
 
-            if (itemToSave.secretVerificationHint !== undefined || itemToSave.secretVerificationKey !== undefined) {
+            if (sanitizedPrivatePayload) {
               const privRef = doc(db, "item_private", itemToSave.id);
               const existingPrivSnap = await getDoc(privRef).catch(() => null);
               if (existingPrivSnap && !existingPrivSnap.exists()) {
-                companionBatch.set(
-                  privRef,
-                  sanitizeFirestoreData({
-                    itemId: itemToSave.id,
-                    registeredByUserId: currentAuthUser.uid,
-                    secretVerificationHint: itemToSave.secretVerificationHint,
-                    secretVerificationKey: itemToSave.secretVerificationKey,
-                    updatedAt: new Date().toISOString(),
-                  })
-                );
+                companionBatch.set(privRef, sanitizedPrivatePayload);
                 hasCompanionWrites = true;
               }
             }
@@ -1454,101 +1514,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               id: itemToSave.id,
               isOfflineQueued: false,
             });
+            wasReconciledAlreadySynced = true;
             console.log(`[Offline Sync Reconciled] Item #${itemToSave.id} já confirmado no servidor; fila reconciliada sem sobrescrita.`);
           } else {
             // 4b. Criação inédita atômica via writeBatch: /items/{id}, /item_history/{entryId} e condicional /item_private/{id}
             const syncBatch = writeBatch(db);
-            syncBatch.set(itemRef, {
-              ...sanitizedPayload,
-              registeredByUserId: currentAuthUser.uid,
-            });
-            syncBatch.set(
-              doc(db, "item_history", histEntryId),
-              sanitizeFirestoreData({
-                ...rawInitHistory,
-                id: histEntryId,
-                itemId: itemToSave.id,
-                objectId: itemToSave.id,
-                actorId: currentAuthUser.uid,
-              })
-            );
-            if (itemToSave.secretVerificationHint !== undefined || itemToSave.secretVerificationKey !== undefined) {
-              syncBatch.set(
-                doc(db, "item_private", itemToSave.id),
-                sanitizeFirestoreData({
-                  itemId: itemToSave.id,
-                  registeredByUserId: currentAuthUser.uid,
-                  secretVerificationHint: itemToSave.secretVerificationHint,
-                  secretVerificationKey: itemToSave.secretVerificationKey,
-                  updatedAt: new Date().toISOString(),
-                })
-              );
+            syncBatch.set(itemRef, alignedSanitizedPayload);
+            syncBatch.set(doc(db, "item_history", histEntryId), sanitizedHistoryPayload);
+            if (sanitizedPrivatePayload) {
+              syncBatch.set(doc(db, "item_private", itemToSave.id), sanitizedPrivatePayload);
             }
             await syncBatch.commit();
-            console.log(`[Offline Sync Success] Item #${itemToSave.id} gravado atomically no Firestore (${payloadSizeBytes} bytes).`);
+            console.log(`[Offline Sync Success] Item #${itemToSave.id} gravado atomicamente no Firestore (${targetCollections.join(", ")}, ${payloadSizeBytes} bytes).`);
           }
 
-          // 5. Remove successfully synchronized entry from local IndexedDB queue
-          await removeSyncQueueEntry(entry.id);
-          await removeSyncQueueEntryByItemId(itemId);
-          console.log(`[Offline Sync Success] Item #${entry.id} (${itemId}) removido da fila local IndexedDB.`);
-
-          updateUploadTask(taskId, {
-            progress: 100,
-            status: "COMPLETED",
-            statusMessage:
-              remoteEvaluation.action === "CONFIRM_ALREADY_SYNCED"
-                ? "Item já estava salvo no servidor; fila reconciliada com segurança!"
-                : "Sincronizado com sucesso com o servidor em nuvem!",
-            completedAt: new Date().toISOString(),
-          });
-
-          syncedCount++;
-
-          // 6. Update local state immediately so item appears as confirmed and synchronized (isOfflineQueued: false)
-          setItems((prev) => {
-            const exists = prev.some((it) => it.id === itemToSave.id);
-            if (exists) {
-              return prev.map((it) => (it.id === itemToSave.id ? itemForLocalState : it));
-            }
-            return [itemForLocalState, ...prev];
-          });
-
-          // 7. Asynchronous Discord Webhook dispatch (non-blocking)
-          const discordItemPayload = {
-            ...itemToSave,
-            imageUrl:
-              itemToSave.imageUrl &&
-              (itemToSave.imageUrl.startsWith("http://") || itemToSave.imageUrl.startsWith("https://"))
-                ? itemToSave.imageUrl
-                : undefined,
+          committedItemForLocalState = itemForLocalState;
+          committedHistoryEntry = {
+            ...(sanitizedHistoryPayload as unknown as ItemHistoryLog),
+            id: histEntryId,
           };
-
-          if (itemToSave.type === "ENCONTRADO") {
-            safeFetchJson(
-              "/api/items/notify-novos-achados",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ item: discordItemPayload }),
-              },
-              () => ({ success: true })
-            ).catch((discordErr) => {
-              console.warn("[Novos Achados Webhook Notice] Envio offline-sync ao Discord:", discordErr);
-            });
-          } else if (itemToSave.type === "PERDIDO") {
-            safeFetchJson(
-              "/api/items/notify-novas-perdas",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ item: discordItemPayload }),
-              },
-              () => ({ success: true })
-            ).catch((discordErr) => {
-              console.warn("[Novas Perdas Webhook Notice] Envio offline-sync ao Discord:", discordErr);
-            });
-          }
         } catch (syncErr: any) {
           const originalCode = syncErr?.code || (syncErr?.name === "FirebaseError" ? "firestore/unknown" : undefined);
           const originalName = syncErr?.name || "UnknownError";
@@ -1562,9 +1546,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             stack: originalStack,
             itemId: itemToSave.id,
             taskId,
+            databaseId: TARGET_FIRESTORE_DATABASE_ID,
             collection: "items",
+            targetCollections: buildSanitizedItemPrivatePayload({
+              itemId: itemToSave.id,
+              authUid: auth.currentUser?.uid || itemToSave.registeredByUserId || "",
+              secretVerificationHint: itemToSave.secretVerificationHint,
+              secretVerificationKey: itemToSave.secretVerificationKey,
+            })
+              ? ["items", "item_history", "item_private"]
+              : ["items", "item_history"],
             documentId: itemToSave.id,
-            operation: "setDoc(..., { merge: true })",
+            operation: "writeBatch.commit()",
             payloadSizeBytes,
             online: typeof navigator !== "undefined" ? navigator.onLine : undefined,
             authUid: auth.currentUser?.uid || null,
@@ -1596,6 +1589,86 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             statusMessage: classifiedErr.isPermanent
               ? classifiedErr.userMessage
               : "Falha temporária ao sincronizar. O item permanece seguro na fila.",
+          });
+          continue;
+        }
+
+        // 5. Post-commit cleanup & UI confirmation isolated from Firestore commit catch
+        // (post-commit local errors never revert an already-persisted Firestore item to ERROR)
+        if (!committedItemForLocalState) continue;
+
+        try {
+          await removeSyncQueueEntry(entry.id);
+          await removeSyncQueueEntryByItemId(itemId);
+          console.log(`[Offline Sync Success] Item #${entry.id} (${itemId}) removido da fila local IndexedDB.`);
+        } catch (queueCleanupErr) {
+          console.warn(
+            `[Offline Sync Post-Commit] Aviso ao remover item já confirmado #${itemId} da fila IndexedDB:`,
+            queueCleanupErr
+          );
+        }
+
+        updateUploadTask(taskId, {
+          progress: 100,
+          status: "COMPLETED",
+          statusMessage: wasReconciledAlreadySynced
+            ? "Item já estava salvo no servidor; fila reconciliada com segurança!"
+            : "Sincronizado com sucesso com o servidor em nuvem!",
+          completedAt: new Date().toISOString(),
+        });
+
+        syncedCount++;
+
+        // 6. Update catalog refs + local state deterministically so item and initial history appear immediately without snapshot race flicker
+        const cleanConfirmedSyncPublic = sanitizePublicItemProjection({
+          ...committedItemForLocalState,
+          isOfflineQueued: false,
+        });
+        const mergedSyncSnapshot = mergeConfirmedItemIntoCatalogSnapshot({
+          prevRawPublicItems: rawPublicItemsRef.current,
+          prevHistoryMap: itemHistoryEntriesRef.current,
+          confirmedPublicItem: cleanConfirmedSyncPublic,
+          initialHistoryEntry: committedHistoryEntry,
+        });
+        rawPublicItemsRef.current = mergedSyncSnapshot.nextRawPublicItems;
+        itemHistoryEntriesRef.current = mergedSyncSnapshot.nextHistoryMap;
+        const hasStaffAccessOnSync = canOperateFormalReturn(currentUser, auth.currentUser, false);
+        setItems(mergeAllItemCollections(mergedSyncSnapshot.nextRawPublicItems, hasStaffAccessOnSync));
+
+        // 7. Asynchronous Discord Webhook dispatch (non-blocking)
+        const discordItemPayload = {
+          ...committedItemForLocalState,
+          imageUrl:
+            committedItemForLocalState.imageUrl &&
+            (committedItemForLocalState.imageUrl.startsWith("http://") ||
+              committedItemForLocalState.imageUrl.startsWith("https://"))
+              ? committedItemForLocalState.imageUrl
+              : undefined,
+        };
+
+        if (committedItemForLocalState.type === "ENCONTRADO") {
+          safeFetchJson(
+            "/api/items/notify-novos-achados",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ item: discordItemPayload }),
+            },
+            () => ({ success: true })
+          ).catch((discordErr) => {
+            console.warn("[Novos Achados Webhook Notice] Envio offline-sync ao Discord:", discordErr);
+          });
+        } else if (committedItemForLocalState.type === "PERDIDO") {
+          safeFetchJson(
+            "/api/items/notify-novas-perdas",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ item: discordItemPayload }),
+            },
+            () => ({ success: true })
+          ).catch((discordErr) => {
+            console.warn("[Novas Perdas Webhook Notice] Envio offline-sync ao Discord:", discordErr);
           });
         }
       }
@@ -4239,7 +4312,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Strict identity binding: prioritize real authenticated Firebase user to prevent identity spoofing
     const realAuthUid = auth.currentUser?.uid;
     const realAuthEmail = auth.currentUser?.email;
-    const effectiveRole: UserRole = (currentUser?.role as UserRole) || (realAuthEmail === "paulocauan39@gmail.com" ? "ADMIN" : "ALUNO");
+    const effectiveRole: UserRole =
+      (entry.actorOverride?.role as UserRole) ||
+      (currentUser?.role as UserRole) ||
+      (isVerifiedRootAdminAuthUser(auth.currentUser) ? "ADMIN" : "ALUNO");
 
     const auditLogDoc: SystemAuditLog = {
       id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -4274,6 +4350,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id: auditLogDoc.id,
         adminId: auditLogDoc.actorId,
         actorId: auditLogDoc.actorId,
+        actorEmail: auditLogDoc.actorEmail,
         actorRole: auditLogDoc.actorRole,
         adminName: auditLogDoc.actorName,
         action: auditLogDoc.action,
@@ -4293,18 +4370,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logAdminAction = async (action: ActivityLog["action"], details: string) => {
-    if (!currentUser || (currentUser.role !== "ADMIN" && currentUser.role !== "SERVIDOR")) return;
+    const isRootActor = isVerifiedRootAdminAuthUser(auth.currentUser);
+    const resolvedRole = isRootActor ? "ADMIN" : currentUser?.role;
+    if (!currentUser && !isRootActor) return;
+    if (resolvedRole !== "ADMIN" && resolvedRole !== "SERVIDOR") return;
+
+    const boundUid = auth.currentUser?.uid || currentUser?.id || "";
+    if (!boundUid) return;
+    const boundEmail = auth.currentUser?.email || currentUser?.email || undefined;
+
     const newLog: ActivityLog = {
       id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      adminId: currentUser.id,
-      adminName: currentUser.name,
+      adminId: boundUid,
+      adminName: currentUser?.name || auth.currentUser?.displayName || "Administrador",
       action,
       details,
       timestamp: new Date().toISOString(),
     };
 
     try {
-      await setDoc(doc(db, "activity_logs", newLog.id), newLog);
+      await setDoc(
+        doc(db, "activity_logs", newLog.id),
+        sanitizeFirestoreData({
+          ...newLog,
+          actorId: boundUid,
+          actorRole: resolvedRole,
+          ...(boundEmail ? { actorEmail: boundEmail } : {}),
+        })
+      );
       setActivityLogs((prev) => [newLog, ...prev]);
     } catch (e) {
       console.warn("Aviso ao gravar log no Firestore:", e);
@@ -5312,7 +5405,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error("Permissão negada: apenas Servidores/TAE e Administradores aprovados podem cadastrar objetos no Localiza+.");
     }
 
-    if (isAccountBlocked(currentUser)) {
+    const standingSource = verifiedUserDocData ?? currentUser;
+    if (standingSource && isAccountBlocked(standingSource)) {
       throw new Error("Ação bloqueada: Conta suspensa ou banida.");
     }
 
@@ -5440,7 +5534,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         error: `PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT (${payloadSizeBytes} bytes)`,
         payloadSizeBytes,
       });
-      setItems((prev) => [queuedItem, ...prev.filter((i) => i.id !== newItem.id)]);
+      // Permanent size error: preserve only in IndexedDB queue (do NOT inject into confirmed catalog)
       const queueCount = await getSyncQueueCount();
       setPendingSyncCount(queueCount);
       updateUploadTask(taskId, {
@@ -5522,6 +5616,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const firebaseUser = auth.currentUser;
     const tokenResult = verifiedTokenResult || (firebaseUser ? await firebaseUser.getIdTokenResult(true).catch(() => null) : null);
+    if (tokenResult && tokenResult.claims?.email_verified === false) {
+      throw new Error(
+        "Seu token de sessão ainda não confirma a verificação de e-mail exigida pelas regras de segurança. Atualize a página ou faça login novamente."
+      );
+    }
     let userDocExists = verifiedUserDocExists;
     let userDocData: any = verifiedUserDocData;
     if (!userDocExists && firebaseUser?.uid) {
@@ -5548,103 +5647,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
+    const { entryId: initialHistoryId, payload: sanitizedInitialHistory } =
+      buildSanitizedInitialHistoryEntry({
+        itemId: newItem.id,
+        itemType: newItem.type,
+        itemLocation: newItem.location,
+        authUid: newItem.registeredByUserId,
+        actorName: effectiveUserName,
+        effectiveRole: effectiveUserRole === "ADMIN" ? "ADMIN" : "SERVIDOR",
+        rawHistoryEntry: initialHistory[0],
+        createdAt: newItem.createdAt,
+      });
+    const sanitizedItemPrivate = buildSanitizedItemPrivatePayload({
+      itemId: newItem.id,
+      authUid: newItem.registeredByUserId,
+      secretVerificationHint: newItem.secretVerificationHint,
+      secretVerificationKey: newItem.secretVerificationKey,
+    });
+    const targetCollections: string[] = sanitizedItemPrivate
+      ? ["items", "item_history", "item_private"]
+      : ["items", "item_history"];
+
+    // 1) Atomic Firestore persistence isolated from post-commit secondary operations
     try {
       const createBatch = writeBatch(db);
       createBatch.set(doc(db, "items", newItem.id), sanitizedItemPayload);
-      createBatch.set(
-        doc(db, "item_history", initialHistory[0].id),
-        sanitizeFirestoreData({
-          ...initialHistory[0],
-          itemId: newItem.id,
-          objectId: newItem.id,
-        })
-      );
-      if (newItem.secretVerificationHint !== undefined || newItem.secretVerificationKey !== undefined) {
-        createBatch.set(
-          doc(db, "item_private", newItem.id),
-          sanitizeFirestoreData({
-            itemId: newItem.id,
-            registeredByUserId: newItem.registeredByUserId,
-            secretVerificationHint: newItem.secretVerificationHint,
-            secretVerificationKey: newItem.secretVerificationKey,
-            updatedAt: new Date().toISOString(),
-          }),
-          { merge: true }
-        );
+      createBatch.set(doc(db, "item_history", initialHistoryId), sanitizedInitialHistory);
+      if (sanitizedItemPrivate) {
+        createBatch.set(doc(db, "item_private", newItem.id), sanitizedItemPrivate);
       }
       await createBatch.commit();
-
-      const confirmedItem: LostFoundItem = { ...newItem, isOfflineQueued: false, syncedAt: new Date().toISOString() };
-
-      // Remove any residual pending queue entry for this item
-      await removeSyncQueueEntryByItemId(newItem.id);
-      const queueCount = await getSyncQueueCount();
-      setPendingSyncCount(queueCount);
-
-      setItems((prev) => [confirmedItem, ...prev.filter((i) => i.id !== newItem.id)]);
-
-      const itemTxId = `TX-ITEM-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-      await recordAuditLog({
-        objectId: newItem.id,
-        objectType: "ITEM",
-        objectTitle: newItem.title,
-        action: "CADASTRO_OCORRENCIA",
-        fieldChanged: "status_inicial",
-        oldValue: "NAO_REGISTRADO",
-        newValue: newItem.status,
-        details: `Ocorrência #${newItem.id} "${newItem.title}" (${newItem.type}) cadastrada no campus ${newItem.location} com persistência confirmada (${payloadSizeBytes} bytes).`,
-        transactionId: itemTxId,
-      });
-
-      if (effectiveUserRole === "ADMIN" || effectiveUserRole === "SERVIDOR") {
-        await logAdminAction(
-          "CADASTRO_OCORRENCIA",
-          `Cadastrou a ocorrência #${newItem.id} "${newItem.title}" (${newItem.type}) - Local: ${newItem.location}`
-        );
-      }
-      updateUploadTask(taskId, {
-        progress: 100,
-        status: "COMPLETED",
-        statusMessage: "Persistência confirmada com sucesso no Firestore!",
-        completedAt: new Date().toISOString(),
-      });
-      vibrateSuccess();
-
-      // Trigger automatic Discord Webhook notification ONLY after confirmed database save
-      const discordItemPayload = {
-        ...confirmedItem,
-        imageUrl:
-          confirmedItem.imageUrl &&
-          (confirmedItem.imageUrl.startsWith("http://") || confirmedItem.imageUrl.startsWith("https://"))
-            ? confirmedItem.imageUrl
-            : undefined,
-      };
-
-      if (confirmedItem.type === "ENCONTRADO") {
-        safeFetchJson(
-          "/api/items/notify-novos-achados",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ item: discordItemPayload }),
-          },
-          () => ({ success: true })
-        ).catch((webhookErr) => {
-          console.warn("[Novos Achados Webhook Notice] Envio assíncrono ao Discord:", webhookErr);
-        });
-      } else if (confirmedItem.type === "PERDIDO") {
-        safeFetchJson(
-          "/api/items/notify-novas-perdas",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ item: discordItemPayload }),
-          },
-          () => ({ success: true })
-        ).catch((webhookErr) => {
-          console.warn("[Novas Perdas Webhook Notice] Envio assíncrono ao Discord:", webhookErr);
-        });
-      }
     } catch (e: any) {
       const originalCode = e?.code || (e?.name === "FirebaseError" ? "firestore/unknown" : undefined);
       const originalName = e?.name || "UnknownError";
@@ -5658,7 +5690,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         stack: originalStack,
         itemId: newItem.id,
         taskId,
+        databaseId: TARGET_FIRESTORE_DATABASE_ID,
         collection: "items",
+        targetCollections,
         documentId: newItem.id,
         operation: "writeBatch.commit()",
         payloadSizeBytes,
@@ -5684,6 +5718,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       const queuedItem: LostFoundItem = { ...newItem, isOfflineQueued: true };
+      const nextStatus: "ERROR" | "PENDING_SYNC" = classifiedErr.isPermanent ? "ERROR" : "PENDING_SYNC";
       try {
         await queueOfflineItemRegistration(queuedItem, {
           status: classifiedErr.isPermanent ? "ERRO_PERMANENTE" : "PENDENTE",
@@ -5691,7 +5726,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           error: classifiedErr.reason,
           payloadSizeBytes,
         });
-        setItems((prev) => [queuedItem, ...prev.filter((i) => i.id !== newItem.id)]);
+        // Only reflect PENDING_SYNC transient items in catalog list (never show permanent/permission-denied errors as registered objects)
+        if (shouldIncludeRegistrationItemInCatalog(nextStatus)) {
+          setItems((prev) => [queuedItem, ...prev.filter((i) => i.id !== newItem.id)]);
+        }
         const queueCount = await getSyncQueueCount();
         setPendingSyncCount(queueCount);
         updateUploadTask(taskId, {
@@ -5707,7 +5745,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return {
           newItem: queuedItem,
           matches: [],
-          persistenceStatus: classifiedErr.isPermanent ? "ERROR" : "PENDING_SYNC",
+          persistenceStatus: nextStatus,
           isOffline: classifiedErr.category === "TEMPORARY",
           classifiedMessage: classifiedErr.userMessage,
           errorCategory: classifiedErr.category,
@@ -5729,7 +5767,110 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    return { newItem, matches: [], persistenceStatus: "CONFIRMED", isOffline: false };
+    // 2) Post-commit confirmation & non-fatal secondary trails (never revert a committed item to ERROR)
+    const confirmedItem: LostFoundItem = {
+      ...newItem,
+      isOfflineQueued: false,
+      syncedAt: new Date().toISOString(),
+    };
+
+    try {
+      await removeSyncQueueEntryByItemId(newItem.id);
+      const queueCount = await getSyncQueueCount();
+      setPendingSyncCount(queueCount);
+    } catch (queueCleanupErr) {
+      console.warn("[Cadastro Post-Commit] Aviso ao limpar pendência local pós-commit:", queueCleanupErr);
+    }
+
+    const cleanConfirmedPublic = sanitizePublicItemProjection(confirmedItem);
+    const mergedAddSnapshot = mergeConfirmedItemIntoCatalogSnapshot({
+      prevRawPublicItems: rawPublicItemsRef.current,
+      prevHistoryMap: itemHistoryEntriesRef.current,
+      confirmedPublicItem: cleanConfirmedPublic,
+      initialHistoryEntry: {
+        ...(sanitizedInitialHistory as unknown as ItemHistoryLog),
+        id: initialHistoryId,
+      },
+    });
+    rawPublicItemsRef.current = mergedAddSnapshot.nextRawPublicItems;
+    itemHistoryEntriesRef.current = mergedAddSnapshot.nextHistoryMap;
+    const hasStaffAccessAfterAdd = canOperateFormalReturn(currentUser, auth.currentUser, false);
+    setItems(mergeAllItemCollections(mergedAddSnapshot.nextRawPublicItems, hasStaffAccessAfterAdd));
+
+    updateUploadTask(taskId, {
+      progress: 100,
+      status: "COMPLETED",
+      statusMessage: "Persistência confirmada com sucesso no Firestore!",
+      completedAt: new Date().toISOString(),
+    });
+    vibrateSuccess();
+
+    const itemTxId = `TX-ITEM-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    try {
+      await recordAuditLog({
+        objectId: newItem.id,
+        objectType: "ITEM",
+        objectTitle: newItem.title,
+        action: "CADASTRO_OCORRENCIA",
+        fieldChanged: "status_inicial",
+        oldValue: "NAO_REGISTRADO",
+        newValue: newItem.status,
+        details: `Ocorrência #${newItem.id} "${newItem.title}" (${newItem.type}) cadastrada no campus ${newItem.location} com persistência confirmada (${payloadSizeBytes} bytes).`,
+        transactionId: itemTxId,
+        actorOverride: { role: effectiveUserRole },
+      });
+    } catch (auditErr) {
+      console.warn("[Cadastro Post-Commit] Aviso ao registrar audit_logs após commit confirmado:", auditErr);
+    }
+
+    if (effectiveUserRole === "ADMIN" || effectiveUserRole === "SERVIDOR") {
+      try {
+        await logAdminAction(
+          "CADASTRO_OCORRENCIA",
+          `Cadastrou a ocorrência #${newItem.id} "${newItem.title}" (${newItem.type}) - Local: ${newItem.location}`
+        );
+      } catch (actErr) {
+        console.warn("[Cadastro Post-Commit] Aviso ao registrar activity_logs após commit confirmado:", actErr);
+      }
+    }
+
+    // Trigger automatic Discord Webhook notification ONLY after confirmed database save
+    const discordItemPayload = {
+      ...confirmedItem,
+      imageUrl:
+        confirmedItem.imageUrl &&
+        (confirmedItem.imageUrl.startsWith("http://") || confirmedItem.imageUrl.startsWith("https://"))
+          ? confirmedItem.imageUrl
+          : undefined,
+    };
+
+    if (confirmedItem.type === "ENCONTRADO") {
+      safeFetchJson(
+        "/api/items/notify-novos-achados",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ item: discordItemPayload }),
+        },
+        () => ({ success: true })
+      ).catch((webhookErr) => {
+        console.warn("[Novos Achados Webhook Notice] Envio assíncrono ao Discord:", webhookErr);
+      });
+    } else if (confirmedItem.type === "PERDIDO") {
+      safeFetchJson(
+        "/api/items/notify-novas-perdas",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ item: discordItemPayload }),
+        },
+        () => ({ success: true })
+      ).catch((webhookErr) => {
+        console.warn("[Novas Perdas Webhook Notice] Envio assíncrono ao Discord:", webhookErr);
+      });
+    }
+
+    return { newItem: confirmedItem, matches: [], persistenceStatus: "CONFIRMED", isOffline: false };
   };
 
   const suggestMatchesForItem = async (_targetItem: LostFoundItem): Promise<AIMatchResult[]> => {

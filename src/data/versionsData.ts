@@ -118,10 +118,31 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "FIRESTORE",
         tag: "Autorização, Cadastro & Firestore Rules",
       },
+      {
+        id: "v11013-fix-etapa30-complementacao-cadastro-e-sync-offline",
+        title: "Complementação Funcional da Etapa 30: Isolamento Pós-Commit em addItem, Guarda Unificada e Sanitização do Lote Atômico na Fila Offline",
+        description: "Criação do módulo puro src/lib/itemRegistrationPipeline.ts centralizando avaliação de elegibilidade para os 8 perfis institucionais (preservando precedência de atribuição administrativa em contas Gmail), sanitização estrita do registro inicial de /item_history e payload condicional de /item_private; isolamento de recordAuditLog/logAdminAction/limpeza de fila fora do catch de writeBatch.commit() em addItem para impedir re-enfileiramento falso de itens já confirmados; adição de guarda de elegibilidade, reconciliação e telemetria precisa de writeBatch.commit() em syncOfflineQueue preservando integralmente itens pendentes no IndexedDB (padrão ifpr-MWMUBPTI-536); alinhamento da guarda de acesso e exibição do diagnóstico classificado na Etapa 5 de RegisterItemView; preparação de candidato separado de Firestore Rules sem modificar firestore.rules homologado. Validação local/sintética concluída; verificação das regras publicadas no banco nomeado de produção permanece como dependência externa.",
+        module: "FIRESTORE",
+        tag: "Etapa 30 • Cadastro & Fila Offline",
+      },
+      {
+        id: "v11013-fix-validacao-integrada-cadastro-catalogo-e-sync",
+        title: "Auditoria Integral e Correção Local do Cadastro de Objetos, Catálogo, Fila Offline e Suíte de Lote Atômico",
+        description: "Isolamento do commit Firestore (syncBatch/companionBatch) em syncOfflineQueue para que falhas pós-commit na limpeza da fila local ou webhooks não revertam itens já gravados para ERRO_PERMANENTE; sincronização imediata de rawPublicItemsRef e itemHistoryEntriesRef via mergeConfirmedItemIntoCatalogSnapshot após commit confirmado em addItem e syncOfflineQueue, eliminando desaparecimento transitório no catálogo quando o snapshot de /item_history chega antes de /items; bloqueio da inserção de registros com erro permanente/autorização/tamanho no catálogo (shouldIncludeRegistrationItemInCatalog) preservando-os apenas na fila IndexedDB, com indicação visual clara 'Pendente de sincronização' no ItemCard para itens em PENDING_SYNC; normalização de campos privados vazios/null em buildSanitizedItemPrivatePayload evitando gravações espúrias em /item_private e alinhamento de targetCollections na telemetria de syncOfflineQueue; adição de parâmetro explícito isExplicitRetry em retryUploadTask -> syncOfflineQueue, pré-checagem de JWT email_verified==false em addItem (inclusive Root Admin), remoção de { merge: true } redundante na criação inédita de /item_private e inclusão da suíte completa de lote atômico (testes 54–56) em firestoreRules.emulator.test.ts.",
+        module: "FIRESTORE",
+        tag: "Cadastro, Catálogo & Fila Offline",
+      },
+      {
+        id: "v11013-fix-etapa31-homologacao-emulator-e-isstandingactive",
+        title: "Etapa 31: Homologação Real no Cloud Firestore Emulator (Java 21), Investigação de isStandingActive(u) e Isolamento IndexedDB",
+        description: "Execução real das suítes src/lib/firestoreRules.emulator.test.ts (65/65) e src/__tests__/claimsRulesHomologation.test.ts (90/90) no Cloud Firestore Emulator com OpenJDK 21 (0 testes ignorados), comparando firestore.rules (Cenário A) e scripts/audit/candidates/etapa30-complementacao/firestore.rules.candidate (Cenário B); comprovação empírica de que a alteração R-01 na regra candidata quebrava o cenário SEC-07 C-50 e a paridade fail-closed com accountStatusUtils.ts, server.ts, api/_lib/firebaseAdmin.ts e buildUserStatusTransitionData (que utiliza deleteField(), nunca null), resultando na reversão de R-01 exclusivamente no arquivo candidato preservando R-02 e R-03; expansão da bateria real no Emulator com os 10 cenários de isStandingActive(u) (teste 57) e matriz integral dos 8 perfis + anti-spoofing de registeredByRole + atomicidade via buildItemRegistrationWritePlan() (teste 58); correção em queueOfflineItemRegistration (src/lib/indexedDB.ts) impedindo gravação de itens ERRO_PERMANENTE no items_store local. Consulta às regras efetivamente publicadas no banco nomeado de produção permanece não executada por ausência de credenciais GCP/Firebase neste ambiente.",
+        module: "FIRESTORE",
+        tag: "Etapa 31 • Emulator & Security Rules",
+      },
     ],
     stats: {
       additionsCount: 2,
-      fixesCount: 10,
+      fixesCount: 13,
     },
   },
   {
