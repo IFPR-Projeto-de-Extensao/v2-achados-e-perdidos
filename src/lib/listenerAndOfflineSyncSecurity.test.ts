@@ -306,7 +306,7 @@ describe("ETAPA 5 — Unit Tests: devolutionAuth, Listeners RBAC (13 coleções)
       expect(fnIdx).toBeGreaterThan(-1);
       const fnBody = ctxSrc.slice(fnIdx, fnIdx + 22000);
 
-      const getDocPos = fnBody.indexOf("const existingRemoteSnap = await getDoc(itemRef)");
+      const getDocPos = fnBody.indexOf("const existingRemoteSnap = await getDocFromServer(itemRef)");
       const evalPos = fnBody.indexOf("evaluateExistingRemoteItem(");
       const conflictPos = fnBody.indexOf('remoteEvaluation.action === "CONFLICT_STOP"');
       const batchCreatePos = fnBody.indexOf("syncBatch.set(itemRef,");

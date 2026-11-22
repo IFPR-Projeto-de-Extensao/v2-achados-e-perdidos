@@ -360,6 +360,9 @@ export interface SystemAuditLog {
   ipAddress?: string;
   userAgent?: string;
   immutable: boolean;
+  /** Client-only persistence state; stripped before Firestore writes to preserve strict schema/rules compatibility. */
+  persistenceStatus?: "LOCAL_ONLY" | "PENDING_SERVER" | "PERSISTED" | "FAILED";
+  persistenceError?: string;
 }
 
 export interface ActivityLog {

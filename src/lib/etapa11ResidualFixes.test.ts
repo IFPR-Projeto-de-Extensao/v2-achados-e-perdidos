@@ -228,7 +228,9 @@ describe("ETAPA 11 — Regressão Completa dos Achados Residuais e Fluxos Críti
     const nextFnIdx = appCtx.indexOf("const clearAllLogsAndMetrics = async", resetIdx);
     const resetBody = appCtx.slice(resetIdx, nextFnIdx);
 
-    expect(resetBody).toContain('currentUser?.role !== "ADMIN"');
+    expect(resetBody).toContain("isVerifiedRootAdminAuthUser(auth.currentUser)");
+    expect(resetBody).toContain('currentUser?.role === "ADMIN"');
+    expect(resetBody).toContain("if (!isAuthorizedAdmin)");
     expect(resetBody).toContain("classifyFirestoreWriteError");
     expect(resetBody).toContain("throw e;");
 

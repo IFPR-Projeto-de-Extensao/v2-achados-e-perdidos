@@ -57,7 +57,10 @@ import {
   cacheSearchedItems,
   getOfflineRecentItems,
   cacheSingleItemPreview,
+  subscribeOfflineRecentItemsChange,
 } from "../lib/recentItemsOfflineService";
+import { resolveCatalogDisplayState } from "../lib/catalogDeletionService";
+import { getActiveDeletedTombstoneIds } from "../lib/indexedDB";
 import {
   SurfaceCard,
   SubtlePanel,
@@ -103,6 +106,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
     isGuest,
     bulkUpdateItemStatus,
     bulkDeleteItems,
+    isOnline,
+    catalogSyncState,
   } = useApp();
 
   const [search, setSearch] = useState("");
@@ -141,13 +146,22 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
   const [offlineCachedCount, setOfflineCachedCount] = useState<number>(0);
 
   useEffect(() => {
+    let active = true;
+
+    const loadRecentCache = async () => {
+      try {
+        const tombstoneIds = await getActiveDeletedTombstoneIds();
+        const res = await getOfflineRecentItems(tombstoneIds);
+        if (!active) return;
+        setOfflineRecentItems(res.items);
+        setOfflineCachedCount(res.count);
+      } catch (_) {}
+    };
+
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => {
       setIsOffline(true);
-      getOfflineRecentItems().then((res) => {
-        setOfflineRecentItems(res.items);
-        setOfflineCachedCount(res.count);
-      });
+      loadRecentCache();
     };
 
     if (typeof window !== "undefined") {
@@ -155,12 +169,17 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
       window.addEventListener("offline", handleOffline);
     }
 
-    getOfflineRecentItems().then((res) => {
-      setOfflineRecentItems(res.items);
-      setOfflineCachedCount(res.count);
+    const unsubscribeCache = subscribeOfflineRecentItemsChange((updatedItems) => {
+      if (!active) return;
+      setOfflineRecentItems(updatedItems);
+      setOfflineCachedCount(updatedItems.length);
     });
 
+    loadRecentCache();
+
     return () => {
+      active = false;
+      unsubscribeCache();
       if (typeof window !== "undefined") {
         window.removeEventListener("online", handleOnline);
         window.removeEventListener("offline", handleOffline);
@@ -316,15 +335,30 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
     "Branco",
   ];
 
-  const activeItemsPool = useMemo(() => {
-    if (items && items.length > 0) {
-      return items;
-    }
-    if ((isOffline || items.length === 0) && offlineRecentItems.length > 0) {
-      return offlineRecentItems;
-    }
-    return items || [];
-  }, [items, isOffline, offlineRecentItems]);
+  const effectivelyOffline = isOffline || !isOnline;
+
+  const catalogDisplay = useMemo(
+    () =>
+      resolveCatalogDisplayState({
+        items,
+        isOffline: effectivelyOffline,
+        catalogSyncState,
+        offlineRecentItems,
+      }),
+    [items, effectivelyOffline, catalogSyncState, offlineRecentItems]
+  );
+
+  const activeItemsPool = catalogDisplay.displayItems;
+
+  // Prune any stale IDs from selection state whenever the displayed catalog changes
+  useEffect(() => {
+    setSelectedItemIds((prev) => {
+      if (prev.length === 0) return prev;
+      const validIds = new Set(activeItemsPool.map((it) => it.id));
+      const next = prev.filter((id) => validIds.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [activeItemsPool]);
 
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = { TODAS: activeItemsPool.length };
@@ -489,14 +523,23 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
   ]);
 
   useEffect(() => {
+    if (!catalogDisplay.canCacheDisplayedItems) return;
+    const authoritativeItemIds = new Set((items || []).map((it) => it.id));
     if (filteredItems && filteredItems.length > 0) {
-      cacheSearchedItems(filteredItems, debouncedSearch);
-      setOfflineCachedCount((prev) => Math.max(prev, filteredItems.length));
+      cacheSearchedItems(filteredItems, debouncedSearch, {
+        isFromOfflineFallback: false,
+        authoritativeItemIds,
+      });
     }
-  }, [filteredItems, debouncedSearch]);
+  }, [filteredItems, debouncedSearch, catalogDisplay.canCacheDisplayedItems, items]);
 
   const handleItemClick = (item: LostFoundItem) => {
-    cacheSingleItemPreview(item);
+    if (catalogDisplay.canCacheDisplayedItems) {
+      cacheSingleItemPreview(item, {
+        isFromOfflineFallback: false,
+        authoritativeItemIds: new Set((items || []).map((it) => it.id)),
+      });
+    }
     setSelectedItemForDetail(item);
   };
 
@@ -939,12 +982,16 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
         </div>
       )}
 
-      {/* Aviso discreto quando em modo Offline */}
-      {(isOffline || items.length === 0) && offlineRecentItems.length > 0 && (
+      {/* Aviso discreto apenas quando realmente em modo Offline ou fallback offline */}
+      {catalogDisplay.showOfflineBanner && (
         <div className="px-3.5 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <WifiOff className="w-4 h-4 shrink-0" />
-            <span>Modo offline: exibindo {filteredItems.length} itens salvos no dispositivo.</span>
+            <span>
+              {catalogDisplay.mode === "offline-empty"
+                ? "Modo offline: sem conexão e nenhum objeto salvo localmente."
+                : `Modo offline: exibindo ${filteredItems.length} itens salvos no dispositivo.`}
+            </span>
           </div>
           <span className="font-mono text-[11px] shrink-0">{offlineCachedCount} em cache</span>
         </div>
@@ -952,7 +999,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
 
       {/* 2. LISTAGEM DE OBJETOS (Mobile-First, rápida de percorrer) */}
       <div className="space-y-4">
-        {isSelectableMode && (
+        {isSelectableMode && filteredItems.length > 0 && (
           <div className="flex items-center justify-between text-xs bg-[#F8FAFC] dark:bg-slate-900 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800">
             <span className="text-slate-600 dark:text-slate-300">
               Selecione itens para ação em lote
@@ -970,24 +1017,47 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
           </div>
         )}
 
-        {filteredItems.length === 0 ? (
+        {catalogDisplay.mode === "online-loading" ? (
+          <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
+            <RefreshCw className="w-6 h-6 animate-spin text-[#16845B]" />
+            <p className="text-sm font-medium">Carregando catálogo de objetos...</p>
+          </div>
+        ) : filteredItems.length === 0 ? (
           <EmptyState
-            icon={<PackageSearch className="w-6 h-6" />}
-            title="Nenhum objeto encontrado"
+            icon={
+              catalogDisplay.mode === "offline-empty" ? (
+                <WifiOff className="w-6 h-6" />
+              ) : (
+                <PackageSearch className="w-6 h-6" />
+              )
+            }
+            title={
+              catalogDisplay.mode === "offline-empty"
+                ? "Sem conexão e sem objetos salvos"
+                : catalogDisplay.mode === "online-empty" && activeFiltersCount === 0
+                ? "Nenhum objeto cadastrado"
+                : "Nenhum objeto encontrado"
+            }
             description={
-              search
+              catalogDisplay.mode === "offline-empty"
+                ? "Conecte-se à internet para sincronizar o catálogo atualizado do campus."
+                : catalogDisplay.mode === "online-empty" && activeFiltersCount === 0
+                ? "O catálogo está vazio no momento. Novos registros aparecerão aqui automaticamente."
+                : search
                 ? `Não há resultados para "${search}".`
                 : "Nenhum objeto corresponde aos filtros aplicados."
             }
             action={
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="min-h-[40px] px-4 rounded-lg bg-[#16845B] text-white text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Limpar filtros</span>
-              </button>
+              activeFiltersCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="min-h-[40px] px-4 rounded-lg bg-[#16845B] text-white text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Limpar filtros</span>
+                </button>
+              ) : undefined
             }
           />
         ) : layoutViewMode === "LISTA" ? (

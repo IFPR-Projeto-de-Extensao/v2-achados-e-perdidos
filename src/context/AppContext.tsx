@@ -83,6 +83,7 @@ import {
   collection,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   query,
   where,
@@ -118,17 +119,46 @@ import {
 } from "../lib/firebase";
 import {
   saveItemsToIndexedDB,
+  saveAuthoritativeItemsPreservingOfflineQueued,
   getItemsFromIndexedDB,
   saveSingleItemIndexedDB,
+  deleteItemsFromIndexedDB,
   queueOfflineItemRegistration,
   getPendingSyncQueue,
+  getSyncQueueEntryByItemId,
   removeSyncQueueEntry,
   removeSyncQueueEntryByItemId,
   updateSyncQueueEntry,
   getSyncQueueCount,
   clearSyncQueue,
   getUploadTaskId,
+  saveDeletedItemTombstones,
+  removeDeletedItemTombstones,
+  getActiveDeletedTombstoneIds,
+  hasActiveDeletedTombstone,
+  pruneExpiredTombstones,
+  type DeletionTombstoneReason,
 } from "../lib/indexedDB";
+import {
+  removeItemsFromOfflineRecentCache,
+  syncOfflineRecentCacheWithAuthoritativeCatalog,
+  clearOfflineRecentCache,
+  applyServiceWorkerRecentItemsBroadcast,
+} from "../lib/recentItemsOfflineService";
+import {
+  type CatalogSyncState,
+  classifyCatalogSnapshot,
+  canHydrateCatalogFromIndexedDB,
+  filterExcludedCatalogItems,
+  evaluateItemDeletionEligibility,
+  executeFirestoreItemDeletion,
+  evaluateSyncQueueUploadAgainstDeletions,
+} from "../lib/catalogDeletionService";
+import {
+  withCrossTabItemLock,
+  publishCatalogCrossTabEvent,
+  subscribeCatalogCrossTabEvents,
+} from "../lib/crossTabCatalogLock";
 import { clear30DayUptimeRecords } from "../lib/uptimeManager";
 import {
   calculatePayloadSizeBytes,
@@ -760,7 +790,7 @@ interface AppContextType {
   updateBackupScheduleConfig: (config: Partial<BackupScheduleConfig>) => Promise<void>;
   executeFirestoreBackupNow: (triggerType?: "MANUAL" | "PROGRAMADO") => Promise<BackupLog>;
   bulkUpdateItemStatus: (itemIds: string[], status: ItemStatus) => Promise<{ succeededIds: string[]; failedIds: string[] }>;
-  bulkDeleteItems: (itemIds: string[]) => Promise<{ succeededIds: string[]; failedIds: string[] }>;
+  bulkDeleteItems: (itemIds: string[]) => Promise<{ succeededIds: string[]; failedIds: string[]; failureReasons?: Record<string, string> }>;
   addUserByAdmin: (newUser: Omit<User, "id">) => Promise<void>;
   resetSystemData: () => Promise<void>;
   clearAllLogsAndMetrics: () => Promise<void>;
@@ -779,6 +809,7 @@ interface AppContextType {
     newValue?: string | null;
     details: string;
     transactionId?: string;
+    deterministicId?: string;
     actorOverride?: Partial<User>;
   }) => Promise<SystemAuditLog>;
   activeTab: AppTabType;
@@ -824,7 +855,7 @@ interface AppContextType {
     destinationNotesParam?: string
   ) => Promise<void>;
   logItemLabelGenerated: (itemId: string) => Promise<void>;
-  deleteItem: (id: string) => void;
+  deleteItem: (id: string) => Promise<void>;
   submitClaim: (
     itemId: string,
     claimInput: string | { distinctiveFeatures: string; additionalInfo?: string }
@@ -854,6 +885,7 @@ interface AppContextType {
   triggerManualSync: () => Promise<void>;
   lastHeartbeatTimestamp: string | null;
   indexedDbLoaded: boolean;
+  catalogSyncState: CatalogSyncState;
   errorLogsList: any[];
   activeUploadTasks: UploadTaskStatus[];
   addUploadTask: (task: UploadTaskStatus) => void;
@@ -895,7 +927,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [pendingSyncCount, setPendingSyncCount] = useState<number>(0);
   const [lastHeartbeatTimestamp, setLastHeartbeatTimestamp] = useState<string | null>(new Date().toISOString());
   const [indexedDbLoaded, setIndexedDbLoaded] = useState<boolean>(false);
+  const [catalogSyncState, setCatalogSyncState] = useState<CatalogSyncState>("loading");
+  const catalogSyncStateRef = useRef<CatalogSyncState>("loading");
+  const hasAuthoritativeItemsSnapshotRef = useRef<boolean>(false);
+  const bootHydrationEpochRef = useRef<number>(0);
+  const inFlightDeletingItemIdsRef = useRef<Set<string>>(new Set());
+  const inFlightDeletingOpsByItemRef = useRef<Map<string, Set<string>>>(new Map());
+  const inFlightSyncingItemIdsRef = useRef<Set<string>>(new Set());
   const [errorLogsList, setErrorLogsList] = useState<any[]>([]);
+
+  const updateCatalogSyncState = (next: CatalogSyncState) => {
+    catalogSyncStateRef.current = next;
+    setCatalogSyncState(next);
+  };
+
+  const markItemsDeletingInFlight = (itemIds: string[], operationId: string) => {
+    for (const id of itemIds) {
+      if (!id) continue;
+      inFlightDeletingItemIdsRef.current.add(id);
+      let ops = inFlightDeletingOpsByItemRef.current.get(id);
+      if (!ops) {
+        ops = new Set<string>();
+        inFlightDeletingOpsByItemRef.current.set(id, ops);
+      }
+      ops.add(operationId);
+    }
+  };
+
+  const unmarkItemsDeletingInFlight = (itemIds: string[], operationId?: string) => {
+    for (const id of itemIds) {
+      if (!id) continue;
+      const ops = inFlightDeletingOpsByItemRef.current.get(id);
+      if (ops && operationId) {
+        ops.delete(operationId);
+        if (ops.size === 0) {
+          inFlightDeletingOpsByItemRef.current.delete(id);
+          inFlightDeletingItemIdsRef.current.delete(id);
+        }
+      } else {
+        inFlightDeletingOpsByItemRef.current.delete(id);
+        inFlightDeletingItemIdsRef.current.delete(id);
+      }
+    }
+  };
+
+  const broadcastCatalogDeletionCrossTab = (
+    itemIds: string[],
+    stage: "STARTED" | "CONFIRMED" | "REJECTED" = "CONFIRMED",
+    operationId = `op-${Date.now().toString(36)}`,
+    definitive = true
+  ) => {
+    if (!itemIds || itemIds.length === 0) return;
+    if (stage === "STARTED") {
+      publishCatalogCrossTabEvent({
+        type: "ITEM_DELETION_STARTED",
+        itemIds,
+        operationId,
+      });
+    } else if (stage === "REJECTED") {
+      publishCatalogCrossTabEvent({
+        type: "ITEM_DELETION_REJECTED",
+        itemIds,
+        operationId,
+        definitive,
+      });
+    } else {
+      publishCatalogCrossTabEvent({
+        type: "ITEM_DELETION_CONFIRMED",
+        itemIds,
+        operationId,
+      });
+    }
+  };
 
   const reconcileOwnProfileWithServer = async (
     fbUser: FirebaseUser | null | undefined,
@@ -1181,13 +1284,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let temporaryErrorCount = 0;
       let permanentErrorCount = 0;
 
-      // Deduplicate queue entries by itemId during sync run
+      // Deduplicate queue entries by itemId during sync run & pre-collect pending IDs to avoid repeated scans (ACHADO-06)
       const processedItemIds = new Set<string>();
+      const pendingQueueItemIds = new Set<string>(
+        queue
+          .map(
+            (e) =>
+              e.itemId ||
+              e.payload?.id ||
+              (typeof e.id === "string" ? e.id.replace(/^queue-/, "") : String(e.id || ""))
+          )
+          .filter(Boolean)
+      );
 
       for (const entry of queue) {
-        const itemId = entry.itemId || entry.payload?.id || (typeof entry.id === "string" ? entry.id.replace(/^queue-/, "") : String(entry.id || ""));
+        const itemId =
+          entry.itemId ||
+          entry.payload?.id ||
+          (typeof entry.id === "string" ? entry.id.replace(/^queue-/, "") : String(entry.id || ""));
         if (processedItemIds.has(itemId)) {
-          // Remove duplicate legacy entry for already processed item
           await removeSyncQueueEntry(entry.id);
           continue;
         }
@@ -1195,6 +1310,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const taskId = getUploadTaskId(itemId);
         const itemTitle = entry.payload?.title || "Objeto sem título";
+
+        // ACHADO-02: Acquire per-item cross-tab exclusive lock covering tombstone verification,
+        // remote server check, atomic writeBatch commit, and queue cleanup.
+        try {
+          await withCrossTabItemLock(itemId, async () => {
+            // 0. Anti-Resurrection Tombstone & In-Flight Deletion Guard (ACHADO-02 & ACHADO-06):
+            let hasTombstone = false;
+            let tombstoneCheckFailed = false;
+            try {
+              hasTombstone = await hasActiveDeletedTombstone(itemId, Date.now(), {
+                pendingItemIds: pendingQueueItemIds,
+              });
+            } catch (tombErr) {
+              tombstoneCheckFailed = true;
+              console.warn(
+                `[Offline Sync Tombstone Guard] Falha ao verificar tombstone de #${itemId}; sincronização adiada com segurança:`,
+                tombErr
+              );
+            }
+
+            const tombstoneDecision = evaluateSyncQueueUploadAgainstDeletions({
+              itemId,
+              hasActiveTombstone: hasTombstone,
+              isDeletionInFlight: inFlightDeletingItemIdsRef.current.has(itemId),
+              tombstoneCheckFailed,
+            });
+            if (!tombstoneDecision.shouldUpload) {
+              console.info(
+                `[Offline Sync Tombstone Guard] Item #${itemId} ("${itemTitle}") protegido por ${tombstoneDecision.reason}; sem recriação no Firestore.`
+              );
+              if (tombstoneDecision.shouldDiscardQueueEntry) {
+                await removeSyncQueueEntry(entry.id);
+                await removeSyncQueueEntryByItemId(itemId);
+                removeUploadTask(taskId);
+              }
+              return;
+            }
 
         // 1. Guard against PERMANENT and AUTHORIZATION errors: Skip automatic retry to prevent loop
         if (entry.status === "ERRO_PERMANENTE" || entry.errorType === "PERMANENT" || entry.errorType === "AUTHORIZATION") {
@@ -1216,7 +1368,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               : "Um item precisa de atenção antes de ser sincronizado.",
             startedAt: entry.createdAt,
           });
-          continue;
+          return;
         }
 
         console.log(`[Offline Sync] Processando item #${entry.id} (Item ID: ${itemId}, Título: "${itemTitle}", Tentativa: ${(entry.attempts || 0) + 1})...`);
@@ -1261,7 +1413,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             error: "PAYLOAD_SIZE_EXCEEDS_DEFENSIVE_LIMIT",
             statusMessage: "Este item possui dados ou imagem grandes demais para sincronização. O cadastro foi preservado no dispositivo e precisa ser ajustado.",
           });
-          continue;
+          return;
         }
 
         // 3. TEXT FIELDS DEFENSIVE BOUNDARY GUARD
@@ -1286,7 +1438,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             error: "FIELD_LIMIT_EXCEEDED",
             statusMessage: syncTextValidation.error || "Limite de caracteres excedido.",
           });
-          continue;
+          return;
         }
 
         // 3.5. DEFENSIVE AUTHENTICATION & AUTHORSHIP GUARD BEFORE SETDOC
@@ -1306,7 +1458,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ownershipCheck.statusMessage ||
               "Faça login com a conta criadora original para sincronizar este item.",
           });
-          continue;
+          return;
         }
 
         if (currentAuthUser.emailVerified !== true) {
@@ -1316,7 +1468,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             error: "EMAIL_NOT_VERIFIED",
             statusMessage: "Verifique seu e-mail institucional para sincronizar ocorrências com o servidor.",
           });
-          continue;
+          return;
         }
 
         let committedItemForLocalState: LostFoundItem | null = null;
@@ -1416,7 +1568,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               error: `AUTHORIZATION_${syncEligibility.reasonCode || "DENIED"}`,
               statusMessage: authBlockMsg,
             });
-            continue;
+            return;
           }
 
           const alignedSanitizedPayload = sanitizeFirestoreData({
@@ -1450,9 +1602,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ? ["items", "item_history", "item_private"]
             : ["items", "item_history"];
 
-          // 4. Verificar existência remota antes de gravar para nunca sobrescrever registro já confirmado ou conflitante
+          // 4. Verificar existência diretamente no SERVIDOR (ACHADO-03: nunca depender de cache local)
           const itemRef = doc(db, "items", itemToSave.id);
-          const existingRemoteSnap = await getDoc(itemRef);
+          const existingRemoteSnap = await getDocFromServer(itemRef);
           const remoteEvaluation = evaluateExistingRemoteItem(
             alignedSanitizedPayload,
             existingRemoteSnap.exists() ? (existingRemoteSnap.data() as Record<string, any>) : null
@@ -1474,7 +1626,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               error: "SYNC_CONFLICT_EXISTING_ITEM",
               statusMessage: `${conflictReason} O reenvio foi interrompido para preservação dos dados.`,
             });
-            continue;
+            return;
           }
 
           let itemForLocalState: LostFoundItem = {
@@ -1490,7 +1642,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             let hasCompanionWrites = false;
 
             const histRef = doc(db, "item_history", histEntryId);
-            const existingHistSnap = await getDoc(histRef).catch(() => null);
+            const existingHistSnap = await getDocFromServer(histRef).catch(() => null);
             if (existingHistSnap && !existingHistSnap.exists()) {
               companionBatch.set(histRef, sanitizedHistoryPayload);
               hasCompanionWrites = true;
@@ -1498,7 +1650,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             if (sanitizedPrivatePayload) {
               const privRef = doc(db, "item_private", itemToSave.id);
-              const existingPrivSnap = await getDoc(privRef).catch(() => null);
+              const existingPrivSnap = await getDocFromServer(privRef).catch(() => null);
               if (existingPrivSnap && !existingPrivSnap.exists()) {
                 companionBatch.set(privRef, sanitizedPrivatePayload);
                 hasCompanionWrites = true;
@@ -1517,15 +1669,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             wasReconciledAlreadySynced = true;
             console.log(`[Offline Sync Reconciled] Item #${itemToSave.id} já confirmado no servidor; fila reconciliada sem sobrescrita.`);
           } else {
-            // 4b. Criação inédita atômica via writeBatch: /items/{id}, /item_history/{entryId} e condicional /item_private/{id}
-            const syncBatch = writeBatch(db);
-            syncBatch.set(itemRef, alignedSanitizedPayload);
-            syncBatch.set(doc(db, "item_history", histEntryId), sanitizedHistoryPayload);
-            if (sanitizedPrivatePayload) {
-              syncBatch.set(doc(db, "item_private", itemToSave.id), sanitizedPrivatePayload);
+            // 4b. Pre-commit race guard under cross-tab lock: re-verify tombstone & in-flight deletion right before writeBatch.commit()
+            const hasLateTombstone = await hasActiveDeletedTombstone(itemToSave.id, Date.now(), {
+              pendingItemIds: pendingQueueItemIds,
+            });
+            const preCommitDecision = evaluateSyncQueueUploadAgainstDeletions({
+              itemId: itemToSave.id,
+              hasActiveTombstone: hasLateTombstone,
+              isDeletionInFlight: inFlightDeletingItemIdsRef.current.has(itemToSave.id),
+            });
+            if (!preCommitDecision.shouldUpload) {
+              console.info(
+                `[Offline Sync Tombstone Pre-Commit Guard] Item #${itemToSave.id} descartado antes do commit (${preCommitDecision.reason}).`
+              );
+              if (preCommitDecision.shouldDiscardQueueEntry) {
+                await removeSyncQueueEntry(entry.id);
+                await removeSyncQueueEntryByItemId(itemToSave.id);
+                removeUploadTask(taskId);
+              }
+              return;
             }
-            await syncBatch.commit();
-            console.log(`[Offline Sync Success] Item #${itemToSave.id} gravado atomicamente no Firestore (${targetCollections.join(", ")}, ${payloadSizeBytes} bytes).`);
+
+            // Criação inédita atômica via writeBatch: /items/{id}, /item_history/{entryId} e condicional /item_private/{id}
+            inFlightSyncingItemIdsRef.current.add(itemToSave.id);
+            try {
+              const syncBatch = writeBatch(db);
+              syncBatch.set(itemRef, alignedSanitizedPayload);
+              syncBatch.set(doc(db, "item_history", histEntryId), sanitizedHistoryPayload);
+              if (sanitizedPrivatePayload) {
+                syncBatch.set(doc(db, "item_private", itemToSave.id), sanitizedPrivatePayload);
+              }
+              await syncBatch.commit();
+              console.log(`[Offline Sync Success] Item #${itemToSave.id} gravado atomicamente no Firestore (${targetCollections.join(", ")}, ${payloadSizeBytes} bytes).`);
+            } finally {
+              inFlightSyncingItemIdsRef.current.delete(itemToSave.id);
+            }
           }
 
           committedItemForLocalState = itemForLocalState;
@@ -1590,12 +1768,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               ? classifiedErr.userMessage
               : "Falha temporária ao sincronizar. O item permanece seguro na fila.",
           });
-          continue;
+          return;
         }
 
         // 5. Post-commit cleanup & UI confirmation isolated from Firestore commit catch
         // (post-commit local errors never revert an already-persisted Firestore item to ERROR)
-        if (!committedItemForLocalState) continue;
+        if (!committedItemForLocalState) return;
 
         try {
           await removeSyncQueueEntry(entry.id);
@@ -1619,21 +1797,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         syncedCount++;
 
-        // 6. Update catalog refs + local state deterministically so item and initial history appear immediately without snapshot race flicker
-        const cleanConfirmedSyncPublic = sanitizePublicItemProjection({
-          ...committedItemForLocalState,
-          isOfflineQueued: false,
-        });
-        const mergedSyncSnapshot = mergeConfirmedItemIntoCatalogSnapshot({
-          prevRawPublicItems: rawPublicItemsRef.current,
-          prevHistoryMap: itemHistoryEntriesRef.current,
-          confirmedPublicItem: cleanConfirmedSyncPublic,
-          initialHistoryEntry: committedHistoryEntry,
-        });
-        rawPublicItemsRef.current = mergedSyncSnapshot.nextRawPublicItems;
-        itemHistoryEntriesRef.current = mergedSyncSnapshot.nextHistoryMap;
-        const hasStaffAccessOnSync = canOperateFormalReturn(currentUser, auth.currentUser, false);
-        setItems(mergeAllItemCollections(mergedSyncSnapshot.nextRawPublicItems, hasStaffAccessOnSync));
+        // 6. Update catalog refs + local state deterministically (unless deleted concurrently)
+        if (
+          !inFlightDeletingItemIdsRef.current.has(itemId) &&
+          !(await hasActiveDeletedTombstone(itemId, Date.now(), { pendingItemIds: pendingQueueItemIds }))
+        ) {
+          const cleanConfirmedSyncPublic = sanitizePublicItemProjection({
+            ...committedItemForLocalState,
+            isOfflineQueued: false,
+          });
+          const mergedSyncSnapshot = mergeConfirmedItemIntoCatalogSnapshot({
+            prevRawPublicItems: rawPublicItemsRef.current,
+            prevHistoryMap: itemHistoryEntriesRef.current,
+            confirmedPublicItem: cleanConfirmedSyncPublic,
+            initialHistoryEntry: committedHistoryEntry,
+          });
+          rawPublicItemsRef.current = mergedSyncSnapshot.nextRawPublicItems;
+          itemHistoryEntriesRef.current = mergedSyncSnapshot.nextHistoryMap;
+          const hasStaffAccessOnSync = canOperateFormalReturn(currentUser, auth.currentUser, false);
+          setItems(mergeAllItemCollections(mergedSyncSnapshot.nextRawPublicItems, hasStaffAccessOnSync));
+        }
 
         // 7. Asynchronous Discord Webhook dispatch (non-blocking)
         const discordItemPayload = {
@@ -1670,6 +1853,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ).catch((discordErr) => {
             console.warn("[Novas Perdas Webhook Notice] Envio offline-sync ao Discord:", discordErr);
           });
+        }
+          }); // end withCrossTabItemLock
+        } catch (lockErr: any) {
+          temporaryErrorCount++;
+          console.warn(
+            `[Offline Sync Lock] Sincronização de #${itemId} adiada por bloqueio concorrente em outra aba:`,
+            lockErr?.message || lockErr
+          );
         }
       }
 
@@ -1752,6 +1943,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
           return [data.task, ...prev];
         });
+      } else if (data.type === "RECENT_ITEMS_CACHED_BROADCAST") {
+        // ACHADO-05: Real consumer reconciling SW broadcast with localStorage & React views by updatedAt
+        getActiveDeletedTombstoneIds()
+          .then((tombstones) => {
+            applyServiceWorkerRecentItemsBroadcast(data, tombstones);
+          })
+          .catch(() => {
+            applyServiceWorkerRecentItemsBroadcast(data);
+          });
       }
     };
 
@@ -1761,32 +1961,140 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // Load items and sync queue count from IndexedDB instantly on boot & auto-trigger sync if online
+  // ACHADO-10 & ACHADO-07: Single consolidated boot hydration (eliminates duplicate parallel IndexedDB reads)
+  // Respects authoritative snapshots, session epochs, deletion tombstones, and preserves pending offline items.
   useEffect(() => {
-    getItemsFromIndexedDB()
-      .then((cached) => {
-        if (cached && cached.length > 0) {
-          setItems(cached);
-          setIndexedDbLoaded(true);
+    let active = true;
+    const hydrationEpoch = ++bootHydrationEpochRef.current;
+
+    // Prune expired CONFIRMED_DELETED tombstones safely (retaining pending queue & REMOTE_UNKNOWN tombstones)
+    pruneExpiredTombstones().catch(() => {});
+
+    Promise.all([getItemsFromIndexedDB(), getPendingSyncQueue()])
+      .then(async ([cached, pendingQueue]) => {
+        if (!active || hydrationEpoch !== bootHydrationEpochRef.current) return;
+
+        const pendingItemIds = new Set(
+          (pendingQueue || [])
+            .map((e) => e.itemId || e.payload?.id)
+            .filter(Boolean) as string[]
+        );
+        const tombstoneIds = await getActiveDeletedTombstoneIds(Date.now(), {
+          pendingItemIds,
+        });
+
+        if (!active || hydrationEpoch !== bootHydrationEpochRef.current) return;
+        setIndexedDbLoaded(true);
+        setPendingSyncCount(pendingQueue.length);
+
+        const isCurrentlyOffline = typeof navigator !== "undefined" && !navigator.onLine;
+
+        if (
+          pendingQueue.length > 0 &&
+          !isCurrentlyOffline &&
+          auth.currentUser
+        ) {
+          console.log(
+            `[Offline Sync Boot] ${pendingQueue.length} item(ns) pendente(s) na fila IndexedDB na inicialização. Iniciando sincronização automática...`
+          );
+          syncOfflineQueue();
+        }
+
+        // Never overwrite an authoritative server snapshot that already arrived from Firestore
+        if (
+          !canHydrateCatalogFromIndexedDB({
+            hasAuthoritativeSnapshot: hasAuthoritativeItemsSnapshotRef.current,
+            catalogSyncState: catalogSyncStateRef.current,
+          })
+        ) {
+          return;
+        }
+
+        const excludedIds = new Set<string>([
+          ...tombstoneIds,
+          ...inFlightDeletingItemIdsRef.current,
+        ]);
+
+        // Combine cached items_store + legitimate pending offline registrations (ACHADO-07)
+        const combinedMap = new Map<string, LostFoundItem>();
+        for (const it of filterExcludedCatalogItems(cached || [], excludedIds)) {
+          combinedMap.set(it.id, sanitizePublicItemProjection(it));
+        }
+        for (const entry of pendingQueue || []) {
+          if (entry.status === "ERRO_PERMANENTE") continue;
+          const itemId = entry.itemId || entry.payload?.id;
+          if (!itemId || excludedIds.has(itemId) || combinedMap.has(itemId)) continue;
+          combinedMap.set(
+            itemId,
+            sanitizePublicItemProjection({
+              ...entry.payload,
+              id: itemId,
+              isOfflineQueued: true,
+            })
+          );
+        }
+
+        const validHydrated = Array.from(combinedMap.values());
+        if (validHydrated.length > 0) {
+          rawPublicItemsRef.current = validHydrated;
+          setItems((curr) => (curr.length === 0 ? validHydrated : curr));
+        }
+
+        if (isCurrentlyOffline && !hasAuthoritativeItemsSnapshotRef.current) {
+          updateCatalogSyncState("offline-fallback");
         }
       })
       .catch((e) => console.warn("IndexedDB inicialização notice:", e));
 
-    getSyncQueueCount()
-      .then((count) => {
-        setPendingSyncCount(count);
-        if (count > 0 && typeof navigator !== "undefined" && navigator.onLine && auth.currentUser) {
-          console.log(`[Offline Sync Boot] ${count} item(ns) pendente(s) na fila IndexedDB na inicialização. Iniciando sincronização automática...`);
-          syncOfflineQueue();
+    // ACHADO-02: Cross-tab deletion lifecycle coordinator (BroadcastChannel + localStorage storage event)
+    const unsubscribeCrossTab = subscribeCatalogCrossTabEvents((event) => {
+      if (!active) return;
+
+      if (event.type === "ITEM_DELETION_STARTED" && Array.isArray(event.itemIds)) {
+        // Immediately block these IDs from syncOfflineQueue and secondary listeners in this sibling tab
+        markItemsDeletingInFlight(event.itemIds, event.operationId);
+        return;
+      }
+
+      if (
+        (event.type === "ITEM_DELETION_CONFIRMED" || event.type === "ITEMS_DELETED") &&
+        Array.isArray(event.itemIds)
+      ) {
+        const deletedSet = new Set<string>(event.itemIds.filter(Boolean));
+        if (deletedSet.size === 0) return;
+        rawPublicItemsRef.current = rawPublicItemsRef.current.filter(
+          (it) => !deletedSet.has(it.id)
+        );
+        for (const id of deletedSet) {
+          delete privateItemHintsRef.current[id];
         }
-      })
-      .catch(() => {});
+        setItems((prev) => prev.filter((it) => !deletedSet.has(it.id)));
+        setSelectedItemForDetail((prev) => (prev && deletedSet.has(prev.id) ? null : prev));
+        removeItemsFromOfflineRecentCache(Array.from(deletedSet)).catch(() => {});
+        unmarkItemsDeletingInFlight(Array.from(deletedSet), event.operationId);
+        return;
+      }
+
+      if (event.type === "ITEM_DELETION_REJECTED" && Array.isArray(event.itemIds)) {
+        // Release in-flight protection for this operationId; if definitive===false, REMOTE_UNKNOWN tombstone still blocks sync
+        unmarkItemsDeletingInFlight(event.itemIds, event.operationId);
+      }
+    });
+
+    return () => {
+      active = false;
+      unsubscribeCrossTab();
+    };
   }, []);
 
-  // Save items snapshot to IndexedDB whenever items state updates
+  // Save items snapshot to IndexedDB whenever items state updates.
+  // ACHADO-01 & ACHADO-07: Never wipe items_store with [] unless an authoritative server snapshot arrived
+  // AND there are no pending offline-queued items in sync_queue_store.
   useEffect(() => {
     if (items && items.length > 0) {
       saveItemsToIndexedDB(items).catch(() => {});
+    } else if (hasAuthoritativeItemsSnapshotRef.current) {
+      saveAuthoritativeItemsPreservingOfflineQueued([]).catch(() => {});
     }
   }, [items]);
 
@@ -1797,12 +2105,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const handleOnline = () => {
       console.log("[Rede] Dispositivo online conectado à internet. Disparando sincronização automática da fila...");
       setIsOnline(true);
+      if (hasAuthoritativeItemsSnapshotRef.current) {
+        updateCatalogSyncState("authoritative");
+      }
       syncOfflineQueue();
     };
 
     const handleOffline = () => {
       console.log("[Rede] Dispositivo desconectado da internet. Modo offline ativado.");
       setIsOnline(false);
+      if (!hasAuthoritativeItemsSnapshotRef.current) {
+        updateCatalogSyncState("offline-fallback");
+      }
       getSyncQueueCount().then(setPendingSyncCount).catch(() => {});
     };
 
@@ -2620,43 +2934,374 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   };
 
-  const bulkDeleteItems = async (itemIds: string[]): Promise<{ succeededIds: string[]; failedIds: string[] }> => {
-    if (itemIds.length === 0) return { succeededIds: [], failedIds: [] };
+  // Unified internal item deletion pipeline shared by deleteItem, bulkDeleteItems, and resetSystemData.
+  // Guarantees (ACHADO-02, 03, 04, 06, 07, 08, 09):
+  // - Verified Root Admin (UID + email + emailVerified) & approved ADMIN/owner checks
+  // - DEVOLVIDO guard + atomic /items + /item_private deletion preserving /item_history
+  // - Per-item cross-tab lock (navigator.locks + localStorage lease fallback)
+  // - Durable PENDING_DELETE tombstone written BEFORE remote deletion (fails closed if storage fails)
+  // - Explicit outcome distinction: confirmed | absent on server | auth denied | transient | remote unknown
+  // - Batch-wide inFlightDeletingItemIdsRef protection released ONLY AFTER rawPublicItemsRef & setItems reconcile
+  // - Surgical IndexedDB/cache purge preserving legitimate remaining offline-queued items
+  // - Immediate per-item deterministic audit logging after each confirmed deletion (survives mid-batch tab close, zero duplicates)
+  const executeUnifiedItemDeletion = async (
+    rawItemIds: string[],
+    options: {
+      source: "INDIVIDUAL" | "BULK" | "SYSTEM_RESET";
+      tombstoneReason: DeletionTombstoneReason;
+      recordIndividualAuditLogs?: boolean;
+      requireExistingInCatalog?: boolean;
+    }
+  ): Promise<{
+    succeededIds: string[];
+    failedIds: string[];
+    unknownOutcomeIds: string[];
+    failureReasons: Record<string, string>;
+    auditPersistedCount: number;
+    auditFailedCount: number;
+  }> => {
+    // Sort deterministically to eliminate cross-tab deadlock risk in overlapping bulk deletes
+    const uniqueIds = Array.from(new Set((rawItemIds || []).filter(Boolean))).sort();
+    if (uniqueIds.length === 0) {
+      return {
+        succeededIds: [],
+        failedIds: [],
+        unknownOutcomeIds: [],
+        failureReasons: {},
+        auditPersistedCount: 0,
+        auditFailedCount: 0,
+      };
+    }
+
+    if (isGuest || !auth.currentUser) {
+      setAuthModalOpen(true);
+      const msg = "É necessário fazer login para excluir um objeto.";
+      addToast(msg, "warning");
+      throw new Error(msg);
+    }
+
+    const authUid = auth.currentUser.uid;
+    const authEmail = auth.currentUser.email || currentUser?.email || "";
+    const authEmailVerified = auth.currentUser.emailVerified === true;
+    // ACHADO-09: Pinned Root Admin identity (UID + email + emailVerified === true) or approved active ADMIN
+    const isAdmin =
+      isVerifiedRootAdminAuthUser(auth.currentUser) ||
+      (currentUser?.role === "ADMIN" &&
+        (!currentUser.approvalStatus || currentUser.approvalStatus === "APROVADO") &&
+        authEmailVerified);
+    const isCurrentlyOnline =
+      typeof navigator === "undefined" ? true : navigator.onLine;
+    const operationId = `del-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    const batchCorrelationId =
+      options.source === "BULK"
+        ? `BULK-DEL-${Date.now().toString(36).toUpperCase()}`
+        : options.source === "SYSTEM_RESET"
+        ? `RESET-DEL-${Date.now().toString(36).toUpperCase()}`
+        : undefined;
+
     const succeededIds: string[] = [];
     const failedIds: string[] = [];
+    const unknownOutcomeIds: string[] = [];
+    const failureReasons: Record<string, string> = {};
+    let auditPersistedCount = 0;
+    let auditFailedCount = 0;
 
-    for (const id of itemIds) {
-      try {
-        await deleteDoc(doc(db, "items", id));
-        succeededIds.push(id);
-      } catch (err) {
+    // Pre-screen eligibility and lock in-flight protection across ALL eligible batch IDs (ACHADO-04)
+    const eligibleEntries: Array<{
+      id: string;
+      existing?: LostFoundItem;
+      isOfflineQueuedOnly: boolean;
+    }> = [];
+
+    for (const id of uniqueIds) {
+      const queuedEntry = await getSyncQueueEntryByItemId(id);
+      const existing =
+        items.find((i) => i.id === id) ||
+        rawPublicItemsRef.current.find((i) => i.id === id) ||
+        queuedEntry?.payload;
+
+      if (!existing && options.requireExistingInCatalog) {
         failedIds.push(id);
-        console.error(`[bulkDeleteItems] Falha ao excluir item #${id} no Firestore:`, err);
+        failureReasons[id] = "Objeto não encontrado.";
+        continue;
       }
+
+      const eligibility = evaluateItemDeletionEligibility({
+        isGuest,
+        authUid,
+        authEmail,
+        authEmailVerified,
+        currentUser,
+        guestUserId: DEFAULT_GUEST_USER.id,
+        item: existing || (isAdmin ? { id } : null),
+      });
+
+      if (!eligibility.allowed) {
+        failedIds.push(id);
+        failureReasons[id] = eligibility.reason || "Permissão negada para exclusão.";
+        continue;
+      }
+
+      eligibleEntries.push({
+        id,
+        existing,
+        isOfflineQueuedOnly: Boolean(queuedEntry || existing?.isOfflineQueued),
+      });
     }
 
-    // Apenas os itens cuja exclusão foi EFETIVAMENTE confirmada pelo Firestore são removidos do estado local
-    if (succeededIds.length > 0) {
-      setItems((prev) => prev.filter((it) => !succeededIds.includes(it.id)));
+    const eligibleIds = eligibleEntries.map((e) => e.id);
+    if (eligibleIds.length === 0) {
+      return {
+        succeededIds,
+        failedIds,
+        unknownOutcomeIds,
+        failureReasons,
+        auditPersistedCount,
+        auditFailedCount,
+      };
     }
 
-    // Exibição de feedback fiel à realidade das operações
+    // ACHADO-04: Hold in-flight protection for ALL eligible IDs until AFTER rawPublicItemsRef & setItems reconcile!
+    markItemsDeletingInFlight(eligibleIds, operationId);
+    broadcastCatalogDeletionCrossTab(eligibleIds, "STARTED", operationId);
+
+    const actorLabel = currentUser?.name || auth.currentUser?.displayName || "Usuário";
+
+    try {
+      for (const entry of eligibleEntries) {
+        const { id, existing, isOfflineQueuedOnly } = entry;
+
+        try {
+          await withCrossTabItemLock(id, async () => {
+            // ACHADO-02 & ACHADO-06: Persist PENDING_DELETE tombstone BEFORE starting deletion.
+            // If tombstone storage fails (QuotaExceededError / AbortError / blocked DB), ABORT deletion!
+            try {
+              await saveDeletedItemTombstones([
+                {
+                  itemId: id,
+                  reason: isOfflineQueuedOnly ? "OFFLINE_DELETE" : options.tombstoneReason,
+                  deletedByUserId: authUid,
+                  status: "PENDING_DELETE",
+                  operationId,
+                },
+              ]);
+            } catch (tombErr: any) {
+              const reason =
+                tombErr?.message ||
+                "Falha ao persistir proteção local anti-ressurreição (tombstone). Exclusão cancelada para preservar consistência.";
+              failedIds.push(id);
+              failureReasons[id] = reason;
+              broadcastCatalogDeletionCrossTab([id], "REJECTED", operationId, true);
+              console.error(
+                `[executeUnifiedItemDeletion:${options.source}] Falha crítica ao gravar tombstone pré-exclusão para #${id}:`,
+                tombErr
+              );
+              return;
+            }
+
+            const result = await executeFirestoreItemDeletion({
+              db,
+              itemId: id,
+              isAdmin,
+              isOnline: isCurrentlyOnline,
+              isOfflineQueuedOnly,
+            });
+
+            if (result.ok === false) {
+              failedIds.push(id);
+              failureReasons[id] = result.reason;
+
+              if (result.definitive && result.outcomeType === "AUTHORIZATION_DENIED") {
+                // Definitive authorization denial: item was NOT deleted -> safely roll back ONLY our PENDING_DELETE tombstone
+                await removeDeletedItemTombstones([{ itemId: id, operationId }]).catch(() => {});
+                broadcastCatalogDeletionCrossTab([id], "REJECTED", operationId, true);
+              } else if (result.outcomeType === "OFFLINE_BLOCKED") {
+                // Synced item attempted while offline -> never touched server, roll back PENDING_DELETE tombstone
+                await removeDeletedItemTombstones([{ itemId: id, operationId }]).catch(() => {});
+                broadcastCatalogDeletionCrossTab([id], "REJECTED", operationId, true);
+              } else {
+                // ACHADO-02 & ACHADO-03: Transient network error or REMOTE_UNKNOWN ->
+                // NEVER delete tombstone (upgrade to REMOTE_UNKNOWN to block offline queue replay),
+                // NEVER remove from authoritative catalog, NEVER log EXCLUSAO_ITEM!
+                unknownOutcomeIds.push(id);
+                await saveDeletedItemTombstones([
+                  {
+                    itemId: id,
+                    reason: options.tombstoneReason,
+                    deletedByUserId: authUid,
+                    status: "REMOTE_UNKNOWN",
+                    operationId,
+                  },
+                ]).catch(() => {});
+                broadcastCatalogDeletionCrossTab([id], "REJECTED", operationId, false);
+              }
+
+              console.error(
+                `[executeUnifiedItemDeletion:${options.source}] Falha ao excluir item #${id} (${result.outcomeType}):`,
+                result.error
+              );
+              return;
+            }
+
+            // Confirmed deletion (ATOMIC_BATCH | ALREADY_DELETED_REMOTELY | OFFLINE_QUEUE_ONLY):
+            const resolvedTombstoneReason: DeletionTombstoneReason =
+              result.mode === "OFFLINE_QUEUE_ONLY"
+                ? "OFFLINE_DELETE"
+                : result.mode === "ALREADY_DELETED_REMOTELY"
+                ? "REMOTE_DELETE"
+                : options.tombstoneReason;
+
+            // 1. Upgrade tombstone to CONFIRMED_DELETED
+            await saveDeletedItemTombstones([
+              {
+                itemId: id,
+                reason: resolvedTombstoneReason,
+                deletedByUserId: authUid,
+                status: "CONFIRMED_DELETED",
+                operationId,
+              },
+            ]);
+
+            // 2. Cancel any pending offline sync queue entry & active upload task for this item
+            await removeSyncQueueEntryByItemId(id);
+            removeUploadTask(getUploadTaskId(id));
+
+            // 3. Immediately remove ONLY this confirmed ID from authoritative refs & IndexedDB items_store (ACHADO-04 & ACHADO-07)
+            rawPublicItemsRef.current = rawPublicItemsRef.current.filter((it) => it.id !== id);
+            delete privateItemHintsRef.current[id];
+            await deleteItemsFromIndexedDB([id]).catch(() => {});
+
+            succeededIds.push(id);
+
+            // 4. Notify sibling tabs immediately that this specific deletion is confirmed
+            broadcastCatalogDeletionCrossTab([id], "CONFIRMED", operationId);
+
+            // 5. ACHADO-08: Record per-item audit log IMMEDIATELY after confirmation (survives mid-batch interruption)
+            // using deterministic ID to guarantee zero duplicate audit logs on retries.
+            if (options.recordIndividualAuditLogs !== false) {
+              const modeLabel =
+                result.mode === "OFFLINE_QUEUE_ONLY"
+                  ? "exclusão de cadastro pendente offline (cancelado antes do envio)"
+                  : result.mode === "ALREADY_DELETED_REMOTELY"
+                  ? "reconciliação de exclusão já confirmada no servidor"
+                  : result.privateDocDeleted
+                  ? "exclusão permanente (/items e /item_private)"
+                  : "exclusão permanente (/items)";
+              const scopeLabel =
+                options.source === "BULK"
+                  ? `em lote (${batchCorrelationId})`
+                  : options.source === "SYSTEM_RESET"
+                  ? `via reset administrativo (${batchCorrelationId})`
+                  : "individual";
+              const deterministicAuditId = batchCorrelationId
+                ? `audit-del-${batchCorrelationId}-${id}`
+                : `audit-del-${id}-${operationId}`;
+              try {
+                const auditRes = await recordAuditLog({
+                  deterministicId: deterministicAuditId,
+                  transactionId: batchCorrelationId || `TX-DEL-${id}`,
+                  objectId: id,
+                  objectType: "ITEM",
+                  objectTitle: existing?.title || id,
+                  action: "EXCLUSAO_ITEM",
+                  fieldChanged: "status",
+                  oldValue: existing?.status || "ATIVO",
+                  newValue: "EXCLUIDO",
+                  details: `Objeto #${id} (${existing?.title || "Sem título"}) removido por ${actorLabel} — ${scopeLabel}; ${modeLabel}.`,
+                });
+                if (auditRes.persistenceStatus === "PERSISTED") {
+                  auditPersistedCount++;
+                } else {
+                  auditFailedCount++;
+                }
+              } catch (auditErr) {
+                auditFailedCount++;
+                console.warn(
+                  `[executeUnifiedItemDeletion] Aviso ao registrar auditoria para #${id}:`,
+                  auditErr
+                );
+              }
+            }
+          });
+        } catch (err: any) {
+          failedIds.push(id);
+          failureReasons[id] = err?.message || "Erro inesperado durante a exclusão.";
+          broadcastCatalogDeletionCrossTab([id], "REJECTED", operationId, false);
+          console.error(
+            `[executeUnifiedItemDeletion:${options.source}] Erro inesperado ao excluir #${id}:`,
+            err
+          );
+        }
+      }
+
+      if (succeededIds.length > 0) {
+        const deletedSet = new Set(succeededIds);
+
+        // Reconcile React state strictly for confirmed deleted IDs (failed IDs stay intact in catalog!)
+        setItems((prev) => prev.filter((it) => !deletedSet.has(it.id)));
+        setSelectedItemForDetail((prev) => (prev && deletedSet.has(prev.id) ? null : prev));
+
+        // Refresh pending sync queue count from IndexedDB
+        const remainingQueue = await getSyncQueueCount().catch(() => 0);
+        setPendingSyncCount(remainingQueue);
+
+        // ACHADO-07: Surgically purge ONLY deleted IDs from offline recent cache;
+        // only clear entire cache if BOTH authoritative items AND pending offline queue are empty.
+        if (rawPublicItemsRef.current.length === 0 && remainingQueue === 0) {
+          await clearOfflineRecentCache();
+        } else {
+          await removeItemsFromOfflineRecentCache(succeededIds);
+        }
+      }
+    } finally {
+      // ACHADO-04: Release batch-wide in-flight protection ONLY AFTER rawPublicItemsRef & setItems are reconciled!
+      unmarkItemsDeletingInFlight(eligibleIds, operationId);
+    }
+
+    return {
+      succeededIds,
+      failedIds,
+      unknownOutcomeIds,
+      failureReasons,
+      auditPersistedCount,
+      auditFailedCount,
+    };
+  };
+
+  const bulkDeleteItems = async (
+    itemIds: string[]
+  ): Promise<{ succeededIds: string[]; failedIds: string[]; failureReasons?: Record<string, string> }> => {
+    if (itemIds.length === 0) return { succeededIds: [], failedIds: [], failureReasons: {} };
+
+    const { succeededIds, failedIds, failureReasons } = await executeUnifiedItemDeletion(itemIds, {
+      source: "BULK",
+      tombstoneReason: "BULK_DELETE",
+      recordIndividualAuditLogs: true,
+    });
+
+    // Exibição de feedback fiel à realidade das operações (sem mascarar falhas parciais)
     if (failedIds.length === 0) {
-      // Cenário A: Todas as exclusões confirmadas no Firestore
       addToast(`${succeededIds.length} item(ns) excluído(s) permanentemente!`, "success");
     } else if (succeededIds.length === 0) {
-      // Cenário C: Todas as exclusões falharam no Firestore
-      addToast(`Falha ao excluir os ${failedIds.length} item(ns) no Firestore. Nenhum item foi removido.`, "error");
-      throw new Error(`Falha total na exclusão em lote de ${failedIds.length} item(ns).`);
-    } else {
-      // Cenário B: Falha parcial
+      const firstReason = failureReasons[failedIds[0]];
       addToast(
-        `${succeededIds.length} item(ns) excluído(s) com sucesso e ${failedIds.length} falharam na exclusão remota.`,
+        firstReason
+          ? `Falha ao excluir os ${failedIds.length} item(ns): ${firstReason}`
+          : `Falha ao excluir os ${failedIds.length} item(ns) no Firestore. Nenhum item foi removido.`,
+        "error"
+      );
+      throw new Error(
+        firstReason || `Falha total na exclusão em lote de ${failedIds.length} item(ns).`
+      );
+    } else {
+      const sampleReason = failureReasons[failedIds[0]];
+      addToast(
+        `${succeededIds.length} item(ns) excluído(s) com sucesso e ${failedIds.length} falharam${sampleReason ? ` (${sampleReason})` : ""}.`,
         "warning"
       );
     }
 
-    return { succeededIds, failedIds };
+    return { succeededIds, failedIds, failureReasons };
   };
 
   const addUserByAdmin = async (userData: Omit<User, "id">) => {
@@ -2712,38 +3357,151 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const resetSystemData = async () => {
-    if (isGuest || !auth.currentUser || currentUser?.role !== "ADMIN") {
+    const isAuthorizedAdmin =
+      !isGuest &&
+      Boolean(auth.currentUser) &&
+      (isVerifiedRootAdminAuthUser(auth.currentUser) ||
+        (currentUser?.role === "ADMIN" && auth.currentUser!.emailVerified === true));
+
+    if (!isAuthorizedAdmin) {
       const msg = "Apenas Administradores autenticados podem executar a limpeza do sistema.";
       addToast(msg, "error");
       throw new Error(msg);
     }
 
+    // Track actual confirmed remote deletions across all stages for truthful partial-failure reporting (ACHADO-08)
+    let deletedItemsCount = 0;
+    let deletedClaimsCount = 0;
+    let deletedCommentsCount = 0;
+    let deletedNotificationsCount = 0;
+    const failedSteps: string[] = [];
+
     try {
-      for (const it of items) {
-        if (it?.status === "DEVOLVIDO") {
-          throw new Error(`Item #${it.id} está DEVOLVIDO e deve ser reaberto administrativamente antes de ser removido.`);
+      // Collect ALL in-scope item IDs: active catalog items + pending offline queue items (ACHADO-08)
+      const pendingQueueEntries = await getPendingSyncQueue();
+      const pendingCatalogItems = pendingQueueEntries
+        .filter((e) => e.type === "REGISTER_ITEM" && (e.itemId || e.payload?.id))
+        .map((e) => ({
+          id: e.itemId || e.payload.id,
+          status: e.payload?.status,
+        }));
+
+      const returnedItem =
+        items.find((it) => it?.status === "DEVOLVIDO") ||
+        pendingCatalogItems.find((it) => it.status === "DEVOLVIDO");
+      if (returnedItem) {
+        throw new Error(
+          `Item #${returnedItem.id} está DEVOLVIDO e deve ser reaberto administrativamente antes de ser removido.`
+        );
+      }
+
+      const scopedItemIds = Array.from(
+        new Set([
+          ...items.map((it) => it.id),
+          ...pendingCatalogItems.map((it) => it.id),
+        ].filter(Boolean))
+      );
+
+      if (scopedItemIds.length > 0) {
+        const resetResult = await executeUnifiedItemDeletion(scopedItemIds, {
+          source: "SYSTEM_RESET",
+          tombstoneReason: "SYSTEM_RESET",
+          recordIndividualAuditLogs: true,
+        });
+        deletedItemsCount = resetResult.succeededIds.length;
+        if (resetResult.failedIds.length > 0) {
+          const firstReason = resetResult.failureReasons[resetResult.failedIds[0]];
+          failedSteps.push(
+            `objetos (${resetResult.failedIds.length} falha(s)${firstReason ? `: ${firstReason}` : ""})`
+          );
+          throw new Error(
+            deletedItemsCount > 0
+              ? `Reset parcialmente concluído: ${deletedItemsCount} objeto(s) já foram removidos, mas ${resetResult.failedIds.length} falharam (${firstReason || "erro remoto"}).`
+              : firstReason ||
+                `Falha ao excluir ${resetResult.failedIds.length} item(ns) durante o reset do sistema.`
+          );
         }
-        await deleteDoc(doc(db, "items", it.id));
       }
+
+      const deletedClaimIds = new Set<string>();
       for (const c of claims) {
-        await deleteDoc(doc(db, "claims", c.id));
+        try {
+          await deleteDoc(doc(db, "claims", c.id));
+          deletedClaimIds.add(c.id);
+          deletedClaimsCount++;
+        } catch (claimErr: any) {
+          failedSteps.push(`reivindicação #${c.id} (${claimErr?.code || claimErr?.message || "erro"})`);
+        }
       }
+      if (deletedClaimIds.size > 0) {
+        setClaims((prev) => prev.filter((c) => !deletedClaimIds.has(c.id)));
+      }
+
+      const deletedCommentIds = new Set<string>();
       for (const com of comments) {
-        await deleteDoc(doc(db, "comments", com.id));
+        try {
+          await deleteDoc(doc(db, "comments", com.id));
+          deletedCommentIds.add(com.id);
+          deletedCommentsCount++;
+        } catch (comErr: any) {
+          failedSteps.push(`comentário #${com.id} (${comErr?.code || comErr?.message || "erro"})`);
+        }
       }
+      if (deletedCommentIds.size > 0) {
+        setComments((prev) => prev.filter((com) => !deletedCommentIds.has(com.id)));
+      }
+
+      const deletedNotificationIds = new Set<string>();
       for (const n of notifications) {
-        await deleteDoc(doc(db, "notifications", n.id));
+        try {
+          await deleteDoc(doc(db, "notifications", n.id));
+          deletedNotificationIds.add(n.id);
+          deletedNotificationsCount++;
+        } catch (notifErr: any) {
+          failedSteps.push(`notificação #${n.id} (${notifErr?.code || notifErr?.message || "erro"})`);
+        }
       }
+      if (deletedNotificationIds.size > 0) {
+        setNotifications((prev) => prev.filter((n) => !deletedNotificationIds.has(n.id)));
+      }
+
+      const remainingQueue = await getSyncQueueCount().catch(() => 0);
+      setPendingSyncCount(remainingQueue);
+
+      if (failedSteps.length > 0) {
+        const partialSummary =
+          `Reset parcialmente concluído: ${deletedItemsCount} objeto(s), ${deletedClaimsCount} reivindicação(ões), ${deletedCommentsCount} comentário(s) e ${deletedNotificationsCount} notificação(ões) foram removidos, mas ocorreram ${failedSteps.length} falha(s) (${failedSteps.slice(0, 3).join("; ")}).`;
+        addToast(partialSummary, "warning");
+        throw new Error(partialSummary);
+      }
+
+      rawPublicItemsRef.current = [];
+      privateItemHintsRef.current = {};
       setItems([]);
-      setClaims([]);
-      setComments([]);
-      setNotifications([]);
-      await saveItemsToIndexedDB([]).catch(() => {});
+      setSelectedItemForDetail(null);
+      await saveAuthoritativeItemsPreservingOfflineQueued([]).catch(() => {});
+      await clearOfflineRecentCache();
       addToast("Banco de dados do sistema limpo com sucesso! Pronto para inserção de dados reais do IFPR.", "success");
     } catch (e: any) {
+      const totalDeleted =
+        deletedItemsCount + deletedClaimsCount + deletedCommentsCount + deletedNotificationsCount;
+      if (totalDeleted > 0) {
+        // ACHADO-08: Never claim "no change was applied" when remote deletions already happened!
+        const partialMsg =
+          e?.message ||
+          `Reset interrompido com falha parcial após excluir ${deletedItemsCount} objeto(s) e ${
+            totalDeleted - deletedItemsCount
+          } registro(s) auxiliar(es).`;
+        if (failedSteps.length === 0) {
+          addToast(partialMsg, "warning");
+        }
+        handleFirestoreError(e, OperationType.DELETE, "system_reset");
+        throw e;
+      }
+
       const classified = classifyFirestoreWriteError(
         e,
-        e?.message || "Falha ao limpar registros no Firestore. Nenhuma alteração local falsa foi aplicada."
+        e?.message || "Falha ao limpar registros no Firestore antes de remover documentos."
       );
       addToast(classified.userMessage, "error");
       handleFirestoreError(e, OperationType.DELETE, "system_reset");
@@ -3779,75 +4537,244 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return merged;
   };
 
-  // Sync Items from Firestore with Offline IndexedDB Resilience & Background Queue Processor
+  // Sync Items from Firestore with strict server-confirmation semantics (ACHADO-01, ACHADO-07, ACHADO-10)
   useEffect(() => {
     let isMounted = true;
+    // ACHADO-10: Invalidate any stale in-flight boot hydration whenever auth/session dependencies change
+    bootHydrationEpochRef.current += 1;
 
-    const applyPrivacyMerge = (publicList: LostFoundItem[]) => {
-      const sanitizedList = publicList.map((it) => sanitizePublicItemProjection(it));
-      rawPublicItemsRef.current = sanitizedList;
+    const getLegitimatePendingOfflineItems = async (
+      alreadyPresentIds: ReadonlySet<string>,
+      extraExcludedIds?: ReadonlySet<string>
+    ): Promise<LostFoundItem[]> => {
+      try {
+        const pendingEntries = await getPendingSyncQueue();
+        if (pendingEntries.length === 0) return [];
+        const pendingItemIds = new Set(
+          pendingEntries.map((e) => e.itemId || e.payload?.id).filter(Boolean) as string[]
+        );
+        const tombstones = await getActiveDeletedTombstoneIds(Date.now(), { pendingItemIds });
+        const result: LostFoundItem[] = [];
+        for (const entry of pendingEntries) {
+          if (entry.status === "ERRO_PERMANENTE") continue;
+          const id = entry.itemId || entry.payload?.id;
+          if (!id || alreadyPresentIds.has(id)) continue;
+          if (
+            tombstones.has(id) ||
+            inFlightDeletingItemIdsRef.current.has(id) ||
+            extraExcludedIds?.has(id)
+          ) {
+            continue;
+          }
+          result.push(
+            sanitizePublicItemProjection({
+              ...entry.payload,
+              id,
+              isOfflineQueued: true,
+            })
+          );
+        }
+        return result;
+      } catch {
+        return [];
+      }
+    };
+
+    const applyPrivacyMerge = (
+      publicList: LostFoundItem[],
+      options?: { isAuthoritative?: boolean; persistIndexedDb?: boolean; pendingOfflineItems?: LostFoundItem[] }
+    ) => {
+      const filteredPublic = filterExcludedCatalogItems(
+        publicList,
+        inFlightDeletingItemIdsRef.current
+      );
+      const sanitizedList = filteredPublic.map((it) => sanitizePublicItemProjection(it));
+      const pendingExtras = options?.pendingOfflineItems || [];
+      const combinedPublic =
+        pendingExtras.length > 0 ? [...pendingExtras, ...sanitizedList] : sanitizedList;
+
+      rawPublicItemsRef.current = combinedPublic;
       const hasStaffAccess = !authLoading && canOperateFormalReturn(currentUser, firebaseUser, false);
-      const finalItems = mergeAllItemCollections(sanitizedList, hasStaffAccess);
+      const finalItems = mergeAllItemCollections(combinedPublic, hasStaffAccess);
       if (isMounted) {
         setItems(finalItems);
         setSelectedItemForDetail((prev) => {
           if (!prev) return null;
           const updated = finalItems.find((it) => it.id === prev.id);
-          return updated || sanitizePublicItemProjection(prev);
+          if (updated) return updated;
+          return options?.isAuthoritative || hasAuthoritativeItemsSnapshotRef.current
+            ? null
+            : sanitizePublicItemProjection(prev);
         });
       }
-      // Persist only sanitized public projection in browser offline storage
-      saveItemsToIndexedDB(sanitizedList).catch((e) =>
-        console.warn("Aviso ao persistir itens no IndexedDB:", e)
-      );
+      // Persist to IndexedDB ONLY when explicitly allowed (never wiping caches from a stale fromCache snapshot)
+      if (options?.persistIndexedDb !== false) {
+        if (options?.isAuthoritative) {
+          saveAuthoritativeItemsPreservingOfflineQueued(
+            sanitizedList,
+            inFlightDeletingItemIdsRef.current
+          ).catch((e) => console.warn("Aviso ao persistir itens no IndexedDB:", e));
+        } else if (combinedPublic.length > 0) {
+          saveItemsToIndexedDB(combinedPublic).catch((e) =>
+            console.warn("Aviso ao persistir itens no IndexedDB:", e)
+          );
+        }
+      }
+      // Only a server-confirmed authoritative snapshot may reconcile localStorage + SW recent items cache (ACHADO-01)
+      if (options?.isAuthoritative) {
+        syncOfflineRecentCacheWithAuthoritativeCatalog(sanitizedList).catch(() => {});
+      }
     };
 
-    // 1. Instantly load items from IndexedDB offline storage so history is viewable without internet
-    getItemsFromIndexedDB()
-      .then((cachedItems) => {
-        if (isMounted && cachedItems && cachedItems.length > 0) {
-          const cleanCached = cachedItems.map((it) => sanitizePublicItemProjection(it));
-          rawPublicItemsRef.current = cleanCached;
-          setItems((curr) => (curr.length === 0 ? cleanCached : curr));
-        }
-      })
-      .catch((err) => console.warn("Aviso ao ler cache IndexedDB inicial:", err));
-
-    // 2. Real-time Firestore sync with continuous IndexedDB persistence
+    // Real-time Firestore sync with strict server-confirmation tracking (ACHADO-01)
     const unsubscribe = onSnapshot(
       collection(db, "items"),
       async (snapshot) => {
+        const isDeviceOnline = typeof navigator === "undefined" ? true : navigator.onLine;
+        const classification = classifyCatalogSnapshot({
+          fromCache: Boolean(snapshot.metadata?.fromCache),
+          isOnline: isDeviceOnline,
+          hasPreviousAuthoritativeSnapshot: hasAuthoritativeItemsSnapshotRef.current,
+        });
+
+        // ACHADO-01: Snapshot with fromCache === true is NEVER authoritative (even when navigator.onLine === true).
+        // ALWAYS apply tombstones, NEVER clear IndexedDB/localStorage/SW caches on empty fromCache snapshot.
+        if (!classification.isAuthoritative) {
+          if (isMounted && !hasAuthoritativeItemsSnapshotRef.current) {
+            updateCatalogSyncState(classification.nextSyncState);
+          }
+
+          const tombstoneIds = await getActiveDeletedTombstoneIds();
+          const excludedIds = new Set<string>([
+            ...tombstoneIds,
+            ...inFlightDeletingItemIdsRef.current,
+          ]);
+          const loadedCacheItems: LostFoundItem[] = filterExcludedCatalogItems(
+            snapshot.docs.map((d) => ({
+              ...(d.data() as LostFoundItem),
+              id: d.id || (d.data() as any).id,
+            })),
+            excludedIds
+          );
+          const cacheIds = new Set(loadedCacheItems.map((it) => it.id));
+          const pendingOfflineItems = await getLegitimatePendingOfflineItems(cacheIds, excludedIds);
+
+          if (!isMounted) return;
+          // If an authoritative snapshot arrived while awaiting tombstones/queue, discard this stale cache emission
+          if (hasAuthoritativeItemsSnapshotRef.current) return;
+
+          if (loadedCacheItems.length > 0 || pendingOfflineItems.length > 0) {
+            applyPrivacyMerge(loadedCacheItems, {
+              isAuthoritative: false,
+              persistIndexedDb: false,
+              pendingOfflineItems,
+            });
+          }
+          return;
+        }
+
+        // Server-confirmed snapshot (fromCache === false)
+        hasAuthoritativeItemsSnapshotRef.current = true;
+        if (isMounted) {
+          updateCatalogSyncState("authoritative");
+        }
+
         if (snapshot.empty) {
-          rawPublicItemsRef.current = [];
-          if (isMounted) setItems([]);
-          saveItemsToIndexedDB([]).catch(() => {});
+          const pendingOfflineItems = await getLegitimatePendingOfflineItems(new Set());
+          if (!isMounted) return;
+
+          rawPublicItemsRef.current = pendingOfflineItems;
+          setItems(pendingOfflineItems);
+          setSelectedItemForDetail((prev) =>
+            prev && pendingOfflineItems.some((it) => it.id === prev.id) ? prev : null
+          );
+          saveAuthoritativeItemsPreservingOfflineQueued(
+            [],
+            inFlightDeletingItemIdsRef.current
+          ).catch(() => {});
+          if (pendingOfflineItems.length === 0) {
+            clearOfflineRecentCache().catch(() => {});
+          }
         } else {
           const loadedItems: LostFoundItem[] = snapshot.docs.map((d) => ({
             ...(d.data() as LostFoundItem),
             id: d.id || (d.data() as any).id,
           }));
-          applyPrivacyMerge(loadedItems);
+          const loadedIds = new Set(loadedItems.map((it) => it.id));
+          const pendingOfflineItems = await getLegitimatePendingOfflineItems(loadedIds);
+          if (!isMounted) return;
+
+          applyPrivacyMerge(loadedItems, {
+            isAuthoritative: true,
+            persistIndexedDb: true,
+            pendingOfflineItems,
+          });
         }
       },
       async (error) => {
         handleFirestoreError(error, OperationType.GET, "items");
-        // Fallback 1: Sanitized public catalog endpoint (paginated cursor traversal)
+        // Fallback 1: Sanitized public catalog endpoint (authoritative server read)
         try {
           const catalogResult = await fetchAllPaginatedPublicRecords<LostFoundItem>(
             "/api/items/public-catalog",
             "items"
           );
           if (catalogResult.ok && isMounted) {
-            applyPrivacyMerge(catalogResult.records);
+            hasAuthoritativeItemsSnapshotRef.current = true;
+            updateCatalogSyncState("authoritative");
+            if (catalogResult.records.length === 0) {
+              const pendingOfflineItems = await getLegitimatePendingOfflineItems(new Set());
+              if (!isMounted) return;
+              rawPublicItemsRef.current = pendingOfflineItems;
+              setItems(pendingOfflineItems);
+              setSelectedItemForDetail((prev) =>
+                prev && pendingOfflineItems.some((it) => it.id === prev.id) ? prev : null
+              );
+              saveAuthoritativeItemsPreservingOfflineQueued(
+                [],
+                inFlightDeletingItemIdsRef.current
+              ).catch(() => {});
+              if (pendingOfflineItems.length === 0) {
+                clearOfflineRecentCache().catch(() => {});
+              }
+            } else {
+              const loadedIds = new Set(catalogResult.records.map((it) => it.id));
+              const pendingOfflineItems = await getLegitimatePendingOfflineItems(loadedIds);
+              if (!isMounted) return;
+              applyPrivacyMerge(catalogResult.records, {
+                isAuthoritative: true,
+                persistIndexedDb: true,
+                pendingOfflineItems,
+              });
+            }
             return;
           }
         } catch (_) {}
 
-        // Fallback 2: Local IndexedDB cache when network is offline
+        // Fallback 2: Local IndexedDB cache ONLY when network/remote read fails (respecting tombstones)
         try {
-          const cached = await getItemsFromIndexedDB();
-          if (isMounted && cached && cached.length > 0) {
-            applyPrivacyMerge(cached);
+          if (isMounted && !hasAuthoritativeItemsSnapshotRef.current) {
+            updateCatalogSyncState("offline-fallback");
+          }
+          const [cached, tombstoneIds] = await Promise.all([
+            getItemsFromIndexedDB(),
+            getActiveDeletedTombstoneIds(),
+          ]);
+          if (isMounted && !hasAuthoritativeItemsSnapshotRef.current) {
+            const excludedIds = new Set<string>([
+              ...tombstoneIds,
+              ...inFlightDeletingItemIdsRef.current,
+            ]);
+            const validCached = filterExcludedCatalogItems(cached || [], excludedIds);
+            const cachedIds = new Set(validCached.map((it) => it.id));
+            const pendingOfflineItems = await getLegitimatePendingOfflineItems(cachedIds, excludedIds);
+            if (validCached.length > 0 || pendingOfflineItems.length > 0) {
+              applyPrivacyMerge(validCached, {
+                isAuthoritative: false,
+                persistIndexedDb: false,
+                pendingOfflineItems,
+              });
+            }
           }
         } catch (_) {}
       }
@@ -3881,13 +4808,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const applyHistoryMap = (nextMap: Record<string, ItemHistoryLog[]>, hasStaffAccess: boolean) => {
       if (!isMounted) return;
       itemHistoryEntriesRef.current = nextMap;
-      if (rawPublicItemsRef.current.length > 0) {
-        const merged = mergeAllItemCollections(rawPublicItemsRef.current, hasStaffAccess);
+      const safeRaw = filterExcludedCatalogItems(
+        rawPublicItemsRef.current,
+        inFlightDeletingItemIdsRef.current
+      );
+      if (safeRaw.length > 0) {
+        const merged = mergeAllItemCollections(safeRaw, hasStaffAccess);
         setItems(merged);
         setSelectedItemForDetail((prev) => {
           if (!prev) return null;
           const updated = merged.find((it) => it.id === prev.id);
-          return updated || (hasStaffAccess ? prev : sanitizePublicItemProjection(prev));
+          if (updated) return updated;
+          return hasAuthoritativeItemsSnapshotRef.current
+            ? null
+            : hasStaffAccess
+            ? prev
+            : sanitizePublicItemProjection(prev);
         });
       }
     };
@@ -3971,13 +4907,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     let isMounted = true;
     const syncMerged = () => {
-      if (!isMounted || rawPublicItemsRef.current.length === 0) return;
-      const merged = mergeAllItemCollections(rawPublicItemsRef.current, true);
+      const safeRaw = filterExcludedCatalogItems(
+        rawPublicItemsRef.current,
+        inFlightDeletingItemIdsRef.current
+      );
+      if (!isMounted || safeRaw.length === 0) return;
+      const merged = mergeAllItemCollections(safeRaw, true);
       setItems(merged);
       setSelectedItemForDetail((prev) => {
         if (!prev) return null;
         const updated = merged.find((it) => it.id === prev.id);
-        return updated || prev;
+        if (updated) return updated;
+        return hasAuthoritativeItemsSnapshotRef.current ? null : prev;
       });
     };
 
@@ -4304,11 +5245,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     newValue?: string | null;
     details: string;
     transactionId?: string;
+    deterministicId?: string;
     actorOverride?: Partial<User>;
   }): Promise<SystemAuditLog> => {
     const now = new Date();
-    const txId = entry.transactionId || `TX-${entry.objectType}-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-    
+    const txId =
+      entry.transactionId ||
+      `TX-${entry.objectType}-${Date.now().toString(36).toUpperCase()}-${Math.random()
+        .toString(36)
+        .substring(2, 6)
+        .toUpperCase()}`;
+
     // Strict identity binding: prioritize real authenticated Firebase user to prevent identity spoofing
     const realAuthUid = auth.currentUser?.uid;
     const realAuthEmail = auth.currentUser?.email;
@@ -4317,8 +5264,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (currentUser?.role as UserRole) ||
       (isVerifiedRootAdminAuthUser(auth.currentUser) ? "ADMIN" : "ALUNO");
 
-    const auditLogDoc: SystemAuditLog = {
-      id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    const auditId =
+      entry.deterministicId ||
+      `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+    // Payload written to Firestore (strictly clean — no client-only persistenceStatus fields)
+    const auditLogDoc: Omit<SystemAuditLog, "persistenceStatus" | "persistenceError"> = {
+      id: auditId,
       transactionId: txId,
       objectId: entry.objectId,
       objectType: entry.objectType,
@@ -4330,17 +5282,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       actorRole: effectiveRole,
       timestamp: now.toISOString(),
       fieldChanged: entry.fieldChanged,
-      oldValue: entry.oldValue !== undefined && entry.oldValue !== null ? String(entry.oldValue) : undefined,
-      newValue: entry.newValue !== undefined && entry.newValue !== null ? String(entry.newValue) : undefined,
+      oldValue:
+        entry.oldValue !== undefined && entry.oldValue !== null ? String(entry.oldValue) : undefined,
+      newValue:
+        entry.newValue !== undefined && entry.newValue !== null ? String(entry.newValue) : undefined,
       details: entry.details,
       immutable: true,
     };
 
-    setSystemAuditLogs((prev) => [auditLogDoc, ...prev.filter((l) => l.id !== auditLogDoc.id)]);
+    const isCurrentlyOffline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (isCurrentlyOffline) {
+      // ACHADO-08: Explicitly distinguish pending/local audit record when offline — never mark as PERSISTED
+      const pendingAuditDoc: SystemAuditLog = {
+        ...auditLogDoc,
+        persistenceStatus: "PENDING_SERVER",
+      };
+      setSystemAuditLogs((prev) => [
+        pendingAuditDoc,
+        ...prev.filter((l) => l.id !== pendingAuditDoc.id),
+      ]);
+      return pendingAuditDoc;
+    }
+
+    let persisted = false;
+    let persistenceError: string | undefined;
 
     try {
       await setDoc(doc(db, "audit_logs", auditLogDoc.id), sanitizeFirestoreData(auditLogDoc));
-    } catch (err) {
+      persisted = true;
+    } catch (err: any) {
+      persistenceError = err?.code || err?.message || String(err);
       console.warn("Aviso ao salvar log de auditoria no Firestore:", err);
     }
 
@@ -4360,13 +5331,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fieldChanged: auditLogDoc.fieldChanged,
         oldValue: auditLogDoc.oldValue || undefined,
         newValue: auditLogDoc.newValue || undefined,
-        details: `${auditLogDoc.details} [TX: ${auditLogDoc.transactionId} | OBJ: ${auditLogDoc.objectId}]${auditLogDoc.fieldChanged ? ` (${auditLogDoc.fieldChanged}: ${auditLogDoc.oldValue || 'Nenhum'} ➔ ${auditLogDoc.newValue || 'Nenhum'})` : ''}`,
+        details: `${auditLogDoc.details} [TX: ${auditLogDoc.transactionId} | OBJ: ${auditLogDoc.objectId}]${
+          auditLogDoc.fieldChanged
+            ? ` (${auditLogDoc.fieldChanged}: ${auditLogDoc.oldValue || "Nenhum"} ➔ ${
+                auditLogDoc.newValue || "Nenhum"
+              })`
+            : ""
+        }`,
         timestamp: auditLogDoc.timestamp,
       };
       await setDoc(doc(db, "activity_logs", actLog.id), sanitizeFirestoreData(actLog));
-    } catch (_) {}
+    } catch (actErr) {
+      console.warn("Aviso ao salvar log de atividade complementar no Firestore:", actErr);
+    }
 
-    return auditLogDoc;
+    // ACHADO-08: Only mark PERSISTED after confirmed Firestore write; otherwise mark FAILED explicitly
+    const finalAuditDoc: SystemAuditLog = {
+      ...auditLogDoc,
+      persistenceStatus: persisted ? "PERSISTED" : "FAILED",
+      persistenceError,
+    };
+
+    setSystemAuditLogs((prev) => [
+      finalAuditDoc,
+      ...prev.filter((l) => l.id !== finalAuditDoc.id),
+    ]);
+
+    return finalAuditDoc;
   };
 
   const logAdminAction = async (action: ActivityLog["action"], details: string) => {
@@ -6529,15 +7520,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const deleteItem = async (id: string) => {
-    // 🔒 Security Guard: Only authenticated users can delete items
-    if (isGuest || !auth.currentUser) {
-      setAuthModalOpen(true);
-      addToast("É necessário fazer login para excluir um item.", "warning");
-      throw new Error("Autenticação necessária para excluir.");
-    }
+  const deleteItem = async (id: string): Promise<void> => {
+    const existing =
+      items.find((i) => i.id === id) ||
+      rawPublicItemsRef.current.find((i) => i.id === id) ||
+      (await getSyncQueueEntryByItemId(id))?.payload;
 
-    const existing = items.find((i) => i.id === id);
     if (!existing) {
       addToast("Objeto não encontrado.", "error");
       return;
@@ -6549,39 +7537,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error(msg);
     }
 
-    // 🔒 Authorization Check: Only creator or Admin can delete
-    const isOwner = Boolean(
-      (auth.currentUser && existing.registeredByUserId === auth.currentUser.uid) ||
-      (currentUser && currentUser.id !== DEFAULT_GUEST_USER.id && existing.registeredByUserId === currentUser.id)
-    );
-    const isAdmin =
-      currentUser?.role === "ADMIN" ||
-      auth.currentUser?.email === "paulocauan39@gmail.com";
+    const { succeededIds, failedIds, failureReasons } = await executeUnifiedItemDeletion([id], {
+      source: "INDIVIDUAL",
+      tombstoneReason: "LOCAL_DELETE",
+      recordIndividualAuditLogs: true,
+      requireExistingInCatalog: true,
+    });
 
-    if (!isOwner && !isAdmin) {
-      addToast("Você não possui permissão para excluir este pertence.", "error");
-      throw new Error("Permissão negada para exclusão.");
-    }
-
-    try {
-      await deleteDoc(doc(db, "items", id));
-      setItems((prev) => prev.filter((i) => i.id !== id));
+    if (succeededIds.includes(id)) {
       addToast("Objeto removido com sucesso.", "info");
-
-      await recordAuditLog({
-        objectId: id,
-        objectType: "ITEM",
-        objectTitle: existing?.title || id,
-        action: "EXCLUSAO_ITEM",
-        fieldChanged: "status",
-        oldValue: existing?.status || "ATIVO",
-        newValue: "EXCLUIDO",
-        details: `Objeto #${id} (${existing?.title || ""}) foi excluído do sistema por ${currentUser?.name || auth.currentUser?.displayName || "Usuário"}.`,
-      });
-    } catch (e) {
-      handleFirestoreError(e, OperationType.DELETE, `items/${id}`);
-      throw e;
+      return;
     }
+
+    const reason = failureReasons[id] || "Falha ao excluir o objeto no Firestore.";
+    addToast(reason, "error");
+    const err = new Error(reason);
+    if (failedIds.length > 0) {
+      handleFirestoreError(err, OperationType.DELETE, `items/${id}`);
+    }
+    throw err;
   };
 
   const submitClaim = async (
@@ -7190,6 +8164,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         triggerManualSync,
         lastHeartbeatTimestamp,
         indexedDbLoaded,
+        catalogSyncState,
         errorLogsList,
         activeUploadTasks,
         addUploadTask,

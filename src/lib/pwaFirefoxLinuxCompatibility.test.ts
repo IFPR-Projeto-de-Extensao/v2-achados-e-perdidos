@@ -129,11 +129,11 @@ describe("LOCALIZA+ v1.10.7 — Compatibilidade PWA com Firefox e Linux & Elimin
   });
 
   describe("4. Versão e Arquivos Estáticos PWA", () => {
-    it("public/sw-custom.js deve estar na versão v1.10.7-pwa", () => {
+    it("public/sw-custom.js deve estar na versão v1.10.13-pwa", () => {
       const swPath = path.resolve(process.cwd(), "public/sw-custom.js");
       const code = fs.readFileSync(swPath, "utf-8");
 
-      expect(code).toContain('const SW_CUSTOM_VERSION = "v1.10.7-pwa";');
+      expect(code).toContain('const SW_CUSTOM_VERSION = "v1.10.13-pwa";');
     });
 
     it("package.json deve declarar a versão 1.10.13", () => {
