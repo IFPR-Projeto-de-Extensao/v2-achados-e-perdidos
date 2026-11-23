@@ -3393,6 +3393,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             deliveryMethod: "FIREBASE_AUTH",
             deliveryStatus: "FIREBASE_AUTH_SENT",
             deliveryError: undefined,
+            // Client sendPasswordResetEmail issues a newer oobCode and invalidates the earlier Admin link
+            manualSetupLink: undefined,
           };
         } catch (fbResetErr: any) {
           const parsedResetErr = parseAuthError(fbResetErr);
@@ -3500,6 +3502,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             deliveryMethod: "FIREBASE_AUTH",
             deliveryStatus: "FIREBASE_AUTH_SENT",
             deliveryError: undefined,
+            // Client sendPasswordResetEmail issues a newer oobCode and invalidates the earlier Admin link
+            manualSetupLink: undefined,
           };
         } catch (fbResetErr: any) {
           const parsedResetErr = parseAuthError(fbResetErr);

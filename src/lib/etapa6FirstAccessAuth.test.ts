@@ -18,6 +18,7 @@ import { translations } from "./i18n";
 import {
   executeAdminCreateUser,
   executeAdminSendFirstAccessLink,
+  sanitizeTrustedOriginUrl,
 } from "../../server";
 
 function createMockAdminAuth(options?: {
@@ -28,6 +29,7 @@ function createMockAdminAuth(options?: {
     emailVerified?: boolean;
     disabled?: boolean;
     password?: string;
+    customClaims?: Record<string, any>;
   }>;
   rejectContinueUri?: boolean;
   failLinkGeneration?: boolean;
@@ -640,6 +642,7 @@ describe("Etapa 6 — Autenticação, Criação Administrativa e Primeiro Acesso
     expect(appContextSrc).toContain("/api/admin/create-user");
     expect(appContextSrc).toContain("/api/admin/send-first-access-link");
     expect(appContextSrc).toContain("dispatchPasswordResetWithFallback");
+    expect(appContextSrc).toContain("manualSetupLink: undefined");
 
     expect(authModalSrc).toContain("dispatchPasswordResetWithFallback");
     expect(authModalSrc).toContain("setMode(\"reset\")");
@@ -647,7 +650,281 @@ describe("Etapa 6 — Autenticação, Criação Administrativa e Primeiro Acesso
     expect(dashboardSrc).toContain("sendUserFirstAccessLink");
     expect(dashboardSrc).toContain("firstAccessFeedback");
 
+    // Etapa 6.2: no duplicate client-side NOVO_USUARIO audit call & ADMIN option restricted to Root Admin
+    expect(dashboardSrc).not.toContain('logAdminAction(\n        "NOVO_USUARIO"');
+    expect(dashboardSrc).not.toContain('logAdminAction("NOVO_USUARIO"');
+    expect(dashboardSrc).toContain("isVerifiedRootAdminAuthUser(auth.currentUser)");
+    expect(dashboardSrc).toContain('{isRootAdminUser && <option value="ADMIN">ADMINISTRADOR (TI)</option>}');
+
     // Protected firestore.rules SHA-256 must match Etapa 4 homologated hash
     expect(rulesSha256).toBe("7fa455e632a9d1831517fe7269e52d922b8614f903f0a28f025f6418812d95a5");
+  });
+
+  it("Etapa 6.2: blocks UID_MISMATCH between Auth and Firestore without generating links, altering DB, or leaking sensitive data", async () => {
+    const adminAuth = createMockAdminAuth({
+      initialUsers: [
+        {
+          uid: "auth_real_other_uid_999",
+          email: "usuario.divergente@ifpr.edu.br",
+          emailVerified: true,
+        },
+      ],
+    });
+    const adminFirestore = createMockAdminFirestore({
+      users: {
+        fs_legacy_doc_123: {
+          id: "fs_legacy_doc_123",
+          name: "Usuário Divergente",
+          email: "usuario.divergente@ifpr.edu.br",
+          role: "ALUNO",
+          approvalStatus: "APROVADO",
+          status: "active",
+          active: true,
+        },
+      },
+    });
+    const sentEmails: any[] = [];
+    const mockTransporter = {
+      async sendMail(mail: any) {
+        sentEmails.push(mail);
+        return { messageId: "should-never-send" };
+      },
+    };
+
+    const res = await executeAdminSendFirstAccessLink(
+      { uid: "admin_root", email: "paulocauan39@gmail.com", isAdmin: true, isRoot: true },
+      { targetUserId: "fs_legacy_doc_123", provisionMissingAuth: false },
+      "https://localiza-plus-ifpr.vercel.app",
+      {
+        adminAuth: adminAuth as any,
+        adminFirestore: adminFirestore as any,
+        transporter: mockTransporter as any,
+        skipCredentialDiagnostics: true,
+      }
+    );
+
+    expect(res.statusCode).toBe(409);
+    expect(res.payload.success).toBe(false);
+    expect(res.payload.code).toBe("UID_MISMATCH");
+    // Must not expose divergent Auth UID in error payload
+    expect(JSON.stringify(res.payload)).not.toContain("auth_real_other_uid_999");
+
+    // Must not generate links, send emails, or create/delete Auth users
+    expect(adminAuth.activeResetCodes.size).toBe(0);
+    expect(sentEmails).toHaveLength(0);
+    expect(adminAuth.createdPayloads).toHaveLength(0);
+    expect(adminAuth.deletedUids).toHaveLength(0);
+    expect(adminFirestore.store.users.get("fs_legacy_doc_123")).toMatchObject({
+      id: "fs_legacy_doc_123",
+      email: "usuario.divergente@ifpr.edu.br",
+    });
+
+    // Must persist mismatch audit log WITHOUT exposing sensitive UID/tokens
+    const mismatchAudits = Array.from(adminFirestore.store.audit_logs.values()).filter(
+      (a) => a.action === "FIRST_ACCESS_UID_MISMATCH_BLOCKED"
+    );
+    expect(mismatchAudits).toHaveLength(1);
+    expect(mismatchAudits[0].objectId).toBe("fs_legacy_doc_123");
+    expect(JSON.stringify(mismatchAudits[0])).not.toContain("auth_real_other_uid_999");
+
+    // Even with provisionMissingAuth: true, UID_MISMATCH must still block and preserve everything
+    const resWithProvision = await executeAdminSendFirstAccessLink(
+      { uid: "admin_root", email: "paulocauan39@gmail.com", isAdmin: true, isRoot: true },
+      { targetUserId: "fs_legacy_doc_123", provisionMissingAuth: true },
+      "https://localiza-plus-ifpr.vercel.app",
+      {
+        adminAuth: adminAuth as any,
+        adminFirestore: adminFirestore as any,
+        transporter: mockTransporter as any,
+        skipCredentialDiagnostics: true,
+      }
+    );
+    expect(resWithProvision.statusCode).toBe(409);
+    expect(resWithProvision.payload.code).toBe("UID_MISMATCH");
+    expect(adminAuth.createdPayloads).toHaveLength(0);
+    expect(adminAuth.deletedUids).toHaveLength(0);
+    expect(sentEmails).toHaveLength(0);
+  });
+
+  it("Etapa 6.2: protects Root Admin and ADMIN accounts by real Auth UID, customClaims, and role_assignments", async () => {
+    const prevRootUid = process.env.ROOT_ADMIN_UID;
+    process.env.ROOT_ADMIN_UID = "hCG5mDgK1fRaTojULzlM7dXvb7n2";
+
+    try {
+      const adminAuth = createMockAdminAuth({
+        initialUsers: [
+          {
+            uid: "hCG5mDgK1fRaTojULzlM7dXvb7n2",
+            email: "alias-no-auth@ifpr.edu.br",
+            emailVerified: true,
+            customClaims: { role: "ADMIN", admin: true },
+          },
+          {
+            uid: "uid_hidden_admin_claim",
+            email: "admin.oculto@ifpr.edu.br",
+            emailVerified: true,
+            customClaims: { role: "ADMIN", admin: true },
+          },
+          {
+            uid: "uid_role_assign_admin",
+            email: "admin.assign@ifpr.edu.br",
+            emailVerified: true,
+          },
+        ],
+      });
+      const adminFirestore = createMockAdminFirestore({
+        users: {
+          hCG5mDgK1fRaTojULzlM7dXvb7n2: {
+            id: "hCG5mDgK1fRaTojULzlM7dXvb7n2",
+            name: "Doc Adulterado",
+            email: "nao-root@ifpr.edu.br",
+            role: "ALUNO",
+          },
+          uid_hidden_admin_claim: {
+            id: "uid_hidden_admin_claim",
+            name: "Admin Claim",
+            email: "admin.oculto@ifpr.edu.br",
+            role: "ALUNO",
+          },
+          uid_role_assign_admin: {
+            id: "uid_role_assign_admin",
+            name: "Admin RoleAssignment",
+            email: "admin.assign@ifpr.edu.br",
+            role: "SERVIDOR",
+          },
+        },
+      });
+      await adminFirestore.collection("role_assignments").doc("uid_role_assign_admin").set({
+        id: "uid_role_assign_admin",
+        targetUserId: "uid_role_assign_admin",
+        assignedRole: "ADMIN",
+        active: true,
+      });
+
+      const nonRootCaller = {
+        uid: "regular_admin_1",
+        email: "admin.comum@ifpr.edu.br",
+        isAdmin: true,
+        isRoot: false,
+      };
+
+      const rootBlocked = await executeAdminSendFirstAccessLink(
+        nonRootCaller,
+        { targetUserId: "hCG5mDgK1fRaTojULzlM7dXvb7n2" },
+        "https://localiza-plus-ifpr.vercel.app",
+        { adminAuth: adminAuth as any, adminFirestore: adminFirestore as any, transporter: null, skipCredentialDiagnostics: true }
+      );
+      expect(rootBlocked.statusCode).toBe(403);
+      expect(rootBlocked.payload.code).toBe("CANNOT_MODIFY_ROOT_ADMIN");
+
+      const claimBlocked = await executeAdminSendFirstAccessLink(
+        nonRootCaller,
+        { targetUserId: "uid_hidden_admin_claim" },
+        "https://localiza-plus-ifpr.vercel.app",
+        { adminAuth: adminAuth as any, adminFirestore: adminFirestore as any, transporter: null, skipCredentialDiagnostics: true }
+      );
+      expect(claimBlocked.statusCode).toBe(403);
+      expect(claimBlocked.payload.code).toBe("ROOT_ADMIN_ONLY_TO_MODIFY_ADMIN");
+
+      const assignBlocked = await executeAdminSendFirstAccessLink(
+        nonRootCaller,
+        { targetUserId: "uid_role_assign_admin" },
+        "https://localiza-plus-ifpr.vercel.app",
+        { adminAuth: adminAuth as any, adminFirestore: adminFirestore as any, transporter: null, skipCredentialDiagnostics: true }
+      );
+      expect(assignBlocked.statusCode).toBe(403);
+      expect(assignBlocked.payload.code).toBe("ROOT_ADMIN_ONLY_TO_MODIFY_ADMIN");
+      expect(adminAuth.activeResetCodes.size).toBe(0);
+    } finally {
+      if (prevRootUid === undefined) {
+        delete process.env.ROOT_ADMIN_UID;
+      } else {
+        process.env.ROOT_ADMIN_UID = prevRootUid;
+      }
+    }
+  });
+
+  it("Etapa 6.2: enforces single NOVO_USUARIO and USER_PROVISIONED_BY_ADMIN audit entries on admin creation", async () => {
+    const adminAuth = createMockAdminAuth();
+    const adminFirestore = createMockAdminFirestore();
+
+    const res = await executeAdminCreateUser(
+      { uid: "admin_root", email: "paulocauan39@gmail.com", isAdmin: true, isRoot: true },
+      { name: "Auditoria Única", email: "unica@ifpr.edu.br", role: "ALUNO" },
+      "https://localiza-plus-ifpr.vercel.app",
+      {
+        adminAuth: adminAuth as any,
+        adminFirestore: adminFirestore as any,
+        transporter: null,
+        skipCredentialDiagnostics: true,
+      }
+    );
+
+    expect(res.statusCode).toBe(201);
+    const activityEntries = Array.from(adminFirestore.store.activity_logs.values()).filter(
+      (entry) => entry.action === "NOVO_USUARIO"
+    );
+    const auditEntries = Array.from(adminFirestore.store.audit_logs.values()).filter(
+      (entry) => entry.action === "USER_PROVISIONED_BY_ADMIN"
+    );
+    expect(activityEntries).toHaveLength(1);
+    expect(auditEntries).toHaveLength(1);
+    expect(activityEntries[0].objectId).toBe(res.payload.user.id);
+  });
+
+  it("Etapa 6.2: sanitizeTrustedOriginUrl rejects untrusted wildcard subdomains and preserves explicit production/staging origins", () => {
+    const prevAppUrl = process.env.APP_URL;
+    const prevVercelUrl = process.env.VERCEL_URL;
+    const prevAllowedOrigins = process.env.ALLOWED_ORIGINS;
+
+    try {
+      delete process.env.APP_URL;
+      process.env.VERCEL_URL = "localiza-plus-git-preview.vercel.app";
+      process.env.ALLOWED_ORIGINS = "https://homologacao-localiza.custom.edu.br";
+
+      // Allowed production/institutional/dev/env hosts
+      expect(sanitizeTrustedOriginUrl("https://localiza-plus-ifpr.vercel.app/login")).toBe(
+        "https://localiza-plus-ifpr.vercel.app"
+      );
+      expect(sanitizeTrustedOriginUrl("https://localizamais.vercel.app")).toBe(
+        "https://localizamais.vercel.app"
+      );
+      expect(sanitizeTrustedOriginUrl("https://localiza-ifpr.vercel.app")).toBe(
+        "https://localiza-ifpr.vercel.app"
+      );
+      expect(sanitizeTrustedOriginUrl("https://localiza.ifpr.edu.br/redefinir-senha")).toBe(
+        "https://localiza.ifpr.edu.br"
+      );
+      expect(sanitizeTrustedOriginUrl("https://gen-lang-client-0490390966.web.app")).toBe(
+        "https://gen-lang-client-0490390966.web.app"
+      );
+      expect(
+        sanitizeTrustedOriginUrl("https://ais-dev-mbimq2qicgl3xitodqasxp-513286486641.us-west2.run.app")
+      ).toBe("https://ais-dev-mbimq2qicgl3xitodqasxp-513286486641.us-west2.run.app");
+      expect(sanitizeTrustedOriginUrl("https://localiza-plus-git-preview.vercel.app/admin")).toBe(
+        "https://localiza-plus-git-preview.vercel.app"
+      );
+      expect(sanitizeTrustedOriginUrl("https://homologacao-localiza.custom.edu.br")).toBe(
+        "https://homologacao-localiza.custom.edu.br"
+      );
+      expect(sanitizeTrustedOriginUrl("http://localhost:3000/admin")).toBe("http://localhost:3000");
+
+      // Untrusted wildcard/external/non-HTTPS origins must fall back to defaultOrigin
+      const expectedFallback = "https://localiza-plus-ifpr.vercel.app";
+      expect(sanitizeTrustedOriginUrl("https://evil-attacker.vercel.app")).toBe(expectedFallback);
+      expect(sanitizeTrustedOriginUrl("https://phishing-app.run.app")).toBe(expectedFallback);
+      expect(sanitizeTrustedOriginUrl("https://evil.web.app")).toBe(expectedFallback);
+      expect(sanitizeTrustedOriginUrl("https://evil.firebaseapp.com")).toBe(expectedFallback);
+      expect(sanitizeTrustedOriginUrl("https://attacker.com")).toBe(expectedFallback);
+      expect(sanitizeTrustedOriginUrl("http://localiza-plus-ifpr.vercel.app")).toBe(expectedFallback);
+      expect(sanitizeTrustedOriginUrl("javascript:alert(1)")).toBe(expectedFallback);
+    } finally {
+      if (prevAppUrl === undefined) delete process.env.APP_URL;
+      else process.env.APP_URL = prevAppUrl;
+      if (prevVercelUrl === undefined) delete process.env.VERCEL_URL;
+      else process.env.VERCEL_URL = prevVercelUrl;
+      if (prevAllowedOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
+      else process.env.ALLOWED_ORIGINS = prevAllowedOrigins;
+    }
   });
 });

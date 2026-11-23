@@ -22,6 +22,7 @@ import { AccountManagementView } from "./AccountManagementView";
 import { getSafeAvatarUrl, handleAvatarError } from "../lib/avatarUtils";
 import { resolveAccountStatus, formatAccountStatusDetails } from "../lib/accountStatusUtils";
 import { CANONICAL_ITEM_CATEGORIES } from "../lib/categoryUtils";
+import { isVerifiedRootAdminAuthUser } from "../lib/devolutionAuth";
 import {
   computeDashboardReturnMetrics,
   isRecipientReturnConcluded,
@@ -206,6 +207,16 @@ export const DashboardView: React.FC = () => {
   const [newUserRole, setNewUserRole] = useState<UserRole>("ALUNO");
   const [newUserDept, setNewUserDept] = useState("Técnico em Informática");
   const [newUserRegNumber, setNewUserRegNumber] = useState("");
+
+  const isRootAdminUser = useMemo(() => {
+    return isVerifiedRootAdminAuthUser(auth.currentUser);
+  }, [currentUser?.id, currentUser?.email, currentUser?.emailVerified]);
+
+  useEffect(() => {
+    if (!isRootAdminUser && newUserRole === "ADMIN") {
+      setNewUserRole("ALUNO");
+    }
+  }, [isRootAdminUser, newUserRole]);
 
   // Table Filters for Admin/Server items view
   const [tableSearch, setTableSearch] = useState("");
@@ -507,10 +518,13 @@ export const DashboardView: React.FC = () => {
 
     setIsSubmittingNewUser(true);
     try {
+      const effectiveRole: UserRole =
+        newUserRole === "ADMIN" && !isRootAdminUser ? "ALUNO" : newUserRole;
+
       const result = await addUserByAdmin({
         name: newUserName.trim(),
         email: newUserEmail.trim().toLowerCase(),
-        role: newUserRole,
+        role: effectiveRole,
         courseOrDept: newUserDept.trim() || "IFPR Campus Ivaiporã",
         registrationNumber:
           newUserRegNumber.trim() || "2026100" + Math.floor(100 + Math.random() * 900),
@@ -527,13 +541,9 @@ export const DashboardView: React.FC = () => {
         authProvisioned: result.authCreated,
       });
 
-      await logAdminAction(
-        "NOVO_USUARIO",
-        `Cadastrou administrativamente o usuário '${newUserName.trim()}' (${result.user.email} / ${newUserRole}) no Authentication e Firestore.`
-      );
-
       setNewUserName("");
       setNewUserEmail("");
+      setNewUserRole("ALUNO");
       setNewUserRegNumber("");
       setIsAddingUserOpen(false);
     } catch (_) {
@@ -1582,7 +1592,10 @@ export const DashboardView: React.FC = () => {
                       <div className="flex flex-wrap lg:flex-col gap-1.5">
                         <button
                           type="button"
-                          onClick={() => setIsAddingUserOpen(true)}
+                          onClick={() => {
+                            setNewUserRole("ALUNO");
+                            setIsAddingUserOpen(true);
+                          }}
                           className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#16845B] hover:bg-[#126B49] text-white text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
                         >
                           <span>+ Cadastrar Usuário</span>
@@ -2614,15 +2627,23 @@ export const DashboardView: React.FC = () => {
                                   <td className="p-3.5">
                                     <select
                                       value={u.role}
+                                      disabled={u.role === "ADMIN" && !isRootAdminUser}
                                       onChange={async (e) => {
                                         const newRole = e.target.value as UserRole;
+                                        if ((newRole === "ADMIN" || u.role === "ADMIN") && !isRootAdminUser) {
+                                          return;
+                                        }
                                         await updateUserRole(u.id, newRole);
                                         await logAdminAction(
                                           "ALTERACAO_PERMISSAO",
                                           `Alterou o perfil de '${u.name}' para a permissão ${newRole}.`
                                         );
                                       }}
-                                      className={`py-1.5 px-3 rounded-xl text-xs font-bold border outline-none cursor-pointer ${
+                                      className={`py-1.5 px-3 rounded-xl text-xs font-bold border outline-none ${
+                                        u.role === "ADMIN" && !isRootAdminUser
+                                          ? "cursor-not-allowed opacity-75"
+                                          : "cursor-pointer"
+                                      } ${
                                         u.role === "ADMIN"
                                           ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30"
                                           : u.role === "SERVIDOR"
@@ -2634,7 +2655,9 @@ export const DashboardView: React.FC = () => {
                                     >
                                       <option value="ALUNO">ALUNO (Discente)</option>
                                       <option value="SERVIDOR">SERVIDOR (Docente/TAE)</option>
-                                      <option value="ADMIN">ADMIN (TI)</option>
+                                      {(isRootAdminUser || u.role === "ADMIN") && (
+                                        <option value="ADMIN">ADMIN (TI)</option>
+                                      )}
                                       <option value="INTRUSO">USUÁRIO EXTERNO (Intruso)</option>
                                     </select>
                                   </td>
@@ -4457,13 +4480,20 @@ export const DashboardView: React.FC = () => {
                     Perfil / Função
                   </label>
                   <select
-                    value={newUserRole}
-                    onChange={(e) => setNewUserRole(e.target.value as UserRole)}
+                    value={!isRootAdminUser && newUserRole === "ADMIN" ? "ALUNO" : newUserRole}
+                    onChange={(e) => {
+                      const selectedRole = e.target.value as UserRole;
+                      if (selectedRole === "ADMIN" && !isRootAdminUser) {
+                        setNewUserRole("ALUNO");
+                        return;
+                      }
+                      setNewUserRole(selectedRole);
+                    }}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                   >
                     <option value="ALUNO">ALUNO (Discente)</option>
                     <option value="SERVIDOR">SERVIDOR (Docente / TAE)</option>
-                    <option value="ADMIN">ADMINISTRADOR (TI)</option>
+                    {isRootAdminUser && <option value="ADMIN">ADMINISTRADOR (TI)</option>}
                   </select>
                 </div>
 

@@ -251,10 +251,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "AUTH",
         tag: "Etapa 6 • Auth & Recuperação",
       },
+      {
+        id: "v11013-fix-etapa62-uid-mismatch-audit-role-and-origin-allowlist",
+        title: "Etapa 6.2: Bloqueio de Divergência de UID, Remoção de Auditoria Duplicada, Restrição de Visibilidade ADMIN e Allowlist Restrita de Domínios",
+        description: "Correções de segurança e consistência aplicadas após a auditoria da Etapa 6.1: 1) executeAdminSendFirstAccessLink (server.ts) passa a comparar obrigatoriamente authUser.uid com o ID do documento no Firestore após fallback por e-mail, abortando com HTTP 409 (UID_MISMATCH) sem gerar links, enviar e-mails ou alterar identidades/documentos, registrando FIRST_ACCESS_UID_MISMATCH_BLOCKED em audit_logs sem expor dados sensíveis, além de validar Root Admin por ROOT_ADMIN_UID/e-mail e permissões reais via customClaims e /role_assignments; 2) remoção da gravação redundante de NOVO_USUARIO em DashboardView.tsx, mantendo exclusivamente a auditoria transacional autoritativa no backend; 3) ocultação da opção ADMIN no cadastro e restrição no seletor de usuários de DashboardView.tsx para administradores comuns via isVerifiedRootAdminAuthUser(auth.currentUser), mantendo a trava ROOT_ADMIN_ONLY_FOR_ADMIN_ROLE no servidor; 4) substituição de sufixos amplos (*.vercel.app, *.run.app, *.web.app, *.firebaseapp.com) em sanitizeTrustedOriginUrl por allowlist explícita de domínios de produção/homologação, variáveis de ambiente e *.ifpr.edu.br.",
+        module: "ADMIN",
+        tag: "Etapa 6.2 • Segurança & Consistência",
+      },
     ],
     stats: {
       additionsCount: 9,
-      fixesCount: 22,
+      fixesCount: 23,
     },
   },
   {

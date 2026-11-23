@@ -757,11 +757,38 @@ export function isUserBlockedOrInactive(udata: Record<string, any> | null | unde
   return false;
 }
 
+function extractTrustedHostname(rawEntry: string): string | null {
+  const trimmed = rawEntry.trim();
+  if (!trimmed) return null;
+  try {
+    const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    const parsed = new URL(candidate);
+    const hostname = parsed.hostname.toLowerCase();
+    return hostname || null;
+  } catch {
+    return null;
+  }
+}
+
 export function sanitizeTrustedOriginUrl(rawOrigin: unknown): string {
-  const defaultOrigin = process.env.APP_URL || "https://localiza-plus-ifpr.vercel.app";
+  const fallbackCanonicalOrigin = "https://localiza-plus-ifpr.vercel.app";
+  let defaultOrigin = fallbackCanonicalOrigin;
+  const rawAppUrl = typeof process.env.APP_URL === "string" ? process.env.APP_URL.trim() : "";
+  if (rawAppUrl) {
+    try {
+      const parsedDefault = new URL(rawAppUrl);
+      const defaultHost = parsedDefault.hostname.toLowerCase();
+      const isDefaultLocal = defaultHost === "localhost" || defaultHost === "127.0.0.1";
+      if (parsedDefault.protocol === "https:" || (isDefaultLocal && parsedDefault.protocol === "http:")) {
+        defaultOrigin = parsedDefault.origin;
+      }
+    } catch {}
+  }
+
   if (typeof rawOrigin !== "string" || !rawOrigin.trim()) {
     return defaultOrigin;
   }
+
   try {
     const parsed = new URL(rawOrigin.trim());
     const hostname = parsed.hostname.toLowerCase();
@@ -769,20 +796,55 @@ export function sanitizeTrustedOriginUrl(rawOrigin: unknown): string {
     if (parsed.protocol !== "https:" && !(isLocalHost && parsed.protocol === "http:")) {
       return defaultOrigin;
     }
-    const allowedExactHosts = new Set<string>(["localhost", "127.0.0.1"]);
+
+    const allowedExactHosts = new Set<string>([
+      "localhost",
+      "127.0.0.1",
+      "localiza-plus-ifpr.vercel.app",
+      "localizamais.vercel.app",
+      "localiza-ifpr.vercel.app",
+      "gen-lang-client-0490390966.firebaseapp.com",
+      "gen-lang-client-0490390966.web.app",
+      "ais-dev-mbimq2qicgl3xitodqasxp-513286486641.us-west2.run.app",
+      "ais-pre-mbimq2qicgl3xitodqasxp-513286486641.us-west2.run.app",
+    ]);
+
     try {
       allowedExactHosts.add(new URL(defaultOrigin).hostname.toLowerCase());
     } catch {}
-    if (process.env.VERCEL_URL) {
-      allowedExactHosts.add(process.env.VERCEL_URL.replace(/^https?:\/\//i, "").split("/")[0].toLowerCase());
+
+    const envSingleHosts = [
+      process.env.VERCEL_URL,
+      process.env.VERCEL_PROJECT_PRODUCTION_URL,
+      process.env.VERCEL_BRANCH_URL,
+    ];
+    for (const candidate of envSingleHosts) {
+      if (typeof candidate === "string" && candidate.trim()) {
+        const extracted = extractTrustedHostname(candidate);
+        if (extracted) allowedExactHosts.add(extracted);
+      }
     }
+
+    const envOriginLists = [process.env.ALLOWED_ORIGINS, process.env.TRUSTED_ORIGINS];
+    for (const rawList of envOriginLists) {
+      if (typeof rawList === "string" && rawList.trim()) {
+        for (const entry of rawList.split(",")) {
+          const extracted = extractTrustedHostname(entry);
+          if (extracted) allowedExactHosts.add(extracted);
+        }
+      }
+    }
+
+    const isOfficialIfprDomain =
+      hostname === "ifpr.edu.br" || hostname.endsWith(".ifpr.edu.br");
+    const isProjectCloudRunPreview =
+      /^ais-(dev|pre)-[a-z0-9-]+-513286486641\.[a-z0-9-]+\.run\.app$/.test(hostname);
+
     const isAllowedDomain =
       allowedExactHosts.has(hostname) ||
-      hostname.endsWith(".ifpr.edu.br") ||
-      hostname.endsWith(".vercel.app") ||
-      hostname.endsWith(".run.app") ||
-      hostname.endsWith(".web.app") ||
-      hostname.endsWith(".firebaseapp.com");
+      isOfficialIfprDomain ||
+      isProjectCloudRunPreview;
+
     if (!isAllowedDomain) {
       return defaultOrigin;
     }
@@ -3655,6 +3717,7 @@ export async function executeAdminSendFirstAccessLink(
   const targetRole = String(uData.role || "ALUNO").toUpperCase();
   const targetApproval = String(uData.approvalStatus || "APROVADO").toUpperCase();
   const configuredRootEmail = normalizeAuthEmail(getRootAdminEmail());
+  const configuredRootUid = getRootAdminUid();
 
   if (!targetEmail) {
     return {
@@ -3667,7 +3730,15 @@ export async function executeAdminSendFirstAccessLink(
     };
   }
 
-  if (configuredRootEmail && targetEmail === configuredRootEmail && !caller.isRoot) {
+  const isDocRootAdmin =
+    Boolean(configuredRootUid && docId === configuredRootUid) ||
+    Boolean(
+      configuredRootEmail &&
+        (targetEmail === configuredRootEmail ||
+          (requestedEmail && requestedEmail === configuredRootEmail))
+    );
+
+  if (isDocRootAdmin && !caller.isRoot) {
     return {
       statusCode: 403,
       payload: {
@@ -3678,7 +3749,27 @@ export async function executeAdminSendFirstAccessLink(
     };
   }
 
-  if (targetRole === "ADMIN" && !caller.isRoot) {
+  let docRoleAssignmentRole = "";
+  try {
+    const docAssignSnap = await adminFirestore.collection("role_assignments").doc(docId).get();
+    if (docAssignSnap.exists) {
+      const assignData = docAssignSnap.data() || {};
+      if (assignData.active !== false) {
+        docRoleAssignmentRole = String(assignData.assignedRole || "").trim().toUpperCase();
+      }
+    }
+  } catch {
+    return {
+      statusCode: 503,
+      payload: {
+        success: false,
+        error: "Falha ao consultar as atribuições de permissão no banco de dados.",
+        code: "ROLE_ASSIGNMENT_LOOKUP_FAILED",
+      },
+    };
+  }
+
+  if ((targetRole === "ADMIN" || docRoleAssignmentRole === "ADMIN") && !caller.isRoot) {
     return {
       statusCode: 403,
       payload: {
@@ -3719,6 +3810,106 @@ export async function executeAdminSendFirstAccessLink(
           },
         };
       }
+    }
+  }
+
+  if (authUser) {
+    const authUserEmail = normalizeAuthEmail(authUser.email);
+    const isAuthRootAdmin =
+      Boolean(configuredRootUid && authUser.uid === configuredRootUid) ||
+      Boolean(configuredRootEmail && authUserEmail === configuredRootEmail);
+
+    if (isAuthRootAdmin && !caller.isRoot) {
+      return {
+        statusCode: 403,
+        payload: {
+          success: false,
+          error: "Não é permitido executar ações administrativas sobre a conta do Administrador Raiz.",
+          code: "CANNOT_MODIFY_ROOT_ADMIN",
+        },
+      };
+    }
+
+    const authCustomClaims = (authUser.customClaims || {}) as Record<string, any>;
+    const hasAdminCustomClaim =
+      authCustomClaims.admin === true ||
+      String(authCustomClaims.role || "").trim().toUpperCase() === "ADMIN";
+
+    let authUidRoleAssignmentRole = docRoleAssignmentRole;
+    if (authUser.uid && authUser.uid !== docId) {
+      try {
+        const authAssignSnap = await adminFirestore
+          .collection("role_assignments")
+          .doc(authUser.uid)
+          .get();
+        if (authAssignSnap.exists) {
+          const authAssignData = authAssignSnap.data() || {};
+          if (authAssignData.active !== false) {
+            authUidRoleAssignmentRole = String(authAssignData.assignedRole || "")
+              .trim()
+              .toUpperCase();
+          }
+        }
+      } catch {
+        if (!caller.isRoot) {
+          return {
+            statusCode: 503,
+            payload: {
+              success: false,
+              error: "Falha ao validar permissões reais da identidade localizada.",
+              code: "ROLE_ASSIGNMENT_LOOKUP_FAILED",
+            },
+          };
+        }
+      }
+    }
+
+    if ((hasAdminCustomClaim || authUidRoleAssignmentRole === "ADMIN") && !caller.isRoot) {
+      return {
+        statusCode: 403,
+        payload: {
+          success: false,
+          error: "Apenas o Administrador Raiz oficial pode gerenciar acesso de outros Administradores.",
+          code: "ROOT_ADMIN_ONLY_TO_MODIFY_ADMIN",
+        },
+      };
+    }
+
+    if (authUser.uid !== docId) {
+      const nowIso = new Date().toISOString();
+      const mismatchAuditId = `audit-uid-mismatch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      await adminFirestore
+        .collection("audit_logs")
+        .doc(mismatchAuditId)
+        .set({
+          id: mismatchAuditId,
+          transactionId: `TX-UID-MISMATCH-${Date.now().toString(36).toUpperCase()}`,
+          objectId: docId,
+          objectType: "USER",
+          objectTitle: targetEmail,
+          action: "FIRST_ACCESS_UID_MISMATCH_BLOCKED",
+          actorId: caller.uid,
+          actorEmail: normalizeAuthEmail(caller.email),
+          actorRole: caller.isRoot ? "ROOT_ADMIN" : "ADMIN",
+          timestamp: nowIso,
+          fieldChanged: "authUidConsistency",
+          oldValue: "FIRESTORE_DOC_ID",
+          newValue: "UID_MISMATCH_DETECTED",
+          details:
+            "Envio de link de primeiro acesso bloqueado: a identidade localizada por e-mail no Firebase Authentication possui UID divergente do ID do documento no Firestore. Nenhuma conta ou documento foi modificado e nenhum link foi gerado.",
+          immutable: true,
+        })
+        .catch(() => {});
+
+      return {
+        statusCode: 409,
+        payload: {
+          success: false,
+          error:
+            "Inconsistência de identidade detectada entre o documento do Firestore e a conta do Firebase Authentication para este e-mail. Nenhuma alteração foi realizada e nenhum link foi enviado.",
+          code: "UID_MISMATCH",
+        },
+      };
     }
   }
 
