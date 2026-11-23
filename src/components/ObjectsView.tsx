@@ -697,7 +697,10 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
 
         {/* Linha de Pesquisa em Destaque + Botão de Filtros Compacto */}
         <div className="flex items-center gap-2">
-          <div className="flex-1 flex items-center min-h-[46px] px-3.5 rounded-xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 focus-within:border-[#16845B] transition-colors">
+          <div
+            data-tour="catalog-search"
+            className="flex-1 flex items-center min-h-[46px] px-3.5 rounded-xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 focus-within:border-[#16845B] transition-colors"
+          >
             <Search className="w-4 h-4 text-slate-400 mr-2.5 shrink-0" />
             <input
               type="text"

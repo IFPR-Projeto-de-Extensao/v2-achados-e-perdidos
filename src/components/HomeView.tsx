@@ -175,7 +175,7 @@ export const HomeView: React.FC = () => {
         </div>
 
         {/* Barra de Pesquisa Rápida + QR Code */}
-        <div ref={searchContainerRef} className="relative">
+        <div ref={searchContainerRef} data-tour="home-search" className="relative">
           <div className="flex items-center gap-2">
             <div className="flex-1 flex items-center min-h-[48px] px-3.5 rounded-xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 focus-within:border-[#16845B] transition-colors">
               <Search className="w-4 h-4 text-slate-400 mr-2.5 shrink-0" />
@@ -279,6 +279,7 @@ export const HomeView: React.FC = () => {
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
+            data-tour="home-catalog-cta"
             onClick={() => {
               vibrateClick();
               navigate("/objetos");
@@ -379,7 +380,7 @@ export const HomeView: React.FC = () => {
       </section>
 
       {/* 3. OBJETOS RECENTES */}
-      <section className="space-y-3">
+      <section data-tour="home-occurrences" className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1 p-0.5 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800">
             <button

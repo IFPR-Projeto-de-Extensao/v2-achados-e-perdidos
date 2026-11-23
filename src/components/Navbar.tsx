@@ -164,6 +164,7 @@ export const Navbar: React.FC = () => {
 
             <Link
               to="/objetos"
+              data-tour="nav-catalog"
               aria-current={routeKey === "search" && (pathname === "/buscar" || pathname === "/objetos") ? "page" : undefined}
               className={`py-1 text-xs font-medium whitespace-nowrap transition-colors border-b-2 ${
                 routeKey === "search" && (pathname === "/buscar" || pathname === "/objetos")
@@ -201,6 +202,7 @@ export const Navbar: React.FC = () => {
             {(currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR") && (
               <Link
                 to="/admin"
+                data-tour="nav-admin-panel"
                 aria-current={routeKey === "admin" ? "page" : undefined}
                 className={`py-1 text-xs font-medium whitespace-nowrap transition-colors border-b-2 ${
                   routeKey === "admin"
@@ -258,6 +260,7 @@ export const Navbar: React.FC = () => {
               {/* Notifications Button & Dropdown */}
               <div className="relative shrink-0 flex items-center">
                 <button
+                  data-tour="nav-notifications"
                   onClick={() => {
                     vibrateClick();
                     setNotificationsOpen(!notificationsOpen);
@@ -384,6 +387,7 @@ export const Navbar: React.FC = () => {
               <UIButton
                 variant="primary"
                 size="sm"
+                data-tour="nav-login"
                 className="!px-2.5 sm:!px-3"
                 onClick={() => {
                   vibrateClick();
@@ -398,6 +402,7 @@ export const Navbar: React.FC = () => {
               <div className="user-profile-widget flex items-center gap-1 shrink-0">
                 <Link
                   to="/perfil"
+                  data-tour="nav-profile"
                   title={`${t("profile", "Perfil")}: ${currentUser.name} • ${translateUserRole(currentUser.role, language)} • ${t("campusName", "IFPR Campus Ivaiporã")}`}
                   className="flex items-center gap-1.5 p-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0 group"
                 >

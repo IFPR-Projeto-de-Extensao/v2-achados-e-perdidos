@@ -67,6 +67,13 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "PWA",
         tag: "QA • Auditoria Push PWA",
       },
+      {
+        id: "v11013-add-spotlight-guided-tour",
+        title: "Novo Tour Guiado por Foco (Spotlight) Adaptado por Perfil e Responsivo",
+        description: "Substituição integral do modal estático anterior (remoção de TourGuide.tsx) pelo novo componente reutilizável SpotlightTour.tsx e motor puro src/lib/spotlightTourUtils.ts: overlay escuro em 4 painéis com blur discreto somente fora do foco mantendo o elemento destacado nítido e interativo, tooltip compacto com posicionamento dinâmico viewport-safe (Desktop, Tablet, Smartphone e PWA), acompanhamento automático de rolagem/redimensionamento/ResizeObserver, 4 etapas iniciais adaptadas às permissões reais de cada perfil (Catálogo, Pesquisa, Ocorrências e Perfil para ALUNO/SERVIDOR/ADMIN/INTRUSO, e fluxo seguro de 3 etapas sem recursos restritos para visitantes), navegação por teclado (Esc, Setas, Tab) com suporte a prefers-reduced-motion, prevenção de conflito com modais/overlays ativos, preservação de persistência em localStorage e botões unificados para reiniciar o tour em Suporte, Configurações e Perfil. Validado pela nova suíte automatizada src/lib/spotlightTour.test.ts.",
+        module: "GERAL",
+        tag: "Onboarding • Spotlight Tour",
+      },
     ],
     bugFixes: [
       {
@@ -190,7 +197,7 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
       },
     ],
     stats: {
-      additionsCount: 5,
+      additionsCount: 6,
       fixesCount: 17,
     },
   },

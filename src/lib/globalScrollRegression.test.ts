@@ -33,7 +33,7 @@ describe("Global Vertical Scroll & Mobile PWA Viewport Regression", () => {
 
   it("contains overscroll chaining and supports internal scrolling across modals and mobile drawer", () => {
     const modalShell = readSrc("src/components/ui/ModalShell.tsx");
-    const tourGuide = readSrc("src/components/TourGuide.tsx");
+    const spotlightTour = readSrc("src/components/SpotlightTour.tsx");
     const authModal = readSrc("src/components/AuthModal.tsx");
     const itemDetail = readSrc("src/components/ItemDetailModal.tsx");
     const installModal = readSrc("src/components/InstallInstructionsModal.tsx");
@@ -43,9 +43,10 @@ describe("Global Vertical Scroll & Mobile PWA Viewport Regression", () => {
     expect(modalShell).toContain("overflow-y-auto");
     expect(modalShell).toContain("overscroll-contain");
 
-    expect(tourGuide).toContain("overflow-y-auto overscroll-contain");
-    expect(tourGuide).toContain("max-h-[90dvh]");
-    expect(tourGuide).toContain("min-h-0 flex-1 overscroll-contain");
+    expect(spotlightTour).toContain("overscroll-contain");
+    expect(spotlightTour).toContain("max-h-[calc(100dvh-24px)]");
+    expect(spotlightTour).not.toMatch(/document\.body\.style\.overflow\s*=/);
+    expect(spotlightTour).not.toMatch(/document\.documentElement\.style\.overflow\s*=/);
 
     expect(authModal).toContain("overscroll-contain");
     expect(authModal).toContain("max-h-[92dvh]");

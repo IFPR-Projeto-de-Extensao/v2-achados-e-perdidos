@@ -37,7 +37,9 @@ import {
   AlertOctagon,
   Camera,
   Loader2,
+  Compass,
 } from "lucide-react";
+import { triggerSpotlightTour } from "../lib/spotlightTourUtils";
 import {
   SurfaceCard,
   SubtlePanel,
@@ -274,6 +276,18 @@ export const ProfileView: React.FC = () => {
 
             {/* Role switch prompt, Google Login & Edit */}
             <div className="flex flex-wrap items-center gap-2 justify-center md:justify-end">
+              <UIButton
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  vibrateClick();
+                  triggerSpotlightTour();
+                }}
+              >
+                <Compass className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
+                <span>{t("tourReplayShort", "Tour Guiado")}</span>
+              </UIButton>
+
               <UIButton
                 variant="secondary"
                 size="sm"

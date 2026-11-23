@@ -80,6 +80,7 @@ export const MobileBottomNav: React.FC = () => {
         {/* 2. Catálogo */}
         <button
           type="button"
+          data-tour="mobile-nav-catalog"
           onClick={() => handleTab("/objetos")}
           aria-label={t("ctaBrowseCatalog", "Consultar Objetos")}
           aria-current={isCatalogActive ? "page" : undefined}
@@ -131,6 +132,11 @@ export const MobileBottomNav: React.FC = () => {
         {/* 5. Perfil / Servidor / Admin */}
         <button
           type="button"
+          data-tour={
+            currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR"
+              ? "mobile-nav-admin"
+              : "mobile-nav-profile"
+          }
           onClick={() =>
             handleTab(
               currentUser.role === "ADMIN" || currentUser.role === "SERVIDOR"

@@ -20,8 +20,10 @@ import {
   LogOut,
   Sparkles,
   Info,
+  Compass,
 } from "lucide-react";
 import { vibrateClick, vibrateSuccess } from "../lib/utils";
+import { triggerSpotlightTour } from "../lib/spotlightTourUtils";
 
 export const SettingsView: React.FC = () => {
   const {
@@ -327,7 +329,19 @@ export const SettingsView: React.FC = () => {
           {t("usefulLinksSupport", "Links Úteis & Suporte")}
         </h3>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              vibrateClick();
+              triggerSpotlightTour();
+            }}
+            className="p-3.5 rounded-2xl bg-[#EBF5F0]/70 dark:bg-emerald-950/40 hover:bg-[#EBF5F0] dark:hover:bg-emerald-950/60 text-left text-xs font-bold text-[#064E3B] dark:text-emerald-300 border border-[#16845B]/25 flex items-center justify-between transition-colors cursor-pointer"
+          >
+            <span>{t("tourReplayBtn", "Iniciar Tour Guiado")}</span>
+            <Compass className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0" />
+          </button>
+
           <button
             type="button"
             onClick={() => {

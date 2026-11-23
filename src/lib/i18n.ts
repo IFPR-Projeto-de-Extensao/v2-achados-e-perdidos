@@ -590,6 +590,17 @@ export interface TranslationDictionary {
   fcmTestBtn: string;
   fcmConfigured: string;
 
+  // Spotlight Guided Tour
+  tourDialogLabel: string;
+  tourStepOf: string;
+  tourBack: string;
+  tourNext: string;
+  tourFinish: string;
+  tourSkip: string;
+  tourCloseAria: string;
+  tourReplayBtn: string;
+  tourReplayShort: string;
+
   // Footer
   footerRights: string;
   footerCampusInfo: string;
@@ -1033,6 +1044,16 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     fcmTestBtn: "Testar Alerta Push",
     fcmConfigured: "Configurado",
 
+    tourDialogLabel: "Tour guiado do Localiza+",
+    tourStepOf: "de",
+    tourBack: "Voltar",
+    tourNext: "Próximo",
+    tourFinish: "Concluir",
+    tourSkip: "Pular tour",
+    tourCloseAria: "Fechar tour guiado",
+    tourReplayBtn: "Iniciar Tour Guiado",
+    tourReplayShort: "Tour Guiado",
+
     footerRights: "IFPR Campus Ivaiporã • Todos os direitos reservados",
     footerCampusInfo: "IFPR Campus Ivaiporã · Central de Achados e Perdidos",
   },
@@ -1472,6 +1493,16 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     subscribeNotifications: "Subscribe to Notifications",
     fcmTestBtn: "Test Push Alert",
     fcmConfigured: "Configured",
+
+    tourDialogLabel: "Localiza+ guided tour",
+    tourStepOf: "of",
+    tourBack: "Back",
+    tourNext: "Next",
+    tourFinish: "Done",
+    tourSkip: "Skip tour",
+    tourCloseAria: "Close guided tour",
+    tourReplayBtn: "Start Guided Tour",
+    tourReplayShort: "Guided Tour",
 
     footerRights: "IFPR Ivaiporã Campus • All rights reserved",
     footerCampusInfo: "IFPR Ivaiporã Campus · Lost & Found Center",

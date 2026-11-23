@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AppProvider, useApp } from "./context/AppContext";
 import { RouterProvider, useRouter } from "./context/RouterContext";
@@ -22,7 +22,14 @@ import { ItemDetailModal } from "./components/ItemDetailModal";
 import { QRCodeScannerModal } from "./components/QRCodeScannerModal";
 import { AuthModal } from "./components/AuthModal";
 import { KeyboardShortcutsModal } from "./components/KeyboardShortcutsModal";
-import { TourGuide } from "./components/TourGuide";
+import { SpotlightTour } from "./components/SpotlightTour";
+import {
+  OPEN_TOUR_EVENT,
+  buildSpotlightTourSteps,
+  hasActiveBlockingOverlay,
+  hasCompletedSpotlightTour,
+  markSpotlightTourCompleted,
+} from "./lib/spotlightTourUtils";
 import { RemoteSignatureModal } from "./components/RemoteSignatureModal";
 import { ToastContainer } from "./components/ToastContainer";
 import { PWAInstallBanner } from "./components/PWAInstallBanner";
@@ -66,25 +73,43 @@ const MainContent: React.FC = () => {
     isEmailVerificationRequired,
     isAuthenticated,
     isGuest,
+    isAuthLoading,
     darkMode,
+    language,
     addToast,
     t,
   } = useApp();
 
   const { routeKey, pathname, searchParams, navigate } = useRouter();
   const [shortcutsModalOpen, setShortcutsModalOpen] = useState(false);
-  const [tourGuideOpen, setTourGuideOpen] = useState<boolean>(() => {
-    try {
-      const isDismissed = ["ifpr_achados_tour_completed", "ifpr_tour_completed", "ifpr_dont_show_tour"].some(
-        (k) => localStorage.getItem(k) === "true"
-      );
-      return !isDismissed;
-    } catch (_) {
-      return false;
-    }
-  });
+  const [tourGuideOpen, setTourGuideOpen] = useState<boolean>(false);
+  const autoTourCheckedRef = useRef(false);
 
   const [remoteSignatureParams, setRemoteSignatureParams] = useState<{ itemId?: string; token?: string } | null>(null);
+
+  const hasBlockingOverlay = hasActiveBlockingOverlay({
+    authModalOpen,
+    hasSelectedItemModal: Boolean(selectedItemForDetail),
+    qrScannerOpen,
+    shortcutsModalOpen,
+    hasRemoteSignatureModal: Boolean(remoteSignatureParams),
+    isMaintenanceBlocking: Boolean(maintenanceMode && currentUser.role !== "ADMIN"),
+    isEmailVerificationRequired,
+  });
+
+  const spotlightTourSteps = useMemo(
+    () =>
+      buildSpotlightTourSteps(
+        {
+          role: currentUser?.role,
+          approvalStatus: currentUser?.approvalStatus,
+          isAuthenticated,
+          isGuest,
+        },
+        language
+      ),
+    [currentUser?.role, currentUser?.approvalStatus, isAuthenticated, isGuest, language]
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -97,11 +122,36 @@ const MainContent: React.FC = () => {
     }
   }, [pathname, searchParams]);
 
+  // Auto-open tour once for first-time visitors on Home after auth resolves and with no blocking modal
   useEffect(() => {
-    const handleOpenTour = () => setTourGuideOpen(true);
-    window.addEventListener("open-tour-guide", handleOpenTour);
-    return () => window.removeEventListener("open-tour-guide", handleOpenTour);
-  }, []);
+    if (autoTourCheckedRef.current || isAuthLoading) return;
+    if (hasCompletedSpotlightTour()) {
+      autoTourCheckedRef.current = true;
+      return;
+    }
+    if (routeKey !== "home" || hasBlockingOverlay) return;
+
+    autoTourCheckedRef.current = true;
+    const timer = window.setTimeout(() => {
+      if (!hasCompletedSpotlightTour()) {
+        setTourGuideOpen(true);
+      }
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [isAuthLoading, routeKey, hasBlockingOverlay]);
+
+  useEffect(() => {
+    const handleOpenTour = () => {
+      if (routeKey !== "home" && routeKey !== "search") {
+        navigate("/");
+      }
+      setShortcutsModalOpen(false);
+      setTourGuideOpen(true);
+    };
+    window.addEventListener(OPEN_TOUR_EVENT, handleOpenTour);
+    return () => window.removeEventListener(OPEN_TOUR_EVENT, handleOpenTour);
+  }, [navigate, routeKey]);
 
   useEffect(() => {
     if (postLoginRedirectPath) {
@@ -471,16 +521,13 @@ const MainContent: React.FC = () => {
         />
       )}
 
-      {/* Interactive Guided Onboarding Tour */}
-      <TourGuide
-        isOpen={tourGuideOpen}
+      {/* Interactive Spotlight Guided Onboarding Tour */}
+      <SpotlightTour
+        isOpen={tourGuideOpen && !hasBlockingOverlay}
+        steps={spotlightTourSteps}
         onClose={() => {
           setTourGuideOpen(false);
-          try {
-            ["ifpr_achados_tour_completed", "ifpr_tour_completed", "ifpr_dont_show_tour"].forEach((k) =>
-              localStorage.setItem(k, "true")
-            );
-          } catch (_) {}
+          markSpotlightTourCompleted();
         }}
       />
 
