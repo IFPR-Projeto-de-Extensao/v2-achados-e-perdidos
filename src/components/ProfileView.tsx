@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef } from "react";
 import { useApp } from "../context/AppContext";
+import { translateUserRole } from "../lib/i18n";
 import { ItemCard } from "./ItemCard";
 import { formatDateTime, vibrateClick, vibrateSuccess, formatPhone, isValidPhone } from "../lib/utils";
 import { UserRole, BadgeTier } from "../types";
@@ -64,6 +65,7 @@ export const ProfileView: React.FC = () => {
     testFCMAlert,
     darkMode,
     toggleDarkMode,
+    language,
     t,
     cancelClaim,
   } = useApp();
@@ -121,10 +123,10 @@ export const ProfileView: React.FC = () => {
       });
 
       vibrateSuccess();
-      addToast("Foto de perfil atualizada e salva com sucesso!", "success");
+      addToast(t("photoUpdatedSuccess"), "success");
     } catch (err: any) {
       console.error("Erro ao processar e salvar foto de perfil:", err);
-      addToast("Não foi possível salvar a nova foto de perfil. Tente novamente.", "error");
+      addToast(t("photoUpdatedError"), "error");
     } finally {
       setIsUploadingPhoto(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -222,7 +224,7 @@ export const ProfileView: React.FC = () => {
             className="w-24 h-24 rounded-2xl object-cover border-3 border-[#16845B] shadow-sm transition-transform group-hover:scale-105"
           />
           <span className="absolute -bottom-2 -right-2 px-2.5 py-0.5 rounded-lg bg-[#16845B] text-white text-[10px] font-bold uppercase tracking-wide border-2 border-white dark:border-[#111827] z-10">
-            {currentUser.role}
+            {translateUserRole(currentUser.role, language)}
           </span>
 
           {/* Hidden File Input for Avatar */}
@@ -242,17 +244,17 @@ export const ProfileView: React.FC = () => {
             className={`absolute inset-0 rounded-2xl bg-slate-950/60 text-white flex flex-col items-center justify-center cursor-pointer transition-all duration-200 ${
               isUploadingPhoto ? "opacity-100" : "opacity-0 group-hover:opacity-100"
             }`}
-            title="Clique para alterar sua foto de perfil"
+            title={language === "en" ? "Click to change your profile photo" : "Clique para alterar sua foto de perfil"}
           >
             {isUploadingPhoto ? (
               <>
                 <Loader2 className="w-6 h-6 animate-spin text-white mb-1" />
-                <span className="text-[9px] font-bold text-center uppercase tracking-tight">Salvando...</span>
+                <span className="text-[9px] font-bold text-center uppercase tracking-tight">{t("saving")}</span>
               </>
             ) : (
               <>
                 <Camera className="w-6 h-6 text-white mb-1 drop-shadow-sm" />
-                <span className="text-[10px] font-bold text-center uppercase tracking-tight">Alterar</span>
+                <span className="text-[10px] font-bold text-center uppercase tracking-tight">{t("profileAvatarChange")}</span>
               </>
             )}
           </label>
@@ -278,7 +280,7 @@ export const ProfileView: React.FC = () => {
                 onClick={() => setIsEditing(!isEditing)}
               >
                 <Edit className="w-3.5 h-3.5" />
-                <span>{isEditing ? "Cancelar" : "Editar Perfil"}</span>
+                <span>{isEditing ? t("cancel") : t("editProfile")}</span>
               </UIButton>
 
               {(currentUser.id !== "guest_visitor" || firebaseUser) ? (
@@ -288,7 +290,7 @@ export const ProfileView: React.FC = () => {
                   onClick={logout}
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  <span>Sair da Conta</span>
+                  <span>{t("signOut")}</span>
                 </UIButton>
               ) : (
                 <UIButton
@@ -297,14 +299,14 @@ export const ProfileView: React.FC = () => {
                   onClick={() => setAuthModalOpen(true)}
                 >
                   <ShieldCheck className="w-4 h-4" />
-                  <span>Login / Cadastro</span>
+                  <span>{language === "en" ? "Sign In / Sign Up" : "Login / Cadastro"}</span>
                 </UIButton>
               )}
 
               {currentUser.role === "ADMIN" ? (
                 <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-[#EBF5F0] dark:bg-[#16845B]/15 border border-[#16845B]/25 text-xs font-semibold text-[#16845B] dark:text-emerald-400">
                   <Shield className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
-                  <span>Função:</span>
+                  <span>{language === "en" ? "Role:" : "Função:"}</span>
                   <select
                     value={currentUser.role}
                     onChange={(e) => updateUserRole(currentUser.id, e.target.value as UserRole)}
@@ -362,7 +364,7 @@ export const ProfileView: React.FC = () => {
           ) : (
             <form onSubmit={handleSaveProfile} className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3 text-left">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <UIFieldGroup label="Nome Completo" required>
+                <UIFieldGroup label={t("fullNameLabel")} required>
                   <UIInput
                     type="text"
                     value={editName}
@@ -370,7 +372,7 @@ export const ProfileView: React.FC = () => {
                     required
                   />
                 </UIFieldGroup>
-                <UIFieldGroup label="Curso / Departamento">
+                <UIFieldGroup label={language === "en" ? "Course / Department" : "Curso / Departamento"}>
                   <UIInput
                     type="text"
                     value={editCourse}
@@ -380,14 +382,14 @@ export const ProfileView: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <UIFieldGroup label="Matrícula / Registro">
+                <UIFieldGroup label={t("matriculaLabel")}>
                   <UIInput
                     type="text"
                     value={editMatricula}
                     onChange={(e) => setEditMatricula(e.target.value)}
                   />
                 </UIFieldGroup>
-                <UIFieldGroup label="Telefone / WhatsApp">
+                <UIFieldGroup label={t("phoneOptionalLabel")}>
                   <UIInput
                     type="text"
                     value={editPhone}
@@ -411,12 +413,16 @@ export const ProfileView: React.FC = () => {
                   ) : (
                     <Camera className="w-3.5 h-3.5 text-[#16845B]" />
                   )}
-                  <span>{isUploadingPhoto ? "Salvando foto..." : "Alterar Foto de Perfil"}</span>
+                  <span>
+                    {isUploadingPhoto
+                      ? t("saving")
+                      : language === "en" ? "Change Profile Photo" : "Alterar Foto de Perfil"}
+                  </span>
                 </UIButton>
 
                 <div className="flex justify-end space-x-2">
                   <UIButton type="submit" variant="primary" size="sm">
-                    Salvar Alterações no Banco de Dados
+                    {t("saveChanges")}
                   </UIButton>
                 </div>
               </div>
@@ -728,10 +734,10 @@ export const ProfileView: React.FC = () => {
             </div>
             <div>
               <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
-                Aparência &amp; Tema Visual
+                {t("visualAppearance")}
               </h3>
               <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 max-w-xl">
-                Escolha entre o modo claro institucional ou o modo escuro de alto contraste para maior conforto visual.
+                {t("visualAppearanceDesc")}
               </p>
             </div>
           </div>
@@ -752,7 +758,7 @@ export const ProfileView: React.FC = () => {
               }`}
             >
               <Sun className="w-4 h-4 text-amber-500" />
-              <span>Modo Claro</span>
+              <span>{t("themeLightMode")}</span>
             </button>
 
             <button
@@ -770,7 +776,7 @@ export const ProfileView: React.FC = () => {
               }`}
             >
               <Moon className="w-4 h-4 text-indigo-400" />
-              <span>Modo Escuro</span>
+              <span>{t("themeDarkMode")}</span>
             </button>
           </div>
         </div>
@@ -788,7 +794,7 @@ export const ProfileView: React.FC = () => {
           }`}
         >
           <PackageSearch className="w-4 h-4" />
-          <span>Meus Cadastros ({userItems.length})</span>
+          <span>{t("myPublishedItems")} ({userItems.length})</span>
         </button>
 
         <button
@@ -801,7 +807,7 @@ export const ProfileView: React.FC = () => {
           }`}
         >
           <ShieldCheck className="w-4 h-4" />
-          <span>Minhas Solicitações ({userClaims.length})</span>
+          <span>{t("myClaims")} ({userClaims.length})</span>
         </button>
       </div>
 
@@ -811,8 +817,16 @@ export const ProfileView: React.FC = () => {
           {userItems.length === 0 ? (
             <EmptyState
               icon={<PackageSearch className="w-7 h-7" />}
-              title="Nenhum objeto cadastrado por você ainda."
-              description="Caso tenha encontrado ou registrado um pertence na custódia do campus, ele aparecerá listado aqui."
+              title={
+                language === "en"
+                  ? "No items registered by you yet."
+                  : "Nenhum objeto cadastrado por você ainda."
+              }
+              description={
+                language === "en"
+                  ? "If you have found or registered a belonging in campus custody, it will appear listed here."
+                  : "Caso tenha encontrado ou registrado um pertence na custódia do campus, ele aparecerá listado aqui."
+              }
             />
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -827,8 +841,16 @@ export const ProfileView: React.FC = () => {
           {userClaims.length === 0 ? (
             <EmptyState
               icon={<ShieldCheck className="w-7 h-7" />}
-              title="Nenhuma solicitação de devolução efetuada."
-              description="Ao solicitar a posse de um objeto encontrado no catálogo, o histórico ficará listado aqui."
+              title={
+                language === "en"
+                  ? "No return claims submitted yet."
+                  : "Nenhuma solicitação de devolução efetuada."
+              }
+              description={
+                language === "en"
+                  ? "When you request ownership of a found item in the catalog, the history will appear here."
+                  : "Ao solicitar a posse de um objeto encontrado no catálogo, o histórico ficará listado aqui."
+              }
             />
           ) : (
             <div className="space-y-4">
@@ -847,14 +869,15 @@ export const ProfileView: React.FC = () => {
                       <div>
                         <div className="flex items-center space-x-2 flex-wrap">
                           <span className="font-bold text-base text-[#172B2A] dark:text-white">
-                            {claim.itemTitle || relatedItem?.title || "Objeto"}
+                            {claim.itemTitle || relatedItem?.title || t("untitledItem")}
                           </span>
                           <span className="text-[10px] font-mono text-slate-400">
                             #{claim.itemId}
                           </span>
                         </div>
                         <span className="text-[11px] text-slate-400 block mt-0.5">
-                          Solicitado em: {formatDateTime(claim.createdAt)}
+                          {language === "en" ? "Requested on:" : "Solicitado em:"}{" "}
+                          {formatDateTime(claim.createdAt, undefined, language)}
                         </span>
                       </div>
 

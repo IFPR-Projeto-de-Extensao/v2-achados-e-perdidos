@@ -1,14 +1,18 @@
 import React from "react";
 import { User } from "../types";
+import { useApp } from "../context/AppContext";
 import { resolveAccountStatus } from "../lib/accountStatusUtils";
-import { safeParseDate, formatDate } from "../lib/utils";
-import { ShieldAlert, AlertOctagon, Clock, Mail } from "lucide-react";
+import { safeParseDate } from "../lib/utils";
+import { getLocaleForLanguage } from "../lib/i18n";
+import { AlertOctagon, Clock, Mail } from "lucide-react";
 
 interface AccountStatusBannerProps {
   user: User | null;
 }
 
 export const AccountStatusBanner: React.FC<AccountStatusBannerProps> = ({ user }) => {
+  const { language, t } = useApp();
+
   if (!user || user.id === "guest_visitor") return null;
 
   const resolved = resolveAccountStatus(user);
@@ -22,18 +26,27 @@ export const AccountStatusBanner: React.FC<AccountStatusBannerProps> = ({ user }
     ? user.blockExpiresAt
     : undefined;
   const untilDate = activeDeadlineRaw ? safeParseDate(activeDeadlineRaw) : null;
+  const locale = getLocaleForLanguage(language);
   const untilStr = resolved.isDeactivated
-    ? "conta desativada"
+    ? language === "en"
+      ? "account deactivated"
+      : "conta desativada"
     : hasInvalidFields
-    ? "inconsistência cadastral"
+    ? language === "en"
+      ? "record inconsistency"
+      : "inconsistência cadastral"
     : untilDate
-    ? `até ${untilDate.toLocaleDateString("pt-BR")} às ${untilDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+    ? language === "en"
+      ? `until ${untilDate.toLocaleDateString(locale)} at ${untilDate.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}`
+      : `até ${untilDate.toLocaleDateString(locale)} às ${untilDate.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}`
+    : language === "en"
+    ? "indefinitely"
     : "por tempo indeterminado";
 
   return (
     <aside
       id="account-status-alert-banner"
-      aria-label="Aviso de restrição da conta"
+      aria-label={isBanned ? t("accountBannedTitle") : t("accountSuspendedTitle")}
       className={`w-full border-b px-4 py-3 sm:px-6 transition-all animate-in fade-in duration-200 ${
         isBanned
           ? "bg-rose-600 text-white border-rose-700 shadow-xs"
@@ -60,12 +73,12 @@ export const AccountStatusBanner: React.FC<AccountStatusBannerProps> = ({ user }
             <h4 className="text-xs sm:text-sm font-bold flex flex-wrap items-center gap-2">
               <span>
                 {isBanned
-                  ? "Conta Banida Institucionalmente"
+                  ? t("accountBannedTitle", "Conta Banida Institucionalmente")
                   : resolved.isDeactivated
-                  ? "Conta Administrativamente Desativada"
+                  ? t("accountDeactivatedTitle", "Conta Administrativamente Desativada")
                   : hasInvalidFields
-                  ? "Conta Temporariamente Bloqueada por Inconsistência"
-                  : "Conta Temporariamente Suspensa"}
+                  ? t("accountInconsistencyTitle", "Conta Temporariamente Bloqueada por Inconsistência")
+                  : t("accountSuspendedTitle", "Conta Temporariamente Suspensa")}
               </span>
               {!isBanned && (
                 <span className="px-2 py-0.5 rounded-full bg-amber-200/80 dark:bg-amber-900/70 text-amber-900 dark:text-amber-200 text-[10px] font-semibold uppercase tracking-wide">
@@ -79,13 +92,13 @@ export const AccountStatusBanner: React.FC<AccountStatusBannerProps> = ({ user }
               }`}
             >
               {resolved.statusReason
-                ? `Motivo registrado: "${resolved.statusReason}". `
+                ? `${t("reasonRecorded", "Motivo registrado:")} "${resolved.statusReason}". `
                 : ""}
               {isBanned
-                ? "As operações de cadastro, reivindicação e comentários estão permanentemente bloqueadas nesta conta."
+                ? t("accountBannedDesc", "As operações de cadastro, reivindicação e comentários estão permanentemente bloqueadas nesta conta.")
                 : hasInvalidFields
-                ? "Há um registro temporal incompatível no seu perfil que exige reativação ou normalização administrativa."
-                : "Seu acesso a novas ocorrências e reivindicações está pausado durante o bloqueio."}
+                ? t("accountInconsistencyDesc", "Há um registro temporal incompatível no seu perfil que exige reativação ou normalização administrativa.")
+                : t("accountSuspendedDesc", "Seu acesso a novas ocorrências e reivindicações está pausado durante o bloqueio.")}
             </p>
           </div>
         </div>
@@ -100,7 +113,7 @@ export const AccountStatusBanner: React.FC<AccountStatusBannerProps> = ({ user }
             }`}
           >
             <Mail className="w-3.5 h-3.5" />
-            <span>Suporte / Ouvidoria</span>
+            <span>{t("accountSupportBtn", "Suporte / Ouvidoria")}</span>
           </a>
         </div>
       </div>

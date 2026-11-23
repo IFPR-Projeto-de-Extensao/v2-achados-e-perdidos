@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 
 export const MobileBottomNav: React.FC = () => {
-  const { currentUser, requestAuthForRegistration, setQrScannerOpen } = useApp();
+  const { currentUser, requestAuthForRegistration, setQrScannerOpen, language, t } = useApp();
   const { routeKey, pathname, navigate } = useRouter();
 
   const handleTab = (path: string) => {
@@ -50,7 +50,7 @@ export const MobileBottomNav: React.FC = () => {
   return (
     <nav
       role="navigation"
-      aria-label="Barra de navegação inferior mobile PWA"
+      aria-label={t("navGroupMain", "Navegação")}
       className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#111827]/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800 px-2 pb-[env(safe-area-inset-bottom)]"
     >
       <div
@@ -62,7 +62,7 @@ export const MobileBottomNav: React.FC = () => {
         <button
           type="button"
           onClick={() => handleTab("/")}
-          aria-label="Início"
+          aria-label={t("home", "Início")}
           aria-current={routeKey === "home" ? "page" : undefined}
           className={`relative min-h-[44px] h-full flex flex-col items-center justify-center transition-colors cursor-pointer ${
             routeKey === "home"
@@ -74,14 +74,14 @@ export const MobileBottomNav: React.FC = () => {
             <span className="absolute top-0 inset-x-4 h-0.5 bg-[#16845B] dark:bg-emerald-400 rounded-b-full" />
           )}
           <Home className="w-5 h-5" />
-          <span className="text-[10px] leading-tight mt-1">Início</span>
+          <span className="text-[10px] leading-tight mt-1">{t("home", "Início")}</span>
         </button>
 
         {/* 2. Catálogo */}
         <button
           type="button"
           onClick={() => handleTab("/objetos")}
-          aria-label="Consultar Objetos"
+          aria-label={t("ctaBrowseCatalog", "Consultar Objetos")}
           aria-current={isCatalogActive ? "page" : undefined}
           className={`relative min-h-[44px] h-full flex flex-col items-center justify-center transition-colors cursor-pointer ${
             isCatalogActive
@@ -93,7 +93,7 @@ export const MobileBottomNav: React.FC = () => {
             <span className="absolute top-0 inset-x-4 h-0.5 bg-[#16845B] dark:bg-emerald-400 rounded-b-full" />
           )}
           <Search className="w-5 h-5" />
-          <span className="text-[10px] leading-tight mt-1">Objetos</span>
+          <span className="text-[10px] leading-tight mt-1">{t("objects", "Objetos")}</span>
         </button>
 
         {/* 3. Registrar (Restrito a Servidores aprovados e Administradores conforme regras RBAC) */}
@@ -101,7 +101,7 @@ export const MobileBottomNav: React.FC = () => {
           <button
             type="button"
             onClick={handleRegisterClick}
-            aria-label="Registrar item"
+            aria-label={t("registerItem", "Registrar Objeto")}
             aria-current={routeKey === "register" ? "page" : undefined}
             className={`relative min-h-[44px] h-full flex flex-col items-center justify-center transition-colors cursor-pointer ${
               routeKey === "register"
@@ -113,7 +113,7 @@ export const MobileBottomNav: React.FC = () => {
               <span className="absolute top-0 inset-x-4 h-0.5 bg-[#16845B] dark:bg-emerald-400 rounded-b-full" />
             )}
             <PlusCircle className="w-5 h-5" />
-            <span className="text-[10px] leading-tight mt-1">Registrar</span>
+            <span className="text-[10px] leading-tight mt-1">{t("registerShort", "Registrar")}</span>
           </button>
         )}
 
@@ -121,7 +121,7 @@ export const MobileBottomNav: React.FC = () => {
         <button
           type="button"
           onClick={handleQrClick}
-          aria-label="Ler QR Code"
+          aria-label={t("scanQr", "Ler QR Code")}
           className="relative min-h-[44px] h-full flex flex-col items-center justify-center text-slate-500 dark:text-slate-400 hover:text-[#16845B] dark:hover:text-emerald-400 font-medium transition-colors cursor-pointer"
         >
           <QrCode className="w-5 h-5" />
@@ -140,10 +140,10 @@ export const MobileBottomNav: React.FC = () => {
           }
           aria-label={
             currentUser.role === "ADMIN"
-              ? "Painel Admin"
+              ? t("adminPanel", "Admin")
               : currentUser.role === "SERVIDOR"
-              ? "Painel do Servidor"
-              : "Meu Perfil"
+              ? t("staffPanel", "Painel do Servidor")
+              : t("myProfile", "Meu Perfil")
           }
           aria-current={isProfileOrPanelActive ? "page" : undefined}
           className={`relative min-h-[44px] h-full flex flex-col items-center justify-center transition-colors cursor-pointer ${
@@ -164,10 +164,12 @@ export const MobileBottomNav: React.FC = () => {
           )}
           <span className="text-[10px] leading-tight mt-1">
             {currentUser.role === "ADMIN"
-              ? "Admin"
+              ? t("adminPanel", "Admin")
               : currentUser.role === "SERVIDOR"
-              ? "Servidor"
-              : "Perfil"}
+              ? language === "en"
+                ? "Staff"
+                : "Servidor"
+              : t("profile", "Perfil")}
           </span>
         </button>
       </div>

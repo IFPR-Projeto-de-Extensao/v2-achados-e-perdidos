@@ -18,6 +18,7 @@ import {
   Plus,
 } from "lucide-react";
 import { vibrateClick } from "../lib/utils";
+import { translateUserRole } from "../lib/i18n";
 import {
   SurfaceCard,
   StatCard,
@@ -36,6 +37,8 @@ export const MyItemsView: React.FC = () => {
     setAuthModalOpen,
     setSelectedItemForDetail,
     requestAuthForRegistration,
+    language,
+    t,
   } = useApp();
   const { navigate } = useRouter();
 
@@ -100,10 +103,10 @@ export const MyItemsView: React.FC = () => {
 
           <div className="space-y-2">
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#172B2A] dark:text-white">
-              Meus Registros e Solicitações
+              {t("myRecordsTitle", "Meus Registros e Solicitações")}
             </h1>
             <p className="text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
-              Faça login no Localiza+ para acompanhar suas solicitações de devolução, consultar objetos encontrados e gerenciar seus registros no IFPR Campus Ivaiporã.
+              {t("myRecordsAuthDesc", "Faça login no Localiza+ para acompanhar suas solicitações de devolução, consultar objetos encontrados e gerenciar seus registros no IFPR Campus Ivaiporã.")}
             </p>
           </div>
 
@@ -117,7 +120,7 @@ export const MyItemsView: React.FC = () => {
               }}
             >
               <LogIn className="w-4 h-4" />
-              <span>Entrar na Minha Conta</span>
+              <span>{t("signInToAccount", "Entrar na Minha Conta")}</span>
             </UIButton>
             <UIButton
               variant="secondary"
@@ -128,7 +131,7 @@ export const MyItemsView: React.FC = () => {
               }}
             >
               <Search className="w-4 h-4" />
-              <span>Consultar Objetos</span>
+              <span>{t("ctaBrowseCatalog", "Consultar Objetos")}</span>
             </UIButton>
           </div>
         </SurfaceCard>
@@ -145,15 +148,15 @@ export const MyItemsView: React.FC = () => {
             <div className="flex items-center gap-2">
               <UIBadge tone="emerald">
                 <Layers className="w-3.5 h-3.5" />
-                <span>Área Pessoal</span>
+                <span>{t("personalArea", "Área Pessoal")}</span>
               </UIBadge>
-              <UIBadge tone="slate">{currentUser.role}</UIBadge>
+              <UIBadge tone="slate">{translateUserRole(currentUser.role, language)}</UIBadge>
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-              Olá, {firstName}!
+              {t("helloUser", "Olá")}, {firstName}!
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Bem-vindo ao Localiza+ • Acompanhe seus registros, solicitações e devoluções no campus.
+              {t("myRecordsWelcome", "Bem-vindo ao Localiza+ • Acompanhe seus registros, solicitações e devoluções no campus.")}
             </p>
           </div>
 
@@ -167,7 +170,7 @@ export const MyItemsView: React.FC = () => {
               }}
             >
               <Search className="w-4 h-4" />
-              <span>Consultar Objetos</span>
+              <span>{t("ctaBrowseCatalog", "Consultar Objetos")}</span>
             </UIButton>
 
             {canRegisterObjects && (
@@ -182,7 +185,7 @@ export const MyItemsView: React.FC = () => {
                   }}
                 >
                   <PlusCircle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-                  <span>Cadastrar Perdido</span>
+                  <span>{t("registerLostShort", "Cadastrar Perdido")}</span>
                 </UIButton>
 
                 <UIButton
@@ -195,7 +198,7 @@ export const MyItemsView: React.FC = () => {
                   }}
                 >
                   <Plus className="w-4 h-4" />
-                  <span>Registrar Item</span>
+                  <span>{t("registerItem", "Registrar Item")}</span>
                 </UIButton>
               </>
             )}
@@ -206,19 +209,19 @@ export const MyItemsView: React.FC = () => {
       {/* Summary Metrics Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label="Meus Registros"
+          label={t("myRecords", "Meus Registros")}
           value={totalRegistered}
           icon={<Layers className="w-5 h-5" />}
           iconTone="emerald"
         />
         <StatCard
-          label="Devolução Pendente"
+          label={t("pendingReturn", "Devolução Pendente")}
           value={pendingDeliveriesCount}
           icon={<Clock className="w-5 h-5" />}
           iconTone="amber"
         />
         <StatCard
-          label="Solicitações Realizadas"
+          label={t("claimsMade", "Solicitações Realizadas")}
           value={myClaims.length}
           icon={<ShieldCheck className="w-5 h-5" />}
           iconTone="blue"
@@ -228,7 +231,7 @@ export const MyItemsView: React.FC = () => {
           }}
         />
         <StatCard
-          label="Devolvidos com Sucesso"
+          label={t("successfullyReturned", "Devolvidos com Sucesso")}
           value={returnedCount}
           icon={<CheckCircle className="w-5 h-5" />}
           iconTone="emerald"
@@ -238,7 +241,7 @@ export const MyItemsView: React.FC = () => {
       {/* Quick Actions Section (Aligned with Moodboard "Ações Rápidas") */}
       <div className="space-y-3">
         <h2 className="text-base font-bold text-[#172B2A] dark:text-white tracking-tight">
-          Ações Rápidas
+          {t("quickActions", "Ações Rápidas")}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <button
@@ -254,10 +257,10 @@ export const MyItemsView: React.FC = () => {
             </div>
             <div className="min-w-0 flex-1">
               <span className="block text-sm font-bold text-[#172B2A] dark:text-white">
-                Consultar Objetos
+                {t("ctaBrowseCatalog", "Consultar Objetos")}
               </span>
               <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">
-                Buscar itens perdidos e encontrados
+                {t("browseLostAndFound", "Buscar itens perdidos e encontrados")}
               </span>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#16845B] transition-colors shrink-0" />
@@ -278,10 +281,10 @@ export const MyItemsView: React.FC = () => {
               </div>
               <div className="min-w-0 flex-1">
                 <span className="block text-sm font-bold text-[#172B2A] dark:text-white">
-                  Registrar Item
+                  {t("registerItem", "Registrar Item")}
                 </span>
                 <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">
-                  Cadastrar novo objeto na custódia
+                  {t("registerCustodyDesc", "Cadastrar novo objeto na custódia")}
                 </span>
               </div>
               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#16845B] transition-colors shrink-0" />
@@ -300,10 +303,10 @@ export const MyItemsView: React.FC = () => {
               </div>
               <div className="min-w-0 flex-1">
                 <span className="block text-sm font-bold text-[#172B2A] dark:text-white">
-                  Acompanhar Solicitações
+                  {t("trackClaims", "Acompanhar Solicitações")}
                 </span>
                 <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">
-                  Ver status de reivindicações de posse
+                  {t("trackClaimsDesc", "Ver status de reivindicações de posse")}
                 </span>
               </div>
               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#16845B] transition-colors shrink-0" />
@@ -323,10 +326,10 @@ export const MyItemsView: React.FC = () => {
             </div>
             <div className="min-w-0 flex-1">
               <span className="block text-sm font-bold text-[#172B2A] dark:text-white">
-                Visualizar Perfil
+                {t("viewProfile", "Visualizar Perfil")}
               </span>
               <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">
-                Dados institucionais e notificações
+                {t("profileDataAndNotifs", "Dados institucionais e notificações")}
               </span>
             </div>
             <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#16845B] transition-colors shrink-0" />
@@ -340,7 +343,7 @@ export const MyItemsView: React.FC = () => {
               <Info className="w-4 h-4" />
             </div>
             <p className="text-xs sm:text-sm font-medium text-[#172B2A] dark:text-emerald-100">
-              Em caso de dúvidas ou retirada de pertences, compareça à SEBAC / Administração do campus com documento com foto.
+              {t("campusGuidanceBanner", "Em caso de dúvidas ou retirada de pertences, compareça à SEBAC / Administração do campus com documento com foto.")}
             </p>
           </div>
         </div>
@@ -362,7 +365,7 @@ export const MyItemsView: React.FC = () => {
                 : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
             }`}
           >
-            Todos ({totalRegistered})
+            {t("all", "Todos")} ({totalRegistered})
           </button>
 
           <button
@@ -377,7 +380,7 @@ export const MyItemsView: React.FC = () => {
                 : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
             }`}
           >
-            Perdidos ({lostCount})
+            {t("lostItems", "Perdidos")} ({lostCount})
           </button>
 
           <button
@@ -392,7 +395,7 @@ export const MyItemsView: React.FC = () => {
                 : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
             }`}
           >
-            Encontrados ({foundCount})
+            {t("foundItems", "Encontrados")} ({foundCount})
           </button>
 
           <button
@@ -407,7 +410,7 @@ export const MyItemsView: React.FC = () => {
                 : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
             }`}
           >
-            Devolvidos ({returnedCount})
+            {t("returnedItems", "Devolvidos")} ({returnedCount})
           </button>
         </div>
 
@@ -418,7 +421,7 @@ export const MyItemsView: React.FC = () => {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Filtrar meus registros..."
+            placeholder={t("filterMyRecordsPlaceholder", "Filtrar meus registros...")}
             className="w-full pl-9 pr-3.5 py-2 rounded-xl text-xs bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-800 focus:border-[#16845B] dark:focus:border-emerald-500 focus:outline-none text-[#172B2A] dark:text-white"
           />
         </div>
@@ -428,11 +431,11 @@ export const MyItemsView: React.FC = () => {
       {filteredItems.length === 0 ? (
         <EmptyState
           icon={<PackageSearch className="w-7 h-7" />}
-          title="Nenhum item encontrado nesta categoria"
+          title={t("noItemsInCategory", "Nenhum item encontrado nesta categoria")}
           description={
             searchTerm
-              ? "Tente buscar com outro termo ou limpar o filtro."
-              : "Você ainda não possui registros publicados nesta seção."
+              ? t("tryOtherTerm", "Tente buscar com outro termo ou limpar o filtro.")
+              : t("noPublishedRecordsYet", "Você ainda não possui registros publicados nesta seção.")
           }
           action={
             canRegisterObjects ? (
@@ -445,7 +448,7 @@ export const MyItemsView: React.FC = () => {
                 }}
               >
                 <PlusCircle className="w-4 h-4" />
-                <span>Cadastrar Novo Objeto</span>
+                <span>{t("registerNewObject", "Cadastrar Novo Objeto")}</span>
               </UIButton>
             ) : (
               <UIButton
@@ -457,7 +460,7 @@ export const MyItemsView: React.FC = () => {
                 }}
               >
                 <Search className="w-4 h-4" />
-                <span>Consultar Catálogo de Objetos</span>
+                <span>{t("browseObjectCatalog", "Consultar Catálogo de Objetos")}</span>
               </UIButton>
             )
           }

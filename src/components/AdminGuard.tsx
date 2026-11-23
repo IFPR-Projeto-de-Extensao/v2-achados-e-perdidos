@@ -5,6 +5,8 @@ import { useAdminGuard, UseAdminGuardOptions } from "../hooks/useAdminGuard";
 import { ShieldAlert, LogIn, Home, Lock } from "lucide-react";
 import { vibrateClick } from "../lib/utils";
 
+import { translateUserRole } from "../lib/i18n";
+
 interface AdminGuardProps extends UseAdminGuardOptions {
   children: React.ReactNode;
   fallback?: React.ReactNode;
@@ -18,7 +20,7 @@ export const AdminGuard: React.FC<AdminGuardProps> = ({
   customToastMessage,
   autoRedirect = true,
 }) => {
-  const { setAuthModalOpen } = useApp();
+  const { setAuthModalOpen, language, t } = useApp();
   const { navigate } = useRouter();
 
   const { isAdmin, isAuthLoading, authorized, currentUser } = useAdminGuard({
@@ -33,7 +35,7 @@ export const AdminGuard: React.FC<AdminGuardProps> = ({
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
         <div className="w-12 h-12 border-4 border-[#00843D] border-t-transparent rounded-full animate-spin" />
         <p className="text-sm font-semibold text-neutral-600 dark:text-neutral-400">
-          Verificando credenciais administrativas...
+          {t("adminGuardLoading", "Verificando credenciais administrativas...")}
         </p>
       </div>
     );
@@ -58,28 +60,28 @@ export const AdminGuard: React.FC<AdminGuardProps> = ({
           <div className="space-y-2">
             <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-red-100 dark:bg-red-950/80 text-red-700 dark:text-red-300 text-xs font-black uppercase tracking-wider">
               <ShieldAlert className="w-4 h-4" />
-              <span>Acesso Restrito • Painel Administrativo</span>
+              <span>{t("adminGuardBadge", "Acesso Restrito • Painel Administrativo")}</span>
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
-              Área Restrita aos Administradores
+              {t("adminGuardTitle", "Área Restrita aos Administradores")}
             </h1>
 
             <p className="text-sm text-neutral-600 dark:text-neutral-300 max-w-lg mx-auto leading-relaxed">
-              O acesso à rota <strong>/admin</strong> e às ferramentas de gestão do Localiza+ é exclusivo para servidores e administradores autorizados do <strong>IFPR Campus Ivaiporã</strong>.
+              {t("adminGuardDesc", "O acesso à rota /admin e às ferramentas de gestão do Localiza+ é exclusivo para servidores e administradores autorizados do IFPR Campus Ivaiporã.")}
             </p>
           </div>
 
           {/* Current role warning if authenticated as student/visitor */}
           <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-900/80 border border-neutral-200 dark:border-neutral-800 text-left text-xs space-y-1.5">
             <div className="flex items-center justify-between font-bold text-neutral-700 dark:text-neutral-300">
-              <span>Sua conta atual:</span>
+              <span>{t("adminGuardCurrentAccount", "Sua conta atual:")}</span>
               <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
-                {currentUser.role}
+                {translateUserRole(currentUser.role, language)}
               </span>
             </div>
             <p className="text-neutral-500 dark:text-neutral-400 font-mono text-[11px] truncate">
-              {currentUser.email || "Visitante não autenticado"}
+              {currentUser.email || t("adminGuardVisitor", "Visitante não autenticado")}
             </p>
           </div>
 
@@ -90,10 +92,10 @@ export const AdminGuard: React.FC<AdminGuardProps> = ({
                 vibrateClick();
                 setAuthModalOpen(true);
               }}
-              className="flex-1 py-3.5 px-5 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-black text-sm shadow-lg shadow-[#00843D]/20 transition-all flex items-center justify-center space-x-2"
+              className="flex-1 py-3.5 px-5 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-black text-sm shadow-lg shadow-[#00843D]/20 transition-all flex items-center justify-center space-x-2 cursor-pointer"
             >
               <LogIn className="w-4 h-4" />
-              <span>Entrar com Conta Administrativa</span>
+              <span>{t("adminGuardSignIn", "Entrar com Conta Administrativa")}</span>
             </button>
 
             <button
@@ -101,10 +103,10 @@ export const AdminGuard: React.FC<AdminGuardProps> = ({
                 vibrateClick();
                 navigate("/");
               }}
-              className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 font-bold text-sm transition-all flex items-center justify-center space-x-2 border border-neutral-300 dark:border-neutral-700"
+              className="py-3.5 px-5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 font-bold text-sm transition-all flex items-center justify-center space-x-2 border border-neutral-300 dark:border-neutral-700 cursor-pointer"
             >
               <Home className="w-4 h-4" />
-              <span>Voltar ao Início</span>
+              <span>{t("backToHome", "Voltar ao Início")}</span>
             </button>
           </div>
         </div>

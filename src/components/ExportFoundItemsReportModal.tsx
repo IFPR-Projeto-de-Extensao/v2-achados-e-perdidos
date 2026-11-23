@@ -13,6 +13,7 @@ import {
   Layers,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { translateCategory } from "../lib/i18n";
 import { CANONICAL_ITEM_CATEGORIES, isCategoryMatch } from "../lib/categoryUtils";
 import { downloadFoundItemsReportPdf, generateFoundItemsReportPdf } from "../lib/foundItemsReportPdfGenerator";
 import { safeParseDate, vibrateClick, vibrateSuccess } from "../lib/utils";
@@ -36,7 +37,7 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
   isOpen,
   onClose,
 }) => {
-  const { items, currentUser, addToast } = useApp();
+  const { items, currentUser, addToast, language, t } = useApp();
 
   const [periodPreset, setPeriodPreset] = useState<string>("MES_ATUAL");
   const [startDate, setStartDate] = useState<string>("");
@@ -135,11 +136,11 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
       });
 
       vibrateSuccess();
-      addToast(`Relatório PDF de prestação de contas gerado com sucesso! Protocolo: ${protocol}`, "success");
+      addToast(`${t("exportPdfSuccess")} ${language === "en" ? "Protocol" : "Protocolo"}: ${protocol}`, "success");
       onClose();
     } catch (err: any) {
       console.error("Erro ao gerar relatório PDF:", err);
-      addToast("Ocorreu um erro ao gerar o arquivo PDF. Tente novamente.", "error");
+      addToast(t("exportPdfError"), "error");
     } finally {
       setIsGenerating(false);
     }
@@ -177,7 +178,7 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
       isOpen={isOpen}
       onClose={onClose}
       maxWidthClass="max-w-2xl"
-      ariaLabel="Exportar Relatório de Achados (PDF)"
+      ariaLabel={t("exportPdfTitle")}
     >
       <div className="flex flex-col max-h-[92vh]">
         {/* Header */}
@@ -192,12 +193,12 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
                   id="export-report-title"
                   className="text-base font-bold text-[#172B2A] dark:text-white tracking-tight truncate"
                 >
-                  Exportar Relatório de Achados (PDF)
+                  {t("exportPdfTitle")}
                 </h2>
                 <UIBadge tone="emerald">jsPDF</UIBadge>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                Prestação de contas institucional da Secretaria do IFPR Campus Ivaiporã
+                {t("exportPdfSubtitle")}
               </p>
             </div>
           </div>
@@ -208,7 +209,7 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
               onClose();
             }}
             className="p-2 rounded-xl text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
-            aria-label="Fechar modal"
+            aria-label={t("close")}
           >
             <X className="w-4 h-4" />
           </button>
@@ -220,8 +221,9 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
           <div className="p-3.5 rounded-xl bg-[#EBF5F0]/70 dark:bg-emerald-950/25 border border-[#16845B]/20 dark:border-emerald-800/50 flex items-start gap-3">
             <ShieldCheck className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0 mt-0.5" />
             <p className="text-xs text-[#064E3B] dark:text-emerald-200 leading-relaxed">
-              Gere um documento PDF oficial em alta fidelidade contendo o inventário dos bens encontrados,
-              status de custódia na secretaria, locais do campus, depositários e campos de visto e assinatura regulamentares.
+              {language === "en"
+                ? "Generate an official high-fidelity PDF report containing the inventory of found items, custody status at the office, campus locations, custodians, and official signature fields."
+                : "Gere um documento PDF oficial em alta fidelidade contendo o inventário dos bens encontrados, status de custódia na secretaria, locais do campus, depositários e campos de visto e assinatura regulamentares."}
             </p>
           </div>
 
@@ -229,16 +231,16 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
           <div className="space-y-2.5">
             <label className="text-xs font-semibold text-[#172B2A] dark:text-slate-200 flex items-center gap-1.5">
               <Calendar className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
-              <span>Período do Relatório</span>
+              <span>{t("exportPdfPeriod")}</span>
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {[
-                { id: "MES_ATUAL", label: "Mês Atual" },
-                { id: "30_DIAS", label: "Últimos 30 dias" },
-                { id: "SEMESTRE_ATUAL", label: "Semestre Atual" },
-                { id: "ANO_2026", label: "Ano Letivo 2026" },
-                { id: "TODOS", label: "Histórico Completo" },
-                { id: "CUSTOM", label: "Personalizado" },
+                { id: "MES_ATUAL", label: language === "en" ? "Current Month" : "Mês Atual" },
+                { id: "30_DIAS", label: t("period30Days") },
+                { id: "SEMESTRE_ATUAL", label: t("periodSemester") },
+                { id: "ANO_2026", label: language === "en" ? "Academic Year 2026" : "Ano Letivo 2026" },
+                { id: "TODOS", label: language === "en" ? "Full History" : "Histórico Completo" },
+                { id: "CUSTOM", label: language === "en" ? "Custom" : "Personalizado" },
               ].map((p) => (
                 <button
                   key={p.id}
@@ -261,14 +263,14 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
             {/* Custom Date Inputs */}
             {periodPreset === "CUSTOM" && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1.5 animate-in fade-in">
-                <UIFieldGroup label="Data Inicial">
+                <UIFieldGroup label={t("startDate")}>
                   <UIInput
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
                   />
                 </UIFieldGroup>
-                <UIFieldGroup label="Data Final">
+                <UIFieldGroup label={t("endDate")}>
                   <UIInput
                     type="date"
                     value={endDate}
@@ -281,40 +283,40 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
 
           {/* Filters Grid: Status, Category, Location */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <UIFieldGroup label="Status">
+            <UIFieldGroup label={t("tableColStatus")}>
               <UISelect
                 leftIcon={<Layers className="w-3.5 h-3.5 text-[#16845B]" />}
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
-                <option value="TODOS">Todos os Status</option>
-                <option value="DISPONIVEL">Sob Custódia (Pendente)</option>
-                <option value="DEVOLVIDO">Devolvidos / Entregues</option>
+                <option value="TODOS">{language === "en" ? "All Statuses" : "Todos os Status"}</option>
+                <option value="DISPONIVEL">{language === "en" ? "In Custody (Pending)" : "Sob Custódia (Pendente)"}</option>
+                <option value="DEVOLVIDO">{language === "en" ? "Returned / Delivered" : "Devolvidos / Entregues"}</option>
               </UISelect>
             </UIFieldGroup>
 
-            <UIFieldGroup label="Categoria">
+            <UIFieldGroup label={t("category")}>
               <UISelect
                 leftIcon={<Tag className="w-3.5 h-3.5 text-[#16845B]" />}
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
               >
-                <option value="TODAS">Todas as Categorias</option>
+                <option value="TODAS">{t("allCategories")}</option>
                 {CANONICAL_ITEM_CATEGORIES.map((cat) => (
                   <option key={cat} value={cat}>
-                    {cat}
+                    {translateCategory(cat, language)}
                   </option>
                 ))}
               </UISelect>
             </UIFieldGroup>
 
-            <UIFieldGroup label="Local do Campus">
+            <UIFieldGroup label={t("location")}>
               <UISelect
                 leftIcon={<Building2 className="w-3.5 h-3.5 text-[#16845B]" />}
                 value={locationFilter}
                 onChange={(e) => setLocationFilter(e.target.value)}
               >
-                <option value="TODOS">Todos os Locais</option>
+                <option value="TODOS">{t("allLocations")}</option>
                 {IFPR_LOCATION_GROUPS.map((group) => (
                   <optgroup key={group.group} label={group.group}>
                     {group.locations.map((loc) => (
@@ -339,10 +341,14 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-[#172B2A] dark:text-white">
-                  Incluir Bloco de Assinaturas e Termo de Conformidade
+                  {language === "en"
+                    ? "Include Signature Block & Compliance Term"
+                    : "Incluir Bloco de Assinaturas e Termo de Conformidade"}
                 </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Adiciona campos formais para visto do servidor SEBAC e Chefia de Gabinete.
+                  {language === "en"
+                    ? "Adds formal signature lines for SEBAC staff and Campus Administration."
+                    : "Adiciona campos formais para visto do servidor SEBAC e Chefia de Gabinete."}
                 </p>
               </div>
             </label>
@@ -360,16 +366,16 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <span className="text-xs font-bold text-[#064E3B] dark:text-emerald-300 flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
-                Resumo da Exportação
+                {language === "en" ? "Export Summary" : "Resumo da Exportação"}
               </span>
               <UIBadge tone="emerald" className="tabular-nums">
-                {filteredFoundItems.length} objeto(s) selecionado(s)
+                {filteredFoundItems.length} {t("selectedCount")}
               </UIBadge>
             </div>
             <div className="grid grid-cols-3 gap-2.5 text-center">
               <div className="p-2.5 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800">
                 <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wide">
-                  Total Achados
+                  {language === "en" ? "Total Found" : "Total Achados"}
                 </span>
                 <span className="text-lg font-bold text-[#16845B] dark:text-emerald-400 tabular-nums mt-0.5 block">
                   {filteredFoundItems.length}
@@ -377,7 +383,7 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
               </div>
               <div className="p-2.5 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800">
                 <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wide">
-                  Sob Custódia
+                  {language === "en" ? "In Custody" : "Sob Custódia"}
                 </span>
                 <span className="text-lg font-bold text-amber-600 dark:text-amber-400 tabular-nums mt-0.5 block">
                   {custodyCount}
@@ -385,7 +391,7 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
               </div>
               <div className="p-2.5 rounded-xl bg-white dark:bg-[#111827] border border-slate-200/80 dark:border-slate-800">
                 <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wide">
-                  Restituídos
+                  {t("statusReturned")}
                 </span>
                 <span className="text-lg font-bold text-sky-600 dark:text-sky-400 tabular-nums mt-0.5 block">
                   {returnedCount}
@@ -398,12 +404,12 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
         {/* Footer Actions */}
         <div className="px-5 sm:px-6 py-4 bg-[#F8FAFC] dark:bg-slate-900/70 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-end gap-2.5 shrink-0">
           <UIButton type="button" variant="ghost" size="md" onClick={onClose}>
-            Cancelar
+            {t("cancel")}
           </UIButton>
 
           <UIButton type="button" variant="secondary" size="md" onClick={handlePrintPdf}>
             <Printer className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-            <span>Imprimir</span>
+            <span>{language === "en" ? "Print" : "Imprimir"}</span>
           </UIButton>
 
           <UIButton
@@ -414,7 +420,11 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
             onClick={handleExportPdf}
           >
             <Download className="w-4 h-4" />
-            <span>{isGenerating ? "Gerando PDF..." : "Baixar Relatório em PDF"}</span>
+            <span>
+              {isGenerating
+                ? language === "en" ? "Generating PDF..." : "Gerando PDF..."
+                : language === "en" ? "Download PDF Report" : "Baixar Relatório em PDF"}
+            </span>
           </UIButton>
         </div>
       </div>

@@ -32,7 +32,7 @@ interface SupportViewProps {
 }
 
 export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) => {
-  const { currentUser, addToast, t } = useApp();
+  const { currentUser, addToast, language, t } = useApp();
   const { routeKey, navigate } = useRouter();
 
   // Determine active tab based on routeKey or prop
@@ -74,28 +74,52 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
   // FAQ Accordion
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
 
-  const faqs = [
-    {
-      q: "Onde devo retirar um objeto encontrado após reivindicá-lo?",
-      a: "Todos os objetos entregues à administração do Campus Ivaiporã ficam sob custódia segura na Secretaria Acadêmica / Recepção Geral (Bloco Administrativo). Ao se dirigir ao local, apresente seu documento oficial com foto ou Carteirinha de Estudante e o código/comprovante do Localiza+.",
-    },
-    {
-      q: "Como comprovar que um objeto de valor (como celular ou fone) é meu?",
-      a: "Durante o cadastro de achados, detalhes sensíveis (como senha, marcas internas ou número de série) ficam ocultos. Você precisará responder à pergunta de verificação cadastrada ou desbloquear o aparelho presencialmente diante do servidor responsável.",
-    },
-    {
-      q: "Qual o prazo máximo para retirada de objetos guardados no campus?",
-      a: "Conforme o regulamento do IFPR Campus Ivaiporã, os objetos permanecem armazenados por até 90 dias. Após esse período, itens não procurados são encaminhados para doação a instituições sociais parceiras ou descarte sustentável regulamentado.",
-    },
-    {
-      q: "Posso cadastrar um objeto que encontrei fora do IFPR?",
-      a: "O Localiza+ é voltado prioritariamente para itens perdidos e encontrados nas dependências do IFPR Campus Ivaiporã, ônibus universitários conveniados e eventos acadêmicos institucionais.",
-    },
-    {
-      q: "Como encontrar um objeto perdido no campus?",
-      a: "Você pode pesquisar no catálogo geral por título, categoria, cor, data aproximada e bloco do campus onde o objeto foi visto pela última vez, ou consultar a equipe na Guarita Principal e SEBAC.",
-    },
-  ];
+  const faqs =
+    language === "en"
+      ? [
+          {
+            q: "Where should I pick up a found item after claiming it?",
+            a: "All items handed over to the IFPR Ivaiporã Campus administration are kept in safe custody at the Academic Office / Main Reception (Administrative Block). Bring an official photo ID or Student Card along with your Localiza+ code/receipt.",
+          },
+          {
+            q: "How can I prove a valuable item (such as a phone or earbuds) belongs to me?",
+            a: "When found items are registered, sensitive details (such as passcode, internal markings, or serial number) remain hidden. You will need to answer the verification question or unlock the device in person in front of the staff member.",
+          },
+          {
+            q: "What is the maximum storage period for unclaimed items on campus?",
+            a: "Under IFPR Ivaiporã Campus policy, items are stored for up to 90 days. After that period, unclaimed items are forwarded to partner social institutions or regulated sustainable disposal.",
+          },
+          {
+            q: "Can I register an item I found outside IFPR?",
+            a: "Localiza+ is dedicated primarily to items lost and found on IFPR Ivaiporã Campus premises, partner university buses, and institutional academic events.",
+          },
+          {
+            q: "How do I find a lost item on campus?",
+            a: "You can search the object catalog by title, category, color, approximate date, and campus block where the item was last seen, or check directly at the Main Gate and SEBAC.",
+          },
+        ]
+      : [
+          {
+            q: "Onde devo retirar um objeto encontrado após reivindicá-lo?",
+            a: "Todos os objetos entregues à administração do Campus Ivaiporã ficam sob custódia segura na Secretaria Acadêmica / Recepção Geral (Bloco Administrativo). Ao se dirigir ao local, apresente seu documento oficial com foto ou Carteirinha de Estudante e o código/comprovante do Localiza+.",
+          },
+          {
+            q: "Como comprovar que um objeto de valor (como celular ou fone) é meu?",
+            a: "Durante o cadastro de achados, detalhes sensíveis (como senha, marcas internas ou número de série) ficam ocultos. Você precisará responder à pergunta de verificação cadastrada ou desbloquear o aparelho presencialmente diante do servidor responsável.",
+          },
+          {
+            q: "Qual o prazo máximo para retirada de objetos guardados no campus?",
+            a: "Conforme o regulamento do IFPR Campus Ivaiporã, os objetos permanecem armazenados por até 90 dias. Após esse período, itens não procurados são encaminhados para doação a instituições sociais parceiras ou descarte sustentável regulamentado.",
+          },
+          {
+            q: "Posso cadastrar um objeto que encontrei fora do IFPR?",
+            a: "O Localiza+ é voltado prioritariamente para itens perdidos e encontrados nas dependências do IFPR Campus Ivaiporã, ônibus universitários conveniados e eventos acadêmicos institucionais.",
+          },
+          {
+            q: "Como encontrar um objeto perdido no campus?",
+            a: "Você pode pesquisar no catálogo geral por título, categoria, cor, data aproximada e bloco do campus onde o objeto foi visto pela última vez, ou consultar a equipe na Guarita Principal e SEBAC.",
+          },
+        ];
 
   const handleTabChange = (tab: "faq" | "feedback" | "bug") => {
     vibrateClick();
@@ -206,13 +230,13 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
       <div className="bg-white dark:bg-[#1E1E1E] p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
         <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/10 text-[#00843D] dark:text-green-400 text-xs font-black uppercase tracking-wider mb-2">
           <LifeBuoy className="w-3.5 h-3.5" />
-          <span>Atendimento & Suporte</span>
+          <span>{t("supportEyebrow")}</span>
         </div>
         <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white tracking-tight">
-          Central de Ajuda e Atendimento
+          {t("supportTitle")}
         </h1>
         <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-          Tire dúvidas frequentes, envie sugestões de melhoria ou reporte problemas técnicos à equipe do IFPR Campus Ivaiporã.
+          {t("supportSubtitle")}
         </p>
 
         {/* Navigation Tabs Bar */}
@@ -226,7 +250,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
             }`}
           >
             <HelpCircle className="w-4 h-4" />
-            <span>Dúvidas & Atendimento</span>
+            <span>{language === "en" ? "FAQ & Help Desk" : "Dúvidas & Atendimento"}</span>
           </button>
 
           <button
@@ -238,7 +262,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
             }`}
           >
             <MessageSquare className="w-4 h-4" />
-            <span>Enviar Sugestão / Feedback</span>
+            <span>{t("sendFeedback")}</span>
           </button>
 
           <button
@@ -250,7 +274,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
             }`}
           >
             <Bug className="w-4 h-4" />
-            <span>Relatar Erro / Bug</span>
+            <span>{t("reportBug")}</span>
           </button>
         </div>
       </div>

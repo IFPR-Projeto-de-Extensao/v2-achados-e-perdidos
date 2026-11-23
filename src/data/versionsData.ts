@@ -60,6 +60,13 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "FIRESTORE",
         tag: "Etapa 34 • Publicação & Rollback",
       },
+      {
+        id: "v11013-add-qa-pwa-push-notifications-audit",
+        title: "Auditoria Técnica da Infraestrutura de Notificações Push PWA e Proposta Arquitetural",
+        description: "Auditoria somente diagnóstico da infraestrutura de notificações PWA/FCM (src/lib/fcm.ts, public/sw-custom.js, public/firebase-messaging-sw.js, server.ts, AppContext.tsx, firestore.rules, .env.example e package.json), comprovando que hoje existem apenas alertas in-app com aba aberta (Firestore onSnapshot + Web Notifications local) e ausência de disparo Web Push/FCM real no servidor (sem chamadas admin.messaging().send/sendEachForMulticast ou web-push), além de chave VAPID de exemplo hardcoded, tokens sintéticos de fallback, conflito entre dois Service Workers e sobrescrita single-device em fcm_subscriptions/{uid}. Entregue diagnóstico factual completo e arquitetura segura por fases para implementação real em etapa dedicada (sem implementação parcial ou simulada nesta etapa).",
+        module: "PWA",
+        tag: "QA • Auditoria Push PWA",
+      },
     ],
     bugFixes: [
       {
@@ -167,10 +174,24 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "FIRESTORE",
         tag: "Etapa 31 • Emulator & Security Rules",
       },
+      {
+        id: "v11013-fix-qa-list-mode-individual-selection",
+        title: "Correção da Seleção Individual no Modo Lista e Isolamento de Ações em Lote no Catálogo",
+        description: "Correção definitiva da seleção individual na visualização em lista (ObjectsView.tsx, layoutViewMode === 'LISTA') com criação do módulo puro src/lib/catalogSelectionUtils.ts: adição de checkbox de seleção geral no cabeçalho da tabela com estado indeterminate real (headerCheckboxRef), checkbox por linha com e.stopPropagation() para impedir disparo acidental do modal de detalhes ou duplo toggle, suporte a seleção por clique na linha e teclado (Enter/Espaço) quando em modo seleção, preservação do conjunto selectedItemIds ao alternar entre Grade (CARDS) e Lista (LISTA) em desktop e mobile, poda automática de IDs obsoletos e isolamento estrito dos alvos de ações em lote (resolveBulkActionTargetIds e reconcileSelectionAfterBulkAction). Validado pela nova suíte automatizada src/lib/listSelectionAndBulkActions.test.ts.",
+        module: "GERAL",
+        tag: "QA • Seleção em Lista & Lote",
+      },
+      {
+        id: "v11013-fix-qa-i18n-completeness-and-locale-dates",
+        title: "Auditoria e Completude da Internacionalização (PT-BR / EN-US), Persistência de Idioma e Datas Localizadas",
+        description: "Expansão do sistema nativo de internacionalização (src/lib/i18n.ts + AppContext.tsx com chave localStorage ifpr_lang_preference, sem criar framework paralelo) para 200+ chaves com paridade 100% entre pt e en, helpers de domínio (translateCategory, translateColor, translateItemStatus, translateUserRole, translateCampusBlock), sincronização automática de document.documentElement.lang ('pt-BR' vs 'en') na montagem e em toda troca de idioma, formatação de datas/horas sensível ao idioma ativo em src/lib/utils.ts (formatDate/formatDateTime) e aplicação nos principais fluxos de interface (App, Navbar, MobileBottomNav, Footer, Breadcrumbs, HomeView, ObjectsView, ItemCard, NotificationsView, MyItemsView, SettingsView, ThemeToggle, NotFoundView, PWAInstallBanner, AccountStatusBanner, AdminGuard, AuthModal, EmailVerificationView, KeyboardShortcutsModal, VoiceSearchModal, ExportFoundItemsReportModal, QRCodeScannerModal, UploadStatusIndicator, SupportView, ProfileView, RegisterItemView e DashboardView). Validado pela nova suíte automatizada src/lib/i18nCompleteness.test.ts.",
+        module: "GERAL",
+        tag: "QA • Internacionalização (i18n)",
+      },
     ],
     stats: {
-      additionsCount: 4,
-      fixesCount: 13,
+      additionsCount: 5,
+      fixesCount: 17,
     },
   },
   {

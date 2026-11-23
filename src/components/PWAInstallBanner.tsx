@@ -1,10 +1,12 @@
 import React from "react";
 import { Download, RefreshCw, X, HelpCircle, Smartphone, CheckCircle } from "lucide-react";
 import { usePWA } from "../hooks/usePWA";
+import { useApp } from "../context/AppContext";
 import { InstallInstructionsModal } from "./InstallInstructionsModal";
 import { vibrateClick } from "../lib/utils";
 
 export const PWAInstallBanner: React.FC = () => {
+  const { language, t } = useApp();
   const {
     isInstallable,
     isInstalled,
@@ -39,18 +41,18 @@ export const PWAInstallBanner: React.FC = () => {
             </div>
             <div className="min-w-0">
               <p className="text-xs font-bold text-white truncate">
-                Nova versão do Localiza+
+                {t("pwaUpdateTitle", "Nova versão do Localiza+")}
               </p>
               <p className="text-[11px] text-neutral-400">
-                Toque para atualizar agora
+                {t("pwaUpdateDesc", "Toque para atualizar agora")}
               </p>
             </div>
           </div>
           <button
             onClick={applyUpdate}
-            className="px-3.5 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold shrink-0 transition-all shadow-md active:scale-95"
+            className="px-3.5 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold shrink-0 transition-all shadow-md active:scale-95 cursor-pointer"
           >
-            Atualizar
+            {t("pwaUpdateBtn", "Atualizar")}
           </button>
         </div>
       )}
@@ -59,7 +61,7 @@ export const PWAInstallBanner: React.FC = () => {
       {isInstallable && !isInstalled && (
         <div
           role="region"
-          aria-label="Instalação do Aplicativo Localiza+"
+          aria-label={t("pwaInstallTitle", "Instalar Localiza+")}
           className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-40 max-w-md w-[calc(100%-2rem)] sm:w-auto bg-white/95 dark:bg-[#1e1e1e]/95 backdrop-blur-md border border-gray-200 dark:border-neutral-700/80 rounded-2xl shadow-xl p-3.5 flex items-center justify-between gap-3 transition-all duration-300 animate-in fade-in slide-in-from-bottom-2"
         >
           <div
@@ -80,14 +82,26 @@ export const PWAInstallBanner: React.FC = () => {
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-xs font-extrabold text-neutral-900 dark:text-white">
-                  Instalar Localiza+
+                  {t("pwaInstallTitle", "Instalar Localiza+")}
                 </span>
                 <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-[#00843D]/10 text-[#00843D] dark:text-green-400">
-                  PWA Nativo
+                  {t("pwaNativeTag", "PWA Nativo")}
                 </span>
               </div>
               <p className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate">
-                {isAndroid
+                {language === "en"
+                  ? isAndroid
+                    ? isFirefoxAndroid
+                      ? "Install via Firefox for Android menu"
+                      : "Install directly to your Android home screen"
+                    : isIOS
+                    ? "Add to iOS Home Screen"
+                    : isFirefoxDesktop
+                    ? "Quick access and offline support on Firefox"
+                    : isLinux
+                    ? "Install to your Linux apps menu"
+                    : "Quick access and offline support"
+                  : isAndroid
                   ? isFirefoxAndroid
                     ? "Instale via menu do Firefox para Android"
                     : "Instale direto na tela inicial do Android"
@@ -107,20 +121,23 @@ export const PWAInstallBanner: React.FC = () => {
             {canPromptNative ? (
               <button
                 onClick={installToHomescreen}
-                title="Instalar na Tela Inicial via prompt nativo do navegador"
-                className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold shadow-md shadow-[#00843D]/20 active:scale-95 transition-all"
+                title={t("pwaAddToHome", "Adicionar à Tela Inicial")}
+                className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold shadow-md shadow-[#00843D]/20 active:scale-95 transition-all cursor-pointer"
               >
                 <Smartphone className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Adicionar à</span>
-                <span>Tela Inicial</span>
+                <span>{t("pwaAddToHome", "Adicionar à Tela Inicial")}</span>
               </button>
             ) : (
               <button
                 onClick={() => promptInstall(true)}
-                className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold shadow-md shadow-[#00843D]/20 active:scale-95 transition-all"
+                className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold shadow-md shadow-[#00843D]/20 active:scale-95 transition-all cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>{isFirefoxDesktop ? "Instruções" : isFirefoxAndroid ? "Como Instalar" : isIOS ? "Como Adicionar" : "Instalar"}</span>
+                <span>
+                  {isFirefoxDesktop || isFirefoxAndroid || isIOS
+                    ? t("pwaInstructionsBtn", "Instruções")
+                    : t("pwaInstallBtn", "Instalar")}
+                </span>
               </button>
             )}
 
@@ -129,17 +146,17 @@ export const PWAInstallBanner: React.FC = () => {
                 vibrateClick();
                 setShowInstructionsModal(true);
               }}
-              title="Instruções de instalação"
-              aria-label="Ver instruções detalhadas de instalação"
-              className="p-1.5 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              title={t("pwaInstructionsBtn", "Instruções")}
+              aria-label={t("pwaInstructionsBtn", "Instruções")}
+              className="p-1.5 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
             >
               <HelpCircle className="w-4 h-4" />
             </button>
             <button
               onClick={dismissInstallPrompt}
-              aria-label="Dispensar aviso de instalação nesta sessão"
-              title="Dispensar nesta sessão"
-              className="p-1.5 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              aria-label={t("close", "Fechar")}
+              title={t("close", "Fechar")}
+              className="p-1.5 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>

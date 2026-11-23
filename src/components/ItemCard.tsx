@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { LostFoundItem } from "../types";
+import { useApp } from "../context/AppContext";
 import { formatDate, vibrateClick } from "../lib/utils";
 import { getCategoryDisplay, normalizeCategory } from "../lib/categoryUtils";
+import { translateCategory, translateColor } from "../lib/i18n";
 import {
   Laptop,
   FileText,
@@ -57,13 +59,15 @@ export const ItemCard: React.FC<ItemCardProps> = ({
   isSelected = false,
   onToggleSelect,
 }) => {
+  const { language, t } = useApp();
   const [imgError, setImgError] = useState(false);
 
   const isFound = item?.type === "ENCONTRADO";
   const isReturned = item?.status === "DEVOLVIDO";
   const isUnderReview = item?.status === "EM_ANALISE";
-  const displayCat = getCategoryDisplay(item?.category);
-  const CategoryIcon = getCategoryIcon(displayCat);
+  const canonicalCat = getCategoryDisplay(item?.category);
+  const displayCat = translateCategory(canonicalCat, language);
+  const CategoryIcon = getCategoryIcon(canonicalCat);
 
   const hasValidImage =
     Boolean(item?.imageUrl) &&
@@ -71,9 +75,9 @@ export const ItemCard: React.FC<ItemCardProps> = ({
     !item.imageUrl?.includes("photo-1584438784894-089d6a62b8fa");
 
   const getStatusLabel = () => {
-    if (isReturned) return "Devolvido";
-    if (isUnderReview) return "Em análise";
-    return isFound ? "Encontrado" : "Perdido";
+    if (isReturned) return t("statusReturned", "Devolvido");
+    if (isUnderReview) return t("statusReview", "Em Análise");
+    return isFound ? t("statusFound", "Encontrado") : t("statusLost", "Perdido");
   };
 
   const getStatusTextClass = () => {
@@ -96,7 +100,12 @@ export const ItemCard: React.FC<ItemCardProps> = ({
       }}
       role="button"
       tabIndex={0}
-      aria-label={`Ver detalhes de ${item?.title || "Objeto"}`}
+      aria-label={
+        selectable
+          ? `${isSelected ? t("unselectItemAria", "Desmarcar objeto") : t("selectItemAria", "Selecionar objeto")}: ${item?.title || t("untitledItem", "Objeto sem título")}`
+          : `${t("itemDetails", "Detalhes do Objeto")}: ${item?.title || t("untitledItem", "Objeto sem título")}`
+      }
+      aria-pressed={selectable ? isSelected : undefined}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -119,7 +128,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
         {hasValidImage ? (
           <img
             src={item.imageUrl}
-            alt={item?.title || "Imagem do objeto"}
+            alt={item?.title || t("untitledItem", "Objeto sem título")}
             loading="lazy"
             referrerPolicy="no-referrer"
             onError={() => setImgError(true)}
@@ -130,7 +139,7 @@ export const ItemCard: React.FC<ItemCardProps> = ({
             <CategoryIcon className="w-6 h-6 text-slate-400 dark:text-slate-500" />
             <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500 mt-1">
               <CameraOff className="w-3 h-3" />
-              <span>Sem foto</span>
+              <span>{t("noPhoto", "Sem foto")}</span>
             </span>
           </div>
         )}
@@ -141,6 +150,9 @@ export const ItemCard: React.FC<ItemCardProps> = ({
               e.stopPropagation();
               onToggleSelect && onToggleSelect(item.id, !isSelected);
             }}
+            role="checkbox"
+            aria-checked={isSelected}
+            aria-label={`${isSelected ? t("unselectItemAria", "Desmarcar objeto") : t("selectItemAria", "Selecionar objeto")}: ${item?.title || ""}`}
             className={`absolute top-2 left-2 w-6 h-6 rounded-md border flex items-center justify-center transition-colors ${
               isSelected
                 ? "bg-[#16845B] border-[#16845B] text-white"
@@ -164,30 +176,30 @@ export const ItemCard: React.FC<ItemCardProps> = ({
               <>
                 <span aria-hidden="true">·</span>
                 <span className="font-semibold text-amber-600 dark:text-amber-400">
-                  Pendente de sincronização
+                  {t("pendingSync", "Pendente de sincronização")}
                 </span>
               </>
             )}
             <span aria-hidden="true">·</span>
             <span>{displayCat}</span>
             <span aria-hidden="true">·</span>
-            <span className="tabular-nums">{formatDate(item?.date)}</span>
+            <span className="tabular-nums">{formatDate(item?.date, undefined, language)}</span>
           </div>
 
           {/* Linha 2: Título do Objeto */}
           <h3 className="mt-1 font-semibold text-sm sm:text-base text-[#172B2A] dark:text-white leading-snug line-clamp-2 group-hover:text-[#16845B] dark:group-hover:text-emerald-400 transition-colors">
-            {item?.title || "Objeto sem título"}
+            {item?.title || t("untitledItem", "Objeto sem título")}
           </h3>
         </div>
 
         {/* Linha 3: Localização + Cor (quando informada) */}
         <div className="mt-1.5 sm:mt-3 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
           <p className="truncate">
-            <span>{item?.location || "Local não informado"}</span>
+            <span>{item?.location || t("locationNotProvided", "Local não informado")}</span>
             {item?.color && (
               <>
                 <span aria-hidden="true"> · </span>
-                <span>{item.color}</span>
+                <span>{translateColor(item.color, language)}</span>
               </>
             )}
           </p>

@@ -27,6 +27,8 @@ export const EmailVerificationView: React.FC = () => {
     logout,
     addToast,
     pendingPostLoginAction,
+    language,
+    t,
   } = useApp();
 
   const { navigate } = useRouter();
@@ -87,7 +89,9 @@ export const EmailVerificationView: React.FC = () => {
   const handleResend = async () => {
     if (cooldown > 0) {
       addToast(
-        `Aguarde ${cooldown} segundos antes de solicitar um novo e-mail.`,
+        language === "en"
+          ? `Wait ${cooldown} seconds before requesting a new email.`
+          : `Aguarde ${cooldown} segundos antes de solicitar um novo e-mail.`,
         "warning"
       );
       return;
@@ -129,12 +133,12 @@ export const EmailVerificationView: React.FC = () => {
               •
             </span>
             <span className="text-xs font-semibold text-[#064E3B] dark:text-emerald-300">
-              Segurança Institucional IFPR
+              {language === "en" ? "IFPR Institutional Security" : "Segurança Institucional IFPR"}
             </span>
           </div>
           <UIBadge tone="amber">
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Validação Obrigatória</span>
+            <span>{language === "en" ? "Required Verification" : "Validação Obrigatória"}</span>
           </UIBadge>
         </div>
 
@@ -147,12 +151,10 @@ export const EmailVerificationView: React.FC = () => {
 
             <div className="space-y-1.5">
               <h1 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-                Confirme seu endereço de e-mail
+                {t("emailVerifyTitle")}
               </h1>
               <p className="text-sm text-slate-600 dark:text-slate-400 max-w-lg mx-auto leading-relaxed">
-                Para garantir a autenticidade das comunicações e proteger a
-                comunidade do IFPR Campus Ivaiporã, confirme o acesso à sua
-                caixa postal antes de continuar.
+                {t("emailVerifySubtitle")}
               </p>
             </div>
           </div>
@@ -160,7 +162,7 @@ export const EmailVerificationView: React.FC = () => {
           {/* Email Highlight Box */}
           <SubtlePanel className="text-center space-y-1 bg-[#EBF5F0]/60 dark:bg-emerald-950/20 border-[#16845B]/20 dark:border-emerald-900/40">
             <span className="text-[11px] font-semibold text-[#064E3B] dark:text-emerald-300 uppercase tracking-wider">
-              Endereço informado no cadastro
+              {language === "en" ? "Registered email address" : "Endereço informado no cadastro"}
             </span>
             <p className="text-base sm:text-lg font-mono font-bold text-[#172B2A] dark:text-emerald-100 break-all select-all">
               {userEmail}
@@ -171,7 +173,11 @@ export const EmailVerificationView: React.FC = () => {
           <SubtlePanel className="space-y-3.5">
             <h2 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-2">
               <HelpCircle className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0" />
-              <span>Como concluir a ativação da sua conta:</span>
+              <span>
+                {language === "en"
+                  ? "How to complete your account activation:"
+                  : "Como concluir a ativação da sua conta:"}
+              </span>
             </h2>
 
             <ol className="space-y-2.5 text-xs sm:text-sm text-slate-700 dark:text-slate-300">
@@ -180,8 +186,9 @@ export const EmailVerificationView: React.FC = () => {
                   1
                 </span>
                 <span>
-                  Abra a caixa de entrada do seu provedor de e-mail (Gmail,
-                  Outlook, IFPR Webmail, etc.).
+                  {language === "en"
+                    ? "Open your email inbox (Gmail, Outlook, IFPR Webmail, etc.)."
+                    : "Abra a caixa de entrada do seu provedor de e-mail (Gmail, Outlook, IFPR Webmail, etc.)."}
                 </span>
               </li>
               <li className="flex items-start gap-3">
@@ -189,11 +196,23 @@ export const EmailVerificationView: React.FC = () => {
                   2
                 </span>
                 <span>
-                  Localize a mensagem enviada pelo{" "}
-                  <strong className="font-semibold text-[#172B2A] dark:text-white">
-                    Localiza+ / Firebase
-                  </strong>{" "}
-                  com o link de confirmação.
+                  {language === "en" ? (
+                    <>
+                      Find the message sent by{" "}
+                      <strong className="font-semibold text-[#172B2A] dark:text-white">
+                        Localiza+ / Firebase
+                      </strong>{" "}
+                      with the confirmation link.
+                    </>
+                  ) : (
+                    <>
+                      Localize a mensagem enviada pelo{" "}
+                      <strong className="font-semibold text-[#172B2A] dark:text-white">
+                        Localiza+ / Firebase
+                      </strong>{" "}
+                      com o link de confirmação.
+                    </>
+                  )}
                 </span>
               </li>
               <li className="flex items-start gap-3">
@@ -201,8 +220,9 @@ export const EmailVerificationView: React.FC = () => {
                   3
                 </span>
                 <span>
-                  Clique no link para validar seu endereço. Em seguida, retorne
-                  aqui e clique no botão principal abaixo.
+                  {language === "en"
+                    ? "Click the link to validate your address. Then return here and click the primary button below."
+                    : "Clique no link para validar seu endereço. Em seguida, retorne aqui e clique no botão principal abaixo."}
                 </span>
               </li>
             </ol>
@@ -210,12 +230,19 @@ export const EmailVerificationView: React.FC = () => {
             <div className="pt-2.5 border-t border-slate-200/80 dark:border-slate-800 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
               <Clock className="w-4 h-4 text-amber-500 shrink-0" />
               <span>
-                <strong className="font-semibold text-slate-700 dark:text-slate-300">
-                  Atenção:
-                </strong>{" "}
-                Se a mensagem não aparecer em instantes, verifique também sua
-                pasta de <strong>Spam</strong> ou{" "}
-                <strong>Lixo Eletrônico</strong>.
+                {language === "en" ? (
+                  <>
+                    <strong className="font-semibold text-slate-700 dark:text-slate-300">Note:</strong>{" "}
+                    If the message does not arrive shortly, check your <strong>Spam</strong> or{" "}
+                    <strong>Junk</strong> folder.
+                  </>
+                ) : (
+                  <>
+                    <strong className="font-semibold text-slate-700 dark:text-slate-300">Atenção:</strong>{" "}
+                    Se a mensagem não aparecer em instantes, verifique também sua pasta de{" "}
+                    <strong>Spam</strong> ou <strong>Lixo Eletrônico</strong>.
+                  </>
+                )}
               </span>
             </div>
           </SubtlePanel>
@@ -233,12 +260,16 @@ export const EmailVerificationView: React.FC = () => {
               {checking ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Verificando com o Firebase Auth...</span>
+                  <span>
+                    {language === "en"
+                      ? "Checking with Firebase Auth..."
+                      : "Verificando com o Firebase Auth..."}
+                  </span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Já verifiquei meu e-mail</span>
+                  <span>{t("emailVerifyAlreadyVerified")}</span>
                 </>
               )}
             </UIButton>
@@ -255,17 +286,17 @@ export const EmailVerificationView: React.FC = () => {
                 {resending ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Enviando novo e-mail...</span>
+                    <span>{language === "en" ? "Sending new email..." : "Enviando novo e-mail..."}</span>
                   </>
                 ) : cooldown > 0 ? (
                   <>
                     <Clock className="w-4 h-4 text-amber-500" />
-                    <span>Reenviar em {cooldown}s</span>
+                    <span>{language === "en" ? `Resend in ${cooldown}s` : `Reenviar em ${cooldown}s`}</span>
                   </>
                 ) : (
                   <>
                     <Mail className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
-                    <span>Reenviar e-mail de verificação</span>
+                    <span>{t("emailVerifyResend")}</span>
                   </>
                 )}
               </UIButton>
@@ -282,7 +313,7 @@ export const EmailVerificationView: React.FC = () => {
                 className="w-full sm:w-auto text-slate-600 hover:text-red-600 dark:text-slate-400 dark:hover:text-red-400"
               >
                 <LogOut className="w-4 h-4" />
-                <span>Sair da conta</span>
+                <span>{t("signOut")}</span>
               </UIButton>
             </div>
           </div>

@@ -30,17 +30,17 @@ export const Footer: React.FC = () => {
         >
           <div className="space-y-0.5">
             <p className="text-xs font-semibold text-[#172B2A] dark:text-white">
-              IFPR Campus Ivaiporã · Central de Achados e Perdidos
+              {t("footerCampusInfo", "IFPR Campus Ivaiporã · Central de Achados e Perdidos")}
             </p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Portaria Principal e SEPAE · Atendimento de segunda a sexta, das 07h às 22h · (43) 3126-9400
+              {t("footerOfficeHours", "Portaria Principal e SEPAE · Atendimento de segunda a sexta, das 07h às 22h · (43) 3126-9400")}
             </p>
           </div>
 
           <div
             className="flex items-center gap-1.5 shrink-0"
             role="group"
-            aria-label="Seletor de Idioma da Interface"
+            aria-label={t("selectLanguageAria", "Seletor de Idioma da Interface")}
           >
             <button
               id="lang-btn-pt"
@@ -84,7 +84,7 @@ export const Footer: React.FC = () => {
                 className="text-[#16845B] dark:text-emerald-400 font-medium hover:underline inline-flex items-center gap-1 cursor-pointer"
               >
                 <Smartphone className="w-3.5 h-3.5" />
-                <span>Instalar App (PWA)</span>
+                <span>{t("installPwaShort", "Instalar App (PWA)")}</span>
               </button>
             )}
             <Link
@@ -97,7 +97,7 @@ export const Footer: React.FC = () => {
               to="/suporte/feedback"
               className="hover:text-[#172B2A] dark:hover:text-white transition-colors"
             >
-              Feedback / Relatar Bug
+              {t("feedbackReportBugLink", "Feedback / Relatar Bug")}
             </Link>
             <a
               href={OFFICIAL_DISCORD_INVITE_URL}
@@ -111,18 +111,18 @@ export const Footer: React.FC = () => {
               to="/termos-de-uso"
               className="hover:text-[#172B2A] dark:hover:text-white transition-colors"
             >
-              Termos de Uso
+              {t("termsOfUse", "Termos de Uso")}
             </Link>
             <Link
               to="/politica-de-privacidade"
               className="hover:text-[#172B2A] dark:hover:text-white transition-colors"
             >
-              Privacidade
+              {t("privacyShort", "Privacidade")}
             </Link>
           </div>
 
           <p className="text-[11px] text-slate-400 dark:text-slate-500">
-            © {new Date().getFullYear()} IFPR Campus Ivaiporã
+            © {new Date().getFullYear()} {t("campusName", "IFPR Campus Ivaiporã")}
           </p>
         </div>
       </div>

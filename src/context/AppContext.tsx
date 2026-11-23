@@ -2284,9 +2284,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Internationalization (i18n) State
   const [language, setLanguageState] = useState<SupportedLanguage>(() => {
-    const saved = localStorage.getItem("ifpr_lang_preference");
-    return (saved === "en" || saved === "pt") ? (saved as SupportedLanguage) : "pt";
+    try {
+      const saved = localStorage.getItem("ifpr_lang_preference");
+      return (saved === "en" || saved === "pt") ? (saved as SupportedLanguage) : "pt";
+    } catch {
+      return "pt";
+    }
   });
+
+  useEffect(() => {
+    try {
+      document.documentElement.lang = language === "pt" ? "pt-BR" : "en";
+    } catch (_) {}
+  }, [language]);
 
   const setLanguage = (lang: SupportedLanguage) => {
     setLanguageState(lang);

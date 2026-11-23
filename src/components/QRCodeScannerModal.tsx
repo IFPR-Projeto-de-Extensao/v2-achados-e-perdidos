@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useApp } from "../context/AppContext";
+import { translateItemStatus } from "../lib/i18n";
 import { LostFoundItem } from "../types";
 import { vibrateClick, vibrateSuccess, vibrateWarning, sanitizeQuery } from "../lib/utils";
 import { parseQrCodeOrUrl, findItemInList, fetchItemFromFirestore, classifyQrLookupError } from "../lib/qrCodeUtils";
@@ -19,6 +20,8 @@ export const QRCodeScannerModal: React.FC = () => {
     addToast,
     setSelectedItemForDetail,
     setReturnModalAutoOpen,
+    language,
+    t,
   } = useApp();
   const [scannedCode, setScannedCode] = useState("");
   const [foundItem, setFoundItem] = useState<LostFoundItem | null>(null);
@@ -291,10 +294,10 @@ export const QRCodeScannerModal: React.FC = () => {
                   id="qr-scanner-title"
                   className="font-bold text-base text-[#172B2A] dark:text-white tracking-tight"
                 >
-                  Scanner de QR Code IFPR Campus Ivaiporã
+                  {t("qrModalTitle")}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Leitura de etiquetas com redirecionamento direto aos detalhes do item
+                  {t("qrModalSubtitle")}
                 </p>
               </div>
             </div>
@@ -302,7 +305,7 @@ export const QRCodeScannerModal: React.FC = () => {
             <button
               type="button"
               onClick={handleCloseScanner}
-              aria-label="Fechar scanner de QR Code"
+              aria-label={t("close")}
               className="p-2 rounded-xl text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
             >
               <X className="w-4 h-4" />
@@ -336,7 +339,7 @@ export const QRCodeScannerModal: React.FC = () => {
                     <div className="space-y-1">
                       <p className="text-xs font-semibold text-rose-400 flex items-center justify-center gap-1.5">
                         <AlertCircle className="w-4 h-4 shrink-0" />
-                        <span>Acesso à câmera bloqueado</span>
+                        <span>{language === "en" ? "Camera access blocked" : "Acesso à câmera bloqueado"}</span>
                       </p>
                       <p className="text-[11px] text-slate-300 leading-snug">
                         {cameraError}
@@ -344,15 +347,19 @@ export const QRCodeScannerModal: React.FC = () => {
                     </div>
                   ) : cameraPermissionStatus === "requesting" ? (
                     <p className="text-xs font-semibold text-amber-300">
-                      Solicitando permissão de acesso à câmera... Por favor, aceite o prompt do seu navegador.
+                      {language === "en"
+                        ? "Requesting camera permission... Please accept the browser prompt."
+                        : "Solicitando permissão de acesso à câmera... Por favor, aceite o prompt do seu navegador."}
                     </p>
                   ) : (
                     <div className="space-y-1">
                       <span className="text-xs font-bold text-white block">
-                        Acesso à Câmera Requerido
+                        {language === "en" ? "Camera Access Required" : "Acesso à Câmera Requerido"}
                       </span>
                       <span className="text-[11px] text-slate-400 block leading-snug">
-                        Aponte a câmera do celular para o QR Code da etiqueta física para abrir diretamente a página do item.
+                        {language === "en"
+                          ? "Point your phone camera at the physical QR Code label to open the item page directly."
+                          : "Aponte a câmera do celular para o QR Code da etiqueta física para abrir diretamente a página do item."}
                       </span>
                     </div>
                   )}
@@ -367,8 +374,8 @@ export const QRCodeScannerModal: React.FC = () => {
                     <Camera className="w-4 h-4" />
                     <span>
                       {cameraPermissionStatus === "requesting"
-                        ? "Aguardando Permissão..."
-                        : "Solicitar Permissão e Iniciar Câmera"}
+                        ? language === "en" ? "Waiting for Permission..." : "Aguardando Permissão..."
+                        : language === "en" ? "Request Permission & Start Camera" : "Solicitar Permissão e Iniciar Câmera"}
                     </span>
                   </UIButton>
                 </div>
@@ -380,7 +387,7 @@ export const QRCodeScannerModal: React.FC = () => {
               <div className="flex items-center justify-between text-xs px-1">
                 <UIBadge tone="emerald">
                   <span className="w-1.5 h-1.5 rounded-full bg-[#16845B]" />
-                  <span>Câmera Ativa • Leitura em Tempo Real</span>
+                  <span>{language === "en" ? "Camera Active • Live Scanning" : "Câmera Ativa • Leitura em Tempo Real"}</span>
                 </UIBadge>
 
                 <UIButton
@@ -391,7 +398,7 @@ export const QRCodeScannerModal: React.FC = () => {
                   className="text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30"
                 >
                   <CameraOff className="w-3.5 h-3.5" />
-                  <span>Desligar Câmera</span>
+                  <span>{language === "en" ? "Turn Off Camera" : "Desligar Câmera"}</span>
                 </UIButton>
               </div>
             )}
@@ -410,7 +417,11 @@ export const QRCodeScannerModal: React.FC = () => {
           {/* Manual Code Input fallback */}
           <div className="pt-3 border-t border-slate-200/80 dark:border-slate-800">
             <UIFieldGroup
-              label="Digite, cole a URL ou código da etiqueta QR"
+              label={
+                language === "en"
+                  ? "Type or paste the item URL or QR label code"
+                  : "Digite, cole a URL ou código da etiqueta QR"
+              }
               htmlFor="qr-manual-code-input"
             >
               <div className="flex gap-2">
@@ -426,7 +437,7 @@ export const QRCodeScannerModal: React.FC = () => {
                         handleScanOrSearch(scannedCode);
                       }
                     }}
-                    placeholder="Ex: https://...?itemId=ifpr-101 ou QR-IFPR-101-GARRAFA"
+                    placeholder="Ex: https://...?itemId=ifpr-101 / QR-IFPR-101-GARRAFA"
                   />
                 </div>
                 <UIButton
@@ -441,7 +452,7 @@ export const QRCodeScannerModal: React.FC = () => {
                   ) : (
                     <Search className="w-3.5 h-3.5" />
                   )}
-                  <span>Buscar</span>
+                  <span>{language === "en" ? "Search" : "Buscar"}</span>
                 </UIButton>
               </div>
             </UIFieldGroup>
@@ -450,7 +461,9 @@ export const QRCodeScannerModal: React.FC = () => {
           {/* Preset quick test buttons */}
           <div className="space-y-1.5">
             <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 block">
-              Testar etiquetas ativas no acervo do campus:
+              {language === "en"
+                ? "Quick lookup from active campus archive labels:"
+                : "Testar etiquetas ativas no acervo do campus:"}
             </span>
             <div className="flex flex-wrap gap-1.5">
               {items.slice(0, 4).map((it) => (
@@ -481,18 +494,18 @@ export const QRCodeScannerModal: React.FC = () => {
                 <div className="flex-1 min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center justify-between gap-1.5">
                     <UIBadge tone="emerald">
-                      {foundItem.status} • {foundItem.type}
+                      {translateItemStatus(foundItem.status, language)} • {translateItemStatus(foundItem.type, language)}
                     </UIBadge>
                     <UIBadge tone="amber">
                       <ShieldCheck className="w-3 h-3" />
-                      <span>Item Autenticado</span>
+                      <span>{language === "en" ? "Verified Item" : "Item Autenticado"}</span>
                     </UIBadge>
                   </div>
                   <h4 className="font-bold text-sm text-[#172B2A] dark:text-white truncate">
                     {foundItem.title}
                   </h4>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                    Local: {foundItem.location} • Código: <span className="font-mono">{foundItem.qrCodeId}</span>
+                    {t("tableColLocation")}: {foundItem.location} • QR: <span className="font-mono">{foundItem.qrCodeId}</span>
                   </p>
                 </div>
               </div>
@@ -506,7 +519,7 @@ export const QRCodeScannerModal: React.FC = () => {
                   onClick={() => handleOpenFullDetails(foundItem)}
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Abrir Detalhes</span>
+                  <span>{language === "en" ? "Open Details" : "Abrir Detalhes"}</span>
                 </UIButton>
 
                 <UIButton
@@ -517,7 +530,7 @@ export const QRCodeScannerModal: React.FC = () => {
                   onClick={() => setShowRestrictedModal(foundItem)}
                 >
                   <Eye className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
-                  <span>Ver Ficha Pública</span>
+                  <span>{language === "en" ? "View Public Card" : "Ver Ficha Pública"}</span>
                 </UIButton>
 
                 {canShowFormalReturn && (
@@ -529,14 +542,22 @@ export const QRCodeScannerModal: React.FC = () => {
                     onClick={() => handleStartFormalReturn(foundItem)}
                   >
                     <FileSignature className="w-3.5 h-3.5" />
-                    <span>Iniciar Devolução Formal</span>
+                    <span>{language === "en" ? "Start Formal Return" : "Iniciar Devolução Formal"}</span>
                   </UIButton>
                 )}
               </div>
 
               {(foundItem.status === "DEVOLVIDO" || foundItem.status === "ENCERRADO") && (
                 <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-white/80 dark:bg-slate-900/60 px-3 py-2 rounded-xl border border-slate-200/80 dark:border-slate-700">
-                  Este objeto já possui status <strong>{foundItem.status}</strong> e não permite novo registro de entrega.
+                  {language === "en" ? (
+                    <>
+                      This object already has status <strong>{translateItemStatus(foundItem.status, language)}</strong> and cannot start a new return record.
+                    </>
+                  ) : (
+                    <>
+                      Este objeto já possui status <strong>{foundItem.status}</strong> e não permite novo registro de entrega.
+                    </>
+                  )}
                 </p>
               )}
             </SubtlePanel>

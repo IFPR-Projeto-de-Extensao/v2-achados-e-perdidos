@@ -14,6 +14,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { SupportedLanguage } from "../lib/i18n";
 import { UploadTaskStatus } from "../types";
 import { vibrateClick, vibrateSuccess } from "../lib/utils";
 
@@ -52,6 +53,7 @@ export function computeUploadSubtitle(params: {
   permanentErrorCount: number;
   temporaryErrorCount: number;
   completedCount: number;
+  lang?: SupportedLanguage;
 }): string {
   const {
     isOnline,
@@ -62,7 +64,36 @@ export function computeUploadSubtitle(params: {
     permanentErrorCount,
     temporaryErrorCount,
     completedCount,
+    lang = "pt",
   } = params;
+
+  if (lang === "en") {
+    if (!isOnline) {
+      return pendingSyncCount > 0
+        ? `Offline. ${pendingSyncCount} ${pendingSyncCount === 1 ? "item waiting" : "items waiting"} to sync.`
+        : "No internet connection.";
+    }
+    if (isSyncing || inProgressCount > 0) {
+      const count = pendingSyncCount || inProgressCount || 1;
+      return `Syncing ${count} ${count === 1 ? "item" : "items"}...`;
+    }
+    if (authorizationErrorCount > 0) {
+      return "Sync blocked due to missing authorization";
+    }
+    if (permanentErrorCount > 0) {
+      return "An item needs attention before syncing.";
+    }
+    if (temporaryErrorCount > 0) {
+      return "Could not sync right now. Will retry automatically.";
+    }
+    if (completedCount > 0 && pendingSyncCount === 0) {
+      return `Sync complete. ${completedCount} ${completedCount === 1 ? "item sent" : "items sent"}.`;
+    }
+    if (pendingSyncCount > 0) {
+      return `Offline queue: ${pendingSyncCount} ${pendingSyncCount === 1 ? "pending item" : "pending items"}`;
+    }
+    return "No pending uploads.";
+  }
 
   if (!isOnline) {
     return pendingSyncCount > 0
@@ -108,6 +139,8 @@ export const UploadStatusIndicator: React.FC = () => {
     isOnline,
     isSyncing,
     triggerManualSync,
+    language,
+    t,
   } = useApp();
 
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
@@ -144,6 +177,7 @@ export const UploadStatusIndicator: React.FC = () => {
       permanentErrorCount,
       temporaryErrorCount,
       completedCount,
+      lang: language,
     });
 
   const getStatusBadge = (status: UploadTaskStatus["status"]) => {
@@ -152,7 +186,7 @@ export const UploadStatusIndicator: React.FC = () => {
         return (
           <span className="inline-flex items-center space-x-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-md">
             <Loader2 className="w-3 h-3 animate-spin" />
-            <span>Comprimindo</span>
+            <span>{language === "en" ? "Compressing" : "Comprimindo"}</span>
           </span>
         );
       case "SAVING_LOCAL":
@@ -166,28 +200,28 @@ export const UploadStatusIndicator: React.FC = () => {
         return (
           <span className="inline-flex items-center space-x-1 text-[11px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/40 px-2 py-0.5 rounded-md">
             <Smartphone className="w-3 h-3" />
-            <span>Segundo Plano</span>
+            <span>{language === "en" ? "Background" : "Segundo Plano"}</span>
           </span>
         );
       case "UPLOADING":
         return (
           <span className="inline-flex items-center space-x-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-md">
             <CloudUpload className="w-3 h-3 animate-pulse" />
-            <span>Enviando</span>
+            <span>{language === "en" ? "Uploading" : "Enviando"}</span>
           </span>
         );
       case "COMPLETED":
         return (
           <span className="inline-flex items-center space-x-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md">
             <Check className="w-3 h-3" />
-            <span>Concluído</span>
+            <span>{language === "en" ? "Done" : "Concluído"}</span>
           </span>
         );
       case "ERROR":
         return (
           <span className="inline-flex items-center space-x-1 text-[11px] font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 px-2 py-0.5 rounded-md">
             <AlertCircle className="w-3 h-3" />
-            <span>Erro</span>
+            <span>{language === "en" ? "Error" : "Erro"}</span>
           </span>
         );
       default:
@@ -229,7 +263,7 @@ export const UploadStatusIndicator: React.FC = () => {
             <div>
               <div className="flex items-center space-x-1.5">
                 <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-                  Status de Upload
+                  {t("uploadStatusTitle")}
                 </span>
                 {inProgressCount > 0 && (
                   <span className="text-[10px] bg-emerald-500 text-white font-black px-1.5 py-0.2 rounded-full">
@@ -239,7 +273,7 @@ export const UploadStatusIndicator: React.FC = () => {
                 {!isOnline && (
                   <span className="text-[10px] bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold px-1.5 py-0.2 rounded-md flex items-center space-x-0.5">
                     <WifiOff className="w-2.5 h-2.5" />
-                    <span>Offline</span>
+                    <span>{t("offline")}</span>
                   </span>
                 )}
               </div>
@@ -293,7 +327,15 @@ export const UploadStatusIndicator: React.FC = () => {
           <div className="px-4 py-2 bg-emerald-50/60 dark:bg-emerald-950/30 border-b border-emerald-100/50 dark:border-emerald-900/30 flex items-start space-x-2">
             <Smartphone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
             <p className="text-[11px] leading-tight text-emerald-800 dark:text-emerald-300">
-              <strong>Background Sync:</strong> Você pode fechar o aplicativo com segurança. Suas fotos e itens serão sincronizados em segundo plano.
+              {language === "en" ? (
+                <>
+                  <strong>Background Sync:</strong> You can safely close the app. Your photos and items will sync in the background.
+                </>
+              ) : (
+                <>
+                  <strong>Background Sync:</strong> Você pode fechar o aplicativo com segurança. Suas fotos e itens serão sincronizados em segundo plano.
+                </>
+              )}
             </p>
           </div>
         )}
@@ -405,7 +447,7 @@ export const UploadStatusIndicator: React.FC = () => {
               </div>
             ) : (
               <div className="text-center py-3 text-xs text-neutral-500 dark:text-neutral-400">
-                Nenhum upload pendente.
+                {t("uploadNoPending")}
               </div>
             )}
 
@@ -415,7 +457,9 @@ export const UploadStatusIndicator: React.FC = () => {
                 <div className="flex items-center space-x-1.5">
                   <HardDrive className="w-3.5 h-3.5 text-neutral-500" />
                   <span className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
-                    Fila offline: {pendingSyncCount} {pendingSyncCount === 1 ? "item" : "itens"}
+                    {language === "en"
+                      ? `Offline queue: ${pendingSyncCount} ${pendingSyncCount === 1 ? "item" : "items"}`
+                      : `Fila offline: ${pendingSyncCount} ${pendingSyncCount === 1 ? "item" : "itens"}`}
                   </span>
                 </div>
                 {isOnline && (
@@ -434,7 +478,7 @@ export const UploadStatusIndicator: React.FC = () => {
                     }`}
                   >
                     <RefreshCw className={`w-3 h-3 ${isSyncing ? "animate-spin" : ""}`} />
-                    <span>{isSyncing ? "Sincronizando..." : "Sincronizar Agora"}</span>
+                    <span>{isSyncing ? t("syncing") : t("syncNow")}</span>
                   </button>
                 )}
               </div>

@@ -68,6 +68,7 @@ const MainContent: React.FC = () => {
     isGuest,
     darkMode,
     addToast,
+    t,
   } = useApp();
 
   const { routeKey, pathname, searchParams, navigate } = useRouter();
@@ -332,10 +333,10 @@ const MainContent: React.FC = () => {
 
                 <div className="space-y-2">
                   <h1 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-                    Histórico Oficial de Versões
+                    {t("versionHistoryRestrictedTitle", "Histórico Oficial de Versões")}
                   </h1>
                   <p className="text-sm text-slate-600 dark:text-slate-300 max-w-md mx-auto leading-relaxed">
-                    O acesso ao changelog institucional e histórico de releases é restrito a membros autenticados da comunidade acadêmica do IFPR. Entre com sua conta institucional (@ifpr.edu.br ou @estudantes.ifpr.edu.br).
+                    {t("versionHistoryRestrictedDesc", "O acesso ao changelog institucional e histórico de releases é restrito a membros autenticados da comunidade acadêmica do IFPR. Entre com sua conta institucional (@ifpr.edu.br ou @estudantes.ifpr.edu.br).")}
                   </p>
                 </div>
 
@@ -349,7 +350,7 @@ const MainContent: React.FC = () => {
                     }}
                   >
                     <LogIn className="w-4 h-4" />
-                    <span>Entrar com Conta Institucional</span>
+                    <span>{t("signInInstitutional", "Entrar com Conta Institucional")}</span>
                   </UIButton>
                   <UIButton
                     variant="secondary"
@@ -359,7 +360,7 @@ const MainContent: React.FC = () => {
                       navigate("/");
                     }}
                   >
-                    <span>Voltar ao Início</span>
+                    <span>{t("backToHome", "Voltar ao Início")}</span>
                   </UIButton>
                 </div>
               </SurfaceCard>
@@ -385,12 +386,12 @@ const MainContent: React.FC = () => {
       {/* Mandatory Email Verification Alert Banner */}
       {isEmailVerificationRequired && (
         <div className="bg-amber-600 dark:bg-amber-700 text-white px-4 py-2 text-xs font-medium text-center flex flex-wrap items-center justify-center gap-2 border-b border-amber-500">
-          <span>Confirme seu endereço de e-mail para liberar o acesso completo.</span>
+          <span>{t("verifyEmailBanner", "Confirme seu endereço de e-mail para liberar o acesso completo.")}</span>
           <button
             onClick={() => navigate("/verificar-email")}
             className="underline hover:text-amber-100 font-semibold ml-1 text-xs cursor-pointer"
           >
-            Verificar agora
+            {t("verifyNow", "Verificar agora")}
           </button>
         </div>
       )}
@@ -398,21 +399,21 @@ const MainContent: React.FC = () => {
       {/* Pending User Approval Banner for Academic Users */}
       {currentUser.approvalStatus === "PENDENTE" && (
         <div className="bg-sky-600 dark:bg-sky-700 text-white px-4 py-2 text-xs font-medium text-center flex items-center justify-center border-b border-sky-500">
-          <span>Conta institucional aguardando homologação pela Secretaria do IFPR Campus Ivaiporã.</span>
+          <span>{t("pendingApprovalBanner", "Conta institucional aguardando homologação pela Secretaria do IFPR Campus Ivaiporã.")}</span>
         </div>
       )}
 
       {/* Global Maintenance Mode Overlay for Standard Users */}
       {maintenanceMode && currentUser.role !== "ADMIN" && (
-        <ModalShell isOpen={true} maxWidthClass="max-w-md" ariaLabel="Sistema em Manutenção Programada">
+        <ModalShell isOpen={true} maxWidthClass="max-w-md" ariaLabel={t("maintenanceTitle", "Sistema em Atualização Técnica")}>
           <div className="p-6 sm:p-8 space-y-5 text-center">
             <div className="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60 flex items-center justify-center mx-auto">
               <Wrench className="w-6 h-6" />
             </div>
             <div className="space-y-2">
-              <UIBadge tone="amber">Manutenção Programada • IFPR</UIBadge>
+              <UIBadge tone="amber">{t("maintenanceBadge", "Manutenção Programada • IFPR")}</UIBadge>
               <h2 className="text-lg font-bold text-[#172B2A] dark:text-white pt-1">
-                Sistema em Atualização Técnica
+                {t("maintenanceTitle", "Sistema em Atualização Técnica")}
               </h2>
               <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-[#F8FAFC] dark:bg-slate-800/70 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700">
                 {maintenanceCustomMessage || DEFAULT_MAINTENANCE_MESSAGE}
@@ -426,7 +427,7 @@ const MainContent: React.FC = () => {
                 fullWidth
                 onClick={() => setAuthModalOpen(true)}
               >
-                <span>Acesso Administrador TI</span>
+                <span>{t("adminItAccess", "Acesso Administrador TI")}</span>
               </UIButton>
             </div>
           </div>

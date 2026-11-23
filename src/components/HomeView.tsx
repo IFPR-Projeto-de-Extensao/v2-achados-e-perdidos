@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { EmptyState } from "./ui";
 import { computeHomeItemStats } from "../lib/homeStatsUtils";
+import { getLocaleForLanguage } from "../lib/i18n";
 
 const SEARCH_HISTORY_KEY = "ifpr_search_history";
 
@@ -32,6 +33,8 @@ export const HomeView: React.FC = () => {
     addToast,
     currentUser,
     requestAuthForRegistration,
+    language,
+    t,
   } = useApp();
   const { navigate } = useRouter();
 
@@ -96,20 +99,20 @@ export const HomeView: React.FC = () => {
 
     if (!SpeechRecognition) {
       addToast(
-        "Busca por voz não disponível neste navegador.",
+        t("voiceSearchNotAvailable", "Busca por voz não disponível neste navegador."),
         "info"
       );
       return;
     }
 
     const recognition = new SpeechRecognition();
-    recognition.lang = "pt-BR";
+    recognition.lang = getLocaleForLanguage(language);
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
       setIsListeningVoice(true);
-      addToast("Ouvindo... Fale o nome ou cor do objeto.", "info");
+      addToast(t("voiceSearchListening", "Ouvindo... Fale o nome ou cor do objeto."), "info");
     };
 
     recognition.onresult = (event: any) => {
@@ -164,10 +167,10 @@ export const HomeView: React.FC = () => {
       <section className="pt-1 sm:pt-3 space-y-4">
         <div className="space-y-1">
           <h1 className="text-xl sm:text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-            Central de Achados e Perdidos
+            {t("heroTitle", "Central de Achados e Perdidos")}
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-            IFPR Campus Ivaiporã · Atendimento presencial na Portaria Principal e SEPAE (Seg a Sex, 07h às 22h)
+            {t("homeOfficeHours", "IFPR Campus Ivaiporã · Atendimento presencial na Portaria Principal e SEPAE (Seg a Sex, 07h às 22h)")}
           </p>
         </div>
 
@@ -190,7 +193,7 @@ export const HomeView: React.FC = () => {
                     setShowHistoryDropdown(false);
                   }
                 }}
-                placeholder="Buscar objeto, cor, local ou código QR..."
+                placeholder={t("homeSearchPlaceholder", "Buscar objeto, cor, local ou código QR...")}
                 className="w-full bg-transparent text-[#172B2A] dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm focus:outline-none"
               />
 
@@ -199,8 +202,8 @@ export const HomeView: React.FC = () => {
                   type="button"
                   onClick={() => setQuickSearch("")}
                   className="min-w-[36px] min-h-[36px] flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                  title="Limpar busca"
-                  aria-label="Limpar busca"
+                  title={t("clearSearch", "Limpar busca")}
+                  aria-label={t("clearSearch", "Limpar busca")}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -209,8 +212,8 @@ export const HomeView: React.FC = () => {
               <button
                 type="button"
                 onClick={handleVoiceSearch}
-                title="Pesquisar por voz"
-                aria-label="Pesquisar por voz"
+                title={t("voiceSearch", "Pesquisar por voz")}
+                aria-label={t("voiceSearch", "Pesquisar por voz")}
                 className={`min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
                   isListeningVoice
                     ? "bg-rose-600 text-white"
@@ -231,12 +234,12 @@ export const HomeView: React.FC = () => {
                 vibrateClick();
                 setQrScannerOpen(true);
               }}
-              title="Ler etiqueta QR Code"
-              aria-label="Ler etiqueta QR Code"
+              title={t("scanQr", "Ler QR Code")}
+              aria-label={t("scanQr", "Ler QR Code")}
               className="min-h-[48px] min-w-[48px] px-3.5 rounded-xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 hover:border-[#16845B] text-[#172B2A] dark:text-white flex items-center justify-center gap-2 text-xs font-semibold transition-colors shrink-0 cursor-pointer"
             >
               <QrCode className="w-4.5 h-4.5 text-[#16845B] dark:text-emerald-400" />
-              <span className="hidden sm:inline">Ler QR Code</span>
+              <span className="hidden sm:inline">{t("scanQr", "Ler QR Code")}</span>
             </button>
           </div>
 
@@ -244,13 +247,13 @@ export const HomeView: React.FC = () => {
           {showHistoryDropdown && searchHistory.length > 0 && (
             <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-[#111827] rounded-xl border border-slate-200 dark:border-slate-800 p-3 z-30 shadow-sm">
               <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pb-2 mb-2 border-b border-slate-100 dark:border-slate-800">
-                <span className="font-medium">Buscas recentes</span>
+                <span className="font-medium">{t("recentSearches", "Buscas recentes")}</span>
                 <button
                   type="button"
                   onClick={() => clearSearchHistory()}
                   className="text-rose-600 hover:underline font-medium cursor-pointer"
                 >
-                  Limpar
+                  {t("clear", "Limpar")}
                 </button>
               </div>
               <div className="flex flex-wrap gap-1.5">
@@ -282,7 +285,7 @@ export const HomeView: React.FC = () => {
             }}
             className="flex-1 sm:flex-none min-h-[46px] px-5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
-            <span>Consultar Objetos</span>
+            <span>{t("ctaBrowseCatalog", "Consultar Objetos")}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
 
@@ -299,7 +302,7 @@ export const HomeView: React.FC = () => {
               className="flex-1 sm:flex-none min-h-[46px] px-4 rounded-xl bg-white dark:bg-[#111827] hover:bg-[#F8FAFC] dark:hover:bg-slate-800 text-[#172B2A] dark:text-slate-200 border border-slate-200 dark:border-slate-800 text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
-              <span>Registrar Objeto</span>
+              <span>{t("ctaRegisterObject", "Registrar Objeto")}</span>
             </button>
           )}
         </div>
@@ -307,7 +310,7 @@ export const HomeView: React.FC = () => {
 
       {/* 2. RESUMO ESTATÍSTICO COMPACTO (Sem cartões volumosos, não compete com a consulta) */}
       <section
-        aria-label="Resumo do acervo"
+        aria-label={t("recentObjects", "Objetos Recentes")}
         className="grid grid-cols-4 divide-x divide-slate-200/80 dark:divide-slate-800 border-y border-slate-200/80 dark:border-slate-800 py-3"
       >
         <button
@@ -322,7 +325,7 @@ export const HomeView: React.FC = () => {
             {stats.totalItems}
           </p>
           <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Registrados
+            {t("statsRegistered", "Registrados")}
           </p>
         </button>
 
@@ -338,7 +341,7 @@ export const HomeView: React.FC = () => {
             {stats.foundItems}
           </p>
           <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Encontrados
+            {t("statsFound", "Encontrados")}
           </p>
         </button>
 
@@ -354,7 +357,7 @@ export const HomeView: React.FC = () => {
             {stats.lostItems}
           </p>
           <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Perdidos
+            {t("statsLost", "Perdidos")}
           </p>
         </button>
 
@@ -370,7 +373,7 @@ export const HomeView: React.FC = () => {
             {stats.returnedItems}
           </p>
           <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Devolvidos
+            {t("statsReturned", "Devolvidos")}
           </p>
         </button>
       </section>
@@ -391,7 +394,7 @@ export const HomeView: React.FC = () => {
                   : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
-              Recentes
+              {t("recentTab", "Recentes")}
             </button>
             <button
               type="button"
@@ -405,7 +408,7 @@ export const HomeView: React.FC = () => {
                   : "text-slate-600 dark:text-slate-400 hover:text-[#16845B]"
               }`}
             >
-              Encontrados
+              {t("foundItems", "Encontrados")}
             </button>
             <button
               type="button"
@@ -419,7 +422,7 @@ export const HomeView: React.FC = () => {
                   : "text-slate-600 dark:text-slate-400 hover:text-rose-600"
               }`}
             >
-              Perdidos
+              {t("lostItems", "Perdidos")}
             </button>
           </div>
 
@@ -431,7 +434,7 @@ export const HomeView: React.FC = () => {
             }}
             className="min-h-[36px] px-2 text-xs font-semibold text-[#16845B] dark:text-emerald-400 hover:underline inline-flex items-center gap-1 cursor-pointer shrink-0"
           >
-            <span>Ver todos</span>
+            <span>{t("viewAll", "Ver todos")}</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -441,13 +444,13 @@ export const HomeView: React.FC = () => {
             icon={<PackageSearch className="w-5 h-5" />}
             title={
               items.length === 0
-                ? "Nenhum objeto registrado no momento"
-                : "Nenhum objeto encontrado para esta busca"
+                ? t("homeEmptyTitle", "Nenhum objeto registrado no momento")
+                : t("homeEmptySearchTitle", "Nenhum objeto encontrado para esta busca")
             }
             description={
               items.length === 0
-                ? "Os itens entregues na Portaria ou SEPAE aparecerão aqui."
-                : "Tente limpar o filtro ou consultar o catálogo completo."
+                ? t("homeEmptyDesc", "Os itens entregues na Portaria ou SEPAE aparecerão aqui.")
+                : t("homeEmptySearchDesc", "Tente limpar o filtro ou consultar o catálogo completo.")
             }
             action={
               (quickSearch || activeTypeFilter !== "TODOS") && (
@@ -460,7 +463,7 @@ export const HomeView: React.FC = () => {
                   className="min-h-[40px] px-4 rounded-lg bg-[#16845B] text-white text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Limpar filtro</span>
+                  <span>{t("clearFilter", "Limpar filtro")}</span>
                 </button>
               )
             }

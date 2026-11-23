@@ -1,28 +1,42 @@
 import React from "react";
-import { X, Keyboard, ArrowRight } from "lucide-react";
+import { X, Keyboard } from "lucide-react";
 import { vibrateClick } from "../lib/utils";
+import { useApp } from "../context/AppContext";
 
 interface KeyboardShortcutsModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const SHORTCUTS = [
-  { key: "H", description: "Ir para a Página Inicial (Home)" },
-  { key: "S", description: "Pesquisar / Catálogo de Objetos" },
-  { key: "R", description: "Cadastrar Novo Objeto Perdido / Achado" },
-  { key: "D", description: "Acessar Painel / Dashboard" },
-  { key: "P", description: "Ver Perfil do Usuário" },
-  { key: "Q", description: "Abrir Scanner de QR Code do Campus" },
-  { key: "?", description: "Exibir este Guia de Atalhos de Teclado" },
-  { key: "Esc", description: "Fechar Modais e Janelas Abertas" },
-];
-
 export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  const { language, t } = useApp();
   if (!isOpen) return null;
+
+  const shortcuts =
+    language === "en"
+      ? [
+          { key: "H", description: "Go to Home Page" },
+          { key: "S", description: "Search / Object Catalog" },
+          { key: "R", description: "Register New Lost / Found Object" },
+          { key: "D", description: "Open Panel / Dashboard" },
+          { key: "P", description: "View User Profile" },
+          { key: "Q", description: "Open Campus QR Code Scanner" },
+          { key: "?", description: "Show this Keyboard Shortcuts Guide" },
+          { key: "Esc", description: "Close Open Modals & Windows" },
+        ]
+      : [
+          { key: "H", description: "Ir para a Página Inicial (Home)" },
+          { key: "S", description: "Pesquisar / Catálogo de Objetos" },
+          { key: "R", description: "Cadastrar Novo Objeto Perdido / Achado" },
+          { key: "D", description: "Acessar Painel / Dashboard" },
+          { key: "P", description: "Ver Perfil do Usuário" },
+          { key: "Q", description: "Abrir Scanner de QR Code do Campus" },
+          { key: "?", description: "Exibir este Guia de Atalhos de Teclado" },
+          { key: "Esc", description: "Fechar Modais e Janelas Abertas" },
+        ];
 
   return (
     <div
@@ -47,10 +61,10 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
                 id="shortcuts-modal-title"
                 className="text-base font-extrabold text-neutral-900 dark:text-white"
               >
-                Atalhos de Teclado
+                {t("shortcutsTitle")}
               </h2>
               <p className="text-[11px] text-neutral-500">
-                Navegação rápida e acessibilidade no Localiza+ IFPR
+                {t("shortcutsSubtitle")}
               </p>
             </div>
           </div>
@@ -61,7 +75,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
               vibrateClick();
               onClose();
             }}
-            aria-label="Fechar atalhos de teclado"
+            aria-label={t("close")}
             className="p-1.5 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-neutral-700 dark:hover:text-white transition-colors"
           >
             <X className="w-5 h-5" />
@@ -70,7 +84,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
 
         {/* Shortcuts List */}
         <div className="divide-y divide-neutral-100 dark:divide-neutral-800/60 max-h-[60vh] overflow-y-auto pr-1">
-          {SHORTCUTS.map((item) => (
+          {shortcuts.map((item) => (
             <div
               key={item.key}
               className="py-2.5 flex items-center justify-between text-xs"
@@ -87,7 +101,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
 
         {/* Footer Note */}
         <div className="pt-2 text-center text-[10px] text-neutral-400 border-t border-neutral-100 dark:border-neutral-800">
-          Pressione qualquer atalho fora dos campos de texto para navegar instantaneamente.
+          {t("shortcutsFooter")}
         </div>
       </div>
     </div>

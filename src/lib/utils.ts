@@ -1,6 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { ITEM_FIELD_LIMITS } from "./constants";
+import { getLocaleForLanguage, getStoredLanguage, SupportedLanguage } from "./i18n";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -145,9 +146,22 @@ export function safeParseDate(input: unknown): Date | null {
  * and strings. Returns 'Data não informada' for null, undefined, corrupted or invalid values,
  * strictly preventing any 'RangeError: Invalid time value'.
  */
-export function formatSafeDate(input: unknown, fallback = "Data não informada"): string {
+export function formatSafeDate(
+  input: unknown,
+  fallback?: string,
+  lang?: SupportedLanguage
+): string {
+  const effectiveLang = lang ?? getStoredLanguage();
+  const locale = getLocaleForLanguage(effectiveLang);
+  const resolvedFallback =
+    fallback !== undefined
+      ? fallback
+      : effectiveLang === "en"
+      ? "Date not provided"
+      : "Data não informada";
+
   if (input === null || input === undefined || input === "" || input === "null" || input === "undefined") {
-    return fallback;
+    return resolvedFallback;
   }
 
   // 1. Direct Firestore Timestamp object with .toDate() method
@@ -155,23 +169,23 @@ export function formatSafeDate(input: unknown, fallback = "Data não informada")
     try {
       const d = (input as any).toDate();
       if (d instanceof Date && !isNaN(d.getTime())) {
-        return new Intl.DateTimeFormat("pt-BR", {
+        return new Intl.DateTimeFormat(locale, {
           day: "2-digit",
           month: "2-digit",
           year: "numeric",
         }).format(d);
       }
     } catch {
-      return fallback;
+      return resolvedFallback;
     }
   }
 
   // 2. Parse through safe parser
   const date = safeParseDate(input);
-  if (!date || isNaN(date.getTime())) return fallback;
+  if (!date || isNaN(date.getTime())) return resolvedFallback;
 
   try {
-    return new Intl.DateTimeFormat("pt-BR", {
+    return new Intl.DateTimeFormat(locale, {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -181,9 +195,9 @@ export function formatSafeDate(input: unknown, fallback = "Data não informada")
       const d = String(date.getDate()).padStart(2, "0");
       const m = String(date.getMonth() + 1).padStart(2, "0");
       const y = date.getFullYear();
-      return `${d}/${m}/${y}`;
+      return effectiveLang === "en" ? `${m}/${d}/${y}` : `${d}/${m}/${y}`;
     } catch {
-      return fallback;
+      return resolvedFallback;
     }
   }
 }
@@ -194,12 +208,25 @@ export function formatSafeDate(input: unknown, fallback = "Data não informada")
 export const formatDate = formatSafeDate;
 
 /**
- * Formats any date input into a Brazilian formatted date & time string: DD/MM/YYYY HH:mm
+ * Formats any date input into a localized date & time string (pt-BR or en-US).
  * Guaranteed to never throw RangeError: Invalid time value.
  */
-export function formatSafeDateTime(input: unknown, fallback = "Data não informada"): string {
+export function formatSafeDateTime(
+  input: unknown,
+  fallback?: string,
+  lang?: SupportedLanguage
+): string {
+  const effectiveLang = lang ?? getStoredLanguage();
+  const locale = getLocaleForLanguage(effectiveLang);
+  const resolvedFallback =
+    fallback !== undefined
+      ? fallback
+      : effectiveLang === "en"
+      ? "Date not provided"
+      : "Data não informada";
+
   if (input === null || input === undefined || input === "" || input === "null" || input === "undefined") {
-    return fallback;
+    return resolvedFallback;
   }
 
   // 1. Direct Firestore Timestamp object with .toDate() method
@@ -207,7 +234,7 @@ export function formatSafeDateTime(input: unknown, fallback = "Data não informa
     try {
       const d = (input as any).toDate();
       if (d instanceof Date && !isNaN(d.getTime())) {
-        return new Intl.DateTimeFormat("pt-BR", {
+        return new Intl.DateTimeFormat(locale, {
           day: "2-digit",
           month: "2-digit",
           year: "numeric",
@@ -216,14 +243,14 @@ export function formatSafeDateTime(input: unknown, fallback = "Data não informa
         }).format(d);
       }
     } catch {
-      return fallback;
+      return resolvedFallback;
     }
   }
 
   const date = safeParseDate(input);
-  if (!date || isNaN(date.getTime())) return fallback;
+  if (!date || isNaN(date.getTime())) return resolvedFallback;
   try {
-    return new Intl.DateTimeFormat("pt-BR", {
+    return new Intl.DateTimeFormat(locale, {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -237,9 +264,9 @@ export function formatSafeDateTime(input: unknown, fallback = "Data não informa
       const y = date.getFullYear();
       const h = String(date.getHours()).padStart(2, "0");
       const min = String(date.getMinutes()).padStart(2, "0");
-      return `${d}/${m}/${y} ${h}:${min}`;
+      return effectiveLang === "en" ? `${m}/${d}/${y} ${h}:${min}` : `${d}/${m}/${y} ${h}:${min}`;
     } catch {
-      return fallback;
+      return resolvedFallback;
     }
   }
 }

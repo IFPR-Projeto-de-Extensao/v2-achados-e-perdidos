@@ -32,6 +32,8 @@ export const NotificationsView: React.FC = () => {
     testFCMAlert,
     items,
     setSelectedItemForDetail,
+    language,
+    t,
   } = useApp();
 
   const [filter, setFilter] = useState<"ALL" | "UNREAD" | "READ">("ALL");
@@ -64,13 +66,13 @@ export const NotificationsView: React.FC = () => {
     <div className="max-w-4xl mx-auto space-y-5 animate-in fade-in duration-300">
       {/* Header */}
       <PageHeader
-        eyebrow="Central de Comunicações"
-        title="Notificações & Alertas"
-        description="Receba atualizações em tempo real sobre itens encontrados, correspondências inteligentes e devoluções."
+        eyebrow={t("notificationsEyebrow", "Central de Comunicações")}
+        title={t("notificationsTitle", "Notificações & Alertas")}
+        description={t("notificationsSubtitle", "Receba atualizações em tempo real sobre itens encontrados, correspondências inteligentes e devoluções.")}
         icon={<Bell className="w-5 h-5" />}
         badge={
           unreadCount > 0 ? (
-            <UIBadge tone="emerald">{unreadCount} não lidas</UIBadge>
+            <UIBadge tone="emerald">{unreadCount} {t("unreadBadge", "não lidas")}</UIBadge>
           ) : undefined
         }
         actions={
@@ -82,7 +84,7 @@ export const NotificationsView: React.FC = () => {
                 onClick={handleMarkAllRead}
               >
                 <CheckCheck className="w-4 h-4" />
-                <span>Marcar todas lidas</span>
+                <span>{t("markAllRead", "Marcar todas lidas")}</span>
               </UIButton>
             )}
 
@@ -96,7 +98,7 @@ export const NotificationsView: React.FC = () => {
                 }}
               >
                 <Trash2 className="w-4 h-4 text-rose-500" />
-                <span>Limpar histórico</span>
+                <span>{t("clearHistory", "Limpar histórico")}</span>
               </UIButton>
             )}
           </>
@@ -115,10 +117,10 @@ export const NotificationsView: React.FC = () => {
             </div>
             <div>
               <h3 className="font-bold text-sm text-[#172B2A] dark:text-white">
-                Ativar Notificações Push do IFPR
+                {t("enablePushTitle", "Ativar Notificações Push do IFPR")}
               </h3>
               <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 max-w-xl leading-relaxed">
-                Seja avisado instantaneamente no seu navegador ou smartphone quando alguém encontrar um objeto que você perdeu no campus.
+                {t("enablePushDesc", "Seja avisado instantaneamente no seu navegador ou smartphone quando alguém encontrar um objeto que você perdeu no campus.")}
               </p>
             </div>
           </div>
@@ -131,7 +133,7 @@ export const NotificationsView: React.FC = () => {
               requestNotificationPermission();
             }}
           >
-            Ativar Notificações Push
+            {t("enablePushBtn", "Ativar Notificações Push")}
           </UIButton>
         </SurfaceCard>
       )}
@@ -154,7 +156,7 @@ export const NotificationsView: React.FC = () => {
                 : "text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900 hover:text-[#172B2A] dark:hover:text-white"
             }`}
           >
-            Todas ({userNotifications.length})
+            {t("filterAll", "Todas")} ({userNotifications.length})
           </button>
 
           <button
@@ -169,7 +171,7 @@ export const NotificationsView: React.FC = () => {
                 : "text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900 hover:text-[#172B2A] dark:hover:text-white"
             }`}
           >
-            <span>Não Lidas</span>
+            <span>{t("filterUnread", "Não Lidas")}</span>
             {unreadCount > 0 && (
               <span
                 className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
@@ -195,7 +197,7 @@ export const NotificationsView: React.FC = () => {
                 : "text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-900 hover:text-[#172B2A] dark:hover:text-white"
             }`}
           >
-            Lidas ({readCount})
+            {t("filterRead", "Lidas")} ({readCount})
           </button>
         </div>
 
@@ -207,10 +209,10 @@ export const NotificationsView: React.FC = () => {
             vibrateClick();
             testFCMAlert();
           }}
-          title="Testar som e sinal de alerta"
+          title={t("testSound", "Testar Som")}
         >
           <Volume2 className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
-          <span>Testar Som</span>
+          <span>{t("testSound", "Testar Som")}</span>
         </UIButton>
       </SurfaceCard>
 
@@ -218,11 +220,11 @@ export const NotificationsView: React.FC = () => {
       {filteredNotifications.length === 0 ? (
         <EmptyState
           icon={<Bell className="w-7 h-7" />}
-          title="Nenhuma notificação encontrada"
+          title={t("noNotificationsTitle", "Nenhuma notificação encontrada")}
           description={
             filter === "UNREAD"
-              ? "Você já leu todas as suas notificações!"
-              : "Quando houver novas correspondências de objetos ou mensagens, elas aparecerão aqui."
+              ? t("noUnreadDesc", "Você já leu todas as suas notificações!")
+              : t("noNotificationsDesc", "Quando houver novas correspondências de objetos ou mensagens, elas aparecerão aqui.")
           }
         />
       ) : (
@@ -286,7 +288,7 @@ export const NotificationsView: React.FC = () => {
                           {notification.title}
                         </h4>
                         {!notification.read && (
-                          <UIBadge tone="emerald">Nova</UIBadge>
+                          <UIBadge tone="emerald">{t("newBadge", "Nova")}</UIBadge>
                         )}
                       </div>
                       <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
@@ -296,7 +298,7 @@ export const NotificationsView: React.FC = () => {
                       {relatedItem && (
                         <div className="pt-0.5">
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#064E3B] dark:text-emerald-300 text-xs font-semibold border border-[#16845B]/20 dark:border-emerald-800/60">
-                            <span>Objeto relacionado: {relatedItem.title}</span>
+                            <span>{t("relatedItemLabel", "Objeto relacionado")}: {relatedItem.title}</span>
                             <ExternalLink className="w-3 h-3" />
                           </span>
                         </div>
@@ -305,7 +307,7 @@ export const NotificationsView: React.FC = () => {
                   </div>
 
                   <span className="text-[11px] text-slate-400 dark:text-slate-500 font-mono tabular-nums whitespace-nowrap shrink-0 sm:pt-0.5">
-                    {formatDateTime(notification.timestamp || (notification as any).createdAt)}
+                    {formatDateTime(notification.timestamp || (notification as any).createdAt, undefined, language)}
                   </span>
                 </div>
               </SurfaceCard>

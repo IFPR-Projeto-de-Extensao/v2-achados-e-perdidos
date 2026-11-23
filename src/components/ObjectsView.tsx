@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { useApp } from "../context/AppContext";
 import { ItemCard } from "./ItemCard";
@@ -9,6 +9,20 @@ import { ItemCategory, LostFoundItem } from "../types";
 import { isCategoryMatch, getCategoryDisplay } from "../lib/categoryUtils";
 import { canOperateFormalReturn, canReopenFormalReturn } from "../lib/devolutionAuth";
 import { auth } from "../lib/firebase";
+import {
+  toggleItemSelection,
+  areAllFilteredItemsSelected,
+  areSomeFilteredItemsSelected,
+  toggleSelectAllFiltered,
+  pruneStaleSelectedIds,
+  resolveBulkActionTargetIds,
+  reconcileSelectionAfterBulkAction,
+} from "../lib/catalogSelectionUtils";
+import {
+  translateCategory,
+  translateColor,
+  translateCampusBlock,
+} from "../lib/i18n";
 import {
   formatDate,
   vibrateClick,
@@ -85,13 +99,13 @@ const CAMPUS_BLOCKS = [
 ];
 
 const TIME_PRESETS = [
-  { id: "TODOS", label: "Qualquer período" },
-  { id: "24H", label: "Últimas 24 horas (Novos)" },
-  { id: "HOJE", label: "Hoje" },
-  { id: "7_DIAS", label: "Últimos 7 dias" },
-  { id: "30_DIAS", label: "Últimos 30 dias" },
-  { id: "SEMESTRE_ATUAL", label: "Semestre Letivo Atual" },
-  { id: "CUSTOM", label: "Personalizado (De / Até)" },
+  { id: "TODOS", labelKey: "periodAny" as const },
+  { id: "24H", labelKey: "period24h" as const },
+  { id: "HOJE", labelKey: "periodToday" as const },
+  { id: "7_DIAS", labelKey: "period7Days" as const },
+  { id: "30_DIAS", labelKey: "period30Days" as const },
+  { id: "SEMESTRE_ATUAL", labelKey: "periodSemester" as const },
+  { id: "CUSTOM", labelKey: "periodCustom" as const },
 ];
 
 const PAGE_STEP = 18;
@@ -108,6 +122,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
     bulkDeleteItems,
     isOnline,
     catalogSyncState,
+    language,
+    t,
   } = useApp();
 
   const [search, setSearch] = useState("");
@@ -231,21 +247,15 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
     }
   }, [canManageBulkItems, isSelectableMode, selectedItemIds.length]);
 
+  const headerCheckboxRef = useRef<HTMLInputElement | null>(null);
+
   const handleToggleSelectItem = (id: string, shouldSelect: boolean) => {
-    if (shouldSelect) {
-      setSelectedItemIds((prev) => [...prev, id]);
-    } else {
-      setSelectedItemIds((prev) => prev.filter((i) => i !== id));
-    }
+    setSelectedItemIds((prev) => toggleItemSelection(prev, id, shouldSelect));
   };
 
   const handleSelectAllFiltered = () => {
     const allFilteredIds = filteredItems.map((i) => i.id);
-    if (selectedItemIds.length === allFilteredIds.length) {
-      setSelectedItemIds([]);
-    } else {
-      setSelectedItemIds(allFilteredIds);
-    }
+    setSelectedItemIds((prev) => toggleSelectAllFiltered(prev, allFilteredIds));
   };
 
   useEffect(() => {
@@ -354,9 +364,11 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
   useEffect(() => {
     setSelectedItemIds((prev) => {
       if (prev.length === 0) return prev;
-      const validIds = new Set(activeItemsPool.map((it) => it.id));
-      const next = prev.filter((id) => validIds.has(id));
-      return next.length === prev.length ? prev : next;
+      const validIds = activeItemsPool.map((it) => it.id);
+      const next = pruneStaleSelectedIds(prev, validIds);
+      return next.length === prev.length && next.every((id, idx) => id === prev[idx])
+        ? prev
+        : next;
     });
   }, [activeItemsPool]);
 
@@ -573,19 +585,44 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
     [filteredItems, visibleCount]
   );
 
+  const filteredItemIds = useMemo(
+    () => filteredItems.map((i) => i.id),
+    [filteredItems]
+  );
+
+  const allFilteredSelected = useMemo(
+    () => areAllFilteredItemsSelected(selectedItemIds, filteredItemIds),
+    [selectedItemIds, filteredItemIds]
+  );
+
+  const someFilteredSelected = useMemo(
+    () => areSomeFilteredItemsSelected(selectedItemIds, filteredItemIds),
+    [selectedItemIds, filteredItemIds]
+  );
+
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      headerCheckboxRef.current.indeterminate =
+        someFilteredSelected && !allFilteredSelected;
+    }
+  }, [someFilteredSelected, allFilteredSelected, isSelectableMode, layoutViewMode]);
+
   const getStatusBadgeInfo = (item: LostFoundItem) => {
     switch (item.status) {
       case "PERDIDO":
-        return { label: "Perdido", tone: "rose" as const };
+        return { label: t("statusLost", "Perdido"), tone: "rose" as const };
       case "ENCONTRADO":
-        return { label: "Encontrado", tone: "emerald" as const };
+        return { label: t("statusFound", "Encontrado"), tone: "emerald" as const };
       case "EM_ANALISE":
-        return { label: "Em Análise", tone: "amber" as const };
+        return { label: t("statusReview", "Em Análise"), tone: "amber" as const };
       case "DEVOLVIDO":
-        return { label: "Devolvido", tone: "blue" as const };
+        return { label: t("statusReturned", "Devolvido"), tone: "blue" as const };
       default:
         return {
-          label: item.type === "PERDIDO" ? "Perdido" : "Encontrado",
+          label:
+            item.type === "PERDIDO"
+              ? t("statusLost", "Perdido")
+              : t("statusFound", "Encontrado"),
           tone:
             item.type === "PERDIDO" ? ("rose" as const) : ("emerald" as const),
         };
@@ -600,17 +637,21 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight">
               {filterType === "ENCONTRADO"
-                ? "Objetos Encontrados"
+                ? t("catalogFoundTitle", "Objetos Encontrados")
                 : filterType === "PERDIDO"
-                ? "Objetos Perdidos"
+                ? t("catalogLostTitle", "Objetos Perdidos")
                 : filterType === "EM_ANALISE"
-                ? "Objetos em Análise"
+                ? t("catalogReviewTitle", "Objetos em Análise")
                 : filterType === "DEVOLVIDO"
-                ? "Objetos Devolvidos"
-                : "Catálogo de Objetos"}
+                ? t("catalogReturnedTitle", "Objetos Devolvidos")
+                : t("catalogTitle", "Catálogo de Objetos")}
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {filteredItems.length} {filteredItems.length === 1 ? "item listado" : "itens listados"} no acervo
+              {filteredItems.length}{" "}
+              {filteredItems.length === 1
+                ? t("itemListedSingular", "item listado")
+                : t("itemListedPlural", "itens listados")}{" "}
+              {t("inArchive", "no acervo")}
             </p>
           </div>
 
@@ -621,11 +662,11 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                 vibrateClick();
                 setIsExportReportModalOpen(true);
               }}
-              aria-label="Exportar Relatório Oficial de Itens Encontrados em PDF para Prestação de Contas"
+              aria-label={t("exportPdfTitle", "Exportar Relatório de Achados (PDF)")}
               className="min-h-[38px] px-3 py-1.5 rounded-lg bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 hover:border-[#16845B] text-xs font-medium text-[#172B2A] dark:text-slate-200 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               <FileText className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
-              <span className="hidden sm:inline">Relatório PDF</span>
+              <span className="hidden sm:inline">{t("pdfReport", "Relatório PDF")}</span>
               <span className="sm:hidden">PDF</span>
             </button>
 
@@ -636,6 +677,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                   setIsSelectableMode(!isSelectableMode);
                   if (isSelectableMode) setSelectedItemIds([]);
                 }}
+                aria-pressed={isSelectableMode}
                 className={`min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 border transition-colors cursor-pointer ${
                   isSelectableMode
                     ? "bg-[#16845B] text-white border-[#16845B]"
@@ -644,7 +686,9 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               >
                 <CheckSquare className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">
-                  {isSelectableMode ? "Concluir Seleção" : "Seleção"}
+                  {isSelectableMode
+                    ? t("finishSelection", "Concluir Seleção")
+                    : t("selection", "Seleção")}
                 </span>
               </button>
             )}
@@ -663,7 +707,10 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               onKeyDown={(e) => {
                 if (e.key === "Enter") saveSearchTerm(search);
               }}
-              placeholder="Buscar por nome, cor, marca, local ou QR..."
+              placeholder={t(
+                "catalogSearchPlaceholder",
+                "Buscar por nome, cor, marca, local ou QR..."
+              )}
               className="w-full bg-transparent text-sm text-[#172B2A] dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none"
             />
             {search && (
@@ -674,7 +721,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                   setDebouncedSearch("");
                 }}
                 className="min-w-[34px] min-h-[34px] flex items-center justify-center text-slate-400 hover:text-[#172B2A] dark:hover:text-white cursor-pointer"
-                title="Limpar busca"
+                title={t("clearSearch", "Limpar busca")}
+                aria-label={t("clearSearch", "Limpar busca")}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -687,8 +735,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                 setIsVoiceSearchOpen(true);
               }}
               className="min-w-[34px] min-h-[34px] flex items-center justify-center rounded-lg text-slate-400 hover:text-[#16845B] dark:hover:text-emerald-400 transition-colors cursor-pointer"
-              title="Busca por comando de voz"
-              aria-label="Iniciar busca por comando de voz"
+              title={t("voiceSearch", "Pesquisar por voz")}
+              aria-label={t("voiceSearch", "Pesquisar por voz")}
             >
               <Mic className="w-4 h-4" />
             </button>
@@ -700,14 +748,14 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               vibrateClick();
               setIsAdvancedFiltersOpen(!isAdvancedFiltersOpen);
             }}
-            className={`min-h-[46px] px-3.5 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
+            className={`min-h-[46px] px-3 sm:px-3.5 rounded-xl border text-xs font-semibold inline-flex items-center gap-1.5 shrink-0 transition-colors cursor-pointer ${
               isAdvancedFiltersOpen || activeFiltersCount > 0
                 ? "bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#064E3B] dark:text-emerald-300 border-[#16845B]/40"
                 : "bg-white dark:bg-[#111827] text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-800"
             }`}
           >
             <SlidersHorizontal className="w-4 h-4" />
-            <span>Filtros</span>
+            <span className="hidden xs:inline sm:inline">{t("filters", "Filtros")}</span>
             {activeFiltersCount > 0 && (
               <span className="px-1.5 py-0.2 rounded-full bg-[#16845B] text-white text-[10px] font-bold tabular-nums">
                 {activeFiltersCount}
@@ -716,15 +764,19 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
           </button>
 
           <div
-            className="hidden sm:inline-flex items-center bg-white dark:bg-[#111827] p-1 rounded-xl border border-slate-200 dark:border-slate-800 shrink-0"
+            className="inline-flex items-center bg-white dark:bg-[#111827] p-1 rounded-xl border border-slate-200 dark:border-slate-800 shrink-0"
             role="group"
-            aria-label="Modo de visualização do catálogo"
+            aria-label={t("viewModeAria", "Modo de visualização do catálogo")}
           >
             <button
               type="button"
-              onClick={() => setLayoutViewMode("CARDS")}
-              title="Visualização em Grade"
-              aria-label="Visualização em Grade"
+              onClick={() => {
+                vibrateClick();
+                setLayoutViewMode("CARDS");
+              }}
+              title={t("gridView", "Visualização em Grade")}
+              aria-label={t("gridView", "Visualização em Grade")}
+              aria-pressed={layoutViewMode !== "LISTA"}
               className={`min-h-[36px] px-2.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1 ${
                 layoutViewMode !== "LISTA"
                   ? "bg-[#16845B] text-white"
@@ -735,9 +787,13 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setLayoutViewMode("LISTA")}
-              title="Visualização em Lista"
-              aria-label="Visualização em Lista"
+              onClick={() => {
+                vibrateClick();
+                setLayoutViewMode("LISTA");
+              }}
+              title={t("listView", "Visualização em Lista")}
+              aria-label={t("listView", "Visualização em Lista")}
+              aria-pressed={layoutViewMode === "LISTA"}
               className={`min-h-[36px] px-2.5 rounded-lg text-xs font-medium transition-colors cursor-pointer flex items-center gap-1 ${
                 layoutViewMode === "LISTA"
                   ? "bg-[#16845B] text-white"
@@ -753,11 +809,11 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 tabular-nums">
           {(
             [
-              { id: "TODOS", label: "Todos", count: statusCounts.TODOS },
-              { id: "ENCONTRADO", label: "Encontrados", count: statusCounts.ENCONTRADO },
-              { id: "PERDIDO", label: "Perdidos", count: statusCounts.PERDIDO },
-              { id: "EM_ANALISE", label: "Em análise", count: statusCounts.EM_ANALISE },
-              { id: "DEVOLVIDO", label: "Devolvidos", count: statusCounts.DEVOLVIDO },
+              { id: "TODOS", label: t("all", "Todos"), count: statusCounts.TODOS },
+              { id: "ENCONTRADO", label: t("foundItems", "Encontrados"), count: statusCounts.ENCONTRADO },
+              { id: "PERDIDO", label: t("lostItems", "Perdidos"), count: statusCounts.PERDIDO },
+              { id: "EM_ANALISE", label: t("underReviewItems", "Em análise"), count: statusCounts.EM_ANALISE },
+              { id: "DEVOLVIDO", label: t("returnedItems", "Devolvidos"), count: statusCounts.DEVOLVIDO },
             ] as const
           ).map((tab) => {
             const active = filterType === tab.id;
@@ -802,7 +858,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                 : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
             }`}
           >
-            Todas categorias
+            {t("allCategories", "Todas categorias")}
           </button>
           {categoriesList.map((cat) => {
             const isSelected = selectedCategory === cat.name;
@@ -820,7 +876,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                     : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
                 }`}
               >
-                {cat.name}
+                {translateCategory(cat.name, language)}
               </button>
             );
           })}
@@ -833,17 +889,17 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <div>
               <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                Bloco do Campus
+                {t("campusBlock", "Bloco do Campus")}
               </label>
               <UISelect
-                aria-label="Filtrar por bloco ou localização"
+                aria-label={t("campusBlock", "Bloco do Campus")}
                 value={selectedCampusBlock}
                 onChange={(e) => setSelectedCampusBlock(e.target.value)}
                 className="text-xs"
               >
                 {CAMPUS_BLOCKS.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {b.label}
+                    {translateCampusBlock(b.id, language)}
                   </option>
                 ))}
               </UISelect>
@@ -851,14 +907,14 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
 
             <div>
               <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                Sala ou Local Específico
+                {t("specificLocation", "Sala ou Local Específico")}
               </label>
               <UISelect
                 value={selectedLocation}
                 onChange={(e) => setSelectedLocation(e.target.value)}
                 className="text-xs"
               >
-                <option value="TODOS">Todos os locais</option>
+                <option value="TODOS">{t("allLocations", "Todos os locais")}</option>
                 {IFPR_LOCATION_GROUPS.map((group) => (
                   <optgroup key={group.group} label={group.group}>
                     {group.locations.map((loc) => (
@@ -873,10 +929,10 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
 
             <div>
               <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                Período
+                {t("period", "Período")}
               </label>
               <UISelect
-                aria-label="Filtrar por período"
+                aria-label={t("period", "Período")}
                 value={selectedTimePreset}
                 onChange={(e) => {
                   const val = e.target.value;
@@ -890,7 +946,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               >
                 {TIME_PRESETS.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.label}
+                    {t(p.labelKey)}
                   </option>
                 ))}
               </UISelect>
@@ -898,16 +954,16 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
 
             <div>
               <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                Ordenação
+                {t("sorting", "Ordenação")}
               </label>
               <UISelect
-                aria-label="Ordenar objetos"
+                aria-label={t("sorting", "Ordenação")}
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
                 className="text-xs"
               >
-                <option value="recentes">Mais recentes primeiro</option>
-                <option value="antigos">Mais antigos primeiro</option>
+                <option value="recentes">{t("newestFirst", "Mais recentes primeiro")}</option>
+                <option value="antigos">{t("oldestFirst", "Mais antigos primeiro")}</option>
               </UISelect>
             </div>
           </div>
@@ -915,7 +971,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
             <div>
               <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                Cor predominante
+                {t("predominantColor", "Cor predominante")}
               </label>
               <div className="flex flex-wrap gap-1.5">
                 {colorsList.map((col) => (
@@ -932,7 +988,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                         : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
                     }`}
                   >
-                    {col}
+                    {col === "TODAS" ? t("all", "Todos") : translateColor(col, language)}
                   </button>
                 ))}
               </div>
@@ -940,12 +996,12 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
 
             <div>
               <label className="block text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                Intervalo de datas (De / Até)
+                {t("dateRange", "Intervalo de datas (De / Até)")}
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <UIInput
                   type="date"
-                  aria-label="Data inicial"
+                  aria-label={t("startDate", "Data inicial")}
                   value={filterStartDate}
                   onChange={(e) => {
                     setFilterStartDate(e.target.value);
@@ -955,7 +1011,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                 />
                 <UIInput
                   type="date"
-                  aria-label="Data final"
+                  aria-label={t("endDate", "Data final")}
                   value={filterEndDate}
                   onChange={(e) => {
                     setFilterEndDate(e.target.value);
@@ -975,7 +1031,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                 className="text-xs font-medium text-rose-600 dark:text-rose-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Redefinir filtros</span>
+                <span>{t("resetFilters", "Redefinir filtros")}</span>
               </button>
             </div>
           )}
@@ -989,11 +1045,13 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
             <WifiOff className="w-4 h-4 shrink-0" />
             <span>
               {catalogDisplay.mode === "offline-empty"
-                ? "Modo offline: sem conexão e nenhum objeto salvo localmente."
-                : `Modo offline: exibindo ${filteredItems.length} itens salvos no dispositivo.`}
+                ? t("offlineBannerEmpty", "Modo offline: sem conexão e nenhum objeto salvo localmente.")
+                : `${t("offlineBannerShowingPrefix", "Modo offline: exibindo")} ${filteredItems.length} ${t("offlineBannerShowingSuffix", "itens salvos no dispositivo.")}`}
             </span>
           </div>
-          <span className="font-mono text-[11px] shrink-0">{offlineCachedCount} em cache</span>
+          <span className="font-mono text-[11px] shrink-0">
+            {offlineCachedCount} {t("cachedLabel", "em cache")}
+          </span>
         </div>
       )}
 
@@ -1002,17 +1060,21 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
         {isSelectableMode && filteredItems.length > 0 && (
           <div className="flex items-center justify-between text-xs bg-[#F8FAFC] dark:bg-slate-900 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-800">
             <span className="text-slate-600 dark:text-slate-300">
-              Selecione itens para ação em lote
+              {t("selectItemsForBulk", "Selecione itens para ação em lote")}
+              {selectedItemIds.length > 0 && (
+                <span className="ml-1.5 font-semibold text-[#16845B] dark:text-emerald-400 tabular-nums">
+                  ({selectedItemIds.length} {t("selectedCount", "selecionado(s)")})
+                </span>
+              )}
             </span>
             <button
               type="button"
               onClick={handleSelectAllFiltered}
               className="font-semibold text-[#16845B] dark:text-emerald-400 hover:underline cursor-pointer"
             >
-              {selectedItemIds.length === filteredItems.length &&
-              filteredItems.length > 0
-                ? "Desmarcar todos"
-                : `Selecionar todos (${filteredItems.length})`}
+              {allFilteredSelected
+                ? t("unselectAll", "Desmarcar todos")
+                : `${t("selectAll", "Selecionar todos")} (${filteredItems.length})`}
             </button>
           </div>
         )}
@@ -1020,7 +1082,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
         {catalogDisplay.mode === "online-loading" ? (
           <div className="py-12 flex flex-col items-center justify-center gap-3 text-slate-500 dark:text-slate-400">
             <RefreshCw className="w-6 h-6 animate-spin text-[#16845B]" />
-            <p className="text-sm font-medium">Carregando catálogo de objetos...</p>
+            <p className="text-sm font-medium">{t("loadingCatalog", "Carregando catálogo de objetos...")}</p>
           </div>
         ) : filteredItems.length === 0 ? (
           <EmptyState
@@ -1033,19 +1095,19 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
             }
             title={
               catalogDisplay.mode === "offline-empty"
-                ? "Sem conexão e sem objetos salvos"
+                ? t("offlineEmptyTitle", "Sem conexão e sem objetos salvos")
                 : catalogDisplay.mode === "online-empty" && activeFiltersCount === 0
-                ? "Nenhum objeto cadastrado"
-                : "Nenhum objeto encontrado"
+                ? t("onlineEmptyTitle", "Nenhum objeto cadastrado")
+                : t("noSearchResultsTitle", "Nenhum objeto encontrado")
             }
             description={
               catalogDisplay.mode === "offline-empty"
-                ? "Conecte-se à internet para sincronizar o catálogo atualizado do campus."
+                ? t("offlineEmptyDesc", "Conecte-se à internet para sincronizar o catálogo atualizado do campus.")
                 : catalogDisplay.mode === "online-empty" && activeFiltersCount === 0
-                ? "O catálogo está vazio no momento. Novos registros aparecerão aqui automaticamente."
+                ? t("onlineEmptyDesc", "O catálogo está vazio no momento. Novos registros aparecerão aqui automaticamente.")
                 : search
-                ? `Não há resultados para "${search}".`
-                : "Nenhum objeto corresponde aos filtros aplicados."
+                ? `${t("noResultsForQueryPrefix", "Não há resultados para")} "${search}".`
+                : t("noFilterMatchesDesc", "Nenhum objeto corresponde aos filtros aplicados.")
             }
             action={
               activeFiltersCount > 0 ? (
@@ -1055,7 +1117,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                   className="min-h-[40px] px-4 rounded-lg bg-[#16845B] text-white text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Limpar filtros</span>
+                  <span>{t("clearFilters", "Limpar filtros")}</span>
                 </button>
               ) : undefined
             }
@@ -1066,24 +1128,90 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#F8FAFC] dark:bg-slate-900 text-slate-500 dark:text-slate-400 font-medium border-b border-slate-200/80 dark:border-slate-800">
                   <tr>
-                    <th className="py-3 px-4">Objeto</th>
-                    <th className="py-3 px-4">Situação</th>
-                    <th className="py-3 px-4">Categoria</th>
-                    <th className="py-3 px-4">Local</th>
-                    <th className="py-3 px-4">Data</th>
+                    {isSelectableMode && (
+                      <th className="py-3 pl-4 pr-2 w-10">
+                        <input
+                          ref={headerCheckboxRef}
+                          type="checkbox"
+                          checked={allFilteredSelected}
+                          onChange={() => {
+                            vibrateClick();
+                            handleSelectAllFiltered();
+                          }}
+                          aria-label={t(
+                            "selectAllInListAria",
+                            "Selecionar ou desmarcar todos os objetos filtrados"
+                          )}
+                          className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 accent-[#16845B] cursor-pointer align-middle"
+                        />
+                      </th>
+                    )}
+                    <th className="py-3 px-4">{t("tableColObject", "Objeto")}</th>
+                    <th className="py-3 px-4">{t("tableColStatus", "Situação")}</th>
+                    <th className="py-3 px-4">{t("tableColCategory", "Categoria")}</th>
+                    <th className="py-3 px-4">{t("tableColLocation", "Local")}</th>
+                    <th className="py-3 px-4">{t("tableColDate", "Data")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {paginatedItems.map((item) => {
                     const badge = getStatusBadgeInfo(item);
+                    const isSelected = selectedItemIds.includes(item.id);
+                    const itemTitle = item.title || t("untitledItem", "Objeto sem título");
                     return (
                       <tr
                         key={item.id}
-                        onClick={() => handleItemClick(item)}
-                        className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/50 cursor-pointer transition-colors"
+                        data-item-id={item.id}
+                        data-selected={isSelected ? "true" : "false"}
+                        aria-selected={isSelectableMode ? isSelected : undefined}
+                        tabIndex={isSelectableMode ? 0 : undefined}
+                        onClick={() => {
+                          if (isSelectableMode) {
+                            vibrateClick();
+                            handleToggleSelectItem(item.id, !isSelected);
+                          } else {
+                            handleItemClick(item);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (
+                            isSelectableMode &&
+                            (e.key === " " || e.key === "Enter")
+                          ) {
+                            e.preventDefault();
+                            vibrateClick();
+                            handleToggleSelectItem(item.id, !isSelected);
+                          }
+                        }}
+                        className={`cursor-pointer transition-colors ${
+                          isSelectableMode && isSelected
+                            ? "bg-[#EBF5F0]/75 dark:bg-emerald-950/35 hover:bg-[#EBF5F0] dark:hover:bg-emerald-950/50"
+                            : "hover:bg-[#F8FAFC] dark:hover:bg-slate-800/50"
+                        }`}
                       >
+                        {isSelectableMode && (
+                          <td
+                            className="py-3 pl-4 pr-2 w-10"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                vibrateClick();
+                                handleToggleSelectItem(item.id, e.target.checked);
+                              }}
+                              aria-label={`${
+                                isSelected
+                                  ? t("unselectItemAria", "Desmarcar objeto")
+                                  : t("selectItemAria", "Selecionar objeto")
+                              }: ${itemTitle}`}
+                              className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 accent-[#16845B] cursor-pointer align-middle"
+                            />
+                          </td>
+                        )}
                         <td className="py-3 px-4 font-semibold text-[#172B2A] dark:text-white">
-                          {item.title}
+                          {itemTitle}
                         </td>
                         <td className="py-3 px-4 whitespace-nowrap">
                           <span
@@ -1101,13 +1229,13 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                           </span>
                         </td>
                         <td className="py-3 px-4 text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                          {getCategoryDisplay(item.category)}
+                          {translateCategory(getCategoryDisplay(item.category), language)}
                         </td>
                         <td className="py-3 px-4 text-slate-600 dark:text-slate-300 max-w-[200px] truncate">
-                          {item.location}
+                          {item.location || t("locationNotProvided", "Local não informado")}
                         </td>
                         <td className="py-3 px-4 text-slate-500 dark:text-slate-400 whitespace-nowrap tabular-nums">
-                          {formatDate(item.date)}
+                          {formatDate(item.date, undefined, language)}
                         </td>
                       </tr>
                     );
@@ -1144,7 +1272,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               className="min-h-[44px] px-5 rounded-xl bg-white dark:bg-[#111827] hover:bg-[#F8FAFC] dark:hover:bg-slate-800 text-[#172B2A] dark:text-slate-200 border border-slate-200 dark:border-slate-800 text-xs font-semibold inline-flex items-center gap-2 transition-colors cursor-pointer"
             >
               <span>
-                Carregar mais ({filteredItems.length - visibleCount} restantes)
+                {t("loadMore", "Carregar mais")} ({filteredItems.length - visibleCount}{" "}
+                {t("remaining", "restantes")})
               </span>
               <ChevronDown className="w-4 h-4" />
             </button>
@@ -1156,7 +1285,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
       {canManageBulkItems && selectedItemIds.length > 0 && (
         <div className="fixed bottom-16 lg:bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#111827] text-white px-4 py-3 rounded-xl border border-slate-700 flex flex-wrap items-center justify-between gap-3 max-w-lg w-[92%]">
           <span className="text-xs font-semibold tabular-nums">
-            {selectedItemIds.length} selecionado(s)
+            {selectedItemIds.length} {t("selectedCount", "selecionado(s)")}
           </span>
 
           <div className="flex items-center gap-2">
@@ -1172,26 +1301,34 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                   setIsSelectableMode(false);
                   return;
                 }
+                const targetIds = resolveBulkActionTargetIds(
+                  selectedItemIds,
+                  activeItemsPool.map((it) => it.id)
+                );
+                if (targetIds.length === 0) {
+                  setSelectedItemIds([]);
+                  return;
+                }
                 setIsBulkUpdating(true);
                 try {
                   const res = await bulkUpdateItemStatus(
-                    selectedItemIds,
+                    targetIds,
                     "EM_ANALISE"
                   );
-                  if (res && res.succeededIds) {
-                    setSelectedItemIds((prev) =>
-                      prev.filter((id) => !res.succeededIds.includes(id))
-                    );
-                  } else {
-                    setSelectedItemIds([]);
-                  }
+                  setSelectedItemIds((prev) =>
+                    reconcileSelectionAfterBulkAction(prev, res?.succeededIds)
+                  );
                 } catch (_) {
                 } finally {
                   setIsBulkUpdating(false);
                 }
               }}
             >
-              <span>{isBulkUpdating ? "Movendo..." : "Mover p/ Análise"}</span>
+              <span>
+                {isBulkUpdating
+                  ? t("moving", "Movendo...")
+                  : t("moveToReview", "Mover p/ Análise")}
+              </span>
             </UIButton>
 
             {canBulkDeleteItems && (
@@ -1202,21 +1339,25 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                 disabled={isBulkUpdating}
                 onClick={async () => {
                   if (isBulkUpdating) return;
+                  const targetIds = resolveBulkActionTargetIds(
+                    selectedItemIds,
+                    activeItemsPool.map((it) => it.id)
+                  );
+                  if (targetIds.length === 0) {
+                    setSelectedItemIds([]);
+                    return;
+                  }
                   if (
                     window.confirm(
-                      `Tem certeza que deseja excluir permanentemente ${selectedItemIds.length} objeto(s)?`
+                      `${t("confirmBulkDeletePrefix", "Tem certeza que deseja excluir permanentemente")} ${targetIds.length} ${t("confirmBulkDeleteSuffix", "objeto(s)?")}`
                     )
                   ) {
                     setIsBulkUpdating(true);
                     try {
-                      const res = await bulkDeleteItems(selectedItemIds);
-                      if (res && res.succeededIds) {
-                        setSelectedItemIds((prev) =>
-                          prev.filter((id) => !res.succeededIds.includes(id))
-                        );
-                      } else {
-                        setSelectedItemIds([]);
-                      }
+                      const res = await bulkDeleteItems(targetIds);
+                      setSelectedItemIds((prev) =>
+                        reconcileSelectionAfterBulkAction(prev, res?.succeededIds)
+                      );
                     } catch (_) {
                     } finally {
                       setIsBulkUpdating(false);
@@ -1225,7 +1366,7 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                 }}
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Excluir</span>
+                <span>{t("delete", "Excluir")}</span>
               </UIButton>
             )}
 
@@ -1233,7 +1374,8 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               type="button"
               onClick={() => setSelectedItemIds([])}
               className="p-1.5 text-slate-400 hover:text-white transition-colors cursor-pointer"
-              title="Cancelar seleção"
+              title={t("cancelSelection", "Cancelar seleção")}
+              aria-label={t("cancelSelection", "Cancelar seleção")}
             >
               <X className="w-4 h-4" />
             </button>

@@ -3,6 +3,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useApp } from "../context/AppContext";
 import { useRouter } from "../context/RouterContext";
+import { getLocaleForLanguage, translateUserRole } from "../lib/i18n";
 import { formatDate, formatDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeIncludes, sanitizeQuery } from "../lib/utils";
 import { UserRole, User, AccountStatus, ActivityLog, BackupScheduleConfig, ItemClaim } from "../types";
 import { AppUptimeMonitor } from "./AppUptimeMonitor";
@@ -141,6 +142,8 @@ export const DashboardView: React.FC = () => {
     sendNotificationToUser,
     darkMode,
     requestAuthForRegistration,
+    language,
+    t,
   } = useApp();
 
   const { navigate } = useRouter();
@@ -992,17 +995,23 @@ export const DashboardView: React.FC = () => {
           <div className="space-y-1 min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-[#16845B] dark:text-emerald-400">
               {activeDashboardRole === "SERVIDOR"
-                ? "Atendimento & Portaria • IFPR Campus Ivaiporã"
+                ? language === "en"
+                  ? `Help Desk & Reception • ${t("campusName")}`
+                  : "Atendimento & Portaria • IFPR Campus Ivaiporã"
                 : activeDashboardRole === "ADMIN"
-                ? "Administração Institucional • IFPR Campus Ivaiporã"
+                ? language === "en"
+                  ? `Institutional Administration • ${t("campusName")}`
+                  : "Administração Institucional • IFPR Campus Ivaiporã"
+                : language === "en"
+                ? `Student Tracking • ${t("campusName")}`
                 : "Acompanhamento Discente • IFPR Campus Ivaiporã"}
             </p>
             <h1 className="text-lg sm:text-xl font-bold text-[#0F172A] dark:text-white tracking-tight">
               {activeDashboardRole === "SERVIDOR"
-                ? "Painel do Servidor"
+                ? t("staffPanel")
                 : activeDashboardRole === "ADMIN"
-                ? "Painel Administrativo"
-                : "Painel do Discente"}
+                ? language === "en" ? "Administrative Panel" : "Painel Administrativo"
+                : language === "en" ? "Student Panel" : "Painel do Discente"}
             </h1>
           </div>
 
@@ -1019,7 +1028,7 @@ export const DashboardView: React.FC = () => {
                       : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                   }`}
                 >
-                  Aluno
+                  {translateUserRole("ALUNO", language)}
                 </button>
 
                 <button
@@ -1034,7 +1043,7 @@ export const DashboardView: React.FC = () => {
                       : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                   }`}
                 >
-                  Servidor
+                  {language === "en" ? "Staff" : "Servidor"}
                 </button>
 
                 <button
@@ -1051,14 +1060,16 @@ export const DashboardView: React.FC = () => {
                       : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                   }`}
                 >
-                  Admin
+                  {t("adminPanel")}
                 </button>
               </div>
             ) : (
               <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
                 {currentUser.role === "SERVIDOR"
-                  ? "Servidor Autorizado • Portaria / SEPAE"
-                  : `Perfil: ${currentUser.role}`}
+                  ? language === "en"
+                    ? "Authorized Staff • Main Gate / SEPAE"
+                    : "Servidor Autorizado • Portaria / SEPAE"
+                  : `${t("profile")}: ${translateUserRole(currentUser.role, language)}`}
               </span>
             )}
 
@@ -1310,32 +1321,32 @@ export const DashboardView: React.FC = () => {
                       {[
                         {
                           id: "server_overview",
-                          label: "Custódia & Atendimento",
+                          label: language === "en" ? "Custody & Desk" : "Custódia & Atendimento",
                           badge: inAnalysisCount,
                         },
                         {
                           id: "claims",
-                          label: "Solicitações",
+                          label: language === "en" ? "Claims" : "Solicitações",
                           badge: pendingClaimsCount,
                         },
                         {
                           id: "pending_signatures",
-                          label: "Assinaturas",
+                          label: language === "en" ? "Signatures" : "Assinaturas",
                           badge: pendingSignaturesCount,
                         },
                         {
                           id: "custody_reminders",
-                          label: "Prazos (+90d)",
+                          label: language === "en" ? "Deadlines (+90d)" : "Prazos (+90d)",
                           badge: itemsOver90DaysCount,
                         },
                         {
                           id: "digital_returns",
-                          label: "Devoluções (D3)",
+                          label: language === "en" ? "Returns (D3)" : "Devoluções (D3)",
                           badge: digitalReturnedItemsCount,
                         },
                         {
                           id: "server_analytics",
-                          label: "Relatórios",
+                          label: language === "en" ? "Reports" : "Relatórios",
                           badge: 0,
                         },
                       ].map((item) => {
@@ -2547,7 +2558,7 @@ export const DashboardView: React.FC = () => {
                                           </span>
                                           {resolvedRowStatus.status === "suspended" && activeDeadlineDate && (
                                             <span className="text-[9px] font-normal opacity-80">
-                                              Até {activeDeadlineDate.toLocaleDateString("pt-BR")}
+                                              {language === "en" ? "Until" : "Até"} {activeDeadlineDate.toLocaleDateString(getLocaleForLanguage(language))}
                                             </span>
                                           )}
                                           {resolvedRowStatus.hasLegacyInconsistency && (

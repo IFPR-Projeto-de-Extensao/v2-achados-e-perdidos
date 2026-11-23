@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useApp, previewInstitutionalRole } from "../context/AppContext";
 import { useRouter } from "../context/RouterContext";
+import { translateUserRole } from "../lib/i18n";
 import {
   vibrateClick,
   vibrateSuccess,
@@ -52,6 +53,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     firebaseUser,
     addToast,
     pendingPostLoginAction,
+    language,
+    t,
   } = useApp();
   const { navigate } = useRouter();
 
@@ -100,8 +103,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     const cleanEmail = loginEmail.trim().toLowerCase();
     const cleanPass = loginPassword.trim();
     if (!cleanEmail || !cleanPass) {
-      setErrorMsg("Preencha e-mail e senha para entrar.");
-      addToast("Preencha e-mail e senha para entrar.", "warning");
+      const msg = t("fillEmailPasswordError");
+      setErrorMsg(msg);
+      addToast(msg, "warning");
       return;
     }
     setLoading(true);
@@ -129,10 +133,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     setSuccessMsg("");
     const cleanEmail = loginEmail.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes("@")) {
-      setErrorMsg(
-        "Informe seu e-mail institucional no campo de e-mail para recuperar a senha."
-      );
-      addToast("Informe seu e-mail no campo de e-mail.", "warning");
+      const msg = t("enterInstitutionalEmailReset");
+      setErrorMsg(msg);
+      addToast(msg, "warning");
       return;
     }
 
@@ -141,9 +144,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       await sendPasswordResetEmail(auth, cleanEmail);
       vibrateSuccess();
       setSuccessMsg(
-        `E-mail de recuperação enviado para ${cleanEmail}. Verifique sua caixa de entrada e spam.`
+        language === "en"
+          ? `Recovery email sent to ${cleanEmail}. Check your inbox and spam folder.`
+          : `E-mail de recuperação enviado para ${cleanEmail}. Verifique sua caixa de entrada e spam.`
       );
-      addToast("E-mail de recuperação enviado com sucesso!", "success");
+      addToast(t("recoveryEmailSent"), "success");
     } catch (err: any) {
       console.error("[Password Reset Error]", err);
       vibrateWarning();
@@ -163,36 +168,34 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
     const trimmedName = regName.trim();
     if (!trimmedName || trimmedName.length < 3) {
-      setErrorMsg(
-        "Por favor, informe seu nome completo (mínimo de 3 caracteres)."
-      );
-      addToast("Por favor, informe seu nome completo.", "warning");
+      const msg = t("enterFullNameError");
+      setErrorMsg(msg);
+      addToast(msg, "warning");
       return;
     }
 
     const cleanEmail = regEmail.trim().toLowerCase();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!cleanEmail || !emailRegex.test(cleanEmail)) {
-      setErrorMsg(
-        "Por favor, informe um endereço de e-mail válido (ex: seu.nome@estudante.ifpr.edu.br)."
-      );
-      addToast("Por favor, informe um endereço de e-mail válido.", "warning");
+      const msg = t("enterValidEmailError");
+      setErrorMsg(msg);
+      addToast(msg, "warning");
       return;
     }
 
     const cleanPass = regPassword.trim();
     if (!cleanPass || cleanPass.length < 6) {
-      setErrorMsg("A senha deve ter no mínimo 6 caracteres.");
-      addToast("A senha deve ter no mínimo 6 caracteres.", "warning");
+      const msg = t("passwordMinLengthError");
+      setErrorMsg(msg);
+      addToast(msg, "warning");
       return;
     }
 
     const cleanPhone = regPhone.trim();
     if (cleanPhone && !isValidPhone(cleanPhone)) {
-      setErrorMsg(
-        "Telefone inválido. Informe o DDD e o número completo (ex: (43) 99876-5432)."
-      );
-      addToast("Número de telefone inválido.", "warning");
+      const msg = t("invalidPhoneError");
+      setErrorMsg(msg);
+      addToast(msg, "warning");
       return;
     }
 
@@ -242,7 +245,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     try {
       await loginWithGoogle();
       vibrateSuccess();
-      addToast("Autenticação com Google realizada com sucesso!", "success");
+      addToast(t("googleLoginSuccess"), "success");
       onClose();
     } catch (err: any) {
       console.error("[Google Auth Error]", err);
@@ -296,19 +299,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               <BrandLogo size="md" showSubtitle={false} />
               <div className="mt-2.5 flex items-center gap-2">
                 <UIBadge tone="emerald">
-                  IFPR Campus Ivaiporã
+                  {t("campusName")}
                 </UIBadge>
               </div>
               <h2
                 id="auth-modal-title"
                 className="text-xl font-bold tracking-tight text-[#172B2A] dark:text-white mt-2"
               >
-                {mode === "login" ? "Acesse sua conta" : "Criar sua conta"}
+                {mode === "login" ? t("accessYourAccount") : t("createYourAccount")}
               </h2>
               <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                 {mode === "login"
-                  ? "Entre com seu e-mail institucional ou pessoal no Localiza+."
-                  : "Cadastre-se com seu e-mail para utilizar o Localiza+."}
+                  ? t("authLoginDesc")
+                  : t("authRegisterDesc")}
               </p>
             </div>
 
@@ -318,7 +321,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 onClose();
               }}
               type="button"
-              aria-label="Fechar janela"
+              aria-label={t("close")}
               className="p-2 rounded-xl text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
@@ -341,7 +344,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               }`}
             >
               <LogIn className="w-3.5 h-3.5" />
-              <span>Entrar</span>
+              <span>{t("login")}</span>
             </button>
             <button
               type="button"
@@ -357,7 +360,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               }`}
             >
               <UserPlus className="w-3.5 h-3.5" />
-              <span>Criar conta</span>
+              <span>{t("createAccount")}</span>
             </button>
           </div>
         </div>
@@ -369,12 +372,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
               <div className="space-y-1">
                 <p className="font-bold text-xs text-amber-900 dark:text-amber-100">
-                  {pendingPostLoginAction.customMessage ||
-                    "Autenticação Obrigatória"}
+                  {pendingPostLoginAction.customMessage || t("authRequiredTitle")}
                 </p>
                 <p className="text-[11px] text-amber-800 dark:text-amber-200/90 leading-relaxed">
-                  Para registrar pertences com segurança no Campus Ivaiporã,
-                  entre ou crie sua conta institucional.
+                  {t("authRequiredDesc")}
                 </p>
               </div>
             </div>
@@ -384,7 +385,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             <div className="p-3.5 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 border border-[#16845B]/25 dark:border-emerald-800/60 flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[11px] font-bold text-[#16845B] dark:text-emerald-400">
-                  Sessão Ativa ({currentUser.role})
+                  {t("activeSession")} ({translateUserRole(currentUser.role, language)})
                 </p>
                 <p className="text-xs font-bold text-[#172B2A] dark:text-white truncate">
                   {currentUser.name}
@@ -403,7 +404,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 }}
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>Sair</span>
+                <span>{t("logout")}</span>
               </UIButton>
             </div>
           )}
@@ -455,7 +456,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             /* LOGIN FORM */
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <UIFieldGroup
-                label="E-mail institucional ou pessoal"
+                label={language === "en" ? "Institutional or personal email" : "E-mail institucional ou pessoal"}
                 htmlFor="auth-login-email"
                 required
               >
@@ -476,7 +477,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                     htmlFor="auth-login-password"
                     className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200 tracking-tight"
                   >
-                    Senha <span className="text-red-600 dark:text-red-400">*</span>
+                    {t("passwordLabel")} <span className="text-red-600 dark:text-red-400">*</span>
                   </label>
                   <button
                     type="button"
@@ -484,7 +485,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                     disabled={loading}
                     className="text-xs text-[#16845B] hover:text-[#064E3B] dark:text-emerald-400 dark:hover:text-emerald-300 font-semibold hover:underline cursor-pointer"
                   >
-                    Esqueci minha senha
+                    {t("forgotPassword")}
                   </button>
                 </div>
                 <UIInput
@@ -500,7 +501,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
                       aria-label={
-                        showPassword ? "Ocultar senha" : "Mostrar senha"
+                        showPassword
+                          ? language === "en" ? "Hide password" : "Ocultar senha"
+                          : language === "en" ? "Show password" : "Mostrar senha"
                       }
                       className="text-slate-400 hover:text-[#172B2A] dark:hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
                     >
@@ -522,7 +525,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   fullWidth
                   disabled={loading}
                 >
-                  {loading ? "Entrando..." : "Entrar"}
+                  {loading
+                    ? language === "en" ? "Signing in..." : "Entrando..."
+                    : t("login")}
                 </UIButton>
               </div>
             </form>
@@ -530,7 +535,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             /* REGISTER FORM */
             <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
               <UIFieldGroup
-                label="Nome Completo"
+                label={t("fullNameLabel")}
                 htmlFor="auth-reg-name"
                 required
               >
@@ -539,14 +544,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   type="text"
                   value={regName}
                   onChange={(e) => setRegName(e.target.value)}
-                  placeholder="Ex: Lucas Silva Santos"
+                  placeholder={language === "en" ? "e.g., Lucas Silva Santos" : "Ex: Lucas Silva Santos"}
                   required
                   leftIcon={<UserIcon className="w-4 h-4" />}
                 />
               </UIFieldGroup>
 
               <UIFieldGroup
-                label="E-mail Institucional ou Pessoal"
+                label={language === "en" ? "Institutional or Personal Email" : "E-mail Institucional ou Pessoal"}
                 htmlFor="auth-reg-email"
                 required
               >
@@ -562,7 +567,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               </UIFieldGroup>
 
               <UIFieldGroup
-                label="Senha (mínimo 6 caracteres)"
+                label={language === "en" ? "Password (minimum 6 characters)" : "Senha (mínimo 6 caracteres)"}
                 htmlFor="auth-reg-password"
                 required
               >
@@ -571,7 +576,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   type={showRegPassword ? "text" : "password"}
                   value={regPassword}
                   onChange={(e) => setRegPassword(e.target.value)}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder={language === "en" ? "Minimum 6 characters" : "Mínimo 6 caracteres"}
                   required
                   minLength={6}
                   leftIcon={<Lock className="w-4 h-4" />}
@@ -580,7 +585,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                       type="button"
                       onClick={() => setShowRegPassword(!showRegPassword)}
                       aria-label={
-                        showRegPassword ? "Ocultar senha" : "Mostrar senha"
+                        showRegPassword
+                          ? language === "en" ? "Hide password" : "Ocultar senha"
+                          : language === "en" ? "Show password" : "Mostrar senha"
                       }
                       className="text-slate-400 hover:text-[#172B2A] dark:hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
                     >
@@ -605,7 +612,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                     }`}
                   />
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Vínculo identificado:
+                    {language === "en" ? "Detected affiliation:" : "Vínculo identificado:"}
                   </span>
                 </div>
                 <UIBadge
@@ -614,14 +621,14 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   }
                 >
                   {regRoleDetermination.isInstitutional
-                    ? regRoleDetermination.label
-                    : "Aguardando E-mail"}
+                    ? translateUserRole(regRoleDetermination.role, language)
+                    : language === "en" ? "Waiting for Email" : "Aguardando E-mail"}
                 </UIBadge>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <UIFieldGroup
-                  label="Matrícula / SIAPE"
+                  label={t("matriculaLabel")}
                   htmlFor="auth-reg-matricula"
                 >
                   <UIInput
@@ -635,7 +642,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 </UIFieldGroup>
 
                 <UIFieldGroup
-                  label="Telefone / WhatsApp"
+                  label={t("phoneOptionalLabel")}
                   htmlFor="auth-reg-phone"
                 >
                   <UIInput
@@ -658,7 +665,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   fullWidth
                   disabled={loading}
                 >
-                  {loading ? "Cadastrando..." : "Concluir Cadastro"}
+                  {loading
+                    ? language === "en" ? "Registering..." : "Cadastrando..."
+                    : t("submitItem")}
                 </UIButton>
               </div>
             </form>
@@ -668,7 +677,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
           <div className="relative flex items-center justify-center py-1">
             <div className="border-t border-slate-200 dark:border-slate-800 w-full" />
             <span className="bg-white dark:bg-[#111827] px-3 text-xs font-medium text-slate-400 dark:text-slate-500">
-              ou
+              {language === "en" ? "or" : "ou"}
             </span>
           </div>
 
@@ -698,7 +707,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>Entrar com Google</span>
+              <span>{t("continueWithGoogle")}</span>
             </button>
           </div>
 
@@ -714,7 +723,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               }}
               className="font-semibold text-[#172B2A] dark:text-slate-200 hover:text-[#16845B] dark:hover:text-emerald-400 transition-colors cursor-pointer"
             >
-              {mode === "login" ? "Criar conta" : "Já tenho uma conta"}
+              {mode === "login"
+                ? t("createAccount")
+                : language === "en" ? "I already have an account" : "Já tenho uma conta"}
             </button>
             <span className="text-slate-300 dark:text-slate-700">|</span>
             {mode === "login" ? (
@@ -724,7 +735,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 disabled={loading}
                 className="font-medium text-slate-500 dark:text-slate-400 hover:text-[#16845B] dark:hover:text-emerald-400 transition-colors cursor-pointer"
               >
-                Esqueci minha senha
+                {t("forgotPassword")}
               </button>
             ) : (
               <button
@@ -735,7 +746,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 }}
                 className="font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
               >
-                Cancelar
+                {t("cancel")}
               </button>
             )}
           </div>

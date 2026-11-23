@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Mic, MicOff, Volume2, Sparkles, X, Search, Check, AlertCircle, ArrowRight, Radio } from "lucide-react";
 import { vibrateClick, vibrateSuccess, vibrateCritical } from "../lib/utils";
+import { useApp } from "../context/AppContext";
+import { getLocaleForLanguage } from "../lib/i18n";
 
 interface VoiceSearchModalProps {
   isOpen: boolean;
@@ -14,6 +16,7 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
   onClose,
   onSearchQuery,
 }) => {
+  const { language, t } = useApp();
   const [isListening, setIsListening] = useState<boolean>(false);
   const [transcript, setTranscript] = useState<string>("");
   const [detectedObject, setDetectedObject] = useState<string>("");
@@ -39,8 +42,8 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
     const clean = text.trim();
     const lower = clean.toLowerCase();
 
-    // Regex to match "Localiza [objeto]", "Localizar [objeto]", "Busca/Buscar [objeto]", "Encontra/Encontrar [objeto]"
-    const prefixRegex = /^(?:localiza|localizar|procure|procura|procurar|busca|buscar|encontre|encontrar|onde está|onde esta|acha|achar)\s+(?:um|uma|o|a|os|as|meu|minha|meus|minhas)?\s*/i;
+    // Regex to match Portuguese or English voice command prefixes
+    const prefixRegex = /^(?:localiza|localizar|procure|procura|procurar|busca|buscar|encontre|encontrar|onde está|onde esta|acha|achar|find|search|locate|where is)\s+(?:um|uma|o|a|os|as|meu|minha|meus|minhas|a|an|the|my)?\s*/i;
 
     let objectQuery = clean;
     if (prefixRegex.test(lower)) {
@@ -60,7 +63,7 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
       try {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = "pt-BR";
+        utterance.lang = getLocaleForLanguage(language);
         utterance.rate = 1.05;
         window.speechSynthesis.speak(utterance);
       } catch (_) {}
@@ -80,7 +83,7 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
 
     if (!SpeechRecognition) {
       setIsSupported(false);
-      setErrorMessage("O reconhecimento de voz não é suportado pelo seu navegador atual.");
+      setErrorMessage(t("voiceSearchNotAvailable"));
       return;
     }
 
@@ -92,7 +95,7 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
       }
 
       const recognition = new SpeechRecognition();
-      recognition.lang = "pt-BR";
+      recognition.lang = getLocaleForLanguage(language);
       recognition.continuous = false;
       recognition.interimResults = true;
       recognition.maxAlternatives = 3;
@@ -124,7 +127,11 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
           const parsed = parseVoiceCommand(finalResult);
           setDetectedObject(parsed.objectQuery);
 
-          speakFeedback(`Buscando por ${parsed.objectQuery}`);
+          speakFeedback(
+            language === "en"
+              ? `Searching for ${parsed.objectQuery}`
+              : `Buscando por ${parsed.objectQuery}`
+          );
 
           // Give a brief visual feedback then trigger search
           setTimeout(() => {
@@ -142,11 +149,23 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
 
         if (event.error === "not-allowed" || event.error === "permission-denied") {
           vibrateCritical();
-          setErrorMessage("Permissão para usar o microfone foi negada. Permita o acesso nas configurações do seu navegador.");
+          setErrorMessage(
+            language === "en"
+              ? "Microphone permission was denied. Allow access in your browser settings."
+              : "Permissão para usar o microfone foi negada. Permita o acesso nas configurações do seu navegador."
+          );
         } else if (event.error === "no-speech") {
-          setErrorMessage("Nenhuma fala detectada. Toque no microfone e diga por exemplo: 'Localiza chaves'.");
+          setErrorMessage(
+            language === "en"
+              ? "No speech detected. Tap the microphone and say, for example: 'Find keys'."
+              : "Nenhuma fala detectada. Toque no microfone e diga por exemplo: 'Localiza chaves'."
+          );
         } else {
-          setErrorMessage(`Falha no reconhecimento de voz (${event.error}). Tente novamente.`);
+          setErrorMessage(
+            language === "en"
+              ? `Voice recognition failed (${event.error}). Please try again.`
+              : `Falha no reconhecimento de voz (${event.error}). Tente novamente.`
+          );
         }
       };
 
@@ -161,7 +180,11 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
     } catch (err: any) {
       console.error("Erro ao iniciar reconhecimento de voz:", err);
       setIsListening(false);
-      setErrorMessage("Não foi possível acessar o microfone. Verifique as permissões.");
+      setErrorMessage(
+        language === "en"
+          ? "Could not access microphone. Please check browser permissions."
+          : "Não foi possível acessar o microfone. Verifique as permissões."
+      );
     }
   };
 
@@ -228,7 +251,7 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
               id="voice-search-close-btn"
               onClick={onClose}
               className="absolute top-4 right-4 p-2 rounded-full text-neutral-400 hover:text-neutral-600 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-              aria-label="Fechar busca por voz"
+              aria-label={t("close")}
             >
               <X className="w-5 h-5" />
             </button>
@@ -237,13 +260,21 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
             <div className="flex flex-col items-center space-y-2">
               <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-[#00843D]/10 text-[#00843D] dark:text-green-400 text-xs font-bold">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Comando de Voz IFPR</span>
+                <span>{t("voiceModalBadge")}</span>
               </div>
               <h2 className="text-xl sm:text-2xl font-extrabold text-neutral-900 dark:text-white">
-                Busca Rápida por Voz
+                {t("voiceModalTitle")}
               </h2>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 max-w-xs">
-                Diga <span className="font-bold text-[#00843D] dark:text-green-400">"Localiza"</span> seguido do nome do objeto que procura.
+                {language === "en" ? (
+                  <>
+                    Say <span className="font-bold text-[#00843D] dark:text-green-400">&quot;Find&quot;</span> followed by the name of the item you are looking for.
+                  </>
+                ) : (
+                  <>
+                    Diga <span className="font-bold text-[#00843D] dark:text-green-400">&quot;Localiza&quot;</span> seguido do nome do objeto que procura.
+                  </>
+                )}
               </p>
             </div>
 
@@ -274,7 +305,11 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
                     ? "bg-[#00843D] text-white ring-8 ring-[#00843D]/20 scale-105 shadow-[#00843D]/30"
                     : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700"
                 }`}
-                title={isListening ? "Parar escuta" : "Iniciar escuta por voz"}
+                title={
+                  isListening
+                    ? language === "en" ? "Stop listening" : "Parar escuta"
+                    : language === "en" ? "Start voice search" : "Iniciar escuta por voz"
+                }
               >
                 {isListening ? (
                   <Mic className="w-10 h-10 animate-pulse" />
@@ -288,11 +323,11 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
                 {isListening ? (
                   <span className="flex items-center space-x-1.5 text-[#00843D] dark:text-green-400">
                     <span className="w-2 h-2 rounded-full bg-[#00843D] animate-ping" />
-                    <span>Ouvindo... Fale agora</span>
+                    <span>{t("voiceModalListening")}</span>
                   </span>
                 ) : (
                   <span className="text-neutral-500 dark:text-neutral-400">
-                    Toque no microfone para falar
+                    {t("voiceModalTapToSpeak")}
                   </span>
                 )}
               </div>
@@ -303,12 +338,12 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
               {transcript ? (
                 <>
                   <p className="text-xs text-neutral-500 dark:text-neutral-400 italic">
-                    "{transcript}"
+                    &quot;{transcript}&quot;
                   </p>
                   {detectedObject && (
                     <div className="flex items-center space-x-2 pt-1">
                       <span className="text-xs font-extrabold text-neutral-700 dark:text-neutral-200">
-                        Item Detectado:
+                        {t("voiceModalDetected")}
                       </span>
                       <span className="px-2.5 py-1 rounded-lg bg-[#00843D]/10 text-[#00843D] dark:text-green-400 text-xs font-black">
                         {detectedObject}
@@ -323,7 +358,9 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
                 </div>
               ) : (
                 <p className="text-xs text-neutral-400 dark:text-neutral-500">
-                  Exemplos: "Localiza garrafa", "Localiza mochila azul", "Localiza chaves"
+                  {language === "en"
+                    ? 'Examples: "Find bottle", "Find blue backpack", "Find keys"'
+                    : 'Exemplos: "Localiza garrafa", "Localiza mochila azul", "Localiza chaves"'}
                 </p>
               )}
             </div>
@@ -338,7 +375,11 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
                 className="w-full py-3 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs transition-all shadow-md flex items-center justify-center space-x-2 cursor-pointer"
               >
                 <Search className="w-4 h-4" />
-                <span>Buscar "{detectedObject}" no Catálogo</span>
+                <span>
+                  {language === "en"
+                    ? `Search "${detectedObject}" in Catalog`
+                    : `Buscar "${detectedObject}" no Catálogo`}
+                </span>
                 <ArrowRight className="w-4 h-4" />
               </motion.button>
             )}
@@ -346,17 +387,20 @@ export const VoiceSearchModal: React.FC<VoiceSearchModalProps> = ({
             {/* Quick Keyword Suggestions */}
             <div className="space-y-2 pt-1 border-t border-neutral-100 dark:border-neutral-800/80">
               <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider block">
-                Sugestões Rápidas:
+                {t("voiceModalSuggestions")}
               </span>
               <div className="flex flex-wrap items-center justify-center gap-1.5">
-                {["Garrafa Térmica", "Mochila", "Chaves", "Calculadora", "Estojo", "Casaco"].map((suggestion) => (
+                {(language === "en"
+                  ? ["Thermal Bottle", "Backpack", "Keys", "Calculator", "Pencil Case", "Jacket"]
+                  : ["Garrafa Térmica", "Mochila", "Chaves", "Calculadora", "Estojo", "Casaco"]
+                ).map((suggestion) => (
                   <button
                     key={suggestion}
                     type="button"
                     onClick={() => handleApplyDetected(suggestion)}
                     className="px-2.5 py-1 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-[#00843D]/10 hover:text-[#00843D] dark:hover:text-green-400 text-neutral-600 dark:text-neutral-300 text-[11px] font-semibold transition-all cursor-pointer border border-neutral-200/60 dark:border-neutral-700"
                   >
-                    "{suggestion}"
+                    &quot;{suggestion}&quot;
                   </button>
                 ))}
               </div>
