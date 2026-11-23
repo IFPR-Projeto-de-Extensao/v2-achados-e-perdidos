@@ -8,16 +8,21 @@ export const ROUTES = {
   SEARCH: "/buscar",
   LOST: "/perdidos",
   FOUND: "/encontrados",
+  RETURNED: "/devolvidos",
   REGISTER: "/cadastrar",
   MY_ITEMS: "/meus-registros",
   NOTIFICATIONS: "/notificacoes",
   PROFILE: "/perfil",
   SETTINGS: "/configuracoes",
+  HELP: "/ajuda",
+  MANUAL: "/manual",
   SUPPORT: "/suporte",
   SUPPORT_FEEDBACK: "/suporte/feedback",
   SUPPORT_BUG: "/suporte/relatar-bug",
   AI_ANALYZER: "/analisador-ia",
   VERIFY_EMAIL: "/verificar-email",
+  RESET_PASSWORD: "/redefinir-senha",
+  FIRST_ACCESS: "/primeiro-acesso",
   ADMIN: "/admin",
   ADMIN_DASHBOARD: "/admin/dashboard",
   ADMIN_USERS: "/admin/usuarios",
@@ -42,11 +47,13 @@ export type AppRouteKey =
   | "notifications"
   | "profile"
   | "settings"
+  | "manual"
   | "support"
   | "support_feedback"
   | "support_bug"
   | "image_analyzer"
   | "verify_email"
+  | "reset_password"
   | "admin"
   | "privacy_policy"
   | "terms_of_use"
@@ -124,6 +131,16 @@ export function parseCurrentRoute(pathname: string, search: string = ""): Parsed
     };
   }
 
+  if (cleanPath === "/devolvidos") {
+    return {
+      pathname: "/devolvidos",
+      routeKey: "search",
+      searchParams: { ...searchParamsObj, tipo: "devolvido" },
+      itemId,
+      qrCodeId,
+    };
+  }
+
   if (
     cleanPath === "/cadastrar" ||
     cleanPath === "/registrar" ||
@@ -170,7 +187,16 @@ export function parseCurrentRoute(pathname: string, search: string = ""): Parsed
     return { pathname: "/suporte/relatar-bug", routeKey: "support_bug", searchParams: searchParamsObj, itemId, qrCodeId };
   }
 
-  if (cleanPath === "/suporte" || cleanPath === "/ajuda" || cleanPath === "/atendimento") {
+  if (
+    cleanPath === "/ajuda" ||
+    cleanPath === "/manual" ||
+    cleanPath === "/manual-do-usuario" ||
+    cleanPath === "/manual-usuario"
+  ) {
+    return { pathname: "/ajuda", routeKey: "manual", searchParams: searchParamsObj, itemId, qrCodeId };
+  }
+
+  if (cleanPath === "/suporte" || cleanPath === "/atendimento") {
     return { pathname: "/suporte", routeKey: "support", searchParams: searchParamsObj, itemId, qrCodeId };
   }
 
@@ -190,6 +216,15 @@ export function parseCurrentRoute(pathname: string, search: string = ""): Parsed
     cleanPath === "/email-verification"
   ) {
     return { pathname: "/verificar-email", routeKey: "verify_email", searchParams: searchParamsObj, itemId, qrCodeId };
+  }
+
+  if (
+    cleanPath === "/redefinir-senha" ||
+    cleanPath === "/primeiro-acesso" ||
+    cleanPath === "/definir-senha" ||
+    cleanPath === "/auth/action"
+  ) {
+    return { pathname: "/redefinir-senha", routeKey: "reset_password", searchParams: searchParamsObj, itemId, qrCodeId };
   }
 
   // Admin & Server routes & sub-routes

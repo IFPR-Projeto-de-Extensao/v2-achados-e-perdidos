@@ -22,6 +22,7 @@ import {
   Layers,
   ArrowRight,
   Compass,
+  BookOpen,
 } from "lucide-react";
 import { vibrateClick, vibrateSuccess, vibrateWarning } from "../lib/utils";
 import { OFFICIAL_DISCORD_INVITE_URL } from "../lib/constants";
@@ -279,17 +280,31 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
             <span>{t("reportBug")}</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              vibrateClick();
-              triggerSpotlightTour();
-            }}
-            className="sm:ml-auto px-4 py-2.5 rounded-2xl text-xs font-bold transition-colors flex items-center space-x-2 bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/25 hover:bg-[#16845B]/15 cursor-pointer"
-          >
-            <Compass className="w-4 h-4" />
-            <span>{t("tourReplayBtn", "Iniciar Tour Guiado")}</span>
-          </button>
+          <div className="sm:ml-auto flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                navigate("/ajuda");
+              }}
+              className="px-4 py-2.5 rounded-2xl text-xs font-bold transition-colors flex items-center space-x-2 bg-white dark:bg-slate-900 text-[#172B2A] dark:text-slate-100 border border-slate-200 dark:border-slate-700 hover:border-[#16845B] cursor-pointer"
+            >
+              <BookOpen className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
+              <span>{language === "en" ? "User Manual (PDF/HTML)" : "Manual do Usuário (PDF/HTML)"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                vibrateClick();
+                triggerSpotlightTour();
+              }}
+              className="px-4 py-2.5 rounded-2xl text-xs font-bold transition-colors flex items-center space-x-2 bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#16845B] dark:text-emerald-400 border border-[#16845B]/25 hover:bg-[#16845B]/15 cursor-pointer"
+            >
+              <Compass className="w-4 h-4" />
+              <span>{t("tourReplayBtn", "Iniciar Tour Guiado")}</span>
+            </button>
+          </div>
         </div>
       </div>
 

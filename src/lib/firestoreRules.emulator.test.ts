@@ -897,39 +897,48 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
       );
     });
 
-    it("14. Criação de reivindicação por INTRUSO (e-mail externo) é barrada (assertFails)", async () => {
-      const uid = "intruso_claim_block";
+    it("14. Comunidade externa (INTRUSO) com e-mail verificado e ativo cria própria reivindicação (assertSucceeds); sem e-mail verificado é barrada (assertFails)", async () => {
+      const uid = "intruso_claim_verified";
       const email = "visitante@gmail.com";
 
       await setupUserDoc(uid, {
         id: uid,
         email,
         role: "INTRUSO",
+        approvalStatus: "APROVADO",
         status: "active",
       });
 
-      const db = testEnv.authenticatedContext(uid, {
+      const unverifiedDb = testEnv.authenticatedContext(uid, {
         email,
-        email_verified: true,
+        email_verified: false,
       }).firestore();
 
       const claimId = `claim_${uid}_${validItemId}`;
-      await assertFails(
-        setDoc(doc(db, "claims", claimId), {
-          id: claimId,
-          itemId: validItemId,
-          itemTitle: "Estojo com Canetas",
-          itemCategory: "Outros",
-          itemLocation: "Secretaria",
-          claimerId: uid,
-          claimerName: "Visitante Externo",
-          claimerEmail: email,
-          claimerRole: "INTRUSO",
-          distinctiveFeatures: "Pertence meu",
-          status: "PENDENTE",
-          createdAt: new Date().toISOString(),
-        })
-      );
+      const payload = {
+        id: claimId,
+        itemId: validItemId,
+        itemTitle: "Estojo com Canetas",
+        itemCategory: "Outros",
+        itemLocation: "Secretaria",
+        claimerId: uid,
+        claimerName: "Visitante Externo",
+        claimerEmail: email,
+        claimerRole: "INTRUSO",
+        distinctiveFeatures: "Pertence meu com adesivo vermelho",
+        status: "PENDENTE",
+        createdAt: new Date().toISOString(),
+      };
+
+      // Sem e-mail verificado -> negado
+      await assertFails(setDoc(doc(unverifiedDb, "claims", claimId), payload));
+
+      // Com e-mail verificado e standing ativo -> permitido
+      const verifiedDb = testEnv.authenticatedContext(uid, {
+        email,
+        email_verified: true,
+      }).firestore();
+      await assertSucceeds(setDoc(doc(verifiedDb, "claims", claimId), payload));
     });
 
     it("15. SERVIDOR aprovado ativo consegue realizar consulta irrestrita em /claims (assertSucceeds)", async () => {
@@ -3421,7 +3430,595 @@ describe.skipIf(!isEmulatorAvailable)("Firestore Rules Emulator Suite — Real S
       await assertNoPartialDocuments("ifpr-E31-UNAUTH", "hist-ifpr-E31-UNAUTH-init");
     });
   });
+
+  describe("Etapa 2 — Comunidade Externa (INTRUSO verificado): Reivindicações, Perfil Pessoal e Notificações", () => {
+    const extUid = "ext_user_etapa2";
+    const extEmail = "morador.ivaipora@gmail.com";
+    const otherUid = "aluno_terceiro_etapa2";
+    const otherEmail = "terceiro@estudantes.ifpr.edu.br";
+    const itemId = "item_etapa2_catalogo";
+
+    beforeEach(async () => {
+      await setupUserDoc(extUid, {
+        id: extUid,
+        email: extEmail,
+        name: "Morador Externo",
+        role: "INTRUSO",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+        admin: false,
+        reputationScore: 100,
+      });
+      await setupUserDoc(otherUid, {
+        id: otherUid,
+        email: otherEmail,
+        name: "Aluno Terceiro",
+        role: "ALUNO",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+        admin: false,
+      });
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        const db = ctx.firestore();
+        await setDoc(doc(db, "items", itemId), {
+          id: itemId,
+          title: "Carteira Marrom",
+          description: "Encontrada no estacionamento",
+          category: "Documentos",
+          location: "Estacionamento",
+          status: "ENCONTRADO",
+          registeredByUserId: "serv_seed",
+          registeredByRole: "SERVIDOR",
+          createdAt: new Date().toISOString(),
+        });
+        await setDoc(doc(db, "claims", `claim_${otherUid}_${itemId}`), {
+          id: `claim_${otherUid}_${itemId}`,
+          itemId,
+          claimerId: otherUid,
+          claimerName: "Aluno Terceiro",
+          claimerEmail: otherEmail,
+          claimerRole: "ALUNO",
+          distinctiveFeatures: "Foto 3x4 interna",
+          status: "PENDENTE",
+          createdAt: new Date().toISOString(),
+        });
+        await setDoc(doc(db, "notifications", "notif_ext_own"), {
+          id: "notif_ext_own",
+          userId: extUid,
+          isGlobal: false,
+          title: "Solicitação Registrada",
+          message: "Sua solicitação foi recebida.",
+          type: "CLAIM_UPDATE",
+          read: false,
+          timestamp: new Date().toISOString(),
+        });
+        await setDoc(doc(db, "notifications", "notif_other_private"), {
+          id: "notif_other_private",
+          userId: otherUid,
+          isGlobal: false,
+          title: "Privado Terceiro",
+          message: "Aviso exclusivo de outro usuário.",
+          type: "CLAIM_UPDATE",
+          read: false,
+          timestamp: new Date().toISOString(),
+        });
+      });
+    });
+
+    it("59. Usuário externo verificado cria, consulta, lista, cancela e reenvia SOMENTE a própria reivindicação", async () => {
+      const dbExt = testEnv!.authenticatedContext(extUid, {
+        email: extEmail,
+        email_verified: true,
+      }).firestore();
+      const ownClaimId = `claim_${extUid}_${itemId}`;
+
+      // Leitura tolerante de existência antes da criação
+      await assertSucceeds(getDoc(doc(dbExt, "claims", ownClaimId)));
+
+      // Criação própria
+      await assertSucceeds(
+        setDoc(doc(dbExt, "claims", ownClaimId), {
+          id: ownClaimId,
+          itemId,
+          claimerId: extUid,
+          claimerName: "Morador Externo",
+          claimerEmail: extEmail,
+          claimerRole: "INTRUSO",
+          distinctiveFeatures: "Carteira com compartimento azul",
+          status: "PENDENTE",
+          createdAt: "2026-11-23T12:00:00.000Z",
+        })
+      );
+
+      // Consulta própria por get e list filtrado
+      await assertSucceeds(getDoc(doc(dbExt, "claims", ownClaimId)));
+      await assertSucceeds(
+        getDocs(query(collection(dbExt, "claims"), where("claimerId", "==", extUid)))
+      );
+
+      // Cancelamento próprio
+      await assertSucceeds(
+        updateDoc(doc(dbExt, "claims", ownClaimId), {
+          status: "CANCELADO",
+          cancelledAt: "2026-11-23T12:10:00.000Z",
+        })
+      );
+
+      // Reenvio próprio após CANCELADO
+      await assertSucceeds(
+        setDoc(doc(dbExt, "claims", ownClaimId), {
+          id: ownClaimId,
+          itemId,
+          claimerId: extUid,
+          claimerName: "Morador Externo",
+          claimerEmail: extEmail,
+          claimerRole: "INTRUSO",
+          distinctiveFeatures: "Carteira com compartimento azul e fecho dourado",
+          status: "PENDENTE",
+          createdAt: "2026-11-23T12:00:00.000Z",
+          resubmittedAt: "2026-11-23T12:15:00.000Z",
+        })
+      );
+    });
+
+    it("60. Usuário externo NÃO consegue criar reivindicação em nome de terceiros nem consultar/editar reivindicação de terceiros", async () => {
+      const dbExt = testEnv!.authenticatedContext(extUid, {
+        email: extEmail,
+        email_verified: true,
+      }).firestore();
+
+      // Criar em nome de outra pessoa -> NEGADO
+      await assertFails(
+        setDoc(doc(dbExt, "claims", `claim_${otherUid}_outro_item`), {
+          id: `claim_${otherUid}_outro_item`,
+          itemId,
+          claimerId: otherUid,
+          claimerRole: "ALUNO",
+          distinctiveFeatures: "Falsificação",
+          status: "PENDENTE",
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      // Ler/listar/editar claim de terceiro -> NEGADO
+      await assertFails(getDoc(doc(dbExt, "claims", `claim_${otherUid}_${itemId}`)));
+      await assertFails(getDocs(collection(dbExt, "claims")));
+      await assertFails(
+        getDocs(query(collection(dbExt, "claims"), where("claimerId", "==", otherUid)))
+      );
+      await assertFails(
+        updateDoc(doc(dbExt, "claims", `claim_${otherUid}_${itemId}`), {
+          status: "APROVADO",
+        })
+      );
+      await assertFails(
+        updateDoc(doc(dbExt, "claims", `claim_${otherUid}_${itemId}`), {
+          status: "CANCELADO",
+          cancelledAt: new Date().toISOString(),
+        })
+      );
+    });
+
+    it("61. Usuário externo edita apenas campos pessoais permitidos do próprio perfil e é BLOQUEADO em role, approvalStatus, admin, status, active e campos de controle", async () => {
+      const dbExt = testEnv!.authenticatedContext(extUid, {
+        email: extEmail,
+        email_verified: true,
+      }).firestore();
+
+      // Edição legítima de campos pessoais -> PERMITIDO
+      await assertSucceeds(
+        updateDoc(doc(dbExt, "users", extUid), {
+          name: "Morador Atualizado",
+          phone: "(43) 99999-1234",
+          updatedAt: new Date().toISOString(),
+        })
+      );
+
+      // Tentativas de escalonamento ou adulteração de campos protegidos -> NEGADO
+      await assertFails(updateDoc(doc(dbExt, "users", extUid), { role: "ALUNO" }));
+      await assertFails(updateDoc(doc(dbExt, "users", extUid), { role: "SERVIDOR" }));
+      await assertFails(updateDoc(doc(dbExt, "users", extUid), { role: "ADMIN" }));
+      await assertFails(updateDoc(doc(dbExt, "users", extUid), { admin: true }));
+      await assertFails(updateDoc(doc(dbExt, "users", extUid), { approvalStatus: "PENDENTE" }));
+      await assertFails(updateDoc(doc(dbExt, "users", extUid), { status: "suspended" }));
+      await assertFails(updateDoc(doc(dbExt, "users", extUid), { active: false }));
+      await assertFails(updateDoc(doc(dbExt, "users", extUid), { reputationScore: 999 }));
+      await assertFails(updateDoc(doc(dbExt, "users", extUid), { roleAssignedBy: "paulocauan39@gmail.com" }));
+      await assertFails(updateDoc(doc(dbExt, "users", extUid), { shadowFlag: true }));
+
+      // Tentativa de editar perfil de terceiro -> NEGADO
+      await assertFails(updateDoc(doc(dbExt, "users", otherUid), { name: "Invadido" }));
+    });
+
+    it("62. Usuário externo NÃO consegue cadastrar objetos em /items nem acessar coleções administrativas", async () => {
+      const dbExt = testEnv!.authenticatedContext(extUid, {
+        email: extEmail,
+        email_verified: true,
+      }).firestore();
+
+      await assertFails(
+        setDoc(doc(dbExt, "items", "item_ext_proibido"), {
+          id: "item_ext_proibido",
+          title: "Objeto Indevido",
+          description: "Tentativa de cadastro por externo",
+          category: "Outros",
+          location: "Pátio",
+          status: "ENCONTRADO",
+          registeredByUserId: extUid,
+          registeredByRole: "INTRUSO",
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      await assertFails(getDocs(collection(dbExt, "users")));
+      await assertFails(getDocs(collection(dbExt, "role_assignments")));
+      await assertFails(getDocs(collection(dbExt, "audit_logs")));
+      await assertFails(getDocs(collection(dbExt, "activity_logs")));
+      await assertFails(getDoc(doc(dbExt, "system_config", "global")));
+    });
+
+    it("63. Usuário externo lê, marca como lida, cria auto-notificação e exclui SOMENTE suas próprias notificações; notificações de terceiros são BLOQUEADAS", async () => {
+      const dbExt = testEnv!.authenticatedContext(extUid, {
+        email: extEmail,
+        email_verified: true,
+      }).firestore();
+
+      // Própria notificação: ler, listar, marcar lida, criar própria, excluir própria -> PERMITIDO
+      await assertSucceeds(getDoc(doc(dbExt, "notifications", "notif_ext_own")));
+      await assertSucceeds(
+        getDocs(query(collection(dbExt, "notifications"), where("userId", "==", extUid)))
+      );
+      await assertSucceeds(
+        updateDoc(doc(dbExt, "notifications", "notif_ext_own"), { read: true })
+      );
+      await assertSucceeds(
+        setDoc(doc(dbExt, "notifications", "notif_ext_self_new"), {
+          id: "notif_ext_self_new",
+          userId: extUid,
+          isGlobal: false,
+          title: "Solicitação Registrada",
+          message: "Confirmação própria.",
+          type: "CLAIM_UPDATE",
+          read: false,
+          timestamp: new Date().toISOString(),
+        })
+      );
+      await assertSucceeds(deleteDoc(doc(dbExt, "notifications", "notif_ext_own")));
+
+      // Terceiros e broadcast/spoofing -> NEGADO
+      await assertFails(getDoc(doc(dbExt, "notifications", "notif_other_private")));
+      await assertFails(
+        getDocs(query(collection(dbExt, "notifications"), where("userId", "==", otherUid)))
+      );
+      await assertFails(
+        updateDoc(doc(dbExt, "notifications", "notif_other_private"), { read: true })
+      );
+      await assertFails(deleteDoc(doc(dbExt, "notifications", "notif_other_private")));
+      await assertFails(
+        setDoc(doc(dbExt, "notifications", "notif_ext_spoof"), {
+          id: "notif_ext_spoof",
+          userId: otherUid,
+          isGlobal: false,
+          title: "Spoof",
+          message: "Tentativa de notificar terceiro",
+          type: "CLAIM_UPDATE",
+          read: false,
+          timestamp: new Date().toISOString(),
+        })
+      );
+    });
+
+    it("64. ETAPA 3 — Campos extras maliciosos, envenenamento de tipo e spoofing de claimerRole/id são BLOQUEADOS em /claims, /notifications e /users", async () => {
+      const dbExt = testEnv!.authenticatedContext(extUid, {
+        email: extEmail,
+        email_verified: true,
+      }).firestore();
+      const dbOther = testEnv!.authenticatedContext(otherUid, {
+        email: "outro.aluno@estudantes.ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      // /claims create com campo extra malicioso (approved/bypassReview) -> NEGADO
+      await assertFails(
+        setDoc(doc(dbExt, "claims", `claim_${extUid}_${itemId}`), {
+          id: `claim_${extUid}_${itemId}`,
+          itemId,
+          claimerId: extUid,
+          claimerRole: "INTRUSO",
+          distinctiveFeatures: "Chaveiro azul",
+          status: "PENDENTE",
+          createdAt: new Date().toISOString(),
+          approved: true,
+          bypassReview: true,
+        })
+      );
+
+      // /claims create com id divergente de claimId -> NEGADO
+      await assertFails(
+        setDoc(doc(dbExt, "claims", `claim_${extUid}_${itemId}`), {
+          id: "claim_forged_id",
+          itemId,
+          claimerId: extUid,
+          claimerRole: "INTRUSO",
+          distinctiveFeatures: "Chaveiro azul",
+          status: "PENDENTE",
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      // /claims create por ALUNO tentando forjar claimerRole='ADMIN' ou 'SERVIDOR' -> NEGADO
+      await assertFails(
+        setDoc(doc(dbOther, "claims", `claim_${otherUid}_item_spoof_role`), {
+          id: `claim_${otherUid}_item_spoof_role`,
+          itemId,
+          claimerId: otherUid,
+          claimerRole: "ADMIN",
+          distinctiveFeatures: "Tentativa de spoof de cargo",
+          status: "PENDENTE",
+          createdAt: new Date().toISOString(),
+        })
+      );
+
+      // /notifications create próprio com campo extra malicioso -> NEGADO
+      await assertFails(
+        setDoc(doc(dbExt, "notifications", "notif_ext_extra_field"), {
+          id: "notif_ext_extra_field",
+          userId: extUid,
+          isGlobal: false,
+          title: "Teste",
+          message: "Mensagem",
+          type: "CLAIM_UPDATE",
+          read: false,
+          timestamp: new Date().toISOString(),
+          adminOverride: true,
+        })
+      );
+
+      // /notifications update envenenando tipo de read (string em vez de bool) -> NEGADO
+      await assertFails(
+        updateDoc(doc(dbExt, "notifications", "notif_ext_own"), {
+          read: "true_string_poison",
+        })
+      );
+
+      // /users create não-admin tentando injetar shadowAdmin / roleAssignmentActive / status banned -> NEGADO
+      const badNewUid = "ext_new_shadow_uid";
+      const dbBadNew = testEnv!.authenticatedContext(badNewUid, {
+        email: "shadow@gmail.com",
+        email_verified: true,
+      }).firestore();
+      await assertFails(
+        setDoc(doc(dbBadNew, "users", badNewUid), {
+          id: badNewUid,
+          email: "shadow@gmail.com",
+          name: "Shadow",
+          role: "INTRUSO",
+          approvalStatus: "APROVADO",
+          status: "active",
+          shadowAdmin: true,
+          roleAssignmentActive: true,
+        })
+      );
+
+      // /users update Branch 2 (ALUNO) tentando injetar campo extra ou alterar active -> NEGADO
+      await assertFails(updateDoc(doc(dbOther, "users", otherUid), { shadowAdmin: true }));
+      await assertFails(updateDoc(doc(dbOther, "users", otherUid), { active: false }));
+    });
+
+    it("65. ETAPA 3 — Sincronização pós-verificação de e-mail (emailVerified: false -> true) de INTRUSO funciona e criação conjunta claim + auto-notificação é permitida", async () => {
+      const newlyVerifiedUid = "ext_newly_verified_uid";
+      const newlyVerifiedEmail = "recem.verificado@gmail.com";
+      await setupUserDoc(newlyVerifiedUid, {
+        id: newlyVerifiedUid,
+        email: newlyVerifiedEmail,
+        name: "Morador Recém Verificado",
+        role: "INTRUSO",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+        emailVerified: false,
+      });
+
+      const dbNewlyVerified = testEnv!.authenticatedContext(newlyVerifiedUid, {
+        email: newlyVerifiedEmail,
+        email_verified: true,
+      }).firestore();
+
+      // Sincronização legítima de emailVerified: false -> true no login pós-verificação -> PERMITIDO
+      await assertSucceeds(
+        updateDoc(doc(dbNewlyVerified, "users", newlyVerifiedUid), {
+          emailVerified: true,
+          updatedAt: new Date().toISOString(),
+        })
+      );
+
+      // Reverter emailVerified para false não é permitido em Branch 2b -> NEGADO
+      await assertFails(
+        updateDoc(doc(dbNewlyVerified, "users", newlyVerifiedUid), {
+          emailVerified: false,
+        })
+      );
+
+      // Fluxo conjunto: criar claim determinística + auto-notificação -> PERMITIDO
+      const jointClaimId = `claim_${newlyVerifiedUid}_${itemId}`;
+      await assertSucceeds(
+        setDoc(doc(dbNewlyVerified, "claims", jointClaimId), {
+          id: jointClaimId,
+          itemId,
+          claimerId: newlyVerifiedUid,
+          claimerRole: "INTRUSO",
+          distinctiveFeatures: "Risco na lateral direita",
+          status: "PENDENTE",
+          createdAt: new Date().toISOString(),
+        })
+      );
+      await assertSucceeds(
+        setDoc(doc(dbNewlyVerified, "notifications", `notif_joint_${newlyVerifiedUid}`), {
+          id: `notif_joint_${newlyVerifiedUid}`,
+          userId: newlyVerifiedUid,
+          isGlobal: false,
+          title: "Solicitação Registrada",
+          message: "Sua solicitação foi enviada.",
+          type: "CLAIM_UPDATE",
+          read: false,
+          relatedItemId: itemId,
+          timestamp: new Date().toISOString(),
+        })
+      );
+    });
+
+    it("66. ETAPA 3 — Contas INTRUSO não verificadas, suspensas ou banidas são BLOQUEADAS em /claims e /notifications (inclusive get/list) e token adulterado não concede privilégio", async () => {
+      const unvUid = "ext_unv_etapa3";
+      const suspUid = "ext_susp_etapa3";
+      const bannedUid = "ext_banned_etapa3";
+
+      await setupUserDoc(unvUid, {
+        id: unvUid,
+        email: "unv.e3@gmail.com",
+        role: "INTRUSO",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+      });
+      await setupUserDoc(suspUid, {
+        id: suspUid,
+        email: "susp.e3@gmail.com",
+        role: "INTRUSO",
+        approvalStatus: "APROVADO",
+        status: "suspended",
+        active: true,
+      });
+      await setupUserDoc(bannedUid, {
+        id: bannedUid,
+        email: "banned.e3@gmail.com",
+        role: "INTRUSO",
+        approvalStatus: "APROVADO",
+        status: "banned",
+        active: false,
+      });
+
+      await testEnv!.withSecurityRulesDisabled(async (ctx) => {
+        const db = ctx.firestore();
+        await setDoc(doc(db, "notifications", "n_unv_e3"), {
+          id: "n_unv_e3",
+          userId: unvUid,
+          title: "Aviso",
+          message: "Msg",
+          read: false,
+          timestamp: new Date().toISOString(),
+        });
+        await setDoc(doc(db, "notifications", "n_susp_e3"), {
+          id: "n_susp_e3",
+          userId: suspUid,
+          title: "Aviso",
+          message: "Msg",
+          read: false,
+          timestamp: new Date().toISOString(),
+        });
+        await setDoc(doc(db, "notifications", "n_banned_e3"), {
+          id: "n_banned_e3",
+          userId: bannedUid,
+          title: "Aviso",
+          message: "Msg",
+          read: false,
+          timestamp: new Date().toISOString(),
+        });
+      });
+
+      // INTRUSO com token adulterado (role=ADMIN, admin=true) mas doc INTRUSO -> não consegue listar /users nem aprovar claims
+      const dbTampered = testEnv!.authenticatedContext(extUid, {
+        email: extEmail,
+        email_verified: true,
+        role: "ADMIN",
+        admin: true,
+      }).firestore();
+      await assertFails(getDocs(collection(dbTampered, "users")));
+      await assertFails(
+        updateDoc(doc(dbTampered, "claims", `claim_${otherUid}_${itemId}`), { status: "APROVADO" })
+      );
+
+      // Não verificado, suspenso e banido bloqueados em /notifications get/list/create/update/delete
+      const dbUnv = testEnv!.authenticatedContext(unvUid, { email: "unv.e3@gmail.com", email_verified: false }).firestore();
+      const dbSusp = testEnv!.authenticatedContext(suspUid, { email: "susp.e3@gmail.com", email_verified: true }).firestore();
+      const dbBanned = testEnv!.authenticatedContext(bannedUid, { email: "banned.e3@gmail.com", email_verified: true }).firestore();
+
+      await assertFails(getDoc(doc(dbUnv, "notifications", "n_unv_e3")));
+      await assertFails(getDocs(query(collection(dbUnv, "notifications"), where("userId", "==", unvUid))));
+      await assertFails(getDoc(doc(dbSusp, "notifications", "n_susp_e3")));
+      await assertFails(getDocs(query(collection(dbSusp, "notifications"), where("userId", "==", suspUid))));
+      await assertFails(getDoc(doc(dbBanned, "notifications", "n_banned_e3")));
+      await assertFails(getDocs(query(collection(dbBanned, "notifications"), where("userId", "==", bannedUid))));
+      await assertFails(getDoc(doc(dbSusp, "claims", `claim_${suspUid}_${itemId}`)));
+      await assertFails(getDoc(doc(dbUnv, "claims", `claim_${unvUid}_${itemId}`)));
+    });
+
+    it("67. ETAPA 3 — Proteção do Root Admin contra ADMIN não-root e anti-spoofing de registeredByUserId em /item_private", async () => {
+      const ROOT_UID = "hCG5mDgK1fRaTojULzlM7dXvb7n2";
+      const secondaryAdminUid = "admin_sec_e3";
+      const servUid = "serv_e3_private";
+
+      await setupUserDoc(ROOT_UID, {
+        id: ROOT_UID,
+        email: "paulocauan39@gmail.com",
+        name: "Root Admin",
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+      });
+      await setupUserDoc(secondaryAdminUid, {
+        id: secondaryAdminUid,
+        email: "admin.sec@ifpr.edu.br",
+        name: "Admin Secundário",
+        role: "ADMIN",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+      });
+      await setupUserDoc(servUid, {
+        id: servUid,
+        email: "serv.priv@ifpr.edu.br",
+        name: "Servidor Privado",
+        role: "SERVIDOR",
+        approvalStatus: "APROVADO",
+        status: "active",
+        active: true,
+      });
+
+      const dbSecAdmin = testEnv!.authenticatedContext(secondaryAdminUid, {
+        email: "admin.sec@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+      const dbServ = testEnv!.authenticatedContext(servUid, {
+        email: "serv.priv@ifpr.edu.br",
+        email_verified: true,
+      }).firestore();
+
+      // ADMIN secundário NÃO pode editar nem excluir o documento do Root Admin
+      await assertFails(updateDoc(doc(dbSecAdmin, "users", ROOT_UID), { status: "banned", role: "ALUNO" }));
+      await assertFails(deleteDoc(doc(dbSecAdmin, "users", ROOT_UID)));
+
+      // SERVIDOR não pode forjar registeredByUserId de terceiro ao criar /item_private
+      await assertFails(
+        setDoc(doc(dbServ, "item_private", "item_priv_spoof"), {
+          itemId: "item_priv_spoof",
+          registeredByUserId: ROOT_UID,
+          secretVerificationHint: "Forjado",
+        })
+      );
+      await assertSucceeds(
+        setDoc(doc(dbServ, "item_private", "item_priv_legit"), {
+          itemId: "item_priv_legit",
+          registeredByUserId: servUid,
+          secretVerificationHint: "Legítimo",
+        })
+      );
+    });
+  });
 });
+
 
 
 

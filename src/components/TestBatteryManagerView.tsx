@@ -61,7 +61,6 @@ import {
 } from "../types";
 import {
   STANDARD_TEST_DEFINITIONS,
-  INITIAL_TEST_BATTERIES,
   createNewTestBatteryExecution,
   calculateBatterySummary,
   calculateTestDuration,
@@ -102,10 +101,10 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
   const isAdmin = currentUser?.role === "ADMIN" || currentUser?.role === "SERVIDOR";
   const isTesterOnly = !isAdmin;
 
-  // Executions state
-  const [executions, setExecutions] = useState<TestBatteryExecution[]>(INITIAL_TEST_BATTERIES);
-  const [selectedExecutionId, setSelectedExecutionId] = useState<string>(INITIAL_TEST_BATTERIES[0].id);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  // Executions state (strictly populated from real Firestore records; never mock-seeded)
+  const [executions, setExecutions] = useState<TestBatteryExecution[]>([]);
+  const [selectedExecutionId, setSelectedExecutionId] = useState<string>("");
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Active View Tabs
   const [activeMainTab, setActiveMainTab] = useState<"MATRIX" | "DISTRIBUTION" | "MY_TESTS" | "ANALYTICS">(initialTab);
@@ -144,7 +143,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
   const [newBatteryEndTime, setNewBatteryEndTime] = useState("");
   const [newBatteryResponsible, setNewBatteryResponsible] = useState(currentUser?.name || "Administrador TI");
   const [newBatteryEnvironment, setNewBatteryEnvironment] = useState<"Desenvolvimento" | "Homologação" | "Produção">("Produção");
-  const [newBatteryVersion, setNewBatteryVersion] = useState("v1.8.4");
+  const [newBatteryVersion, setNewBatteryVersion] = useState("v1.10.13");
   const [newBatteryStatus, setNewBatteryStatus] = useState<TestBatteryStatus>("RASCUNHO");
   const [newBatteryInitialMode, setNewBatteryInitialMode] = useState<"EMPTY" | "TEMPLATE">("EMPTY");
 
@@ -164,18 +163,19 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
       const testCol = collection(db, "test_executions");
       const snap = await getDocs(query(testCol, orderBy("createdAt", "desc")));
 
-      if (!snap.empty) {
-        const loaded: TestBatteryExecution[] = [];
-        snap.forEach((d) => {
-          loaded.push(d.data() as TestBatteryExecution);
-        });
-        setExecutions(loaded);
-        if (loaded.length > 0 && !loaded.some((e) => e.id === selectedExecutionId)) {
-          setSelectedExecutionId(loaded[0].id);
+      const loaded: TestBatteryExecution[] = [];
+      snap.forEach((d) => {
+        loaded.push(d.data() as TestBatteryExecution);
+      });
+      setExecutions(loaded);
+      setSelectedExecutionId((prev) => {
+        if (prev && loaded.some((e) => e.id === prev)) {
+          return prev;
         }
-      }
+        return loaded[0]?.id || "";
+      });
     } catch (err) {
-      console.warn("Utilizando armazenamento local para baterias de teste:", err);
+      console.warn("Erro ao carregar baterias de teste do Firestore:", err);
     } finally {
       setIsLoading(false);
     }
@@ -190,19 +190,17 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
-        if (!snap.empty) {
-          const loaded: TestBatteryExecution[] = [];
-          snap.forEach((d) => {
-            loaded.push(d.data() as TestBatteryExecution);
-          });
-          setExecutions(loaded);
-          setSelectedExecutionId((prev) => {
-            if (prev && loaded.some((e) => e.id === prev)) {
-              return prev;
-            }
-            return loaded[0]?.id || prev;
-          });
-        }
+        const loaded: TestBatteryExecution[] = [];
+        snap.forEach((d) => {
+          loaded.push(d.data() as TestBatteryExecution);
+        });
+        setExecutions(loaded);
+        setSelectedExecutionId((prev) => {
+          if (prev && loaded.some((e) => e.id === prev)) {
+            return prev;
+          }
+          return loaded[0]?.id || "";
+        });
         setIsLoading(false);
       },
       (err) => {
@@ -214,9 +212,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     return () => unsubscribe();
   }, []);
 
-  // Active execution object
-  const activeExecution = useMemo(() => {
-    return executions.find((e) => e.id === selectedExecutionId) || executions[0] || INITIAL_TEST_BATTERIES[0];
+  // Active execution object (null when Firestore collection is empty)
+  const activeExecution = useMemo<TestBatteryExecution | null>(() => {
+    return executions.find((e) => e.id === selectedExecutionId) || executions[0] || null;
   }, [executions, selectedExecutionId]);
 
   // Statistical summary of active execution
@@ -312,6 +310,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
   // Quick Status Update
   const handleQuickStatusChange = async (testId: string, newStatus: TestStatus) => {
+    if (!activeExecution) return;
     vibrateClick();
     const currentTest = activeExecution.tests.find((t) => t.id === testId);
     if (!currentTest) return;
@@ -383,6 +382,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
   // Assign individual test to a participant
   const handleAssignTestToTester = async (testId: string, participantId: string) => {
+    if (!activeExecution) return;
     vibrateClick();
     if (!isAdmin) {
       addToast("Apenas administradores e servidores podem gerenciar a atribuição de testes.", "warning");
@@ -460,6 +460,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
   // Add Participant Handler (Decoupled: Only registers participant with 0 tests)
   const handleAddParticipant = async (participant: TestParticipant) => {
+    if (!activeExecution) return;
     const now = new Date();
     const existing = activeExecution.participants || [];
     if (existing.some((p) => p.email.toLowerCase() === participant.email.toLowerCase())) {
@@ -523,6 +524,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
   // Add Custom Test Case Handler
   const handleAddCustomTest = async (newTest: TestCaseItem) => {
+    if (!activeExecution) return;
     const now = new Date();
     const txId = `tx-test-add-${activeExecution.id}-${newTest.id}-${Date.now()}`;
     const auditEntry: TestExecutionAuditEntry = {
@@ -583,6 +585,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
   // Remove Participant Handler
   const handleRemoveParticipant = async (participantId: string) => {
+    if (!activeExecution) return;
     vibrateClick();
     const now = new Date();
     const removedPart = (activeExecution.participants || []).find((p) => p.id === participantId);
@@ -637,6 +640,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
   // Auto Distribute Tests among all participants
   const handleAutoDistributeTests = async () => {
+    if (!activeExecution) return;
     const participants = activeExecution.participants || [];
     if (participants.length === 0) {
       addToast("Adicione pelo menos um participante antes de distribuir os testes.", "warning");
@@ -719,6 +723,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     assignedToName?: string,
     assignedToEmail?: string
   ): Promise<{ success: boolean; error?: string }> => {
+    if (!activeExecution) {
+      return { success: false, error: "Nenhuma bateria de testes selecionada." };
+    }
     vibrateClick();
     const currentTest = activeExecution.tests.find((t) => t.id === testId);
     if (!currentTest) {
@@ -774,6 +781,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
   // Update Execution Metadata (Header Fields)
   const handleUpdateExecutionMetadata = async (field: keyof TestBatteryExecution, value: any) => {
+    if (!activeExecution) return;
     const now = new Date();
     const updatedExecution: TestBatteryExecution = {
       ...activeExecution,
@@ -792,6 +800,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
   // Start Battery Execution
   const handleStartBattery = async () => {
+    if (!activeExecution) return;
     vibrateClick();
     const now = new Date();
     const currentTimeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -845,6 +854,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
   // Finish Battery Execution
   const handleFinishBattery = async () => {
+    if (!activeExecution) return;
     vibrateClick();
     const now = new Date();
     const currentTimeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
@@ -898,6 +908,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
   // Archive Battery Execution
   const handleArchiveBattery = async () => {
+    if (!activeExecution) return;
     vibrateClick();
     const now = new Date();
     const txId = `tx-archive-bat-${activeExecution.id}-${Date.now()}`;
@@ -990,18 +1001,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
       if (remaining.length > 0) {
         setSelectedExecutionId(remaining[0].id);
       } else {
-        const fresh = createNewTestBatteryExecution(
-          "BT-2026-001",
-          currentUser?.name || "Administrador TI",
-          currentUser?.email || "",
-          "Produção",
-          "v1.8.4",
-          "Bateria de Homologação Institucional",
-          "Bateria inicial pronta para cadastro manual de testes."
-        );
-        await setDoc(doc(db, "test_executions", fresh.id), sanitizeForFirestore(fresh));
-        setExecutions([fresh]);
-        setSelectedExecutionId(fresh.id);
+        setSelectedExecutionId("");
       }
       vibrateSuccess();
       addToast(`Bateria ${batteryId} excluída com sucesso!`, "success");
@@ -1023,6 +1023,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
   // Save edited test case from EditTestCaseModal (Atomic merge via runTransaction)
   const handleSaveEditedTest = async (updatedTest: TestCaseItem) => {
+    if (!activeExecution) return;
     const nowIso = new Date().toISOString();
     const currentTest = activeExecution.tests.find((t) => t.id === updatedTest.id);
     const txId = `tx-edit-test-${activeExecution.id}-${updatedTest.id}-${Date.now()}`;
@@ -1097,6 +1098,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
   // Confirm delete test case from DeleteTestCaseModal
   const handleConfirmDeleteTest = async (testId: string) => {
+    if (!activeExecution) return;
     const now = new Date();
     const testToDeleteObj = activeExecution.tests.find((t) => t.id === testId);
     const txId = `tx-del-test-${activeExecution.id}-${testId}-${Date.now()}`;
@@ -1148,6 +1150,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
   // Duplicate test case
   const handleDuplicateTest = async (test: TestCaseItem) => {
+    if (!activeExecution) return;
     vibrateClick();
     const now = new Date();
     const cloneSuffix = Date.now().toString(36).slice(-4).toUpperCase();
@@ -1225,7 +1228,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     setNewBatteryEndTime("");
     setNewBatteryResponsible(currentUser?.name || "Administrador TI");
     setNewBatteryEnvironment("Produção");
-    setNewBatteryVersion("v1.8.4");
+    setNewBatteryVersion("v1.10.13");
     setNewBatteryStatus("RASCUNHO");
     setNewBatteryInitialMode("EMPTY");
     setIsNewBatteryModalOpen(true);
@@ -1308,6 +1311,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
   // Export PDF of the active battery
   const handleExportBatteryPdf = () => {
+    if (!activeExecution) return;
     try {
       vibrateClick();
       const protocol = downloadTestBatteryPdf(activeExecution);
@@ -1349,6 +1353,360 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
         return <Cpu className="w-4 h-4 text-neutral-500" />;
     }
   };
+
+  const newBatteryModalJsx = isNewBatteryModalOpen ? (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <form
+        onSubmit={handleConfirmCreateBattery}
+        className={`w-full max-w-xl p-6 rounded-2xl border shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto ${
+          darkMode ? "bg-neutral-900 border-neutral-800 text-white" : "bg-white border-neutral-200 text-neutral-900"
+        }`}
+      >
+        <div className="flex items-center justify-between border-b pb-3 dark:border-neutral-800 border-neutral-200">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+              <Plus className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-base">Nova Execução de Bateria de Testes</h3>
+              <p className="text-[11px] text-neutral-500">Configure os parâmetros e o modo de inicialização da bateria</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsNewBatteryModalOpen(false)}
+            className="p-1 rounded-lg text-neutral-400 hover:text-neutral-600"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
+          <div className="space-y-1 sm:col-span-2">
+            <label className="font-bold text-neutral-500 uppercase">Identificador Único (ID da Bateria)</label>
+            <input
+              type="text"
+              required
+              value={newBatteryId}
+              onChange={(e) => setNewBatteryId(e.target.value.toUpperCase())}
+              placeholder="Ex: BT-2026-001"
+              className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-bold ${
+                darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
+              }`}
+            />
+          </div>
+
+          <div className="space-y-1 sm:col-span-2">
+            <label className="font-bold text-neutral-500 uppercase">Nome / Título da Bateria</label>
+            <input
+              type="text"
+              required
+              value={newBatteryTitle}
+              onChange={(e) => setNewBatteryTitle(e.target.value)}
+              placeholder="Ex: Bateria de Homologação Presencial Alunos"
+              className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
+                darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
+              }`}
+            />
+          </div>
+
+          <div className="space-y-1 sm:col-span-2">
+            <label className="font-bold text-neutral-500 uppercase">Descrição / Objetivo</label>
+            <textarea
+              rows={2}
+              value={newBatteryDescription}
+              onChange={(e) => setNewBatteryDescription(e.target.value)}
+              placeholder="Descreva o escopo e os objetivos desta execução..."
+              className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 resize-none ${
+                darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
+              }`}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="font-bold text-neutral-500 uppercase">Status Inicial</label>
+            <select
+              value={newBatteryStatus}
+              onChange={(e: any) => setNewBatteryStatus(e.target.value)}
+              className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-semibold ${
+                darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
+              }`}
+            >
+              <option value="RASCUNHO">Rascunho (Não iniciada)</option>
+              <option value="PLANEJADA">Planejada (Agendada)</option>
+              <option value="EM_ANDAMENTO">Em Andamento</option>
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="font-bold text-neutral-500 uppercase">Ambiente</label>
+            <select
+              value={newBatteryEnvironment}
+              onChange={(e: any) => setNewBatteryEnvironment(e.target.value)}
+              className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-semibold ${
+                darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
+              }`}
+            >
+              <option value="Desenvolvimento">Desenvolvimento</option>
+              <option value="Homologação">Homologação</option>
+              <option value="Produção">Produção</option>
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="font-bold text-neutral-500 uppercase">Versão do Sistema</label>
+            <input
+              type="text"
+              required
+              value={newBatteryVersion}
+              onChange={(e) => setNewBatteryVersion(e.target.value)}
+              className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-semibold ${
+                darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
+              }`}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="font-bold text-neutral-500 uppercase">Responsável Técnico</label>
+            <input
+              type="text"
+              required
+              value={newBatteryResponsible}
+              onChange={(e) => setNewBatteryResponsible(e.target.value)}
+              className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-semibold ${
+                darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
+              }`}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="font-bold text-neutral-500 uppercase">Data Prevista</label>
+            <input
+              type="date"
+              required
+              value={newBatteryDate}
+              onChange={(e) => setNewBatteryDate(e.target.value)}
+              className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-semibold ${
+                darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
+              }`}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="font-bold text-neutral-500 uppercase">Hora de Início</label>
+            <input
+              type="time"
+              required
+              value={newBatteryStartTime}
+              onChange={(e) => setNewBatteryStartTime(e.target.value)}
+              className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-semibold ${
+                darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
+              }`}
+            />
+          </div>
+
+          <div className="space-y-1 sm:col-span-2">
+            <label className="font-bold text-neutral-500 uppercase">Hora de Término (Opcional)</label>
+            <input
+              type="time"
+              value={newBatteryEndTime}
+              onChange={(e) => setNewBatteryEndTime(e.target.value)}
+              className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-semibold ${
+                darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
+              }`}
+            />
+          </div>
+
+          <div className="sm:col-span-2 p-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/60 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-emerald-500" />
+              <span className="font-bold text-xs text-neutral-700 dark:text-neutral-300">Duração Calculada em Tempo Real:</span>
+            </div>
+            {(() => {
+              const durationStr = calculateTestDuration(newBatteryStartTime, newBatteryEndTime);
+              const isPending = durationStr === "Em andamento";
+              const isNotCalc = durationStr === "Não calculado";
+              return (
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
+                    isPending
+                      ? "bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
+                      : isNotCalc
+                      ? "bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300"
+                      : "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800"
+                  }`}
+                >
+                  {durationStr}
+                </span>
+              );
+            })()}
+          </div>
+
+          <div className="sm:col-span-2 space-y-2 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20">
+            <label className="font-bold text-neutral-700 dark:text-neutral-300 uppercase flex items-center gap-2">
+              <Layers className="w-4 h-4 text-emerald-600" />
+              Casos de Teste Iniciais da Bateria
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label
+                className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition ${
+                  newBatteryInitialMode === "EMPTY"
+                    ? "bg-white dark:bg-neutral-800 border-emerald-500 shadow-sm"
+                    : "border-neutral-200 dark:border-neutral-700 hover:bg-white/50 dark:hover:bg-neutral-800/50"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="batteryInitialMode"
+                  value="EMPTY"
+                  checked={newBatteryInitialMode === "EMPTY"}
+                  onChange={() => setNewBatteryInitialMode("EMPTY")}
+                  className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
+                />
+                <div>
+                  <span className="font-bold block text-neutral-900 dark:text-white">Bateria Vazia (0 testes)</span>
+                  <span className="text-[11px] text-neutral-500 leading-tight block mt-0.5">
+                    Inicia limpa para cadastrar e distribuir casos de teste manualmente conforme diretriz de governança.
+                  </span>
+                </div>
+              </label>
+
+              <label
+                className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition ${
+                  newBatteryInitialMode === "TEMPLATE"
+                    ? "bg-white dark:bg-neutral-800 border-emerald-500 shadow-sm"
+                    : "border-neutral-200 dark:border-neutral-700 hover:bg-white/50 dark:hover:bg-neutral-800/50"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="batteryInitialMode"
+                  value="TEMPLATE"
+                  checked={newBatteryInitialMode === "TEMPLATE"}
+                  onChange={() => setNewBatteryInitialMode("TEMPLATE")}
+                  className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
+                />
+                <div>
+                  <span className="font-bold block text-neutral-900 dark:text-white">Template Padrão (55 testes)</span>
+                  <span className="text-[11px] text-neutral-500 leading-tight block mt-0.5">
+                    Carrega os 55 testes padrão com procedimentos e passos oficiais prontos para validação.
+                  </span>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2.5 pt-2 border-t dark:border-neutral-800 border-neutral-200">
+          <button
+            type="button"
+            onClick={() => setIsNewBatteryModalOpen(false)}
+            className="px-4 py-2 text-xs font-semibold rounded-xl border border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Criar Execução
+          </button>
+        </div>
+      </form>
+    </div>
+  ) : null;
+
+  if (!activeExecution) {
+    return (
+      <div id="test-battery-manager-container" className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 py-4">
+        <div
+          id="test-battery-header-card"
+          className={`p-6 rounded-2xl border shadow-sm ${
+            darkMode ? "bg-neutral-900/90 border-neutral-800 text-white" : "bg-white border-neutral-200 text-neutral-900"
+          }`}
+        >
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
+                  Governança & QA Oficial
+                </span>
+                <span className="text-xs font-semibold text-neutral-500">IFPR Campus Ivaiporã</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-2.5">
+                <ShieldCheck className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
+                Bateria de Testes, Participantes & Validação
+              </h1>
+              <p className="text-sm text-neutral-600 dark:text-neutral-400 max-w-3xl">
+                Registro formal de baterias de testes reais armazenadas no Firestore, sem dados fictícios ou pré-preenchidos.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={loadExecutionsFromFirestore}
+                disabled={isLoading}
+                className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 text-xs sm:text-sm font-bold rounded-xl border shadow-sm transition ${
+                  darkMode
+                    ? "bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-200"
+                    : "bg-neutral-50 hover:bg-neutral-100 border-neutral-300 text-neutral-800"
+                }`}
+              >
+                <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+                Sincronizar
+              </button>
+              {isAdmin && (
+                <button
+                  id="btn-new-test-battery"
+                  type="button"
+                  onClick={handleOpenNewBatteryModal}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs sm:text-sm font-bold rounded-xl shadow-sm transition"
+                >
+                  <Plus className="w-4 h-4" />
+                  Nova Execução
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div
+          className={`p-10 rounded-2xl border text-center space-y-4 ${
+            darkMode ? "bg-neutral-900/80 border-neutral-800 text-neutral-200" : "bg-white border-neutral-200 text-neutral-800"
+          }`}
+        >
+          <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+            <ClipboardList className="w-7 h-7" />
+          </div>
+          <div className="space-y-1 max-w-md mx-auto">
+            <h2 className="text-lg font-bold">
+              {isLoading
+                ? "Carregando baterias de teste do Firestore..."
+                : "Nenhuma bateria de testes registrada"}
+            </h2>
+            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+              {isLoading
+                ? "Consultando registros reais na coleção test_executions."
+                : "O banco de dados não possui execuções de testes cadastradas no momento. Crie uma nova execução quando desejar registrar uma bateria real de QA."}
+            </p>
+          </div>
+          {!isLoading && isAdmin && (
+            <button
+              type="button"
+              onClick={handleOpenNewBatteryModal}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold transition shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Criar Primeira Execução Real
+            </button>
+          )}
+        </div>
+
+        {newBatteryModalJsx}
+      </div>
+    );
+  }
 
   const participants = activeExecution.participants || [];
 
@@ -2432,270 +2790,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
       />
 
       {/* 10. New Test Battery Modal */}
-      {isNewBatteryModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <form
-            onSubmit={handleConfirmCreateBattery}
-            className={`w-full max-w-xl p-6 rounded-2xl border shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto ${
-              darkMode ? "bg-neutral-900 border-neutral-800 text-white" : "bg-white border-neutral-200 text-neutral-900"
-            }`}
-          >
-            <div className="flex items-center justify-between border-b pb-3 dark:border-neutral-800 border-neutral-200">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                  <Plus className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-base">Nova Execução de Bateria de Testes</h3>
-                  <p className="text-[11px] text-neutral-500">Configure os parâmetros e o modo de inicialização da bateria</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsNewBatteryModalOpen(false)}
-                className="p-1 rounded-lg text-neutral-400 hover:text-neutral-600"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
-              <div className="space-y-1 sm:col-span-2">
-                <label className="font-bold text-neutral-500 uppercase">Identificador Único (ID da Bateria)</label>
-                <input
-                  type="text"
-                  required
-                  value={newBatteryId}
-                  onChange={(e) => setNewBatteryId(e.target.value.toUpperCase())}
-                  placeholder="Ex: BT-2026-002"
-                  className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-bold ${
-                    darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-1 sm:col-span-2">
-                <label className="font-bold text-neutral-500 uppercase">Nome / Título da Bateria</label>
-                <input
-                  type="text"
-                  required
-                  value={newBatteryTitle}
-                  onChange={(e) => setNewBatteryTitle(e.target.value)}
-                  placeholder="Ex: Bateria de Homologação Presencial Alunos"
-                  className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
-                    darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-1 sm:col-span-2">
-                <label className="font-bold text-neutral-500 uppercase">Descrição / Objetivo</label>
-                <textarea
-                  rows={2}
-                  value={newBatteryDescription}
-                  onChange={(e) => setNewBatteryDescription(e.target.value)}
-                  placeholder="Descreva o escopo e os objetivos desta execução..."
-                  className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 resize-none ${
-                    darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-neutral-500 uppercase">Status Inicial</label>
-                <select
-                  value={newBatteryStatus}
-                  onChange={(e: any) => setNewBatteryStatus(e.target.value)}
-                  className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-semibold ${
-                    darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
-                  }`}
-                >
-                  <option value="RASCUNHO">Rascunho (Não iniciada)</option>
-                  <option value="PLANEJADA">Planejada (Agendada)</option>
-                  <option value="EM_ANDAMENTO">Em Andamento</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-neutral-500 uppercase">Ambiente</label>
-                <select
-                  value={newBatteryEnvironment}
-                  onChange={(e: any) => setNewBatteryEnvironment(e.target.value)}
-                  className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-semibold ${
-                    darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
-                  }`}
-                >
-                  <option value="Desenvolvimento">Desenvolvimento</option>
-                  <option value="Homologação">Homologação</option>
-                  <option value="Produção">Produção</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-neutral-500 uppercase">Versão do Sistema</label>
-                <input
-                  type="text"
-                  required
-                  value={newBatteryVersion}
-                  onChange={(e) => setNewBatteryVersion(e.target.value)}
-                  className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-semibold ${
-                    darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-neutral-500 uppercase">Responsável Técnico</label>
-                <input
-                  type="text"
-                  required
-                  value={newBatteryResponsible}
-                  onChange={(e) => setNewBatteryResponsible(e.target.value)}
-                  className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-semibold ${
-                    darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-neutral-500 uppercase">Data Prevista</label>
-                <input
-                  type="date"
-                  required
-                  value={newBatteryDate}
-                  onChange={(e) => setNewBatteryDate(e.target.value)}
-                  className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-semibold ${
-                    darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-neutral-500 uppercase">Hora de Início</label>
-                <input
-                  type="time"
-                  required
-                  value={newBatteryStartTime}
-                  onChange={(e) => setNewBatteryStartTime(e.target.value)}
-                  className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-semibold ${
-                    darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-1 sm:col-span-2">
-                <label className="font-bold text-neutral-500 uppercase">Hora de Término (Opcional)</label>
-                <input
-                  type="time"
-                  value={newBatteryEndTime}
-                  onChange={(e) => setNewBatteryEndTime(e.target.value)}
-                  className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-semibold ${
-                    darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
-                  }`}
-                />
-              </div>
-
-              {/* Duração Calculada */}
-              <div className="sm:col-span-2 p-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/60 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-emerald-500" />
-                  <span className="font-bold text-xs text-neutral-700 dark:text-neutral-300">Duração Calculada em Tempo Real:</span>
-                </div>
-                {(() => {
-                  const durationStr = calculateTestDuration(newBatteryStartTime, newBatteryEndTime);
-                  const isPending = durationStr === "Em andamento";
-                  const isNotCalc = durationStr === "Não calculado";
-                  return (
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
-                        isPending
-                          ? "bg-amber-100 text-amber-900 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
-                          : isNotCalc
-                          ? "bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300"
-                          : "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800"
-                      }`}
-                    >
-                      {durationStr}
-                    </span>
-                  );
-                })()}
-              </div>
-
-              {/* Modo de Inicialização dos Casos de Teste */}
-              <div className="sm:col-span-2 space-y-2 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20">
-                <label className="font-bold text-neutral-700 dark:text-neutral-300 uppercase flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-emerald-600" />
-                  Casos de Teste Iniciais da Bateria
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <label
-                    className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition ${
-                      newBatteryInitialMode === "EMPTY"
-                        ? "bg-white dark:bg-neutral-800 border-emerald-500 shadow-sm"
-                        : "border-neutral-200 dark:border-neutral-700 hover:bg-white/50 dark:hover:bg-neutral-800/50"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="batteryInitialMode"
-                      value="EMPTY"
-                      checked={newBatteryInitialMode === "EMPTY"}
-                      onChange={() => setNewBatteryInitialMode("EMPTY")}
-                      className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
-                    />
-                    <div>
-                      <span className="font-bold block text-neutral-900 dark:text-white">Bateria Vazia (0 testes)</span>
-                      <span className="text-[11px] text-neutral-500 leading-tight block mt-0.5">
-                        Inicia limpa para cadastrar e distribuir casos de teste manualmente conforme diretriz de governança.
-                      </span>
-                    </div>
-                  </label>
-
-                  <label
-                    className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition ${
-                      newBatteryInitialMode === "TEMPLATE"
-                        ? "bg-white dark:bg-neutral-800 border-emerald-500 shadow-sm"
-                        : "border-neutral-200 dark:border-neutral-700 hover:bg-white/50 dark:hover:bg-neutral-800/50"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="batteryInitialMode"
-                      value="TEMPLATE"
-                      checked={newBatteryInitialMode === "TEMPLATE"}
-                      onChange={() => setNewBatteryInitialMode("TEMPLATE")}
-                      className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
-                    />
-                    <div>
-                      <span className="font-bold block text-neutral-900 dark:text-white">Template Padrão (55 testes)</span>
-                      <span className="text-[11px] text-neutral-500 leading-tight block mt-0.5">
-                        Carrega os 55 testes padrão com procedimentos e passos oficiais prontos para validação.
-                      </span>
-                    </div>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2.5 pt-2 border-t dark:border-neutral-800 border-neutral-200">
-              <button
-                type="button"
-                onClick={() => setIsNewBatteryModalOpen(false)}
-                className="px-4 py-2 text-xs font-semibold rounded-xl border border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center gap-1.5"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Criar Execução
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      {newBatteryModalJsx}
 
       {/* 11. Edit Battery Modal */}
       <EditBatteryModal

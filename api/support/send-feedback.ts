@@ -1,5 +1,27 @@
 import type { IncomingMessage, ServerResponse } from "http";
 import nodemailer, { type Transporter } from "nodemailer";
+import { applySecurityHeaders } from "../_lib/securityHeaders.js";
+
+const HTML_ESCAPE_MAP: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+  "`": "&#96;",
+};
+
+function escapeHtml(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/[&<>"'`]/g, (c) => HTML_ESCAPE_MAP[c] || c);
+}
+
+function stripHeaderControls(value: unknown, maxLen: number = 150): string {
+  if (value === null || value === undefined) return "";
+  return String(value).replace(/[\r\n\0]+/g, " ").replace(/["<>]/g, "").trim().slice(0, maxLen);
+}
+
+const SIMPLE_EMAIL_REGEX = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
 interface FeedbackRequestBody {
   name?: string;
@@ -106,32 +128,32 @@ export function buildSupportEmailHtml(ticket: {
   <div class="container">
     <div class="header">
       <h1>Localiza+ • Novo Feedback / Suporte</h1>
-      <p>Protocolo: ${ticket.protocol}</p>
+      <p>Protocolo: ${escapeHtml(ticket.protocol)}</p>
     </div>
     <div class="content">
       <div class="field">
         <div class="label">Remetente:</div>
-        <div class="value"><strong>${ticket.name}</strong> (${ticket.email})</div>
+        <div class="value"><strong>${escapeHtml(ticket.name)}</strong> (${escapeHtml(ticket.email)})</div>
       </div>
       <div class="field">
         <div class="label">Categoria:</div>
-        <div class="value">${categoryLabel}</div>
+        <div class="value">${escapeHtml(categoryLabel)}</div>
       </div>
       <div class="field">
         <div class="label">Prioridade:</div>
-        <div class="value">${priorityLabel}</div>
+        <div class="value">${escapeHtml(priorityLabel)}</div>
       </div>
       <div class="field">
         <div class="label">Assunto:</div>
-        <div class="value">${ticket.subject}</div>
+        <div class="value">${escapeHtml(ticket.subject)}</div>
       </div>
       <div class="field">
         <div class="label">Mensagem do Usuário:</div>
-        <div class="message-box">${ticket.message}</div>
+        <div class="message-box">${escapeHtml(ticket.message)}</div>
       </div>
     </div>
     <div class="footer">
-      Central de Atendimento • IFPR Campus Ivaiporã • <a href="mailto:${destinationEmail}" style="color: ${accentColor}; text-decoration: none;">${destinationEmail}</a>
+      Central de Atendimento • IFPR Campus Ivaiporã • <a href="mailto:${escapeHtml(destinationEmail)}" style="color: ${accentColor}; text-decoration: none;">${escapeHtml(destinationEmail)}</a>
     </div>
   </div>
 </body>
@@ -190,12 +212,18 @@ ${JSON.stringify(ticket.clientDiagnostics || {}, null, 2)}
 
     const htmlBody = buildSupportEmailHtml(ticket, destinationEmail);
 
+    const safeReplyName = stripHeaderControls(ticket.name, 100);
+    const safeReplyEmail = stripHeaderControls(ticket.email, 120);
+    const safeSubject = stripHeaderControls(ticket.subject, 150);
+
     console.log(`[SMTP Feedback Diagnostics] Enviando mensagem via SMTP para ${destinationEmail} (Protocolo: ${ticket.protocol})...`);
     const info = await transporter.sendMail({
       from: fromAddress,
       to: destinationEmail,
-      replyTo: ticket.email ? `"${ticket.name}" <${ticket.email}>` : undefined,
-      subject: `[${ticket.protocol}] ${ticket.subject}`,
+      replyTo: SIMPLE_EMAIL_REGEX.test(safeReplyEmail)
+        ? `"${safeReplyName}" <${safeReplyEmail}>`
+        : undefined,
+      subject: `[${stripHeaderControls(ticket.protocol, 40)}] ${safeSubject}`,
       text: textBody,
       html: htmlBody,
     });
@@ -391,6 +419,8 @@ async function parseBody(req: any): Promise<FeedbackRequestBody> {
 }
 
 export default async function handler(req: any, res: any) {
+  applySecurityHeaders(res, process.env.NODE_ENV === "production");
+
   // CORS Headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -411,15 +441,22 @@ export default async function handler(req: any, res: any) {
     const body = await parseBody(req);
     const { name, email, category, subject, message, priority, clientDiagnostics } = body;
 
-    const trimmedName = String(name || "").trim();
-    const trimmedEmail = String(email || "").trim();
-    const trimmedSubject = String(subject || "").trim();
+    const trimmedName = stripHeaderControls(name, 100);
+    const trimmedEmail = stripHeaderControls(email, 120);
+    const trimmedSubject = stripHeaderControls(subject, 150);
     const trimmedMessage = String(message || "").trim();
 
     if (!trimmedName || !trimmedEmail || !trimmedSubject || !trimmedMessage) {
       return res.status(400).json({
         success: false,
         error: "Por favor, preencha todos os campos obrigatórios: nome, e-mail, assunto e descrição da mensagem.",
+      });
+    }
+
+    if (!SIMPLE_EMAIL_REGEX.test(trimmedEmail)) {
+      return res.status(400).json({
+        success: false,
+        error: "Informe um endereço de e-mail válido.",
       });
     }
 

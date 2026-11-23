@@ -87,6 +87,28 @@ export function parseAuthError(error: any): ParsedAuthError {
       userMessage = "O método de login selecionado não está habilitado no Firebase Console.";
       break;
 
+    case "auth/unauthorized-continue-uri":
+    case "auth/invalid-continue-uri":
+    case "auth/missing-continue-uri":
+      userMessage = `O domínio de redirecionamento '${currentHost}' não está autorizado no Firebase Authentication para links de e-mail.`;
+      actionHint = `Adicione '${currentHost}' em Firebase Console > Authentication > Settings > Authorized domains.`;
+      break;
+
+    case "auth/expired-action-code":
+      userMessage = "Este link de definição/redefinição de senha expirou ou já foi utilizado.";
+      actionHint = "Solicite um novo link em 'Esqueceu a senha?' ou peça ao administrador para reenviar o primeiro acesso.";
+      break;
+
+    case "auth/invalid-action-code":
+      userMessage = "O link de acesso é inválido ou já foi utilizado anteriormente.";
+      actionHint = "Solicite um novo e-mail de definição ou recuperação de senha.";
+      break;
+
+    case "auth/user-token-expired":
+    case "auth/requires-recent-login":
+      userMessage = "Sua sessão expirou. Faça login novamente para continuar.";
+      break;
+
     default:
       if (isUnauthorizedDomain) {
         userMessage = `O domínio '${currentHost}' não está autorizado para autenticação OAuth no Firebase.`;

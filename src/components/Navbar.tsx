@@ -33,6 +33,7 @@ import {
   Layers,
   ExternalLink,
   GitBranch,
+  HelpCircle,
 } from "lucide-react";
 
 export const Navbar: React.FC = () => {
@@ -215,6 +216,20 @@ export const Navbar: React.FC = () => {
                   : t("staffPanel", "Painel do Servidor")}
               </Link>
             )}
+
+            <Link
+              to="/ajuda"
+              id="navbar-help-link"
+              aria-current={routeKey === "manual" ? "page" : undefined}
+              className={`py-1 text-xs font-medium whitespace-nowrap transition-colors border-b-2 inline-flex items-center gap-1 ${
+                routeKey === "manual"
+                  ? "border-[#16845B] text-[#16845B] dark:text-emerald-400 font-semibold"
+                  : "border-transparent text-slate-600 dark:text-slate-400 hover:text-[#16845B] dark:hover:text-emerald-400"
+              }`}
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>{t("helpButton", "Ajuda")}</span>
+            </Link>
           </nav>
 
           {/* Right Action Cluster */}
@@ -649,6 +664,18 @@ export const Navbar: React.FC = () => {
               >
                 <Settings className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                 <span>{t("settingsAccessibilityLabel", "Configurações & Acessibilidade")}</span>
+              </button>
+
+              <button
+                onClick={() => handleNavClick("/ajuda")}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium transition-colors cursor-pointer ${
+                  routeKey === "manual"
+                    ? "bg-[#EBF5F0] dark:bg-emerald-950/50 text-[#16845B] dark:text-emerald-400 font-semibold"
+                    : "text-[#172B2A] dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                }`}
+              >
+                <HelpCircle className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
+                <span>{t("userManualNavLabel", "Ajuda & Manual do Usuário")}</span>
               </button>
 
               <button

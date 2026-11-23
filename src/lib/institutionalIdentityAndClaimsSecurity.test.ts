@@ -293,7 +293,7 @@ class InstitutionalSecuritySimulator {
       return { allowed: true };
     }
 
-    // Branch 3: Atualizações normais de perfil próprio por usuários com conta ativa
+    // Branch 3: Atualizações normais de perfil próprio por usuários institucionais com conta ativa
     const isAccountActive = this.isAccountActive(auth, requestTime);
     const roleUnchanged = incomingData.role === existingData.role;
     const adminUnchanged = !("admin" in incomingData) || incomingData.admin === existingData.admin;
@@ -310,6 +310,43 @@ class InstitutionalSecuritySimulator {
       suspendedUntilUnchanged &&
       blockExpiresAtUnchanged &&
       reputationScoreUnchanged
+    ) {
+      return { allowed: true };
+    }
+
+    // Branch 3b (Etapa 2): Atualização estrita de campos pessoais do próprio perfil por INTRUSO verificado e ativo
+    const allowedExternalPersonalKeys = new Set([
+      "name",
+      "phone",
+      "courseOrDept",
+      "registrationNumber",
+      "avatarUrl",
+      "updatedAt",
+    ]);
+    const existingKeys2b = Object.keys(existingData);
+    const incomingKeys2b = Object.keys(incomingData);
+    const allKeys2b = new Set([...existingKeys2b, ...incomingKeys2b]);
+    const affectedKeys2b = Array.from(allKeys2b).filter(
+      (k) => JSON.stringify(incomingData[k]) !== JSON.stringify(existingData[k])
+    );
+    const onlyAllowedPersonalKeys = affectedKeys2b.every((k) => allowedExternalPersonalKeys.has(k));
+
+    if (
+      isSelf &&
+      this.isEmailVerified(auth) &&
+      isCurrentlyIntruso &&
+      incomingData.role === "INTRUSO" &&
+      isIdMatch &&
+      isEmailUnchanged &&
+      isNotBlocked &&
+      noAdminClaimIncoming &&
+      noAdminClaimExisting &&
+      approvalStatusUnchanged &&
+      statusUnchanged &&
+      suspendedUntilUnchanged &&
+      blockExpiresAtUnchanged &&
+      reputationScoreUnchanged &&
+      onlyAllowedPersonalKeys
     ) {
       return { allowed: true };
     }
@@ -359,8 +396,16 @@ class InstitutionalSecuritySimulator {
   ): { allowed: boolean; reason?: string } {
     if (!this.isSignedIn(auth) || !auth) return { allowed: false, reason: "UNAUTHENTICATED" };
     if (!this.isEmailVerified(auth)) return { allowed: false, reason: "EMAIL_UNVERIFIED" };
-    if (!this.isAccountActive(auth, requestTime)) return { allowed: false, reason: "ACCOUNT_INACTIVE" };
-    if (this.isIntruso(auth, requestTime)) return { allowed: false, reason: "USER_IS_INTRUSO" };
+    const isVerifiedActiveExternal =
+      this.usersDb.has(auth.uid) &&
+      this.usersDb.get(auth.uid)?.role === "INTRUSO" &&
+      !this.isAccountBlocked(auth, requestTime);
+    if (!this.isAccountActive(auth, requestTime) && !isVerifiedActiveExternal) {
+      return { allowed: false, reason: "ACCOUNT_INACTIVE" };
+    }
+    if (isVerifiedActiveExternal && "claimerRole" in incomingClaim && incomingClaim.claimerRole !== "INTRUSO") {
+      return { allowed: false, reason: "CLAIMER_ROLE_SPOOFING" };
+    }
 
     if (claimId !== `claim_${auth.uid}_${incomingClaim.itemId}`) {
       return { allowed: false, reason: "CLAIM_ID_MISMATCH" };
@@ -804,12 +849,13 @@ describe("LOCALIZA+ v1.10.10 — Suite de Homologação: Identidade Instituciona
   });
 
   // ==========================================
-  // 10. INTRUSO Solicita Devolução
+  // 10. Comunidade Externa (INTRUSO) Solicita Devolução (Etapa 2)
   // ==========================================
-  it("Cenário 10: INTRUSO (usuário externo ou conta sem papel institucional) tentando solicitar devolução é BLOQUEADO", () => {
+  it("Cenário 10: Usuário externo (INTRUSO) com e-mail verificado e conta ativa pode criar sua própria reivindicação; sem verificação de e-mail ou com spoofing de claimerRole é BLOQUEADO", () => {
     const uid = "intruso_externo";
     const email = "visitante@gmail.com";
-    const auth: MockAuthToken = { uid, email, email_verified: true };
+    const verifiedAuth: MockAuthToken = { uid, email, email_verified: true };
+    const unverifiedAuth: MockAuthToken = { uid, email, email_verified: false };
 
     sim.usersDb.set(uid, {
       id: uid,
@@ -832,14 +878,28 @@ describe("LOCALIZA+ v1.10.10 — Suite de Homologação: Identidade Instituciona
       id: `claim_${uid}_item-001`,
       itemId: "item-001",
       claimerId: uid,
+      claimerRole: "INTRUSO",
       status: "PENDENTE",
       distinctiveFeatures: "Chave canivete",
       createdAt: new Date().toISOString(),
     };
 
-    const res = sim.allowCreateClaim(auth, incomingClaim.id, incomingClaim);
-    expect(res.allowed).toBe(false);
-    expect(["ACCOUNT_INACTIVE", "USER_IS_INTRUSO"]).toContain(res.reason);
+    // 10a. Verificado e ativo -> PERMITIDO
+    const resVerified = sim.allowCreateClaim(verifiedAuth, incomingClaim.id, incomingClaim);
+    expect(resVerified.allowed).toBe(true);
+
+    // 10b. Sem e-mail verificado -> BLOQUEADO
+    const resUnverified = sim.allowCreateClaim(unverifiedAuth, incomingClaim.id, incomingClaim);
+    expect(resUnverified.allowed).toBe(false);
+    expect(resUnverified.reason).toBe("EMAIL_UNVERIFIED");
+
+    // 10c. Tentativa de spoofing de claimerRole como ADMIN -> BLOQUEADO
+    const resSpoof = sim.allowCreateClaim(verifiedAuth, incomingClaim.id, {
+      ...incomingClaim,
+      claimerRole: "ADMIN",
+    });
+    expect(resSpoof.allowed).toBe(false);
+    expect(resSpoof.reason).toBe("CLAIMER_ROLE_SPOOFING");
   });
 
   // ==========================================

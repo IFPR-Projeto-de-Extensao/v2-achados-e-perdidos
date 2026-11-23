@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manual do Usuário — Localiza+ IFPR Campus Ivaiporã (v1.10.13)</title>
+  <meta name="description" content="Manual oficial de utilização do sistema Localiza+ de Achados e Perdidos do IFPR Campus Ivaiporã." />
+  <style>
+    :root {
+      --primary: #16845B;
+      --primary-dark: #064E3B;
+      --primary-soft: #EBF5F0;
+      --text: #172B2A;
+      --muted: #475569;
+      --border: #E2E8F0;
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.65;
+    }
+    .topbar {
+      background: var(--primary-dark);
+      color: #ffffff;
+      padding: 28px 20px;
+      border-bottom: 4px solid var(--primary);
+    }
+    .topbar-inner {
+      max-width: 960px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .brand-tag {
+      display: inline-block;
+      background: rgba(255,255,255,0.14);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      margin-bottom: 8px;
+    }
+    .topbar h1 {
+      margin: 0;
+      font-size: 26px;
+      line-height: 1.2;
+    }
+    .topbar p {
+      margin: 6px 0 0;
+      font-size: 14px;
+      color: #D1FAE5;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+    .btn-light {
+      background: #ffffff;
+      color: var(--primary-dark);
+    }
+    .btn-outline {
+      background: transparent;
+      color: #ffffff;
+      border-color: rgba(255,255,255,0.4);
+    }
+    .container {
+      max-width: 960px;
+      margin: 24px auto 48px;
+      padding: 0 20px;
+    }
+    .toc, .section-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+      margin-bottom: 18px;
+    }
+    .toc h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+      color: var(--primary-dark);
+    }
+    .toc ol {
+      margin: 0;
+      padding-left: 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 6px 18px;
+      font-size: 14px;
+    }
+    .toc a {
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .toc a:hover { text-decoration: underline; }
+    .section-card h2 {
+      margin: 0 0 12px;
+      font-size: 19px;
+      color: var(--primary-dark);
+      border-bottom: 2px solid var(--primary-soft);
+      padding-bottom: 8px;
+    }
+    .section-card h3 {
+      margin: 16px 0 6px;
+      font-size: 15px;
+      color: var(--text);
+    }
+    .section-card p, .section-card li {
+      font-size: 14.5px;
+      color: #334155;
+    }
+    .section-card ul, .section-card ol {
+      padding-left: 20px;
+      margin: 8px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+      font-size: 13.5px;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 9px 11px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--primary-soft);
+      color: var(--primary-dark);
+      font-weight: 700;
+    }
+    .notice {
+      background: var(--primary-soft);
+      border-left: 4px solid var(--primary);
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      margin: 12px 0;
+      color: var(--text);
+    }
+    .warning {
+      background: #FEF3C7;
+      border-left: 4px solid #D97706;
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      margin: 12px 0;
+      color: #78350F;
+    }
+    footer {
+      text-align: center;
+      font-size: 12.5px;
+      color: var(--muted);
+      margin-top: 28px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+    @media print {
+      body { background: #ffffff; }
+      .no-print { display: none !important; }
+      .topbar { padding: 16px 12px; }
+      .section-card, .toc { break-inside: avoid; border-color: #cbd5e1; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div>
+        <span class="brand-tag">IFPR CAMPUS IVAIPORÃ • VERSÃO v1.10.13</span>
+        <h1>Manual de Utilização — Localiza+</h1>
+        <p>Sistema Institucional de Achados e Perdidos com QR Code, IA Visual e PWA</p>
+      </div>
+      <div class="actions no-print">
+        <button type="button" class="btn btn-light" onclick="window.print()">Imprimir / Salvar PDF</button>
+        <a class="btn btn-outline" href="/ajuda">Voltar ao Sistema</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <nav class="toc" aria-label="Sumário do Manual">
+      <h2>Sumário</h2>
+      <ol>
+        <li><a href="#apresentacao">1. Apresentação do Sistema Localiza+</a></li>
+        <li><a href="#perfis">2. Tipos de Usuários e Perfis</a></li>
+        <li><a href="#criar-conta">3. Como Criar uma Conta (IFPR e Externa)</a></li>
+        <li><a href="#login-senha">4. Login e Recuperação de Senha</a></li>
+        <li><a href="#consultar-objetos">5. Como Consultar Objetos</a></li>
+        <li><a href="#cadastrar-objeto">6. Como Cadastrar um Objeto</a></li>
+        <li><a href="#reivindicar-devolucao">7. Como Reivindicar e Solicitar Devolução</a></li>
+        <li><a href="#qr-code">8. Como Funciona o QR Code</a></li>
+        <li><a href="#analise-ia">9. Como Funciona a Análise por IA</a></li>
+        <li><a href="#instalar-pwa">10. Como Instalar como Aplicativo (PWA)</a></li>
+        <li><a href="#suporte">11. Suporte e Contato Institucional</a></li>
+      </ol>
+    </nav>
+
+    <section id="apresentacao" class="section-card">
+      <h2>1. Apresentação do Sistema Localiza+</h2>
+      <p>
+        O <strong>Localiza+</strong> é a plataforma institucional de gestão de achados e perdidos do
+        <strong>Instituto Federal do Paraná (IFPR) — Campus Ivaiporã</strong>. Seu objetivo é centralizar o
+        registro, a consulta pública, o rastreamento por QR Code e a devolução formal de pertences encontrados ou
+        extraviados nas dependências do campus.
+      </p>
+      <div class="notice">
+        <strong>Custódia e Prazo Institucional:</strong> Todos os objetos encontrados entregues à Portaria Principal ou
+        à SEPAE/SEBAC ficam sob guarda institucional pelo prazo padrão de até <strong>90 dias</strong>, com histórico
+        auditável e emissão de comprovante de devolução.
+      </div>
+    </section>
+
+    <section id="perfis" class="section-card">
+      <h2>2. Tipos de Usuários e Perfis de Acesso</h2>
+      <p>O Localiza+ controla o acesso às funcionalidades de acordo com o perfil verificado da conta:</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Perfil</th>
+            <th>Identificação</th>
+            <th>Permissões Principais</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Visitante (sem login)</strong></td>
+            <td>Navegação pública</td>
+            <td>Consultar o catálogo público, buscar por texto/voz/filtros, visualizar detalhes públicos de itens, ler QR Code, acessar o Manual/Ajuda e enviar mensagens ao Suporte.</td>
+          </tr>
+          <tr>
+            <td><strong>Comunidade Externa</strong></td>
+            <td>Contas criadas com e-mail externo (Gmail, Outlook, Yahoo, etc.) com e-mail verificado</td>
+            <td>Criar conta, verificar e-mail, autenticar-se, consultar o catálogo público, ler QR Codes, <strong>reivindicar objetos perdidos/encontrados</strong> (acompanhar e cancelar/reenviar suas próprias solicitações), gerenciar suas próprias notificações e atualizar dados pessoais do próprio perfil. <em>Não pode cadastrar objetos, alterar cargo/permissões nem acessar o painel administrativo.</em></td>
+          </tr>
+          <tr>
+            <td><strong>Discente (Aluno IFPR)</strong></td>
+            <td>E-mail institucional <code>@estudantes.ifpr.edu.br</code> verificado</td>
+            <td>Todas as permissões de consulta + enviar reivindicação de propriedade de itens encontrados, acompanhar suas solicitações, receber notificações e atualizar o próprio perfil.</td>
+          </tr>
+          <tr>
+            <td><strong>Servidor / TAE IFPR</strong></td>
+            <td>E-mail institucional <code>@ifpr.edu.br</code> verificado (com aprovação administrativa para cadastro/gestão)</td>
+            <td>Cadastrar objetos perdidos e encontrados, imprimir etiquetas QR Code, analisar reivindicações, registrar devoluções formais (assinatura presencial ou link remoto) e acessar o Painel do Servidor.</td>
+          </tr>
+          <tr>
+            <td><strong>Administrador</strong></td>
+            <td>Atribuído formalmente pela governança do sistema</td>
+            <td>Gestão completa do Painel Administrativo: aprovação de servidores, gestão de usuários e papéis, controle de itens, devoluções e reaberturas, auditoria, relatórios PDF/CSV, feedbacks/bugs, monitoramento e configurações.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="criar-conta" class="section-card">
+      <h2>3. Como Criar uma Conta (Comunidade IFPR e Externa)</h2>
+      <ol>
+        <li>Na barra superior, clique em <strong>Entrar</strong> e selecione a aba <strong>Criar Conta</strong>.</li>
+        <li>Preencha seu <strong>Nome Completo</strong>, <strong>E-mail</strong> e uma <strong>Senha</strong> com no mínimo 6 caracteres.</li>
+        <li>
+          O sistema identifica automaticamente seu vínculo conforme o domínio do e-mail:
+          <ul>
+            <li><code>@estudantes.ifpr.edu.br</code> → Perfil <strong>Discente (Aluno)</strong>.</li>
+            <li><code>@ifpr.edu.br</code> → Perfil <strong>Servidor / TAE</strong> (sujeito à aprovação administrativa para funções de gestão).</li>
+            <li>Outros domínios (ex.: <code>@gmail.com</code>, <code>@outlook.com</code>) → Perfil <strong>Comunidade Externa</strong>.</li>
+          </ul>
+        </li>
+        <li>Informe opcionalmente matrícula/SIAPE e telefone para facilitar contato em caso de devolução, aceite os Termos de Uso e Política de Privacidade e clique em <strong>Criar Conta</strong>.</li>
+        <li><strong>Verificação de E-mail Obrigatória:</strong> Acesse sua caixa de entrada (ou pasta de Spam/Lixo Eletrônico), clique no link de confirmação enviado pelo Firebase Authentication e, em seguida, clique em <strong>Já verifiquei meu e-mail</strong> na tela de verificação.</li>
+      </ol>
+    </section>
+
+    <section id="login-senha" class="section-card">
+      <h2>4. Como Fazer Login e Recuperar Senha</h2>
+      <h3>Login com E-mail e Senha</h3>
+      <ol>
+        <li>Clique em <strong>Entrar</strong> na barra superior.</li>
+        <li>Informe o e-mail e a senha cadastrados e clique em <strong>Entrar</strong>.</li>
+      </ol>
+      <h3>Login com Google</h3>
+      <p>Também é possível clicar em <strong>Continuar com Google</strong> para autenticar-se diretamente com sua conta Google institucional ou pessoal.</p>
+      <h3>Recuperação de Senha</h3>
+      <ol>
+        <li>No modal de login, clique em <strong>Esqueceu sua senha?</strong>.</li>
+        <li>Informe o e-mail cadastrado e clique em <strong>Enviar Link de Recuperação</strong>.</li>
+        <li>Abra o e-mail recebido e siga as instruções para definir uma nova senha.</li>
+      </ol>
+    </section>
+
+    <section id="consultar-objetos" class="section-card">
+      <h2>5. Como Consultar Objetos Perdidos e Encontrados</h2>
+      <ol>
+        <li>Na <strong>Tela Inicial (Início)</strong>, utilize o campo de busca rápida para pesquisar por nome do objeto, cor, marca, local do campus ou código QR.</li>
+        <li>Se preferir, clique no ícone de <strong>Microfone</strong> para fazer busca por voz (em navegadores compatíveis).</li>
+        <li>Para navegação completa, clique em <strong>Consultar Objetos</strong> ou acesse os atalhos <strong>Encontrados</strong>, <strong>Perdidos</strong> e <strong>Devolvidos</strong>.</li>
+        <li>Na tela do <strong>Catálogo (/objetos)</strong>, utilize os filtros por categoria (Eletrônicos, Documentos, Vestuário, Chaves, Acessórios, Materiais, Outros), status e local do campus, além de alternar entre visualização em <strong>Grade</strong> ou <strong>Lista</strong>.</li>
+        <li>Clique sobre qualquer item para abrir os detalhes completos, fotos, histórico público e opções de ação.</li>
+      </ol>
+    </section>
+
+    <section id="cadastrar-objeto" class="section-card">
+      <h2>6. Como Cadastrar um Objeto</h2>
+      <p>
+        Por diretriz institucional de governança e controle de custódia do IFPR Campus Ivaiporã, o cadastro de novos
+        objetos no catálogo é habilitado para <strong>Servidores (TAEs/Docentes aprovados)</strong> e
+        <strong>Administradores</strong>.
+      </p>
+      <div class="notice">
+        <strong>Estudantes ou visitantes externos que encontrarem ou perderem um objeto:</strong> Entreguem o pertence
+        ou comuniquem o extravio diretamente na <strong>Portaria Principal</strong> ou na <strong>SEPAE/SEBAC</strong>
+        para registro oficial com etiqueta QR Code.
+      </div>
+      <h3>Passo a Passo (Servidores Aprovados e Administradores)</h3>
+      <ol>
+        <li>Acesse <strong>Registrar Objeto</strong> na tela inicial ou <strong>Registrar</strong> na barra superior (rota <code>/cadastrar</code>).</li>
+        <li>Escolha o tipo da ocorrência: <strong>Encontrado</strong> ou <strong>Perdido</strong>.</li>
+        <li>Anexe uma ou mais fotos do objeto (opcionalmente acione a <strong>Análise por IA</strong> para preencher atributos automaticamente).</li>
+        <li>Preencha título, categoria, local do campus onde foi encontrado/perdido, data da ocorrência, cor, marca e descrição detalhada.</li>
+        <li>Para itens que contenham informações sensíveis (ex.: documentos pessoais ou detalhes de confirmação), utilize o campo de observações privadas de custódia.</li>
+        <li>Clique em <strong>Confirmar Registro</strong> e aguarde a confirmação de persistência no banco de dados. Um código QR único será gerado automaticamente para o objeto.</li>
+      </ol>
+    </section>
+
+    <section id="reivindicar-devolucao" class="section-card">
+      <h2>7. Como Reivindicar um Objeto e Solicitar Devolução</h2>
+      <ol>
+        <li>Localize o objeto no catálogo e clique sobre ele para abrir o modal de detalhes.</li>
+        <li>Com uma conta autenticada e com e-mail verificado (<strong>Comunidade Externa</strong>, <strong>Discente</strong>, <strong>Servidor</strong> ou <strong>Administrador</strong>), clique em <strong>Solicitar Este Objeto (Reclamar Posse)</strong>.</li>
+        <li>Descreva características específicas que comprovem a propriedade (ex.: conteúdo interno, adesivos, senha/tela de bloqueio, número de série ou local exato da perda) e envie a solicitação.</li>
+        <li>Acompanhe o andamento das <strong>suas próprias reivindicações</strong> em <strong>Meu Perfil</strong> e receba notificações sobre atualizações de status. Enquanto estiver <em>Pendente</em>, você pode cancelar sua solicitação; se cancelada ou rejeitada, é possível reenviar com novos detalhes.</li>
+        <li>A equipe da SEBAC/Portaria analisará a reivindicação. Após aprovação, a entrega ocorre mediante apresentação de documento oficial com foto e registro de <strong>Termo/Recibo de Devolução</strong> com assinatura eletrônica presencial ou via link remoto de assinatura.</li>
+      </ol>
+      <div class="notice">
+        <strong>Segurança e Privacidade (Comunidade Externa e Discentes):</strong> Cada usuário consegue visualizar e
+        gerenciar exclusivamente suas próprias reivindicações e notificações. Contas sem verificação de e-mail ou
+        suspensas ficam bloqueadas até a regularização. Em caso de dúvida, acione <code>/suporte</code> ou
+        <code>achados.ivaipora@ifpr.edu.br</code>.
+      </div>
+    </section>
+
+    <section id="qr-code" class="section-card">
+      <h2>8. Como Funciona o QR Code</h2>
+      <ul>
+        <li><strong>Geração Automática:</strong> Todo objeto cadastrado recebe um identificador único (<code>qrCodeId</code>) e uma etiqueta pronta para impressão (<strong>Imprimir Etiqueta QR</strong> no detalhe do objeto).</li>
+        <li><strong>Leitura pela Câmera:</strong> Clique no botão <strong>Ler QR Code</strong> na barra superior ou na Tela Inicial, autorize o acesso à câmera do dispositivo e aponte para a etiqueta física do item.</li>
+        <li><strong>Acesso Direto:</strong> Ao ler o QR Code, o Localiza+ localiza e abre automaticamente a ficha do objeto correspondente (incluindo busca direta no banco caso o item não esteja em cache local).</li>
+      </ul>
+    </section>
+
+    <section id="analise-ia" class="section-card">
+      <h2>9. Como Funciona a Análise Visual por IA</h2>
+      <p>
+        Quando o serviço de Inteligência Artificial está habilitado no ambiente do servidor, o formulário de cadastro de
+        objetos oferece o recurso de <strong>Análise de Foto por IA</strong>:
+      </p>
+      <ol>
+        <li>Durante o cadastro, envie uma foto nítida do objeto.</li>
+        <li>Clique em <strong>Analisar Foto com IA</strong>.</li>
+        <li>A imagem é enviada com segurança ao endpoint do servidor, que sugere automaticamente título, categoria, cor predominante, marca aparente e uma descrição objetiva.</li>
+        <li>O servidor responsável sempre pode revisar e ajustar qualquer campo antes de salvar o registro.</li>
+      </ol>
+      <p><em>Observação: caso a chave da API de IA não esteja configurada no ambiente, o cadastro manual continua funcionando normalmente.</em></p>
+    </section>
+
+    <section id="instalar-pwa" class="section-card">
+      <h2>10. Como Instalar como Aplicativo (PWA)</h2>
+      <p>O Localiza+ é um <strong>Progressive Web App (PWA)</strong> e pode ser instalado na tela inicial do celular ou computador:</p>
+      <ul>
+        <li><strong>Android (Google Chrome / Edge):</strong> Toque no banner <em>Instalar Aplicativo</em> ou no botão <strong>Instalar App (PWA)</strong> no menu/rodapé, ou abra o menu do navegador (<code>⋮</code>) e selecione <strong>Instalar aplicativo</strong> / <strong>Adicionar à tela inicial</strong>.</li>
+        <li><strong>iPhone / iPad (Safari):</strong> Toque no botão <strong>Compartilhar</strong> (ícone de quadrado com seta para cima) na barra inferior do Safari e selecione <strong>Adicionar à Tela de Início</strong>.</li>
+        <li><strong>Computador (Chrome / Edge):</strong> Clique no ícone de instalação na barra de endereços ou utilize o botão <strong>Instalar App (PWA)</strong> no rodapé do site.</li>
+      </ul>
+      <p>Após instalado, o aplicativo abre em tela dedicada e mantém suporte a visualização offline dos últimos registros sincronizados.</p>
+    </section>
+
+    <section id="suporte" class="section-card">
+      <h2>11. Como Pedir Suporte e Contato Institucional</h2>
+      <ul>
+        <li><strong>Central de Suporte no Sistema:</strong> Acesse <code>/suporte</code> (ou o link <strong>Suporte</strong> no rodapé) para consultar perguntas frequentes (FAQ), enviar sugestões (<code>/suporte/feedback</code>) ou relatar problemas técnicos (<code>/suporte/relatar-bug</code>) com geração de protocolo.</li>
+        <li><strong>Atendimento Presencial:</strong> Portaria Principal e Secretaria / SEPAE / SEBAC — Bloco Administrativo, IFPR Campus Ivaiporã, Rodovia PR-466.</li>
+        <li><strong>Horário de Atendimento:</strong> Segunda a sexta-feira, das 07h30 às 22h30 (dias letivos).</li>
+        <li><strong>Telefone:</strong> (43) 3126-9400</li>
+        <li><strong>E-mail Institucional:</strong> <code>achados.ivaipora@ifpr.edu.br</code></li>
+        <li><strong>Comunidade Discord IFPR:</strong> Link disponível na Central de Suporte e no rodapé do sistema.</li>
+      </ul>
+    </section>
+
+    <footer>
+      Localiza+ • Sistema de Achados e Perdidos do IFPR Campus Ivaiporã • Manual Oficial do Usuário (v1.10.13)
+    </footer>
+  </main>
+</body>
+</html>

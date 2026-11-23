@@ -16,6 +16,8 @@ import {
   Eye,
   EyeOff,
   Hash,
+  KeyRound,
+  ArrowLeft,
 } from "lucide-react";
 import { useApp, previewInstitutionalRole } from "../context/AppContext";
 import { useRouter } from "../context/RouterContext";
@@ -28,6 +30,11 @@ import {
   isValidPhone,
 } from "../lib/utils";
 import { parseAuthError, handleAuthError } from "../lib/authErrorHandler";
+import {
+  dispatchPasswordResetWithFallback,
+  isValidAuthEmail,
+  normalizeAuthEmail,
+} from "../lib/adminUserProvisioning";
 import { auth } from "../lib/firebase";
 import { sendPasswordResetEmail } from "firebase/auth";
 import {
@@ -58,7 +65,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   } = useApp();
   const { navigate } = useRouter();
 
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register" | "reset">("login");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
@@ -66,9 +73,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showRegPassword, setShowRegPassword] = useState(false);
 
-  // Login form state
+  // Login & Password Reset form state
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [resetEmail, setResetEmail] = useState("");
 
   // Register form state
   const [regName, setRegName] = useState("");
@@ -127,12 +135,25 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const handlePasswordReset = async () => {
+  const openPasswordResetMode = () => {
     vibrateClick();
     setErrorMsg("");
     setSuccessMsg("");
-    const cleanEmail = loginEmail.trim().toLowerCase();
-    if (!cleanEmail || !cleanEmail.includes("@")) {
+    if (loginEmail.trim()) {
+      setResetEmail(loginEmail.trim());
+    }
+    setMode("reset");
+  };
+
+  const handlePasswordReset = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    vibrateClick();
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    const candidateEmail = mode === "reset" ? resetEmail : (resetEmail || loginEmail);
+    const cleanEmail = normalizeAuthEmail(candidateEmail);
+    if (!isValidAuthEmail(cleanEmail)) {
       const msg = t("enterInstitutionalEmailReset");
       setErrorMsg(msg);
       addToast(msg, "warning");
@@ -141,19 +162,31 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
     setLoading(true);
     try {
-      await sendPasswordResetEmail(auth, cleanEmail);
+      const originUrl = typeof window !== "undefined" ? window.location.origin : undefined;
+      await dispatchPasswordResetWithFallback({
+        auth,
+        email: cleanEmail,
+        originUrl,
+        sendFn: (authInstance, email, actionSettings) =>
+          actionSettings
+            ? sendPasswordResetEmail(authInstance, email, actionSettings)
+            : sendPasswordResetEmail(authInstance, email),
+      });
       vibrateSuccess();
       setSuccessMsg(
         language === "en"
-          ? `Recovery email sent to ${cleanEmail}. Check your inbox and spam folder.`
-          : `E-mail de recuperação enviado para ${cleanEmail}. Verifique sua caixa de entrada e spam.`
+          ? `Request processed for ${cleanEmail}. If this email has an active Firebase Authentication account, you will receive the link to set or reset your password shortly (also check Spam/Junk).`
+          : `${t("recoveryEmailRequestSubmitted")} ${cleanEmail}. Se este e-mail possuir conta vinculada no Firebase Authentication, você receberá em instantes o link para definir ou redefinir sua senha (verifique também Spam/Lixo Eletrônico).`
       );
       addToast(t("recoveryEmailSent"), "success");
     } catch (err: any) {
       console.error("[Password Reset Error]", err);
       vibrateWarning();
       const parsed = parseAuthError(err);
-      setErrorMsg(parsed.userMessage);
+      const fullErr = parsed.actionHint
+        ? `${parsed.userMessage} (${parsed.actionHint})`
+        : parsed.userMessage;
+      setErrorMsg(fullErr);
       addToast(parsed.userMessage, "error");
     } finally {
       setLoading(false);
@@ -306,11 +339,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 id="auth-modal-title"
                 className="text-xl font-bold tracking-tight text-[#172B2A] dark:text-white mt-2"
               >
-                {mode === "login" ? t("accessYourAccount") : t("createYourAccount")}
+                {mode === "login"
+                  ? t("accessYourAccount")
+                  : mode === "reset"
+                  ? t("firstAccessOrForgot")
+                  : t("createYourAccount")}
               </h2>
               <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                 {mode === "login"
                   ? t("authLoginDesc")
+                  : mode === "reset"
+                  ? language === "en"
+                    ? "Enter your email to receive a secure link to set or reset your password."
+                    : "Informe seu e-mail para receber o link seguro de definição ou redefinição de senha."
                   : t("authRegisterDesc")}
               </p>
             </div>
@@ -481,7 +522,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   </label>
                   <button
                     type="button"
-                    onClick={handlePasswordReset}
+                    onClick={openPasswordResetMode}
                     disabled={loading}
                     className="text-xs text-[#16845B] hover:text-[#064E3B] dark:text-emerald-400 dark:hover:text-emerald-300 font-semibold hover:underline cursor-pointer"
                   >
@@ -517,7 +558,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 />
               </div>
 
-              <div className="pt-1">
+              <div className="pt-1 space-y-2">
                 <UIButton
                   type="submit"
                   variant="primary"
@@ -529,6 +570,82 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                     ? language === "en" ? "Signing in..." : "Entrando..."
                     : t("login")}
                 </UIButton>
+
+                <button
+                  type="button"
+                  onClick={openPasswordResetMode}
+                  disabled={loading}
+                  className="w-full py-1.5 text-[11px] font-semibold text-slate-500 hover:text-[#16845B] dark:text-slate-400 dark:hover:text-emerald-400 transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <KeyRound className="w-3.5 h-3.5" />
+                  <span>{t("firstAccessOrForgot")}</span>
+                </button>
+              </div>
+            </form>
+          ) : mode === "reset" ? (
+            /* FIRST ACCESS / PASSWORD RESET FORM */
+            <form onSubmit={handlePasswordReset} className="space-y-4">
+              <div className="p-3 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 text-xs text-slate-600 dark:text-slate-300 space-y-1">
+                <p className="font-semibold text-[#172B2A] dark:text-white">
+                  {language === "en"
+                    ? "Account created by administration?"
+                    : "Conta criada pela administração ou esqueceu sua senha?"}
+                </p>
+                <p className="text-[11px] leading-relaxed">
+                  {language === "en"
+                    ? "Use the email registered by the campus administrator to receive a personal link to set your password."
+                    : "Informe o e-mail cadastrado no sistema para receber o link seguro e definir sua senha pessoal. Caso não receba em instantes, verifique o Spam ou solicite ao administrador o reenvio do primeiro acesso."}
+                </p>
+              </div>
+
+              <UIFieldGroup
+                label={language === "en" ? "Registered email" : "E-mail cadastrado"}
+                htmlFor="auth-reset-email"
+                required
+              >
+                <UIInput
+                  id="auth-reset-email"
+                  type="email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  placeholder="seu.nome@ifpr.edu.br"
+                  required
+                  leftIcon={<Mail className="w-4 h-4" />}
+                />
+              </UIFieldGroup>
+
+              <div className="space-y-2">
+                <UIButton
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  fullWidth
+                  disabled={loading}
+                >
+                  <KeyRound className="w-4 h-4" />
+                  <span>
+                    {loading
+                      ? language === "en" ? "Sending link..." : "Enviando link..."
+                      : t("sendPasswordResetLink")}
+                  </span>
+                </UIButton>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    vibrateClick();
+                    setErrorMsg("");
+                    setSuccessMsg("");
+                    if (resetEmail.trim()) {
+                      setLoginEmail(resetEmail.trim());
+                    }
+                    setMode("login");
+                  }}
+                  className="w-full py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-[#16845B] dark:hover:text-emerald-400 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>{t("backToLogin")}</span>
+                </button>
               </div>
             </form>
           ) : (
@@ -617,12 +734,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 </div>
                 <UIBadge
                   tone={
-                    regRoleDetermination.isInstitutional ? "emerald" : "slate"
+                    regRoleDetermination.isInstitutional
+                      ? "emerald"
+                      : regEmail.trim().includes("@") && regEmail.trim().includes(".")
+                      ? "blue"
+                      : "slate"
                   }
                 >
                   {regRoleDetermination.isInstitutional
                     ? translateUserRole(regRoleDetermination.role, language)
-                    : language === "en" ? "Waiting for Email" : "Aguardando E-mail"}
+                    : regEmail.trim().includes("@") && regEmail.trim().includes(".")
+                    ? language === "en"
+                      ? "External Community"
+                      : "Comunidade Externa"
+                    : language === "en"
+                    ? "Waiting for Email"
+                    : "Aguardando E-mail"}
                 </UIBadge>
               </div>
 
@@ -731,7 +858,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             {mode === "login" ? (
               <button
                 type="button"
-                onClick={handlePasswordReset}
+                onClick={openPasswordResetMode}
                 disabled={loading}
                 className="font-medium text-slate-500 dark:text-slate-400 hover:text-[#16845B] dark:hover:text-emerald-400 transition-colors cursor-pointer"
               >

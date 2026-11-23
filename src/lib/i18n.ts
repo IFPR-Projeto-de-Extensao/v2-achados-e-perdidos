@@ -437,6 +437,10 @@ export interface TranslationDictionary {
   emailLabel: string;
   passwordLabel: string;
   forgotPassword: string;
+  firstAccessOrForgot: string;
+  sendPasswordResetLink: string;
+  recoveryEmailRequestSubmitted: string;
+  backToLogin: string;
   fullNameLabel: string;
   matriculaLabel: string;
   phoneOptionalLabel: string;
@@ -600,6 +604,11 @@ export interface TranslationDictionary {
   tourCloseAria: string;
   tourReplayBtn: string;
   tourReplayShort: string;
+
+  // Help & User Manual
+  helpButton: string;
+  userManualTitle: string;
+  userManualNavLabel: string;
 
   // Footer
   footerRights: string;
@@ -898,6 +907,10 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     emailLabel: "E-mail",
     passwordLabel: "Senha",
     forgotPassword: "Esqueceu a senha?",
+    firstAccessOrForgot: "Primeiro acesso ou esqueceu a senha?",
+    sendPasswordResetLink: "Enviar link para definir/redefinir senha",
+    recoveryEmailRequestSubmitted: "Solicitação processada para",
+    backToLogin: "Voltar para o login",
     fullNameLabel: "Nome Completo",
     matriculaLabel: "Matrícula / SIAPE",
     phoneOptionalLabel: "Telefone / WhatsApp (opcional)",
@@ -1053,6 +1066,10 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     tourCloseAria: "Fechar tour guiado",
     tourReplayBtn: "Iniciar Tour Guiado",
     tourReplayShort: "Tour Guiado",
+
+    helpButton: "Ajuda",
+    userManualTitle: "Manual de Utilização do Localiza+",
+    userManualNavLabel: "Ajuda & Manual do Usuário",
 
     footerRights: "IFPR Campus Ivaiporã • Todos os direitos reservados",
     footerCampusInfo: "IFPR Campus Ivaiporã · Central de Achados e Perdidos",
@@ -1348,6 +1365,10 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     emailLabel: "Email",
     passwordLabel: "Password",
     forgotPassword: "Forgot password?",
+    firstAccessOrForgot: "First access or forgot password?",
+    sendPasswordResetLink: "Send password setup/reset link",
+    recoveryEmailRequestSubmitted: "Request processed for",
+    backToLogin: "Back to sign in",
     fullNameLabel: "Full Name",
     matriculaLabel: "Student / Staff ID",
     phoneOptionalLabel: "Phone / WhatsApp (optional)",
@@ -1503,6 +1524,10 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     tourCloseAria: "Close guided tour",
     tourReplayBtn: "Start Guided Tour",
     tourReplayShort: "Guided Tour",
+
+    helpButton: "Help",
+    userManualTitle: "Localiza+ User Manual",
+    userManualNavLabel: "Help & User Manual",
 
     footerRights: "IFPR Ivaiporã Campus • All rights reserved",
     footerCampusInfo: "IFPR Ivaiporã Campus · Lost & Found Center",

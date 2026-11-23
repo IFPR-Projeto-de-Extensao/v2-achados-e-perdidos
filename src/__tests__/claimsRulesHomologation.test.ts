@@ -1290,7 +1290,7 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
     expect(checkSnap.data()?.status).toBe("PENDENTE");
   });
 
-  it("C-31: Claim JWT antiga role: 'INTRUSO' não bloqueia ALUNO com users/{uid} válido de cancelar sua claim PENDENTE, mas documento users/{uid} com role: 'INTRUSO' é barrado (403)", async () => {
+  it("C-31: Usuário externo (INTRUSO) verificado e ativo cancela apenas sua própria claim PENDENTE (nunca a de terceiros nem sem e-mail verificado); ALUNO com claim JWT antiga role: 'INTRUSO' mantém cancelamento", async () => {
     const claimPayload = getValidClaimPayload(ITEM_ENCONTRADO_ID, INTRUDER_UID, INTRUDER_EMAIL);
     const realIntruderUid = "real_intruso_doc_c31";
     const realIntruderEmail = "intruso.real@gmail.com";
@@ -1309,12 +1309,32 @@ describe("LOCALIZA+ v1.10.9 — Bateria SEC-07: Homologação de Regras de Segur
       await setDoc(doc(db, "claims", realIntruderClaim.id), realIntruderClaim);
     });
 
-    // 1. Documento users/{uid} marcado como INTRUSO é bloqueado
+    // 1a. INTRUSO sem verificação de e-mail continua bloqueado (403)
+    const unverifiedIntruderDb = testEnv.authenticatedContext(realIntruderUid, {
+      email: realIntruderEmail,
+      email_verified: false,
+    }).firestore();
+    await assertFails(
+      updateDoc(doc(unverifiedIntruderDb, "claims", realIntruderClaim.id), {
+        status: "CANCELADO",
+        cancelledAt: new Date().toISOString(),
+      })
+    );
+
+    // 1b. INTRUSO verificado NÃO pode cancelar claim de terceiro (403)
     const realIntruderDb = testEnv.authenticatedContext(realIntruderUid, {
       email: realIntruderEmail,
       email_verified: true,
     }).firestore();
     await assertFails(
+      updateDoc(doc(realIntruderDb, "claims", claimPayload.id), {
+        status: "CANCELADO",
+        cancelledAt: new Date().toISOString(),
+      })
+    );
+
+    // 1c. INTRUSO verificado e ativo PODE cancelar apenas sua própria claim PENDENTE
+    await assertSucceeds(
       updateDoc(doc(realIntruderDb, "claims", realIntruderClaim.id), {
         status: "CANCELADO",
         cancelledAt: new Date().toISOString(),

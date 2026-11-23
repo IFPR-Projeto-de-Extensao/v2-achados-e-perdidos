@@ -115,7 +115,7 @@ export default defineConfig(({ mode }) => ({
         clientsClaim: true,
         skipWaiting: true,
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/__/],
+        navigateFallbackDenylist: [/^\/api\//, /^\/__/, /^\/manual-usuario\.html$/],
         importScripts: ['/sw-custom.js'],
         runtimeCaching: [
           {

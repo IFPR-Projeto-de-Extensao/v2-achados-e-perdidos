@@ -360,7 +360,7 @@ describe("LOCALIZA+ v1.10.10 — Validação Cirúrgica de Regras Firestore (Cla
 
     it("deve permitir allow get com exigência estrita de resource == null para leitura transacional de IDs determinísticos do próprio usuário", () => {
       expect(rulesContent).toMatch(
-        /resource == null && isAccountActive\(\) && request\.auth\.uid != null && claimId\.matches\('claim_' \+ request\.auth\.uid \+ '_.*'\)/
+        /resource == null && \(?isAccountActive\(\)(?: \|\| isVerifiedActiveExternalUser\(\))?\)? && request\.auth\.uid != null && claimId\.matches\('claim_' \+ request\.auth\.uid \+ '_.*'\)/
       );
     });
 

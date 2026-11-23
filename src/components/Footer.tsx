@@ -88,6 +88,12 @@ export const Footer: React.FC = () => {
               </button>
             )}
             <Link
+              to="/ajuda"
+              className="hover:text-[#172B2A] dark:hover:text-white transition-colors font-medium text-[#16845B] dark:text-emerald-400"
+            >
+              {t("userManualNavLabel", "Ajuda & Manual do Usuário")}
+            </Link>
+            <Link
               to="/suporte"
               className="hover:text-[#172B2A] dark:hover:text-white transition-colors"
             >

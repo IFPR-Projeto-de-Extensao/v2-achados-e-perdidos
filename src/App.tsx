@@ -13,9 +13,11 @@ import { MyItemsView } from "./components/MyItemsView";
 import { NotificationsView } from "./components/NotificationsView";
 import { SettingsView } from "./components/SettingsView";
 import { SupportView } from "./components/SupportView";
+import { UserManualView } from "./components/UserManualView";
 import { PrivacyPolicyView } from "./components/PrivacyPolicyView";
 import { TermsOfUseView } from "./components/TermsOfUseView";
 import { EmailVerificationView } from "./components/EmailVerificationView";
+import { ResetPasswordView } from "./components/ResetPasswordView";
 import { VersionHistoryView } from "./components/VersionHistoryView";
 import { NotFoundView } from "./components/NotFoundView";
 import { ItemDetailModal } from "./components/ItemDetailModal";
@@ -320,6 +322,15 @@ const MainContent: React.FC = () => {
 
   // Render view based on routeKey
   const renderCurrentView = () => {
+    const queryMode = searchParams.mode || "";
+    const queryOobCode = searchParams.oobCode || "";
+    if (
+      routeKey === "reset_password" ||
+      (queryOobCode && (queryMode === "resetPassword" || queryMode === "verifyEmail"))
+    ) {
+      return <ResetPasswordView />;
+    }
+
     if (routeKey === "verify_email") {
       return <EmailVerificationView />;
     }
@@ -328,11 +339,12 @@ const MainContent: React.FC = () => {
       if (
         routeKey === "privacy_policy" ||
         routeKey === "terms_of_use" ||
+        routeKey === "manual" ||
         routeKey === "support" ||
         routeKey === "support_feedback" ||
         routeKey === "support_bug"
       ) {
-        // Allow public legal and support documentation
+        // Allow public legal, manual, and support documentation
       } else {
         return <EmailVerificationView />;
       }
@@ -347,6 +359,8 @@ const MainContent: React.FC = () => {
             ? "PERDIDO"
             : searchParams.tipo === "encontrado"
             ? "ENCONTRADO"
+            : searchParams.tipo === "devolvido"
+            ? "DEVOLVIDO"
             : "TODOS";
         return <ObjectsView initialFilterType={filterType} />;
       }
@@ -362,6 +376,8 @@ const MainContent: React.FC = () => {
         return <NotificationsView />;
       case "settings":
         return <SettingsView />;
+      case "manual":
+        return <UserManualView />;
       case "support":
       case "support_feedback":
       case "support_bug":

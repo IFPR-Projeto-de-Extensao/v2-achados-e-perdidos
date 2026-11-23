@@ -1,4 +1,38 @@
 import { getAdminFirestore } from "../_lib/firebaseAdmin.js";
+import { applySecurityHeaders } from "../_lib/securityHeaders.js";
+
+function sanitizeBoundedParams(raw: unknown): Record<string, string | number | boolean> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const result: Record<string, string | number | boolean> = {};
+  let count = 0;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (count >= 20) break;
+    const cleanKey = k.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 64);
+    if (!cleanKey || cleanKey === "__proto__" || cleanKey === "constructor" || cleanKey === "prototype") continue;
+    if (typeof v === "string") {
+      result[cleanKey] = v.slice(0, 200);
+      count++;
+    } else if (typeof v === "number" && Number.isFinite(v)) {
+      result[cleanKey] = v;
+      count++;
+    } else if (typeof v === "boolean") {
+      result[cleanKey] = v;
+      count++;
+    }
+  }
+  if (JSON.stringify(result).length > 2048) {
+    const compact: Record<string, string | number | boolean> = {};
+    let total = 2;
+    for (const [k, v] of Object.entries(result)) {
+      const len = JSON.stringify(k).length + JSON.stringify(v).length + 3;
+      if (total + len > 2048) break;
+      compact[k] = v;
+      total += len;
+    }
+    return compact;
+  }
+  return result;
+}
 
 // In-memory telemetry buffer for warm container invocations
 const serverlessAnalyticsEvents: Array<{
@@ -47,6 +81,8 @@ function getClientIp(req: any): string {
 }
 
 export default async function handler(req: any, res: any) {
+  applySecurityHeaders(res, process.env.NODE_ENV === "production");
+
   // CORS Headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -82,7 +118,7 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    const safeParams = params && typeof params === "object" && !Array.isArray(params) ? params : {};
+    const safeParams = sanitizeBoundedParams(params);
     const safeTimestamp =
       timestamp && typeof timestamp === "string" && !isNaN(Date.parse(timestamp))
         ? timestamp

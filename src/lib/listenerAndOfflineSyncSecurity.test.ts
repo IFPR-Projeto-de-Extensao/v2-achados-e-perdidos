@@ -195,14 +195,32 @@ describe("ETAPA 5 — Unit Tests: devolutionAuth, Listeners RBAC (13 coleções)
       expect(canSubscribeAdminOnlyLogs(adminActiveFalse)).toBe(false);
       expect(getClaimsListenerScope(adminActiveFalse)).toBe("NONE");
 
-      const intruso = {
+      const intrusoVerifiedActive = {
         authLoading: false,
         firebaseUser: { uid: "uid-intruso", email: "intruso@gmail.com", emailVerified: true },
-        currentUser: makeUser({ id: "uid-intruso", role: "INTRUSO", approvalStatus: "PENDENTE", status: "active" }),
+        currentUser: makeUser({ id: "uid-intruso", role: "INTRUSO", approvalStatus: "APROVADO", status: "active" }),
       };
-      expect(getItemHistorySubscriptionMode(intruso)).toBe("PUBLIC_API");
-      expect(getClaimsListenerScope(intruso)).toBe("NONE");
-      expect(getNotificationsListenerScope(intruso)).toBe("SELF");
+      expect(getItemHistorySubscriptionMode(intrusoVerifiedActive)).toBe("PUBLIC_API");
+      expect(canSubscribeStaffItemCollections(intrusoVerifiedActive)).toBe(false);
+      expect(canSubscribeUsersDirectory(intrusoVerifiedActive)).toBe(false);
+      expect(canSubscribeStaffLogs(intrusoVerifiedActive)).toBe(false);
+      expect(canSubscribeAdminOnlyLogs(intrusoVerifiedActive)).toBe(false);
+      expect(getClaimsListenerScope(intrusoVerifiedActive)).toBe("SELF");
+      expect(getNotificationsListenerScope(intrusoVerifiedActive)).toBe("SELF");
+
+      const intrusoUnverified = {
+        authLoading: false,
+        firebaseUser: { uid: "uid-intruso-unv", email: "unv@gmail.com", emailVerified: false },
+        currentUser: makeUser({ id: "uid-intruso-unv", role: "INTRUSO", approvalStatus: "PENDENTE", status: "active" }),
+      };
+      expect(getClaimsListenerScope(intrusoUnverified)).toBe("NONE");
+
+      const intrusoBlocked = {
+        authLoading: false,
+        firebaseUser: { uid: "uid-intruso-blk", email: "blk@gmail.com", emailVerified: true },
+        currentUser: makeUser({ id: "uid-intruso-blk", role: "INTRUSO", approvalStatus: "APROVADO", status: "banned" }),
+      };
+      expect(getClaimsListenerScope(intrusoBlocked)).toBe("NONE");
     });
 
     it("AppContext.tsx usa listenerGuards nos 13 listeners, dependências completas e rota /api/items/public-history sem PII", () => {

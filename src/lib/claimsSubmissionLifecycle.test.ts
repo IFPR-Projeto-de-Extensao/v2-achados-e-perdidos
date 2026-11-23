@@ -10,7 +10,7 @@
  * 6. Objeto DEVOLVIDO -> Envio bloqueado
  * 7. Objeto ENCERRADO -> Envio bloqueado
  * 8. Usuário sem perfil ativo -> Escrita rejeitada
- * 9. Usuário INTRUSO -> Escrita rejeitada
+ * 9. Comunidade externa (INTRUSO) com e-mail verificado e conta ativa -> Criada normalmente; não verificado/suspenso -> Rejeitada
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -71,15 +71,15 @@ class TransactionalClaimRunner {
     const effectiveUserName = authUser.name || "Usuário IFPR";
     const effectiveUserRole = authUser.role || "ALUNO";
 
-    // Checagem de perfil e intruso
+    // Checagem de perfil ativo e verificação de e-mail (incluindo comunidade externa INTRUSO)
     const userDoc = this.state.users.get(effectiveUserId);
     const isRoot = effectiveUserEmail === "paulocauan39@gmail.com";
     if (!isRoot) {
-      if (!userDoc || userDoc.status !== "active") {
+      if (!userDoc || userDoc.status !== "active" || (userDoc as any).active === false) {
         throw new Error("PERMISSION_DENIED: Usuário sem perfil ativo no Firestore.");
       }
-      if (userDoc.role === "INTRUSO" || authUser.role === "INTRUSO") {
-        throw new Error("PERMISSION_DENIED: Usuário classificado como INTRUSO não possui permissão para reivindicar objetos.");
+      if ((authUser as any).emailVerified === false) {
+        throw new Error("PERMISSION_DENIED: E-mail não verificado.");
       }
     }
 
@@ -514,18 +514,28 @@ describe("LOCALIZA+ v1.10.10 — Validação do Ciclo de Vida de Solicitações 
   });
 
   // ---------------------------------------------------------------------------
-  // Cenário 9: Usuário INTRUSO (Rejeição de Permissão)
+  // Cenário 9: Comunidade Externa (INTRUSO) — Verificado Permitido vs. Não Verificado/Suspenso Bloqueado
   // ---------------------------------------------------------------------------
-  it("Cenário 9: Usuário com role INTRUSO tem a escrita rejeitada com PERMISSION_DENIED", async () => {
+  it("Cenário 9: Usuário externo (INTRUSO) verificado e ativo cria sua própria claim; não verificado ou suspenso é bloqueado", async () => {
+    // 9a. Usuário externo verificado e ativo -> PERMITIDO
+    const res = await runner.executeSubmitClaimTransaction(
+      { ...intrusoUser, emailVerified: true } as any,
+      mockItemAtivo.id,
+      "Chaveiro com adesivo azul e arranhão lateral"
+    );
+    expect(res.success).toBe(true);
+    expect(res.claimId).toBe(`claim_${intrusoUser.id}_${mockItemAtivo.id}`);
+    expect(runner.writeExecutionCount).toBe(1);
+
+    // 9b. Usuário externo sem verificação de e-mail -> BLOQUEADO
     await expect(
       runner.executeSubmitClaimTransaction(
-        intrusoUser,
+        { ...intrusoUser, emailVerified: false } as any,
         mockItemAtivo.id,
-        "Características declaradas por visitante"
+        "Tentativa sem e-mail verificado"
       )
-    ).rejects.toThrow("PERMISSION_DENIED: Usuário classificado como INTRUSO");
-
-    expect(runner.writeExecutionCount).toBe(0);
+    ).rejects.toThrow("PERMISSION_DENIED: E-mail não verificado");
+    expect(runner.writeExecutionCount).toBe(1);
   });
 
   // ---------------------------------------------------------------------------

@@ -18,6 +18,7 @@ import {
   ArrowRight,
   RotateCcw,
   PackageSearch,
+  HelpCircle,
 } from "lucide-react";
 import { EmptyState } from "./ui";
 import { computeHomeItemStats } from "../lib/homeStatsUtils";
@@ -306,6 +307,21 @@ export const HomeView: React.FC = () => {
               <span>{t("ctaRegisterObject", "Registrar Objeto")}</span>
             </button>
           )}
+
+          <button
+            id="home-help-manual-btn"
+            type="button"
+            onClick={() => {
+              vibrateClick();
+              navigate("/ajuda");
+            }}
+            aria-label={t("userManualNavLabel", "Ajuda & Manual do Usuário")}
+            title={t("userManualNavLabel", "Ajuda & Manual do Usuário")}
+            className="min-h-[46px] px-4 rounded-xl bg-white dark:bg-[#111827] hover:bg-[#EBF5F0] dark:hover:bg-emerald-950/40 text-[#172B2A] dark:text-slate-200 border border-slate-200 dark:border-slate-800 hover:border-[#16845B]/50 text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0"
+          >
+            <HelpCircle className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
+            <span>{t("helpButton", "Ajuda")}</span>
+          </button>
         </div>
       </section>
 

@@ -841,7 +841,7 @@ export function calculateTestDuration(startTime?: string, endTime?: string): str
 /**
  * Calculates battery metrics derived strictly from actual recorded test results.
  */
-export function calculateBatterySummary(battery: TestBatteryExecution) {
+export function calculateBatterySummary(battery: TestBatteryExecution | null | undefined) {
   const tests = battery?.tests || [];
   const total = tests.length;
   const passed = tests.filter((t) => isTestCompleted(t.status)).length;
@@ -979,7 +979,9 @@ export function calculateCategoryMetrics(battery: TestBatteryExecution) {
 }
 
 /**
- * Initial historical executions to seed when no prior executions exist in Firestore.
+ * Test-only fixture retained exclusively for automated unit/integration test suites
+ * (e.g., src/lib/testExecutionPersistence.test.ts).
+ * Production views MUST NEVER initialize or display this fixture when Firestore is empty.
  */
 export const INITIAL_TEST_BATTERIES: TestBatteryExecution[] = [
   {

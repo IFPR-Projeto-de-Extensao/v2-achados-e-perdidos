@@ -12,6 +12,7 @@ import { AccessibleVoiceReader } from "./AccessibleVoiceReader";
 import { normalizeCategory, getCategoryDisplay, CANONICAL_ITEM_CATEGORIES } from "../lib/categoryUtils";
 import { canOperateFormalReturn, canReopenFormalReturn, canStartFormalReturnForItem } from "../lib/devolutionAuth";
 import { IFPR_LOCATIONS, IFPR_LOCATION_GROUPS } from "../data/mockData";
+import { escapeHtml, isSafeDataImageUrl } from "../lib/htmlSanitizer";
 
 /**
  * Utilitário 'formatSafeDate' para validação e formatação segura de datas (Timestamp, string, number ou Date).
@@ -143,7 +144,6 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     returnModalAutoOpen,
     setReturnModalAutoOpen,
   } = useApp();
-
   const currentItem = items.find((i) => i.id === item.id) || item;
   const canPerformFormalReturn = canStartFormalReturnForItem(currentUser, auth.currentUser, currentItem, isGuest);
   const canSignAsStaff = canOperateFormalReturn(currentUser, auth.currentUser, isGuest);
@@ -842,51 +842,51 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             </div>
 
             <div class="receipt-id">
-              Código de Validação: <strong>${receiptCode}</strong><br/>
-              Data de Emissão: <strong>${formatDateTime(new Date().toISOString())}</strong>
+              Código de Validação: <strong>${escapeHtml(receiptCode)}</strong><br/>
+              Data de Emissão: <strong>${escapeHtml(formatDateTime(new Date().toISOString()))}</strong>
             </div>
 
             <div class="section-title">1. Dados do Objeto Entregue</div>
             <table class="data-grid">
-              <tr><td class="label">ID da Ocorrência:</td><td class="value">#${currentItem.id}</td></tr>
-              <tr><td class="label">Título / Descrição:</td><td class="value">${currentItem.title}</td></tr>
-              <tr><td class="label">Categoria / Tipo:</td><td class="value">${getCategoryDisplay(currentItem.category)} (${currentItem.type})</td></tr>
-              <tr><td class="label">Local onde foi Encontrado:</td><td class="value">${currentItem.location}</td></tr>
-              <tr><td class="label">Cor / Marca:</td><td class="value">${currentItem.color || 'N/I'} • ${currentItem.brand || 'N/I'}</td></tr>
-              <tr><td class="label">Código de Rastreamento QR:</td><td class="value" style="font-family: monospace; color: #00843D;">${currentItem.qrCodeId || currentItem.id}</td></tr>
+              <tr><td class="label">ID da Ocorrência:</td><td class="value">#${escapeHtml(currentItem.id)}</td></tr>
+              <tr><td class="label">Título / Descrição:</td><td class="value">${escapeHtml(currentItem.title)}</td></tr>
+              <tr><td class="label">Categoria / Tipo:</td><td class="value">${escapeHtml(getCategoryDisplay(currentItem.category))} (${escapeHtml(currentItem.type)})</td></tr>
+              <tr><td class="label">Local onde foi Encontrado:</td><td class="value">${escapeHtml(currentItem.location)}</td></tr>
+              <tr><td class="label">Cor / Marca:</td><td class="value">${escapeHtml(currentItem.color || "N/I")} • ${escapeHtml(currentItem.brand || "N/I")}</td></tr>
+              <tr><td class="label">Código de Rastreamento QR:</td><td class="value" style="font-family: monospace; color: #00843D;">${escapeHtml(currentItem.qrCodeId || currentItem.id)}</td></tr>
             </table>
 
             <div class="section-title">2. Dados do Proprietário / Recebedor</div>
             <table class="data-grid">
-              <tr><td class="label">Nome Completo:</td><td class="value"><strong>${recipientName}</strong></td></tr>
-              <tr><td class="label">E-mail do Receptor:</td><td class="value">${recipientEmail}</td></tr>
-              <tr><td class="label">Vínculo com o Campus:</td><td class="value">${recipientBond} • IFPR Ivaiporã</td></tr>
-              <tr><td class="label">Documento / Matrícula:</td><td class="value">${recipientDoc}</td></tr>
-              <tr><td class="label">Atendente Responsável:</td><td class="value">${attendantName} (${attendantRole})</td></tr>
+              <tr><td class="label">Nome Completo:</td><td class="value"><strong>${escapeHtml(recipientName)}</strong></td></tr>
+              <tr><td class="label">E-mail do Receptor:</td><td class="value">${escapeHtml(recipientEmail)}</td></tr>
+              <tr><td class="label">Vínculo com o Campus:</td><td class="value">${escapeHtml(recipientBond)} • IFPR Ivaiporã</td></tr>
+              <tr><td class="label">Documento / Matrícula:</td><td class="value">${escapeHtml(recipientDoc)}</td></tr>
+              <tr><td class="label">Atendente Responsável:</td><td class="value">${escapeHtml(attendantName)} (${escapeHtml(attendantRole)})</td></tr>
             </table>
 
             <div class="signatures">
               <div class="sig-line">
                 ${
-                  signatureDataUrl
+                  isSafeDataImageUrl(signatureDataUrl)
                     ? `<img src="${signatureDataUrl}" style="max-height: 52px; max-width: 220px; margin: 0 auto 6px auto; display: block;" alt="Assinatura Digital" />`
                     : isPendingRemote
                     ? `<div style="height: 40px; display: flex; align-items: center; justify-content: center; color: #d97706; font-size: 11px; font-weight: bold; font-style: italic;">[Assinatura Remota Pendente - Link Enviado]</div>`
                     : `<div style="height: 52px;"></div>`
                 }
-                <strong>${recipientName}</strong><br/>
-                <span style="font-weight: normal; font-size: 10px; color: #64748b;">Assinatura do Recebedor (${recipientBond})</span>
+                <strong>${escapeHtml(recipientName)}</strong><br/>
+                <span style="font-weight: normal; font-size: 10px; color: #64748b;">Assinatura do Recebedor (${escapeHtml(recipientBond)})</span>
               </div>
               <div class="sig-line">
                 ${
-                  currentItem.staffSignatureUrl
+                  isSafeDataImageUrl(currentItem.staffSignatureUrl)
                     ? `<img src="${currentItem.staffSignatureUrl}" style="max-height: 52px; max-width: 220px; margin: 0 auto 6px auto; display: block;" alt="Assinatura do Atendente" />`
                     : currentItem.staffSignatureStatus === "PENDING_STAFF"
                     ? `<div style="height: 40px; display: flex; align-items: center; justify-content: center; color: #d97706; font-size: 11px; font-weight: bold; font-style: italic;">[Atestação Institucional Pendente]</div>`
                     : `<div style="height: 52px;"></div>`
                 }
-                <strong>${currentItem.staffSignerName || attendantName}</strong><br/>
-                <span style="font-weight: normal; font-size: 10px; color: #64748b;">${attendantRole} • SEBAC / Portaria IFPR</span>
+                <strong>${escapeHtml(currentItem.staffSignerName || attendantName)}</strong><br/>
+                <span style="font-weight: normal; font-size: 10px; color: #64748b;">${escapeHtml(attendantRole)} • SEBAC / Portaria IFPR</span>
               </div>
             </div>
 
@@ -1269,7 +1269,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>Etiqueta IFPR - ${currentItem.id}</title>
+          <title>Etiqueta IFPR - ${escapeHtml(currentItem.id)}</title>
           <style>
             @media print {
               body { margin: 0; padding: 10px; background: white; }
@@ -1298,15 +1298,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             </div>
             <div class="qr-box">
               <img class="qr-code-img" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getItemPublicUrl(currentItem))}" alt="QR Code" />
-              <div class="qr-id">${currentItem.qrCodeId}</div>
+              <div class="qr-id">${escapeHtml(currentItem.qrCodeId || currentItem.id)}</div>
             </div>
             <table class="info-table">
-              <tr><td class="label">ID da Ocorrência:</td><td><strong>${currentItem.id}</strong></td></tr>
-              <tr><td class="label">Título do Item:</td><td><strong>${currentItem.title}</strong></td></tr>
-              <tr><td class="label">Categoria / Tipo:</td><td>${getCategoryDisplay(currentItem.category)} (${currentItem.type})</td></tr>
-              <tr><td class="label">Local Encontrado:</td><td>${currentItem.location}</td></tr>
-              <tr><td class="label">Data de Entrada:</td><td>${formatDate(currentItem.date)}</td></tr>
-              <tr><td class="label">Cor / Marca:</td><td>${currentItem.color || 'N/I'} • ${currentItem.brand || 'N/I'}</td></tr>
+              <tr><td class="label">ID da Ocorrência:</td><td><strong>${escapeHtml(currentItem.id)}</strong></td></tr>
+              <tr><td class="label">Título do Item:</td><td><strong>${escapeHtml(currentItem.title)}</strong></td></tr>
+              <tr><td class="label">Categoria / Tipo:</td><td>${escapeHtml(getCategoryDisplay(currentItem.category))} (${escapeHtml(currentItem.type)})</td></tr>
+              <tr><td class="label">Local Encontrado:</td><td>${escapeHtml(currentItem.location)}</td></tr>
+              <tr><td class="label">Data de Entrada:</td><td>${escapeHtml(formatDate(currentItem.date))}</td></tr>
+              <tr><td class="label">Cor / Marca:</td><td>${escapeHtml(currentItem.color || "N/I")} • ${escapeHtml(currentItem.brand || "N/I")}</td></tr>
               <tr><td class="label">Atendimento:</td><td>Guarita Principal / SEBAC Campus Ivaiporã</td></tr>
             </table>
             <div class="footer">
@@ -1440,7 +1440,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const handleClaimSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isGuest || !currentUser || currentUser.id === "guest") {
-      addToast("Faça login institucional para solicitar a devolução deste objeto.", "warning");
+      addToast("Faça login com sua conta para solicitar a devolução deste objeto.", "warning");
       return;
     }
     if (!claimDistinctiveFeatures.trim()) {

@@ -80,6 +80,8 @@ const SEGMENT_CONFIG: Record<
   perfil: { labelPt: "Meu Perfil", labelEn: "My Profile", icon: User },
   "analisador-ia": { labelPt: "Analisador Visual IA", labelEn: "AI Visual Analyzer", icon: Sparkles, badge: "Gemini", badgeColor: "purple" },
   ia: { labelPt: "Inteligência Artificial", labelEn: "Artificial Intelligence", icon: Sparkles, badge: "Gemini", badgeColor: "purple" },
+  ajuda: { labelPt: "Ajuda & Manual do Usuário", labelEn: "Help & User Manual", icon: FileText },
+  manual: { labelPt: "Manual do Usuário", labelEn: "User Manual", icon: FileText },
   suporte: { labelPt: "Central de Suporte", labelEn: "Support Center", icon: LifeBuoy },
   privacidade: { labelPt: "Política de Privacidade", labelEn: "Privacy Policy", icon: Shield },
   "politica-de-privacidade": { labelPt: "Política de Privacidade", labelEn: "Privacy Policy", icon: Shield },

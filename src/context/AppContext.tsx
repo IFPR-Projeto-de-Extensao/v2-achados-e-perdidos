@@ -42,6 +42,12 @@ import {
   ROOT_ADMIN_UID,
 } from "../lib/devolutionAuth";
 import {
+  AdminCreateUserResult,
+  AdminSendFirstAccessResult,
+  dispatchPasswordResetWithFallback,
+  shouldTriggerClientFirebaseResetFallback,
+} from "../lib/adminUserProvisioning";
+import {
   evaluateListenerSession,
   getItemHistorySubscriptionMode,
   canSubscribeStaffItemCollections,
@@ -105,6 +111,7 @@ import {
   signOut,
   onAuthStateChanged,
   sendEmailVerification,
+  sendPasswordResetEmail,
   reload,
   updateProfile,
   GoogleAuthProvider,
@@ -791,7 +798,8 @@ interface AppContextType {
   executeFirestoreBackupNow: (triggerType?: "MANUAL" | "PROGRAMADO") => Promise<BackupLog>;
   bulkUpdateItemStatus: (itemIds: string[], status: ItemStatus) => Promise<{ succeededIds: string[]; failedIds: string[] }>;
   bulkDeleteItems: (itemIds: string[]) => Promise<{ succeededIds: string[]; failedIds: string[]; failureReasons?: Record<string, string> }>;
-  addUserByAdmin: (newUser: Omit<User, "id">) => Promise<void>;
+  addUserByAdmin: (newUser: Omit<User, "id">) => Promise<AdminCreateUserResult>;
+  sendUserFirstAccessLink: (targetUser: User) => Promise<AdminSendFirstAccessResult>;
   resetSystemData: () => Promise<void>;
   clearAllLogsAndMetrics: () => Promise<void>;
   exportFirestoreDataToJson: () => Promise<void>;
@@ -3314,26 +3322,215 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { succeededIds, failedIds, failureReasons };
   };
 
-  const addUserByAdmin = async (userData: Omit<User, "id">) => {
-    const newUserId = `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const newUser: User = sanitizeFirestoreData({
+  const addUserByAdmin = async (userData: Omit<User, "id">): Promise<AdminCreateUserResult> => {
+    const cleanEmail = safeToLower(userData.email).trim();
+    const requestPayload = sanitizeFirestoreData({
       ...userData,
-      id: newUserId,
+      email: cleanEmail,
       status: userData.status || "active",
       active: userData.active ?? true,
       approvalStatus: userData.approvalStatus || "APROVADO",
       avatarUrl:
         userData.avatarUrl ||
-        `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
-    }) as User;
+        `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(userData.name || cleanEmail || "IFPR")}`,
+    });
+
     try {
-      await setDoc(doc(db, "users", newUserId), newUser);
-      // Somente após confirmação do Firestore o usuário é adicionado ao estado local
+      const idToken = await auth.currentUser?.getIdToken(true);
+      if (!idToken) {
+        throw new Error("Sessão administrativa não autenticada. Faça login novamente.");
+      }
+
+      const originUrl = typeof window !== "undefined" ? window.location.origin : undefined;
+      const res = await fetch("/api/admin/create-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          ...requestPayload,
+          originUrl,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success || !data?.user) {
+        const msg =
+          data?.error ||
+          data?.message ||
+          `Falha ao cadastrar usuário no servidor (HTTP ${res.status}).`;
+        throw new Error(msg);
+      }
+
+      let finalResult: AdminCreateUserResult = {
+        success: true,
+        user: data.user as User,
+        authCreated: Boolean(data.authCreated),
+        emailSent: Boolean(data.emailSent),
+        deliveryMethod: data.deliveryMethod || "NONE",
+        deliveryStatus: data.deliveryStatus || "PENDING_SMTP_CONFIG",
+        deliveryError: data.deliveryError,
+        manualSetupLink: data.manualSetupLink,
+        continueUriFallbackUsed: data.continueUriFallbackUsed,
+      };
+
+      // Se o servidor não possui SMTP configurado ou falhou no disparo SMTP, dispara o e-mail oficial do Firebase Auth
+      if (!finalResult.emailSent && shouldTriggerClientFirebaseResetFallback(finalResult.deliveryStatus)) {
+        try {
+          await dispatchPasswordResetWithFallback({
+            auth,
+            email: cleanEmail,
+            originUrl,
+            sendFn: (authInstance, email, actionSettings) =>
+              actionSettings
+                ? sendPasswordResetEmail(authInstance, email, actionSettings)
+                : sendPasswordResetEmail(authInstance, email),
+          });
+          finalResult = {
+            ...finalResult,
+            emailSent: true,
+            deliveryMethod: "FIREBASE_AUTH",
+            deliveryStatus: "FIREBASE_AUTH_SENT",
+            deliveryError: undefined,
+          };
+        } catch (fbResetErr: any) {
+          const parsedResetErr = parseAuthError(fbResetErr);
+          finalResult = {
+            ...finalResult,
+            emailSent: false,
+            deliveryError: parsedResetErr.userMessage,
+          };
+        }
+      }
+
+      const newUser: User = finalResult.user;
+      // Somente após confirmação do servidor (Authentication + Firestore) o usuário é adicionado ao estado local
       setAllUsers((prev) => [...prev, newUser]);
-      addToast(`Usuário ${newUser.name} cadastrado no sistema com sucesso!`, "success");
-    } catch (e) {
-      console.error("Erro ao cadastrar usuário no Firestore:", e);
-      addToast(`Falha ao cadastrar o usuário '${newUser.name}' no banco de dados. Tente novamente.`, "error");
+
+      if (finalResult.emailSent) {
+        const methodLabel = finalResult.deliveryMethod === "SMTP" ? "via SMTP" : "via Firebase Auth";
+        addToast(
+          `Usuário ${newUser.name} criado no Authentication e Firestore! Link de primeiro acesso enviado (${methodLabel}) para ${newUser.email}.`,
+          "success"
+        );
+      } else {
+        addToast(
+          `Conta de ${newUser.name} criada no Authentication e Firestore, mas o envio automático de e-mail falhou (${finalResult.deliveryError || finalResult.deliveryStatus}). Utilize o link de contingência exibido no painel.`,
+          "warning"
+        );
+      }
+
+      return finalResult;
+    } catch (e: any) {
+      console.error("Erro ao cadastrar usuário administrativamente:", e);
+      addToast(
+        e?.message || `Falha ao cadastrar o usuário '${userData.name}' no sistema. Tente novamente.`,
+        "error"
+      );
+      throw e;
+    }
+  };
+
+  const sendUserFirstAccessLink = async (targetUser: User): Promise<AdminSendFirstAccessResult> => {
+    const cleanEmail = safeToLower(targetUser?.email).trim();
+    if (!targetUser?.id && !cleanEmail) {
+      const msg = "Usuário sem identificador ou e-mail válido para envio de primeiro acesso.";
+      addToast(msg, "error");
+      throw new Error(msg);
+    }
+
+    try {
+      const idToken = await auth.currentUser?.getIdToken(true);
+      if (!idToken) {
+        throw new Error("Sessão administrativa não autenticada. Faça login novamente.");
+      }
+
+      const originUrl = typeof window !== "undefined" ? window.location.origin : undefined;
+      const res = await fetch("/api/admin/send-first-access-link", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          targetUserId: targetUser.id,
+          email: cleanEmail,
+          originUrl,
+          provisionMissingAuth: true,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.success) {
+        const msg =
+          data?.error ||
+          data?.message ||
+          `Falha ao processar link de primeiro acesso (HTTP ${res.status}).`;
+        throw new Error(msg);
+      }
+
+      let finalResult: AdminSendFirstAccessResult = {
+        success: true,
+        uid: data.uid || targetUser.id,
+        email: data.email || cleanEmail,
+        authProvisioned: Boolean(data.authProvisioned),
+        emailSent: Boolean(data.emailSent),
+        deliveryMethod: data.deliveryMethod || "NONE",
+        deliveryStatus: data.deliveryStatus || "PENDING_SMTP_CONFIG",
+        deliveryError: data.deliveryError,
+        manualSetupLink: data.manualSetupLink,
+        continueUriFallbackUsed: data.continueUriFallbackUsed,
+      };
+
+      if (!finalResult.emailSent && shouldTriggerClientFirebaseResetFallback(finalResult.deliveryStatus)) {
+        try {
+          await dispatchPasswordResetWithFallback({
+            auth,
+            email: finalResult.email,
+            originUrl,
+            sendFn: (authInstance, email, actionSettings) =>
+              actionSettings
+                ? sendPasswordResetEmail(authInstance, email, actionSettings)
+                : sendPasswordResetEmail(authInstance, email),
+          });
+          finalResult = {
+            ...finalResult,
+            emailSent: true,
+            deliveryMethod: "FIREBASE_AUTH",
+            deliveryStatus: "FIREBASE_AUTH_SENT",
+            deliveryError: undefined,
+          };
+        } catch (fbResetErr: any) {
+          const parsedResetErr = parseAuthError(fbResetErr);
+          finalResult = {
+            ...finalResult,
+            emailSent: false,
+            deliveryError: parsedResetErr.userMessage,
+          };
+        }
+      }
+
+      if (finalResult.emailSent) {
+        const methodLabel = finalResult.deliveryMethod === "SMTP" ? "via SMTP" : "via Firebase Auth";
+        addToast(
+          `Link de definição/redefinição de senha enviado (${methodLabel}) para ${finalResult.email}.`,
+          "success"
+        );
+      } else {
+        addToast(
+          `Não foi possível enviar o e-mail automaticamente (${finalResult.deliveryError || finalResult.deliveryStatus}). Utilize o link seguro gerado no painel.`,
+          "warning"
+        );
+      }
+
+      return finalResult;
+    } catch (e: any) {
+      console.error("[sendUserFirstAccessLink Error]:", e);
+      addToast(
+        e?.message || `Falha ao enviar link de acesso para '${targetUser.email}'.`,
+        "error"
+      );
       throw e;
     }
   };
@@ -5039,6 +5236,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync Notifications from Firestore (Least Privilege matching firestore.rules)
   useEffect(() => {
+    const notifSession = evaluateListenerSession({ authLoading, firebaseUser, currentUser });
     const scope = getNotificationsListenerScope({ authLoading, firebaseUser, currentUser });
     if (scope === "NONE" || !firebaseUser?.uid) {
       setNotifications([]);
@@ -5046,10 +5244,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const fbUid = firebaseUser.uid;
+    const canReadInstitutionalBroadcasts =
+      notifSession.isAccountActive && currentUser?.role !== "INTRUSO";
     const notifsQuery =
       scope === "ALL"
         ? collection(db, "notifications")
-        : query(collection(db, "notifications"), where("userId", "in", [fbUid, "all", "todos_alunos", "todos"]));
+        : !canReadInstitutionalBroadcasts || currentUser?.role === "INTRUSO"
+          ? query(collection(db, "notifications"), where("userId", "==", fbUid))
+          : query(collection(db, "notifications"), where("userId", "in", [fbUid, "all", "todos_alunos", "todos"]));
 
     const unsubscribe = onSnapshot(
       notifsQuery,
@@ -5981,6 +6183,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateUserProfileData = async (updatedUser: User) => {
     try {
+      if (!auth.currentUser || updatedUser.id !== auth.currentUser.uid) {
+        addToast("Você só pode atualizar os dados do seu próprio perfil.", "error");
+        throw new Error("Permissão negada: não é permitido alterar o perfil de outro usuário.");
+      }
+
+      const activeEmail = (auth.currentUser.email || currentUser?.email || "").toLowerCase();
+      if (
+        currentUser?.role === "INTRUSO" &&
+        !auth.currentUser.emailVerified &&
+        activeEmail !== "paulocauan39@gmail.com"
+      ) {
+        addToast("Confirme a verificação do seu e-mail antes de atualizar os dados do perfil.", "warning");
+        throw new Error("E-mail não verificado: confirme seu e-mail antes de editar o perfil.");
+      }
+
       if (auth.currentUser && updatedUser.avatarUrl && updatedUser.avatarUrl !== auth.currentUser.photoURL) {
         try {
           await updateProfile(auth.currentUser, {
@@ -5992,7 +6209,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       }
       const sanitizedProfilePayload = sanitizeFirestoreData({
-        id: updatedUser.id,
+        id: auth.currentUser.uid,
         name: updatedUser.name,
         courseOrDept: updatedUser.courseOrDept,
         registrationNumber: updatedUser.registrationNumber,
@@ -6000,7 +6217,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         avatarUrl: updatedUser.avatarUrl,
         updatedAt: new Date().toISOString(),
       });
-      await setDoc(doc(db, "users", updatedUser.id), sanitizedProfilePayload, { merge: true });
+      await setDoc(doc(db, "users", auth.currentUser.uid), sanitizedProfilePayload, { merge: true });
       setCurrentUser((prev) => ({
         ...prev,
         ...sanitizedProfilePayload,
@@ -7574,33 +7791,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<{ success: boolean; claimId?: string; message: string }> => {
     if (isGuest || !auth.currentUser) {
       setAuthModalOpen(true);
-      addToast("Faça login com sua conta institucional para solicitar este objeto.", "warning");
+      addToast("Faça login para solicitar este objeto.", "warning");
       throw new Error("Autenticação necessária para solicitar devolução.");
     }
 
     const effectiveUserId = auth.currentUser.uid;
     const effectiveUserEmail = auth.currentUser.email || currentUser?.email || "";
-    const effectiveUserName = currentUser?.name || auth.currentUser.displayName || (effectiveUserEmail ? effectiveUserEmail.split("@")[0] : "Usuário IFPR");
-    const effectiveUserRole: UserRole = currentUser?.role || (effectiveUserEmail === "paulocauan39@gmail.com" ? "ADMIN" : "ALUNO");
+    const effectiveUserName = currentUser?.name || auth.currentUser.displayName || (effectiveUserEmail ? effectiveUserEmail.split("@")[0] : "Usuário Localiza+");
+    const effectiveUserRole: UserRole = currentUser?.role || (effectiveUserEmail === "paulocauan39@gmail.com" ? "ADMIN" : "INTRUSO");
 
     if (authLoading) {
-      addToast("Aguarde a inicialização do perfil institucional antes de solicitar a devolução.", "info");
-      throw new Error("Perfil institucional em inicialização.");
+      addToast("Aguarde a inicialização do perfil antes de solicitar a devolução.", "info");
+      throw new Error("Perfil em inicialização.");
     }
 
-    if (isAccountBlocked(currentUser) || (currentUser && currentUser.status && currentUser.status !== "active")) {
-      addToast("Ação Bloqueada: Sua conta institucional está temporariamente suspensa ou banida.", "error");
-      throw new Error("Conta suspensa ou banida.");
+    if (
+      isAccountBlocked(currentUser) ||
+      (currentUser && (currentUser as any).active === false) ||
+      (currentUser && currentUser.status && currentUser.status !== "active")
+    ) {
+      addToast("Ação Bloqueada: Sua conta está temporariamente suspensa, inativa ou banida.", "error");
+      throw new Error("Conta suspensa, inativa ou banida.");
     }
 
     if (!auth.currentUser.emailVerified && effectiveUserEmail !== "paulocauan39@gmail.com") {
-      addToast("Ação Bloqueada: Confirme a verificação do seu e-mail institucional antes de solicitar a devolução de objetos.", "warning");
-      throw new Error("E-mail não verificado: Confirme o link enviado para seu e-mail institucional.");
-    }
-
-    if (effectiveUserRole === "INTRUSO" && effectiveUserEmail !== "paulocauan39@gmail.com") {
-      addToast("Ação Restrita: Apenas estudantes (ALUNO) e servidores (SERVIDOR/TAE) com vínculo institucional ativo podem solicitar devolução de pertences.", "warning");
-      throw new Error("Usuários externos (INTRUSO) não possuem permissão para solicitar devolução de pertences.");
+      addToast("Ação Bloqueada: Confirme a verificação do seu e-mail antes de solicitar a devolução de objetos.", "warning");
+      throw new Error("E-mail não verificado: Confirme o link enviado para seu e-mail.");
     }
 
     // Normalização das características declaradas
@@ -8126,6 +8342,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         bulkUpdateItemStatus,
         bulkDeleteItems,
         addUserByAdmin,
+        sendUserFirstAccessLink,
         resetSystemData,
         clearAllLogsAndMetrics,
         exportFirestoreDataToJson,

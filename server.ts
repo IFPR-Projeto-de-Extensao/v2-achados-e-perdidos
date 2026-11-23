@@ -14,6 +14,12 @@ import {
   reconcileSingleUserProfile,
   resolveFirebaseServiceAccountFromEnv,
 } from "./api/_lib/firebaseAdmin.js";
+import {
+  buildPasswordResetActionCodeSettings,
+  isContinueUriUnauthorizedError,
+  normalizeAuthEmail,
+  validateAdminCreateUserInput,
+} from "./src/lib/adminUserProvisioning.js";
 
 // Safe loading of firebase config to prevent Node 22 ESM import assertion errors
 let firebaseAppConfig: any = {};
@@ -1317,7 +1323,7 @@ export function mergePublicAndPrivateItemData(
 
 export function sanitizeEmailNotificationUrl(url: string): string {
   if (!url || typeof url !== "string") return "";
-  return url.replace(/([?&](?:token|sigToken)=)[^&\s]+/gi, "$1[REDACTED]");
+  return url.replace(/([?&](?:token|sigToken|oobCode)=)[^&\s]+/gi, "$1[REDACTED]");
 }
 
 export async function validateStaffOrAdminAccess(
@@ -2994,6 +3000,920 @@ app.get("/api/admin/role-assignments", generalRateLimiter, requireAuth, requireA
   }
 });
 
+function escapeHtmlBasic(str: string): string {
+  return String(str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export interface AdminUserProvisioningDeps {
+  adminAuth?: Auth | null;
+  adminFirestore?: Firestore | null;
+  transporter?: Transporter | null;
+  skipCredentialDiagnostics?: boolean;
+}
+
+async function generateResilientPasswordResetLink(
+  adminAuth: Auth,
+  email: string,
+  originUrl?: string
+): Promise<{ link: string; continueUriFallbackUsed: boolean }> {
+  const actionCodeSettings = buildPasswordResetActionCodeSettings(originUrl);
+  if (actionCodeSettings) {
+    try {
+      const link = await adminAuth.generatePasswordResetLink(email, actionCodeSettings);
+      return { link, continueUriFallbackUsed: false };
+    } catch (err: any) {
+      if (!isContinueUriUnauthorizedError(err)) {
+        throw err;
+      }
+      const fallbackLink = await adminAuth.generatePasswordResetLink(email);
+      return { link: fallbackLink, continueUriFallbackUsed: true };
+    }
+  }
+  const link = await adminAuth.generatePasswordResetLink(email);
+  return { link, continueUriFallbackUsed: false };
+}
+
+async function dispatchFirstAccessEmail(params: {
+  transporter: Transporter | null;
+  adminFirestore: Firestore;
+  recipientEmail: string;
+  recipientName: string;
+  roleLabel: string;
+  setupLink: string;
+  actorUid: string;
+  eventType: "FIRST_ACCESS_PASSWORD_SETUP" | "ADMIN_PASSWORD_RESET_RESEND";
+}): Promise<{
+  emailSent: boolean;
+  deliveryMethod: "SMTP" | "NONE";
+  deliveryStatus: "SENT" | "PENDING_SMTP_CONFIG" | "ERROR";
+  deliveryError?: string;
+}> {
+  const {
+    transporter,
+    adminFirestore,
+    recipientEmail,
+    recipientName,
+    roleLabel,
+    setupLink,
+    actorUid,
+    eventType,
+  } = params;
+
+  const fromAddress =
+    process.env.SMTP_FROM ||
+    `"IFPR Achados & Perdidos" <${process.env.SMTP_USER || "campus.ivaipora@ifpr.edu.br"}>`;
+  const subject =
+    eventType === "FIRST_ACCESS_PASSWORD_SETUP"
+      ? "Localiza+ IFPR — Defina sua senha de primeiro acesso"
+      : "Localiza+ IFPR — Link para definição/redefinição de senha";
+
+  const textBody =
+    `Olá, ${recipientName}!\n\n` +
+    `Sua conta no sistema Localiza+ (Achados & Perdidos do IFPR Campus Ivaiporã) está vinculada ao perfil ${roleLabel}.\n\n` +
+    `Para definir sua senha pessoal de acesso com segurança, utilize o link abaixo:\n\n` +
+    `${setupLink}\n\n` +
+    `Por segurança, este link é pessoal, temporário e de uso único. Caso não tenha solicitado ou reconheça este cadastro, desconsidere esta mensagem.\n\n` +
+    `Atenciosamente,\nEquipe de TI & SEBAC • IFPR Campus Ivaiporã`;
+
+  const htmlBody = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8" /></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background:#f4f6f8; margin:0; padding:24px; color:#172B2A;">
+  <div style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:16px; border:1px solid #e2e8f0; overflow:hidden;">
+    <div style="background:linear-gradient(135deg,#16845B 0%,#064E3B 100%); padding:24px; color:#ffffff;">
+      <h1 style="margin:0; font-size:20px; font-weight:800;">Localiza+ • IFPR Campus Ivaiporã</h1>
+      <p style="margin:6px 0 0 0; font-size:13px; opacity:0.92;">Definição de senha e primeiro acesso</p>
+    </div>
+    <div style="padding:24px; font-size:14px; line-height:1.6;">
+      <p style="margin-top:0;">Olá, <strong>${escapeHtmlBasic(recipientName)}</strong>!</p>
+      <p>Sua conta no sistema <strong>Localiza+</strong> foi provisionada pela administração com o perfil <strong>${escapeHtmlBasic(roleLabel)}</strong>.</p>
+      <p>Para definir sua senha pessoal e liberar seu acesso, clique no botão abaixo:</p>
+      <p style="text-align:center; margin:24px 0;">
+        <a href="${escapeHtmlBasic(setupLink)}" style="display:inline-block; background:#16845B; color:#ffffff; text-decoration:none; font-weight:700; padding:12px 24px; border-radius:10px;">
+          Definir Minha Senha de Acesso
+        </a>
+      </p>
+      <p style="font-size:12px; color:#475569;">Se o botão não abrir, copie e cole este link seguro no navegador:<br />
+      <span style="word-break:break-all; color:#064E3B;">${escapeHtmlBasic(setupLink)}</span></p>
+      <p style="font-size:12px; color:#64748b; border-top:1px solid #e2e8f0; padding-top:14px; margin-bottom:0;">
+        Este link é pessoal, temporário e nunca compartilha senhas padrão.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`.trim();
+
+  let emailSent = false;
+  let deliveryMethod: "SMTP" | "NONE" = "NONE";
+  let deliveryStatus: "SENT" | "PENDING_SMTP_CONFIG" | "ERROR" = "PENDING_SMTP_CONFIG";
+  let deliveryError: string | undefined;
+  let messageId: string | null = null;
+
+  if (transporter) {
+    deliveryMethod = "SMTP";
+    try {
+      const info = await transporter.sendMail({
+        from: fromAddress,
+        to: recipientEmail,
+        subject,
+        text: textBody,
+        html: htmlBody,
+      });
+      emailSent = true;
+      deliveryStatus = "SENT";
+      messageId = info?.messageId || null;
+    } catch (mailErr: any) {
+      emailSent = false;
+      deliveryStatus = "ERROR";
+      deliveryError = mailErr?.message || String(mailErr);
+    }
+  } else {
+    deliveryStatus = "PENDING_SMTP_CONFIG";
+    deliveryError = "Serviço SMTP (SMTP_HOST/SMTP_USER/SMTP_PASS) não configurado no servidor.";
+  }
+
+  try {
+    const nowIso = new Date().toISOString();
+    const notifDocId = `first_access_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    await adminFirestore.collection("email_notifications").doc(notifDocId).set({
+      id: notifDocId,
+      recipientEmail,
+      recipientName,
+      subject,
+      setupLinkRedacted: sanitizeEmailNotificationUrl(setupLink),
+      type: eventType,
+      status: deliveryStatus,
+      deliveryMethod,
+      messageId,
+      error: deliveryError || null,
+      sentAt: nowIso,
+      createdAt: nowIso,
+      triggeredByUserId: actorUid,
+    });
+  } catch (_) {}
+
+  return {
+    emailSent,
+    deliveryMethod,
+    deliveryStatus,
+    deliveryError,
+  };
+}
+
+export async function executeAdminCreateUser(
+  caller: { uid: string; email?: string; isAdmin?: boolean; isRoot?: boolean },
+  body: any,
+  originUrl?: string,
+  deps?: AdminUserProvisioningDeps
+): Promise<{ statusCode: number; payload: any }> {
+  if (!caller?.uid || !caller?.isAdmin) {
+    return {
+      statusCode: 403,
+      payload: {
+        success: false,
+        error: "Acesso negado. Apenas administradores autorizados do IFPR podem cadastrar usuários.",
+        code: "FORBIDDEN",
+      },
+    };
+  }
+
+  if (!deps?.skipCredentialDiagnostics) {
+    const credDiag = getFirebaseAdminCredentialDiagnostics();
+    if (serverAdminCertInitError || credDiag.certInitError) {
+      return {
+        statusCode: 503,
+        payload: {
+          success: false,
+          error: "Credenciais do Firebase Admin SDK inválidas ou incompletas no servidor.",
+          code: "FIREBASE_ADMIN_CREDENTIALS_INVALID",
+        },
+      };
+    }
+    if (credDiag.isVercelWithoutCreds) {
+      return {
+        statusCode: 503,
+        payload: {
+          success: false,
+          error: "Credenciais do Firebase Admin SDK ausentes no ambiente de produção.",
+          code: "FIREBASE_ADMIN_CREDENTIALS_MISSING",
+        },
+      };
+    }
+  }
+
+  const adminAuth = deps && "adminAuth" in deps ? deps.adminAuth : getAdminAuth();
+  const adminFirestore =
+    deps && "adminFirestore" in deps ? deps.adminFirestore : getAdminFirestore();
+
+  if (!adminAuth || !adminFirestore) {
+    return {
+      statusCode: 503,
+      payload: {
+        success: false,
+        error: "Serviços administrativos do Firebase (Auth/Firestore) indisponíveis no servidor.",
+        code: "ADMIN_SERVICES_UNAVAILABLE",
+      },
+    };
+  }
+
+  const validation = validateAdminCreateUserInput(body);
+  if ("error" in validation) {
+    return {
+      statusCode: 400,
+      payload: {
+        success: false,
+        error: validation.error,
+        code: validation.code,
+      },
+    };
+  }
+
+  const data = validation.data;
+  const callerEmail = normalizeAuthEmail(caller.email);
+  const configuredRootEmail = normalizeAuthEmail(getRootAdminEmail());
+  const isRootCaller = Boolean(caller.isRoot);
+
+  if (configuredRootEmail && data.email === configuredRootEmail) {
+    return {
+      statusCode: 403,
+      payload: {
+        success: false,
+        error: "Não é permitido recriar ou modificar a conta do Administrador Raiz oficial.",
+        code: "CANNOT_MODIFY_ROOT_ADMIN",
+      },
+    };
+  }
+
+  if (data.role === "ADMIN" && !isRootCaller) {
+    return {
+      statusCode: 403,
+      payload: {
+        success: false,
+        error: "Apenas o Administrador Raiz oficial (paulocauan39@gmail.com) pode cadastrar contas com perfil ADMIN.",
+        code: "ROOT_ADMIN_ONLY_FOR_ADMIN_ROLE",
+      },
+    };
+  }
+
+  // 1. Verify email uniqueness in Firebase Authentication (never overwrite existing accounts)
+  try {
+    await adminAuth.getUserByEmail(data.email);
+    return {
+      statusCode: 409,
+      payload: {
+        success: false,
+        error: `Já existe uma conta cadastrada no Firebase Authentication para o e-mail '${data.email}'.`,
+        code: "EMAIL_ALREADY_EXISTS",
+      },
+    };
+  } catch (lookupErr: any) {
+    const code = String(lookupErr?.code || "");
+    if (!code.includes("user-not-found")) {
+      console.error("[Admin Create User Lookup Error]:", lookupErr?.message || lookupErr);
+      return {
+        statusCode: 503,
+        payload: {
+          success: false,
+          error: "Não foi possível consultar o Firebase Authentication para validar duplicidade de e-mail.",
+          code: "AUTH_LOOKUP_FAILED",
+        },
+      };
+    }
+  }
+
+  // 2. Verify email uniqueness in Firestore /users (never overwrite or delete legacy docs automatically)
+  try {
+    const existingSnap = await adminFirestore
+      .collection("users")
+      .where("email", "==", data.email)
+      .limit(1)
+      .get();
+    if (!existingSnap.empty) {
+      return {
+        statusCode: 409,
+        payload: {
+          success: false,
+          error: `Já existe um perfil no banco de dados para '${data.email}'. Utilize a opção 'Enviar Link de Primeiro Acesso' na tabela de usuários para habilitar a autenticação sem apagar registros existentes.`,
+          code: "FIRESTORE_USER_ALREADY_EXISTS",
+        },
+      };
+    }
+  } catch (fsErr: any) {
+    console.error("[Admin Create User Firestore Check Error]:", fsErr?.message || fsErr);
+    return {
+      statusCode: 503,
+      payload: {
+        success: false,
+        error: "Falha ao consultar o banco de dados para verificar e-mail duplicado.",
+        code: "FIRESTORE_CHECK_FAILED",
+      },
+    };
+  }
+
+  // 3. Create Firebase Auth identity WITHOUT any shared/default password
+  let createdAuthUser: any;
+  try {
+    createdAuthUser = await adminAuth.createUser({
+      email: data.email,
+      displayName: data.name,
+      emailVerified: false,
+      disabled: false,
+    });
+  } catch (createErr: any) {
+    const errCode = String(createErr?.code || "");
+    if (errCode.includes("email-already-exists")) {
+      return {
+        statusCode: 409,
+        payload: {
+          success: false,
+          error: `O e-mail '${data.email}' já está em uso no Firebase Authentication.`,
+          code: "EMAIL_ALREADY_EXISTS",
+        },
+      };
+    }
+    console.error("[Admin Create User Auth Error]:", createErr?.message || createErr);
+    return {
+      statusCode: 500,
+      payload: {
+        success: false,
+        error: `Falha ao criar conta no Firebase Authentication: ${createErr?.message || "Erro desconhecido"}`,
+        code: "AUTH_CREATE_FAILED",
+      },
+    };
+  }
+
+  const uid = createdAuthUser.uid;
+  const nowIso = new Date().toISOString();
+  const registrationNumber =
+    data.registrationNumber || `2026${uid.substring(0, 6).toUpperCase()}`;
+
+  const newUserDoc = {
+    id: uid,
+    name: data.name,
+    email: data.email,
+    role: data.role,
+    status: "active",
+    active: true,
+    approvalStatus: data.approvalStatus,
+    courseOrDept: data.courseOrDept,
+    registrationNumber,
+    phone: data.phone,
+    avatarUrl: data.avatarUrl,
+    reputationScore: data.reputationScore,
+    emailVerified: false,
+    roleAssignedBy: callerEmail,
+    roleAssignedByName: callerEmail,
+    roleAssignedAt: nowIso,
+    roleAssignmentActive: data.role !== "INTRUSO",
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+
+  // 4. Persist Firestore profile + /role_assignments + audit trail atomically; rollback Auth if Firestore fails
+  try {
+    const userRef = adminFirestore.collection("users").doc(uid);
+    const callerRef = adminFirestore.collection("users").doc(caller.uid);
+    const assignRef = adminFirestore.collection("role_assignments").doc(uid);
+    const auditLogId = `audit-user-create-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const auditRef = adminFirestore.collection("audit_logs").doc(auditLogId);
+    const actLogId = `act-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    const actRef = adminFirestore.collection("activity_logs").doc(actLogId);
+
+    await adminFirestore.runTransaction(async (transaction) => {
+      const callerDoc = await transaction.get(callerRef);
+      if (callerDoc.exists && isUserBlockedOrInactive(callerDoc.data())) {
+        const err: any = new Error("Sua conta administrativa está suspensa ou desativada.");
+        err.statusCode = 403;
+        err.code = "ACCOUNT_SUSPENDED";
+        throw err;
+      }
+
+      const callerName = callerDoc.exists ? callerDoc.data()?.name || callerEmail : callerEmail;
+      const persistedUser = {
+        ...newUserDoc,
+        roleAssignedByName: callerName,
+      };
+
+      transaction.set(userRef, persistedUser);
+
+      if (data.role !== "INTRUSO") {
+        transaction.set(assignRef, {
+          id: uid,
+          targetUserId: uid,
+          targetEmail: data.email,
+          assignedRole: data.role,
+          approvalStatus: data.approvalStatus,
+          assignedByUid: caller.uid,
+          assignedByEmail: callerEmail,
+          assignedByName: callerName,
+          assignedAt: nowIso,
+          active: true,
+          updatedAt: nowIso,
+          reason: "Provisionamento administrativo inicial com primeiro acesso por link seguro",
+        });
+      }
+
+      transaction.set(auditRef, {
+        id: auditLogId,
+        transactionId: `TX-CREATE-USER-${Date.now().toString(36).toUpperCase()}`,
+        objectId: uid,
+        objectType: "USER",
+        objectTitle: data.email,
+        action: "USER_PROVISIONED_BY_ADMIN",
+        actorId: caller.uid,
+        actorName: callerName,
+        actorEmail: callerEmail,
+        actorRole: isRootCaller ? "ROOT_ADMIN" : "ADMIN",
+        timestamp: nowIso,
+        fieldChanged: "role",
+        oldValue: "NONE",
+        newValue: data.role,
+        details: `Conta '${data.email}' criada administrativamente no Firebase Auth e Firestore com perfil '${data.role}' (${data.approvalStatus}). Senha inicial definida exclusivamente pelo usuário via link seguro de primeiro acesso.`,
+        immutable: true,
+      });
+
+      transaction.set(actRef, {
+        id: actLogId,
+        adminId: caller.uid,
+        adminName: callerName,
+        action: "NOVO_USUARIO",
+        objectId: uid,
+        objectType: "USER",
+        details: `Cadastrou o usuário '${data.name}' (${data.email}) com perfil ${data.role}.`,
+        timestamp: nowIso,
+      });
+    });
+
+    try {
+      await adminAuth.setCustomUserClaims(uid, {
+        role: data.role,
+        approvalStatus: data.approvalStatus,
+        admin: data.role === "ADMIN",
+      });
+    } catch (claimErr: any) {
+      console.warn("[Admin Create User Claims Warning]:", claimErr?.message || claimErr);
+    }
+  } catch (persistErr: any) {
+    // Compensating rollback to avoid orphan Firebase Auth account
+    try {
+      await adminAuth.deleteUser(uid);
+    } catch (rollbackErr: any) {
+      console.error("[Admin Create User Rollback Error]:", rollbackErr?.message || rollbackErr);
+    }
+
+    if (persistErr?.statusCode) {
+      return {
+        statusCode: persistErr.statusCode,
+        payload: {
+          success: false,
+          error: persistErr.message,
+          code: persistErr.code || "ADMIN_ERROR",
+        },
+      };
+    }
+
+    console.error("[Admin Create User Firestore Error]:", persistErr?.message || persistErr);
+    return {
+      statusCode: 500,
+      payload: {
+        success: false,
+        error: "Falha ao gravar o perfil do usuário no banco de dados. Nenhuma conta parcial foi mantida.",
+        code: "FIRESTORE_CREATE_FAILED",
+      },
+    };
+  }
+
+  // 5. Generate real Firebase password setup link and send via SMTP if configured
+  const trustedOrigin = sanitizeTrustedOriginUrl(originUrl);
+  let setupLink = "";
+  let continueUriFallbackUsed = false;
+
+  try {
+    const linkResult = await generateResilientPasswordResetLink(
+      adminAuth,
+      data.email,
+      trustedOrigin
+    );
+    setupLink = linkResult.link;
+    continueUriFallbackUsed = linkResult.continueUriFallbackUsed;
+  } catch (linkErr: any) {
+    console.error("[Admin Create User Link Gen Error]:", linkErr?.message || linkErr);
+    return {
+      statusCode: 201,
+      payload: {
+        success: true,
+        user: newUserDoc,
+        authCreated: true,
+        emailSent: false,
+        deliveryMethod: "NONE",
+        deliveryStatus: "ERROR",
+        deliveryError: `Usuário criado no Authentication e Firestore, mas não foi possível gerar o link de definição de senha (${linkErr?.message || "erro desconhecido"}).`,
+      },
+    };
+  }
+
+  const transporter =
+    deps && "transporter" in deps ? deps.transporter ?? null : getEmailTransporter();
+  const dispatch = await dispatchFirstAccessEmail({
+    transporter,
+    adminFirestore,
+    recipientEmail: data.email,
+    recipientName: data.name,
+    roleLabel: data.role,
+    setupLink,
+    actorUid: caller.uid,
+    eventType: "FIRST_ACCESS_PASSWORD_SETUP",
+  });
+
+  return {
+    statusCode: 201,
+    payload: {
+      success: true,
+      user: newUserDoc,
+      authCreated: true,
+      emailSent: dispatch.emailSent,
+      deliveryMethod: dispatch.deliveryMethod,
+      deliveryStatus: dispatch.deliveryStatus,
+      deliveryError: dispatch.deliveryError,
+      // Only expose the one-time setup link back to the authenticated Admin when SMTP did not send it
+      manualSetupLink: dispatch.emailSent ? undefined : setupLink,
+      continueUriFallbackUsed,
+    },
+  };
+}
+
+export async function executeAdminSendFirstAccessLink(
+  caller: { uid: string; email?: string; isAdmin?: boolean; isRoot?: boolean },
+  body: any,
+  originUrl?: string,
+  deps?: AdminUserProvisioningDeps
+): Promise<{ statusCode: number; payload: any }> {
+  if (!caller?.uid || !caller?.isAdmin) {
+    return {
+      statusCode: 403,
+      payload: {
+        success: false,
+        error: "Acesso negado. Apenas administradores autorizados podem enviar links de primeiro acesso.",
+        code: "FORBIDDEN",
+      },
+    };
+  }
+
+  if (!deps?.skipCredentialDiagnostics) {
+    const credDiag = getFirebaseAdminCredentialDiagnostics();
+    if (serverAdminCertInitError || credDiag.certInitError) {
+      return {
+        statusCode: 503,
+        payload: {
+          success: false,
+          error: "Credenciais do Firebase Admin SDK inválidas ou incompletas no servidor.",
+          code: "FIREBASE_ADMIN_CREDENTIALS_INVALID",
+        },
+      };
+    }
+    if (credDiag.isVercelWithoutCreds) {
+      return {
+        statusCode: 503,
+        payload: {
+          success: false,
+          error: "Credenciais do Firebase Admin SDK ausentes no ambiente de produção.",
+          code: "FIREBASE_ADMIN_CREDENTIALS_MISSING",
+        },
+      };
+    }
+  }
+
+  const adminAuth = deps && "adminAuth" in deps ? deps.adminAuth : getAdminAuth();
+  const adminFirestore =
+    deps && "adminFirestore" in deps ? deps.adminFirestore : getAdminFirestore();
+
+  if (!adminAuth || !adminFirestore) {
+    return {
+      statusCode: 503,
+      payload: {
+        success: false,
+        error: "Serviços administrativos do Firebase (Auth/Firestore) indisponíveis.",
+        code: "ADMIN_SERVICES_UNAVAILABLE",
+      },
+    };
+  }
+
+  const targetUserId = typeof body?.targetUserId === "string" ? body.targetUserId.trim() : "";
+  const requestedEmail = normalizeAuthEmail(body?.email);
+  const provisionMissingAuth = Boolean(body?.provisionMissingAuth);
+
+  if (!targetUserId && !requestedEmail) {
+    return {
+      statusCode: 400,
+      payload: {
+        success: false,
+        error: "Informe targetUserId ou email do usuário.",
+        code: "TARGET_REQUIRED",
+      },
+    };
+  }
+
+  let userDocSnap: any = null;
+  if (targetUserId) {
+    const directSnap = await adminFirestore.collection("users").doc(targetUserId).get();
+    if (directSnap.exists) {
+      userDocSnap = directSnap;
+    }
+  }
+  if (!userDocSnap && requestedEmail) {
+    const qSnap = await adminFirestore
+      .collection("users")
+      .where("email", "==", requestedEmail)
+      .limit(1)
+      .get();
+    if (!qSnap.empty) {
+      userDocSnap = qSnap.docs[0];
+    }
+  }
+
+  if (!userDocSnap) {
+    return {
+      statusCode: 404,
+      payload: {
+        success: false,
+        error: "Usuário não encontrado no banco de dados.",
+        code: "USER_NOT_FOUND",
+      },
+    };
+  }
+
+  const uData = userDocSnap.data() || {};
+  const docId = userDocSnap.id;
+  const targetEmail = normalizeAuthEmail(uData.email || requestedEmail);
+  const targetName = String(uData.name || targetEmail.split("@")[0] || "Usuário IFPR");
+  const targetRole = String(uData.role || "ALUNO").toUpperCase();
+  const targetApproval = String(uData.approvalStatus || "APROVADO").toUpperCase();
+  const configuredRootEmail = normalizeAuthEmail(getRootAdminEmail());
+
+  if (!targetEmail) {
+    return {
+      statusCode: 400,
+      payload: {
+        success: false,
+        error: "O registro do usuário não possui um e-mail válido.",
+        code: "INVALID_EMAIL",
+      },
+    };
+  }
+
+  if (configuredRootEmail && targetEmail === configuredRootEmail && !caller.isRoot) {
+    return {
+      statusCode: 403,
+      payload: {
+        success: false,
+        error: "Não é permitido executar ações administrativas sobre a conta do Administrador Raiz.",
+        code: "CANNOT_MODIFY_ROOT_ADMIN",
+      },
+    };
+  }
+
+  if (targetRole === "ADMIN" && !caller.isRoot) {
+    return {
+      statusCode: 403,
+      payload: {
+        success: false,
+        error: "Apenas o Administrador Raiz oficial pode gerenciar acesso de outros Administradores.",
+        code: "ROOT_ADMIN_ONLY_TO_MODIFY_ADMIN",
+      },
+    };
+  }
+
+  // Locate Auth user by UID or Email without deleting/recreating existing accounts
+  let authUser: any = null;
+  try {
+    authUser = await adminAuth.getUser(docId);
+  } catch (byUidErr: any) {
+    const byUidCode = String(byUidErr?.code || "");
+    if (!byUidCode.includes("user-not-found")) {
+      return {
+        statusCode: 503,
+        payload: {
+          success: false,
+          error: "Falha ao consultar o usuário no Firebase Authentication.",
+          code: "AUTH_LOOKUP_FAILED",
+        },
+      };
+    }
+    try {
+      authUser = await adminAuth.getUserByEmail(targetEmail);
+    } catch (byEmailErr: any) {
+      const byEmailCode = String(byEmailErr?.code || "");
+      if (!byEmailCode.includes("user-not-found")) {
+        return {
+          statusCode: 503,
+          payload: {
+            success: false,
+            error: "Falha ao consultar o e-mail no Firebase Authentication.",
+            code: "AUTH_LOOKUP_FAILED",
+          },
+        };
+      }
+    }
+  }
+
+  let authProvisioned = false;
+  if (!authUser) {
+    if (!provisionMissingAuth) {
+      return {
+        statusCode: 409,
+        payload: {
+          success: false,
+          error: "Este perfil existe apenas no Firestore e não possui identidade no Firebase Authentication.",
+          code: "AUTH_USER_MISSING",
+        },
+      };
+    }
+
+    // Preserve the exact existing Firestore document ID (never delete/recreate existing DB documents)
+    try {
+      authUser = await adminAuth.createUser({
+        uid: docId,
+        email: targetEmail,
+        displayName: targetName,
+        emailVerified: Boolean(uData.emailVerified === true),
+        disabled: isUserBlockedOrInactive(uData),
+      });
+      authProvisioned = true;
+      await adminAuth.setCustomUserClaims(docId, {
+        role: targetRole,
+        approvalStatus: targetApproval,
+        admin: targetRole === "ADMIN",
+      }).catch(() => {});
+
+      const nowIso = new Date().toISOString();
+      const auditId = `audit-first-access-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      await adminFirestore.collection("audit_logs").doc(auditId).set({
+        id: auditId,
+        transactionId: `TX-FIRST-ACCESS-${Date.now().toString(36).toUpperCase()}`,
+        objectId: docId,
+        objectType: "USER",
+        objectTitle: targetEmail,
+        action: "FIRST_ACCESS_AUTH_PROVISIONED",
+        actorId: caller.uid,
+        actorEmail: normalizeAuthEmail(caller.email),
+        actorRole: caller.isRoot ? "ROOT_ADMIN" : "ADMIN",
+        timestamp: nowIso,
+        fieldChanged: "authUid",
+        oldValue: "MISSING",
+        newValue: docId,
+        details: `Identidade Firebase Authentication provisionada explicitamente para conta pré-existente '${targetEmail}' preservando UID '${docId}' e perfil '${targetRole}'.`,
+        immutable: true,
+      }).catch(() => {});
+    } catch (provErr: any) {
+      return {
+        statusCode: 500,
+        payload: {
+          success: false,
+          error: `Não foi possível provisionar a conta no Firebase Authentication: ${provErr?.message || "Erro desconhecido"}`,
+          code: "AUTH_PROVISION_FAILED",
+        },
+      };
+    }
+  }
+
+  const trustedOrigin = sanitizeTrustedOriginUrl(originUrl);
+  let setupLink = "";
+  let continueUriFallbackUsed = false;
+
+  try {
+    const linkResult = await generateResilientPasswordResetLink(
+      adminAuth,
+      authUser.email || targetEmail,
+      trustedOrigin
+    );
+    setupLink = linkResult.link;
+    continueUriFallbackUsed = linkResult.continueUriFallbackUsed;
+  } catch (linkErr: any) {
+    return {
+      statusCode: 500,
+      payload: {
+        success: false,
+        error: `Falha ao gerar o link seguro de definição de senha: ${linkErr?.message || "Erro desconhecido"}`,
+        code: "RESET_LINK_GENERATION_FAILED",
+      },
+    };
+  }
+
+  const transporter =
+    deps && "transporter" in deps ? deps.transporter ?? null : getEmailTransporter();
+  const dispatch = await dispatchFirstAccessEmail({
+    transporter,
+    adminFirestore,
+    recipientEmail: authUser.email || targetEmail,
+    recipientName: targetName,
+    roleLabel: targetRole,
+    setupLink,
+    actorUid: caller.uid,
+    eventType: authProvisioned ? "FIRST_ACCESS_PASSWORD_SETUP" : "ADMIN_PASSWORD_RESET_RESEND",
+  });
+
+  return {
+    statusCode: 200,
+    payload: {
+      success: true,
+      uid: authUser.uid,
+      email: authUser.email || targetEmail,
+      authProvisioned,
+      emailSent: dispatch.emailSent,
+      deliveryMethod: dispatch.deliveryMethod,
+      deliveryStatus: dispatch.deliveryStatus,
+      deliveryError: dispatch.deliveryError,
+      manualSetupLink: dispatch.emailSent ? undefined : setupLink,
+      continueUriFallbackUsed,
+    },
+  };
+}
+
+/**
+ * POST /api/admin/create-user
+ * Creates an account in both Firebase Authentication and Firestore atomically without any shared password,
+ * dispatching a real first-access password setup link.
+ */
+app.post(
+  ["/api/admin/create-user", "/admin/create-user"],
+  generalRateLimiter,
+  requireAuth,
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const isRoot = evaluateRootAdminAuth(req.authUser!).isRoot;
+    const originUrl =
+      req.body?.originUrl ||
+      (typeof req.headers?.origin === "string" ? req.headers.origin : undefined) ||
+      (typeof req.headers?.referer === "string" ? req.headers.referer : undefined);
+
+    try {
+      const result = await executeAdminCreateUser(
+        {
+          uid: req.authUser!.uid,
+          email: req.authUser!.email,
+          isAdmin: req.authUser!.isAdmin,
+          isRoot,
+        },
+        req.body,
+        originUrl
+      );
+      return res.status(result.statusCode).json(result.payload);
+    } catch (err: any) {
+      console.error("[Admin Create User Endpoint Error]:", err?.message || err);
+      return res.status(500).json({
+        success: false,
+        error: "Falha interna ao cadastrar usuário no sistema.",
+        code: "ADMIN_CREATE_USER_ERROR",
+      });
+    }
+  }
+);
+
+/**
+ * POST /api/admin/send-first-access-link
+ * Sends (or provisions for legacy Firestore-only accounts when requested) a secure first-access password link.
+ */
+app.post(
+  ["/api/admin/send-first-access-link", "/admin/send-first-access-link"],
+  generalRateLimiter,
+  requireAuth,
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const isRoot = evaluateRootAdminAuth(req.authUser!).isRoot;
+    const originUrl =
+      req.body?.originUrl ||
+      (typeof req.headers?.origin === "string" ? req.headers.origin : undefined) ||
+      (typeof req.headers?.referer === "string" ? req.headers.referer : undefined);
+
+    try {
+      const result = await executeAdminSendFirstAccessLink(
+        {
+          uid: req.authUser!.uid,
+          email: req.authUser!.email,
+          isAdmin: req.authUser!.isAdmin,
+          isRoot,
+        },
+        req.body,
+        originUrl
+      );
+      return res.status(result.statusCode).json(result.payload);
+    } catch (err: any) {
+      console.error("[Admin Send First Access Endpoint Error]:", err?.message || err);
+      return res.status(500).json({
+        success: false,
+        error: "Falha interna ao gerar/enviar o link de primeiro acesso.",
+        code: "SEND_FIRST_ACCESS_ERROR",
+      });
+    }
+  }
+);
+
 // API Health Check & System Monitoring
 app.get(["/api/health", "/health"], (_req, res) => {
   try {
@@ -3019,7 +3939,7 @@ app.get(["/api/health", "/health"], (_req, res) => {
 });
 
 // Analytics Tracking Endpoint (Google Analytics + Firebase Backend Receiver)
-app.post(["/api/analytics/track", "/analytics/track"], (req: Request, res: Response) => {
+app.post(["/api/analytics/track", "/analytics/track"], generalRateLimiter, (req: Request, res: Response) => {
   try {
     if (!req.body || typeof req.body !== "object") {
       console.warn("[Analytics Track Warning] Payload inválido recebido em /api/analytics/track", {
@@ -3043,7 +3963,25 @@ app.post(["/api/analytics/track", "/analytics/track"], (req: Request, res: Respo
       return res.status(400).json({ success: false, error: "Nome do evento contém apenas caracteres inválidos." });
     }
 
-    const safeParams = params && typeof params === "object" && !Array.isArray(params) ? params : {};
+    const safeParams: Record<string, string | number | boolean> = {};
+    if (params && typeof params === "object" && !Array.isArray(params)) {
+      let paramCount = 0;
+      for (const [k, v] of Object.entries(params as Record<string, unknown>)) {
+        if (paramCount >= 20) break;
+        const cleanKey = k.replace(/[^a-zA-Z0-9_.-]/g, "").slice(0, 64);
+        if (!cleanKey || cleanKey === "__proto__" || cleanKey === "constructor" || cleanKey === "prototype") continue;
+        if (typeof v === "string") {
+          safeParams[cleanKey] = v.slice(0, 200);
+          paramCount++;
+        } else if (typeof v === "number" && Number.isFinite(v)) {
+          safeParams[cleanKey] = v;
+          paramCount++;
+        } else if (typeof v === "boolean") {
+          safeParams[cleanKey] = v;
+          paramCount++;
+        }
+      }
+    }
     const safeTimestamp =
       timestamp && typeof timestamp === "string" && !isNaN(Date.parse(timestamp))
         ? timestamp
@@ -4466,10 +5404,24 @@ app.post(
   try {
     const { name, email, category, subject, message, priority, clientDiagnostics } = req.body;
 
-    if (!name || !email || !subject || !message) {
+    const cleanHeaderText = (v: unknown, maxLen: number) =>
+      String(v || "").replace(/[\r\n\0]+/g, " ").replace(/["<>]/g, "").trim().substring(0, maxLen);
+
+    const safeSenderName = cleanHeaderText(name, 100);
+    const safeSenderEmail = cleanHeaderText(email, 120);
+    const safeSubjectText = cleanHeaderText(subject, 150);
+
+    if (!safeSenderName || !safeSenderEmail || !safeSubjectText || !String(message || "").trim()) {
       return res.status(400).json({
         success: false,
         error: "Por favor, preencha todos os campos obrigatórios: nome, e-mail, assunto e descrição da mensagem.",
+      });
+    }
+
+    if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(safeSenderEmail)) {
+      return res.status(400).json({
+        success: false,
+        error: "Informe um endereço de e-mail válido.",
       });
     }
 
@@ -4482,10 +5434,10 @@ app.post(
       protocol: ticketProtocol,
       recipient: destinationEmail,
       adminRecipient: adminNotificationEmail,
-      senderName: String(name).trim().substring(0, 100),
-      senderEmail: String(email).trim().substring(0, 120),
+      senderName: safeSenderName,
+      senderEmail: safeSenderEmail,
       category: String(category || "FEEDBACK"),
-      subject: `[${ticketProtocol}] ${String(subject).trim().substring(0, 150)}`,
+      subject: `[${ticketProtocol}] ${safeSubjectText}`,
       body: String(message).trim().substring(0, 4000),
       priority: priority || "NORMAL",
       timestamp,

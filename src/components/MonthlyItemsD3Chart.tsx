@@ -179,16 +179,31 @@ export const MonthlyItemsD3Chart: React.FC<MonthlyItemsD3ChartProps> = ({ items,
           if (tooltipRef.current) {
             const count = key === "perdidos" ? d.perdidos : d.encontrados;
             const label = key === "perdidos" ? "Itens Perdidos" : "Itens Encontrados";
-            tooltipRef.current.style.opacity = "1";
-            tooltipRef.current.style.left = `${event.pageX + 10}px`;
-            tooltipRef.current.style.top = `${event.pageY - 28}px`;
-            tooltipRef.current.innerHTML = `
-              <div class="font-bold text-xs">${d.label}</div>
-              <div class="text-[11px] flex items-center space-x-1 mt-0.5">
-                <span class="w-2 h-2 rounded-full" style="background-color: ${color(key)}"></span>
-                <span>${label}: <strong>${count}</strong></span>
-              </div>
-            `;
+            const tooltipEl = tooltipRef.current;
+            tooltipEl.style.opacity = "1";
+            tooltipEl.style.left = `${event.pageX + 10}px`;
+            tooltipEl.style.top = `${event.pageY - 28}px`;
+            tooltipEl.replaceChildren();
+
+            const titleDiv = document.createElement("div");
+            titleDiv.className = "font-bold text-xs";
+            titleDiv.textContent = d.label;
+
+            const rowDiv = document.createElement("div");
+            rowDiv.className = "text-[11px] flex items-center space-x-1 mt-0.5";
+
+            const dotSpan = document.createElement("span");
+            dotSpan.className = "w-2 h-2 rounded-full";
+            dotSpan.style.backgroundColor = color(key);
+
+            const textSpan = document.createElement("span");
+            textSpan.textContent = `${label}: `;
+            const countStrong = document.createElement("strong");
+            countStrong.textContent = String(count);
+            textSpan.appendChild(countStrong);
+
+            rowDiv.append(dotSpan, textSpan);
+            tooltipEl.append(titleDiv, rowDiv);
           }
         })
         .on("mouseleave", function () {

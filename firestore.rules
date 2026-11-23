@@ -1,7 +1,10 @@
-// LOCALIZA+ v1.10.11 — Firestore Rules (Regras Integradas e Protegidas)
+// LOCALIZA+ v1.10.13 — Firestore Rules (Regras Integradas e Protegidas — Etapa 3 Homologação de Segurança)
 // Identidade efetiva: documento users/{uid} para cargos atribuídos;
 // Claims antigas de role=INTRUSO não anulam atribuições administrativas válidas.
-// Governança: preservação de /role_assignments, /system_config e blindagem Root Admin.
+// Comunidade externa (role=INTRUSO verificado e em standing ativo): acesso estrito às próprias reivindicações,
+// dados pessoais permitidos do próprio perfil (incluindo sincronização de emailVerified=true pós-verificação)
+// e próprias notificações, sem privilégios operacionais ou administrativos.
+// Governança: preservação de /role_assignments, /system_config, blindagem Root Admin e allowlists estritas.
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -255,6 +258,22 @@ service cloud.firestore {
       return isUserDocActiveData(u) && isNonIntrusoRoleOrEmail(u);
     }
 
+    // Comunidade externa (role == 'INTRUSO') com e-mail verificado e standing ativo.
+    // Nunca concede privilégios institucionais, operacionais (/items) ou administrativos (/admin).
+    function isVerifiedActiveIntrusoDoc(u) {
+      return hasVerifiedEmailToken() &&
+             ('role' in u) &&
+             u.role == 'INTRUSO' &&
+             isStandingActive(u);
+    }
+
+    function isVerifiedActiveExternalUser() {
+      return isSignedIn() &&
+             hasVerifiedEmailToken() &&
+             userDocExists() &&
+             isVerifiedActiveIntrusoDoc(getUserData());
+    }
+
     function isIntruso() {
       let tok = request.auth.token;
       let hasEmail = ('email' in tok) && tok.email != null;
@@ -501,6 +520,19 @@ service cloud.firestore {
       );
     }
 
+    function isValidSelfNotificationCreate(inc, notificationId) {
+      return inc.keys().hasOnly([
+        'id', 'userId', 'isGlobal', 'title', 'message',
+        'timestamp', 'read', 'type', 'relatedItemId'
+      ]) &&
+      (!('id' in inc) || (inc.id is string && inc.id == notificationId && inc.id.size() <= 128)) &&
+      inc.title is string && inc.title.size() > 0 && inc.title.size() <= 150 &&
+      inc.message is string && inc.message.size() > 0 && inc.message.size() <= 1000 &&
+      (!('timestamp' in inc) || (inc.timestamp is string && inc.timestamp.size() <= 64) || inc.timestamp is timestamp) &&
+      (!('relatedItemId' in inc) || inc.relatedItemId == null || (inc.relatedItemId is string && inc.relatedItemId.size() <= 128)) &&
+      (!('type' in inc) || (inc.type is string && inc.type.size() <= 40 && inc.type != 'SYSTEM'));
+    }
+
     // ==========================================
     // 0. Role Assignments Collection (Protected Administrative Assignments)
     // ==========================================
@@ -540,9 +572,26 @@ service cloud.firestore {
                (
                  isAdminCreator ||
                  (
+                   inc.keys().hasOnly([
+                     'id', 'name', 'email', 'role', 'status',
+                     'courseOrDept', 'registrationNumber', 'phone',
+                     'approvalStatus', 'avatarUrl', 'createdAt',
+                     'updatedAt', 'emailVerified', 'reputationScore',
+                     'admin', 'active'
+                   ]) &&
                    (!('admin' in inc) || inc.admin == false) &&
+                   (!('active' in inc) || inc.active == true) &&
+                   (!('status' in inc) || inc.status == 'active') &&
+                   (!('reputationScore' in inc) || inc.reputationScore == 100) &&
                    !('roleAssignedBy' in inc) &&
                    !('roleAssignedAt' in inc) &&
+                   !('roleAssignedByName' in inc) &&
+                   !('roleAssignmentActive' in inc) &&
+                   !('suspendedUntil' in inc) &&
+                   !('blockExpiresAt' in inc) &&
+                   (!('emailVerified' in inc) || inc.emailVerified == false || (verified && inc.emailVerified == true)) &&
+                   (!('createdAt' in inc) || (inc.createdAt is string && inc.createdAt.size() <= 64) || inc.createdAt is timestamp) &&
+                   isValidExternalProfilePersonalFields(inc) &&
                    (
                      (inc.role == 'INTRUSO' && inc.approvalStatus in ['PENDENTE', 'APROVADO']) ||
                      (verified && hasEmail && (
@@ -555,85 +604,151 @@ service cloud.firestore {
       }
 
       function areUserControlFieldsImmutable(ext, inc) {
-        return (!('roleAssignedBy' in inc) || ('roleAssignedBy' in ext && inc.roleAssignedBy == ext.roleAssignedBy)) &&
-               (!('roleAssignedAt' in inc) || ('roleAssignedAt' in ext && inc.roleAssignedAt == ext.roleAssignedAt)) &&
+        return (('roleAssignedBy' in ext && 'roleAssignedBy' in inc && inc.roleAssignedBy == ext.roleAssignedBy) || (!('roleAssignedBy' in ext) && !('roleAssignedBy' in inc))) &&
+               (('roleAssignedAt' in ext && 'roleAssignedAt' in inc && inc.roleAssignedAt == ext.roleAssignedAt) || (!('roleAssignedAt' in ext) && !('roleAssignedAt' in inc))) &&
+               (('roleAssignedByName' in ext && 'roleAssignedByName' in inc && inc.roleAssignedByName == ext.roleAssignedByName) || (!('roleAssignedByName' in ext) && !('roleAssignedByName' in inc))) &&
+               (('roleAssignmentActive' in ext && 'roleAssignmentActive' in inc && inc.roleAssignmentActive == ext.roleAssignmentActive) || (!('roleAssignmentActive' in ext) && !('roleAssignmentActive' in inc))) &&
+               (('active' in ext && 'active' in inc && inc.active == ext.active) || (!('active' in ext) && !('active' in inc))) &&
                (('status' in existing() && incoming().status == existing().status) || (!('status' in ext) && (!('status' in inc) || inc.status == 'active'))) &&
                (('suspendedUntil' in existing() && incoming().suspendedUntil == existing().suspendedUntil) || (!('suspendedUntil' in ext) && !('suspendedUntil' in inc))) &&
-               (('blockExpiresAt' in ext && inc.blockExpiresAt == ext.blockExpiresAt) || (!('blockExpiresAt' in ext) && !('blockExpiresAt' in inc))) &&
-               (('reputationScore' in ext && inc.reputationScore == ext.reputationScore) || (!('reputationScore' in ext) && (!('reputationScore' in inc) || inc.reputationScore == 100)));
+               (('blockExpiresAt' in ext && 'blockExpiresAt' in inc && inc.blockExpiresAt == ext.blockExpiresAt) || (!('blockExpiresAt' in ext) && !('blockExpiresAt' in inc))) &&
+               (('reputationScore' in ext && 'reputationScore' in inc && inc.reputationScore == ext.reputationScore) || (!('reputationScore' in ext) && (!('reputationScore' in inc) || inc.reputationScore == 100)));
+      }
+
+      function isValidExternalProfilePersonalFields(inc) {
+        return (!('name' in inc) || (inc.name is string && inc.name.size() >= 1 && inc.name.size() <= 120)) &&
+               (!('phone' in inc) || inc.phone == null || (inc.phone is string && inc.phone.size() <= 30)) &&
+               (!('courseOrDept' in inc) || inc.courseOrDept == null || (inc.courseOrDept is string && inc.courseOrDept.size() <= 150)) &&
+               (!('registrationNumber' in inc) || inc.registrationNumber == null || (inc.registrationNumber is string && inc.registrationNumber.size() <= 50)) &&
+               (!('avatarUrl' in inc) || inc.avatarUrl == null || (inc.avatarUrl is string && inc.avatarUrl.size() <= 500000)) &&
+               (!('updatedAt' in inc) || inc.updatedAt == null || (inc.updatedAt is string && inc.updatedAt.size() <= 64) || inc.updatedAt is timestamp);
       }
 
       // 1. Get: Users can ONLY read their own profile doc (isAuthUser(userId)); Only Admins can read other users' documents
       allow get: if isAuthUser(userId) || isAdmin();
 
       // 2. List: Only Admins can list/enumerate the users directory.
-      // Individual authenticated users can only query specifically for their own authenticated email (where email == auth.token.email).
+      // Individual authenticated users (including verified active external users) can only query specifically for their own authenticated email.
       allow list: if isAdmin() || 
-                     (isSignedIn() && isAccountActive() && resource != null && 
+                     (isSignedIn() && (isAccountActive() || isVerifiedActiveExternalUser()) && resource != null && 
                       (resource.data.email == request.auth.token.email || resource.data.email.lower() == request.auth.token.email.lower()));
 
       // 3. Create: User can ONLY create their own document with their real UID and verified email.
       allow create: if canCreateOwnUserDoc();
 
-      // 4. Update: 
-      allow update: if (
-        (
-          isAdmin() && (
-            incoming().role != 'ADMIN' || isRootIdentity() || ('role' in existing() && existing().role == 'ADMIN')
-          )
-        ) || (
-          isSignedIn() &&
-          request.auth.uid == userId &&
-          incoming().id == userId &&
-          (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) &&
-          ('role' in existing()) &&
-          isStandingActive(existing()) &&
-          (
-            // Branch 1: Promoção institucional legítima (INTRUSO -> ALUNO ou SERVIDOR)
-            (
-              existing().role == 'INTRUSO' &&
-              (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) &&
-              (!('admin' in incoming()) || incoming().admin == false) &&
-              (!('admin' in existing()) || existing().admin == false) &&
-              areUserControlFieldsImmutable(existing(), incoming()) &&
-              (
-                (
-                  (incoming().role == 'ALUNO' && isInstitutionalStudentEmail()) &&
-                  ('approvalStatus' in existing() && incoming().approvalStatus == existing().approvalStatus)
-                ) ||
-                (incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail() && incoming().approvalStatus == 'PENDENTE')
-              )
-            ) ||
-            // Branch 2: Atualizações normais de perfil próprio por usuários com conta ativa
-            (
-              existing().role != 'INTRUSO' &&
-              incoming().role == existing().role &&
-              (!('admin' in incoming()) || incoming().admin == existing().admin) &&
-              areUserControlFieldsImmutable(existing(), incoming()) &&
-              ('approvalStatus' in existing()) &&
-              (incoming().approvalStatus == existing().approvalStatus)
-            ) ||
-            // Branch 3: Inicialização de status para perfis institucionais legados sem o campo status
-            (
-              (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) &&
-              (existing().role == 'ALUNO' || existing().role == 'SERVIDOR') &&
-              incoming().role == existing().role &&
-              (!('admin' in incoming()) || incoming().admin == false) &&
-              (!('admin' in existing()) || existing().admin == false) &&
-              (!('approvalStatus' in existing()) || incoming().approvalStatus == existing().approvalStatus) &&
-              (!('status' in existing()) && incoming().status == 'active') &&
-              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
-              (
-                (existing().role == 'ALUNO' && isInstitutionalStudentEmail()) ||
-                (existing().role == 'SERVIDOR' && isInstitutionalStaffEmail())
-              )
-            )
-          )
-        )
-      );
+      // 4a. Update (Admin): Administradores ativos podem gerenciar contas, com proteção estrita do Root Admin
+      allow update: if isAdmin() &&
+        (userId != 'hCG5mDgK1fRaTojULzlM7dXvb7n2' || isRootIdentity()) && (
+          incoming().role != 'ADMIN' || isRootIdentity() || ('role' in existing() && existing().role == 'ADMIN')
+        );
 
-      // 5. Delete: Only Admin can delete accounts (and cannot delete their own active account)
-      allow delete: if isAdmin() && request.auth.uid != userId;
+      // 4b. Update — Branch 1: Promoção institucional legítima (INTRUSO -> ALUNO ou SERVIDOR)
+      allow update: if isSignedIn() &&
+        request.auth.uid == userId &&
+        ('role' in incoming()) &&
+        incoming().role != 'INTRUSO' &&
+        (incoming().role == 'ALUNO' || incoming().role == 'SERVIDOR') &&
+        incoming().id == userId &&
+        (!('admin' in incoming()) || incoming().admin == false) &&
+        resource != null &&
+        ('role' in existing()) &&
+        existing().role == 'INTRUSO' &&
+        (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) &&
+        isStandingActive(existing()) &&
+        (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) &&
+        (!('admin' in existing()) || existing().admin == false) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'role', 'approvalStatus', 'name', 'phone', 'courseOrDept',
+          'registrationNumber', 'avatarUrl', 'updatedAt', 'emailVerified',
+          'createdAt', 'status', 'reputationScore'
+        ]) &&
+        isValidExternalProfilePersonalFields(incoming()) &&
+        areUserControlFieldsImmutable(existing(), incoming()) &&
+        (
+          (
+            (incoming().role == 'ALUNO' && isInstitutionalStudentEmail()) &&
+            ('approvalStatus' in existing() && incoming().approvalStatus == existing().approvalStatus)
+          ) ||
+          (incoming().role == 'SERVIDOR' && isInstitutionalStaffEmail() && incoming().approvalStatus == 'PENDENTE')
+        );
+
+      // 4c. Update (Branch 2 — Atualizações normais de perfil próprio por usuários institucionais com conta ativa)
+      allow update: if isSignedIn() &&
+        request.auth.uid == userId &&
+        ('role' in incoming()) &&
+        incoming().role != 'INTRUSO' &&
+        incoming().id == userId &&
+        resource != null &&
+        ('role' in existing()) &&
+        existing().role != 'INTRUSO' &&
+        incoming().role == existing().role &&
+        (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) &&
+        isStandingActive(existing()) &&
+        (!('admin' in incoming()) || incoming().admin == existing().admin) &&
+        ('approvalStatus' in existing()) &&
+        (incoming().approvalStatus == existing().approvalStatus) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'phone', 'courseOrDept', 'registrationNumber',
+          'avatarUrl', 'updatedAt', 'emailVerified', 'createdAt',
+          'status', 'reputationScore'
+        ]) &&
+        isValidExternalProfilePersonalFields(incoming()) &&
+        areUserControlFieldsImmutable(existing(), incoming()) &&
+        (!('emailVerified' in incoming()) || ('emailVerified' in existing() && incoming().emailVerified == existing().emailVerified) || (hasVerifiedEmailToken() && incoming().emailVerified == true));
+
+      // 4d. Update — Branch 2b: Atualização estrita de campos pessoais do próprio perfil por usuário externo verificado (INTRUSO)
+      allow update: if isSignedIn() &&
+        request.auth.uid == userId &&
+        hasVerifiedEmailToken() &&
+        ('role' in incoming()) &&
+        incoming().role == 'INTRUSO' &&
+        incoming().id == userId &&
+        (!('admin' in incoming()) || incoming().admin == false) &&
+        resource != null &&
+        ('role' in existing()) &&
+        existing().role == 'INTRUSO' &&
+        (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) &&
+        isStandingActive(existing()) &&
+        (!('admin' in existing()) || existing().admin == false) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'name',
+                'phone',
+                'courseOrDept',
+                'registrationNumber',
+                'avatarUrl',
+                'updatedAt',
+                'emailVerified'
+        ]) &&
+        isValidExternalProfilePersonalFields(incoming()) &&
+        (!('emailVerified' in incoming()) || ('emailVerified' in existing() && incoming().emailVerified == existing().emailVerified) || incoming().emailVerified == true);
+
+      // 4e. Update (Branch 3 — Inicialização de status para perfis institucionais legados sem o campo status)
+      allow update: if isSignedIn() &&
+        request.auth.uid == userId &&
+        ('status' in incoming()) &&
+        incoming().status == 'active' &&
+        ('role' in incoming()) &&
+        (incoming().role == 'ALUNO' || incoming().role == 'SERVIDOR') &&
+        incoming().id == userId &&
+        (!('admin' in incoming()) || incoming().admin == false) &&
+        resource != null &&
+        !('status' in existing()) &&
+        ('role' in existing()) &&
+        (existing().role == 'ALUNO' || existing().role == 'SERVIDOR') &&
+        incoming().role == existing().role &&
+        (incoming().email == existing().email || incoming().email.lower() == existing().email.lower()) &&
+        isStandingActive(existing()) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+        (incoming().email == request.auth.token.email || incoming().email.lower() == request.auth.token.email.lower()) &&
+        (!('admin' in existing()) || existing().admin == false) &&
+        (!('approvalStatus' in existing()) || incoming().approvalStatus == existing().approvalStatus) &&
+        (
+          (existing().role == 'ALUNO' && isInstitutionalStudentEmail()) ||
+          (existing().role == 'SERVIDOR' && isInstitutionalStaffEmail())
+        );
+
+      // 5. Delete: Only Admin can delete accounts (cannot delete own active account or Root Admin account)
+      allow delete: if isAdmin() && request.auth.uid != userId && (userId != 'hCG5mDgK1fRaTojULzlM7dXvb7n2' || isRootIdentity());
     }
 
     // ==========================================
@@ -674,11 +789,14 @@ service cloud.firestore {
     // 2c. Private Item Return & Signature Records (Restricted PII / Signatures / Receipts)
     // ==========================================
     match /item_return_records/{itemId} {
-      // Get: Only active approved SERVIDOR, ADMIN, or the authenticated recipient (matching recipientUid) can read a private return record.
-      allow get: if isSignedIn() && isAccountActive() && (
-        isAdmin() ||
-        isServidor() ||
-        (resource != null && 'recipientUid' in resource.data && resource.data.recipientUid == request.auth.uid)
+      // Get: Only active approved SERVIDOR, ADMIN, or the authenticated recipient (matching recipientUid, including verified active external user) can read a private return record.
+      allow get: if isSignedIn() && (
+        (isAccountActive() && (
+          isAdmin() ||
+          isServidor() ||
+          (resource != null && 'recipientUid' in resource.data && resource.data.recipientUid == request.auth.uid)
+        )) ||
+        (isVerifiedActiveExternalUser() && resource != null && 'recipientUid' in resource.data && resource.data.recipientUid == request.auth.uid)
       );
       // List: Only active approved SERVIDOR or ADMIN can list/query private return records.
       allow list: if isSignedIn() && isAccountActive() && (isAdmin() || isServidor());
@@ -700,9 +818,10 @@ service cloud.firestore {
       );
       // List: Only active approved SERVIDOR or ADMIN can list private verification metadata.
       allow list: if isStaffOrAdminActive();
-      // Create / Update: Active verified approved SERVIDOR or ADMIN.
+      // Create / Update: Active verified approved SERVIDOR or ADMIN (anti-spoofing registeredByUserId on create).
       allow create: if isStaffOrAdminActive() &&
-                       (!('itemId' in incoming()) || incoming().itemId == itemId);
+                       (!('itemId' in incoming()) || incoming().itemId == itemId) &&
+                       (!('registeredByUserId' in incoming()) || incoming().registeredByUserId == request.auth.uid);
       allow update: if isStaffOrAdminActive() &&
                        (!('registeredByUserId' in existing()) || incoming().registeredByUserId == existing().registeredByUserId) &&
                        (!('itemId' in incoming()) || incoming().itemId == itemId);
@@ -771,14 +890,10 @@ service cloud.firestore {
     match /claims/{claimId} {
       // Helper to ensure administrative review fields are absent on creation/resubmission
       function hasNoAdminReviewFields(data) {
-        return !('reviewedByUserId' in data) &&
-               !('reviewedByName' in data) &&
-               !('reviewedByRole' in data) &&
-               !('reviewedAt' in data) &&
-               !('rejectionReason' in data) &&
-               !('decisionNotes' in data) &&
-               !('completedAt' in data) &&
-               !('cancelledAt' in data);
+        return !data.keys().hasAny([
+          'reviewedByUserId', 'reviewedByName', 'reviewedByRole', 'reviewedAt',
+          'rejectionReason', 'decisionNotes', 'completedAt', 'cancelledAt'
+        ]);
       }
 
       // Helper to validate immutable claim attributes
@@ -795,16 +910,45 @@ service cloud.firestore {
         return exists(itemPath) && !(get(itemPath).data.status in ['DEVOLVIDO', 'ENCERRADO']);
       }
 
+      function isValidClaimKeysAndTypes(inc) {
+        return inc.keys().hasOnly([
+          'id', 'itemId', 'itemTitle', 'itemCategory', 'itemLocation', 'itemImageUrl',
+          'claimerId', 'claimerName', 'claimerEmail', 'claimerRole',
+          'claimerRegistration', 'claimerPhone',
+          'distinctiveFeatures', 'additionalInfo', 'verificationAnswer',
+          'status', 'createdAt', 'notes', 'resubmittedAt'
+        ]) &&
+        (!('notes' in inc) || inc.notes == null || (inc.notes is string && inc.notes.size() <= 1000)) &&
+        (!('claimerName' in inc) || inc.claimerName == null || (inc.claimerName is string && inc.claimerName.size() <= 120)) &&
+        (!('claimerRole' in inc) || inc.claimerRole == null || (inc.claimerRole is string && inc.claimerRole.size() <= 30)) &&
+        (!('createdAt' in inc) || (inc.createdAt is string && inc.createdAt.size() <= 64) || inc.createdAt is timestamp) &&
+        (!('resubmittedAt' in inc) || inc.resubmittedAt == null || (inc.resubmittedAt is string && inc.resubmittedAt.size() <= 64) || inc.resubmittedAt is timestamp);
+      }
+
+      function isValidClaimerRoleForUserDoc(u, inc) {
+        return !('claimerRole' in inc) || inc.claimerRole == null || (
+          ('role' in u && inc.claimerRole == u.role) ||
+          (hasApprovedAdminRole(u) && inc.claimerRole in ['ADMIN', 'SERVIDOR', 'ALUNO']) ||
+          (hasApprovedServidorRole(u) && inc.claimerRole in ['SERVIDOR', 'ALUNO'])
+        );
+      }
+
       function isValidClaimBody(inc) {
-        return inc.distinctiveFeatures is string &&
+        return isValidClaimKeysAndTypes(inc) &&
+               inc.distinctiveFeatures is string &&
                inc.distinctiveFeatures.size() > 0 &&
                inc.distinctiveFeatures.size() <= 1000 &&
                (!('additionalInfo' in inc) || inc.additionalInfo == null || (inc.additionalInfo is string && inc.additionalInfo.size() <= 1000)) &&
+               (!('verificationAnswer' in inc) || inc.verificationAnswer == null || (inc.verificationAnswer is string && inc.verificationAnswer.size() <= 2100)) &&
                isClaimableItem(inc.itemId);
       }
 
       function isValidStaffClaimTransition(ext, inc) {
-        return areImmutableFieldsPreserved() &&
+        return inc.id == ext.id &&
+               inc.itemId == ext.itemId &&
+               inc.claimerId == ext.claimerId &&
+               inc.createdAt == ext.createdAt &&
+               inc.distinctiveFeatures == ext.distinctiveFeatures &&
                ext.status != 'CONCLUIDO' &&
                ext.status != 'CANCELADO' &&
                (
@@ -817,42 +961,44 @@ service cloud.firestore {
                (inc.status != 'CONCLUIDO' || (inc.completedAt is string && inc.completedAt.size() > 0));
       }
 
-      function canUserDocUpdateClaim(u, ext, inc) {
-        let isNonIntruso = isNonIntrusoRoleOrEmail(u);
-        return isUserDocActiveData(u) && (
-          // 1. Claimant Cancellation (Strict least privilege: only status & cancelledAt)
-          (
-            isNonIntruso &&
-            ext.claimerId == request.auth.uid &&
-            ext.status == 'PENDENTE' &&
-            inc.status == 'CANCELADO' &&
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt'])
-          ) ||
-          // 2. Claimant Resubmission (If previous claim was CANCELADO or REJEITADO)
-          (
-            isNonIntruso &&
-            ext.claimerId == request.auth.uid &&
-            ext.status in ['CANCELADO', 'REJEITADO'] &&
-            inc.status == 'PENDENTE' &&
-            inc.id == ext.id &&
-            inc.claimerId == request.auth.uid &&
-            inc.itemId == ext.itemId &&
-            inc.createdAt == ext.createdAt &&
-            hasNoAdminReviewFields(inc) &&
-            isValidClaimBody(inc)
-          ) ||
-          // 3. Staff / Admin Review & Lifecycle Transitions
-          (
-            hasApprovedStaffOrAdminRole(u) &&
-            isValidStaffClaimTransition(ext, inc)
-          )
-        );
+      function canClaimantCancelOwnClaim(u, ext, inc) {
+        // 1. Claimant Cancellation (Strict least privilege: only status & cancelledAt on OWN claim)
+        return ext.claimerId == request.auth.uid &&
+          ext.status == 'PENDENTE' &&
+          inc.status == 'CANCELADO' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'cancelledAt']) &&
+          (!('cancelledAt' in inc) || (inc.cancelledAt is string && inc.cancelledAt.size() > 0 && inc.cancelledAt.size() <= 64) || inc.cancelledAt is timestamp) &&
+          (isVerifiedActiveIntrusoDoc(u) || (isUserDocActiveData(u) && isNonIntrusoRoleOrEmail(u)));
       }
 
-      // Claims can only be read by active claimers, the item author, or Admin/Active Servidor
+      function canClaimantResubmitOwnClaim(u, ext, inc) {
+        // 2. Claimant Resubmission (If previous OWN claim was CANCELADO or REJEITADO)
+        let isVerifiedExternal = isVerifiedActiveIntrusoDoc(u);
+        return ext.claimerId == request.auth.uid &&
+          ext.status in ['CANCELADO', 'REJEITADO'] &&
+          inc.status == 'PENDENTE' &&
+          inc.id == ext.id &&
+          inc.claimerId == request.auth.uid &&
+          inc.itemId == ext.itemId &&
+          inc.createdAt == ext.createdAt &&
+          hasNoAdminReviewFields(inc) &&
+          (!isVerifiedExternal || !('claimerRole' in inc) || inc.claimerRole == 'INTRUSO') &&
+          isValidClaimerRoleForUserDoc(u, inc) &&
+          (isVerifiedExternal || (isUserDocActiveData(u) && isNonIntrusoRoleOrEmail(u))) &&
+          isValidClaimBody(inc);
+      }
+
+      function canStaffUpdateClaim(u, ext, inc) {
+        // 3. Staff / Admin Review & Lifecycle Transitions (STRICTLY active approved SERVIDOR / ADMIN)
+        return isUserDocActiveData(u) &&
+            hasApprovedStaffOrAdminRole(u) &&
+            isValidStaffClaimTransition(ext, inc);
+      }
+
+      // Claims can only be read by active claimers (including verified active external users for their own claims), the item author, or Admin/Active Servidor
       allow get: if isSignedIn() && (
         // 1. Leitura tolerante EXCLUSIVA para documentos inexistentes (resource == null) com ID determinístico do solicitante
-        (resource == null && isAccountActive() && request.auth.uid != null && claimId.matches('claim_' + request.auth.uid + '_.*')) ||
+        (resource == null && (isAccountActive() || isVerifiedActiveExternalUser()) && request.auth.uid != null && claimId.matches('claim_' + request.auth.uid + '_.*')) ||
         isRootAdmin() ||
         (
           isAccountActive() && (
@@ -865,6 +1011,12 @@ service cloud.firestore {
             // 3. Privilégios operacionais e administrativos (isAccountActive já validado acima)
             (hasVerifiedEmailToken() && (isApprovedServidorDoc() || isAdminUserDoc()))
           )
+        ) ||
+        // 4. Comunidade externa verificada e em standing ativo: leitura estrita APENAS da própria reivindicação
+        (
+          resource != null &&
+          isVerifiedActiveExternalUser() &&
+          existing().claimerId == request.auth.uid
         )
       );
       allow list: if isSignedIn() && (
@@ -874,25 +1026,62 @@ service cloud.firestore {
             resource.data.claimerId == request.auth.uid ||
             (hasVerifiedEmailToken() && (isApprovedServidorDoc() || isAdminUserDoc()))
           )
+        ) ||
+        (
+          isVerifiedActiveExternalUser() &&
+          resource.data.claimerId == request.auth.uid
         )
       );
 
-      // Create: Authenticated user making a claim with their own real user id, verified email and active account.
-      allow create: if isActiveVerifiedMember() &&
-                    claimId == 'claim_' + request.auth.uid + '_' + incoming().itemId &&
+      // Create: Authenticated active member OR verified active external user (INTRUSO) making a claim strictly for themselves.
+      allow create: if isSignedIn() &&
+                    hasVerifiedEmailToken() &&
                     incoming().claimerId == request.auth.uid &&
                     incoming().status == 'PENDENTE' &&
-                    incoming().itemId is string && incoming().itemId.size() > 0 &&
+                    incoming().itemId is string && incoming().itemId.size() > 0 && incoming().itemId.size() <= 128 &&
+                    claimId == 'claim_' + request.auth.uid + '_' + incoming().itemId &&
+                    (!('id' in incoming()) || incoming().id == claimId) &&
                     hasNoAdminReviewFields(incoming()) &&
+                    (
+                      isActiveVerifiedMember() ||
+                      (isVerifiedActiveExternalUser() && (!('claimerRole' in incoming()) || incoming().claimerRole == 'INTRUSO'))
+                    ) &&
+                    (isRootIdentity() || (userDocExists() && isValidClaimerRoleForUserDoc(getUserData(), incoming()))) &&
                     isValidClaimBody(incoming());
 
-      // Update:
-      allow update: if isSignedIn() &&
+      // Update (1/3): Staff / Admin Review & Lifecycle Transitions
+      allow update: if resource != null &&
+                       isSignedIn() &&
                        hasVerifiedEmailToken() &&
                        (
                          (isRootIdentity() && isValidStaffClaimTransition(existing(), incoming())) ||
-                         (userDocExists() && canUserDocUpdateClaim(getUserData(), existing(), incoming()))
+                         (userDocExists() && canStaffUpdateClaim(getUserData(), existing(), incoming()))
                        );
+
+      // Update (2/3): Claimant Cancellation (Own Claim)
+      allow update: if isSignedIn() &&
+                       hasVerifiedEmailToken() &&
+                       ('status' in incoming()) &&
+                       incoming().status == 'CANCELADO' &&
+                       resource != null &&
+                       existing().claimerId == request.auth.uid &&
+                       existing().status == 'PENDENTE' &&
+                       userDocExists() &&
+                       canClaimantCancelOwnClaim(getUserData(), existing(), incoming());
+
+      // Update (3/3): Claimant Resubmission (Own Claim)
+      allow update: if isSignedIn() &&
+                       hasVerifiedEmailToken() &&
+                       ('status' in incoming()) &&
+                       incoming().status == 'PENDENTE' &&
+                       ('claimerId' in incoming()) &&
+                       incoming().claimerId == request.auth.uid &&
+                       hasNoAdminReviewFields(incoming()) &&
+                       resource != null &&
+                       existing().claimerId == request.auth.uid &&
+                       existing().status in ['CANCELADO', 'REJEITADO'] &&
+                       userDocExists() &&
+                       canClaimantResubmitOwnClaim(getUserData(), existing(), incoming());
 
       // Delete: Admin only
       allow delete: if isAdmin();
@@ -902,42 +1091,46 @@ service cloud.firestore {
     // 4. Notifications Collection (Notificações do Usuário)
     // ==========================================
     match /notifications/{notificationId} {
-      // 1. Read (Get): A user can ONLY read notifications addressed to them, or authorized broadcasts; Admins can read all for monitoring
+      // 1. Read (Get): Active members and verified active external users can read notifications addressed to them
+      // (institutional broadcasts restricted to active institutional members); suspended/banned/unverified users are blocked; Admins can read all.
       allow get: if isSignedIn() && (
+        isAdmin() ||
         (resource != null && (
-          existing().userId == request.auth.uid || 
-          existing().userId == 'all' || 
-          existing().userId == 'todos_alunos' || 
-          existing().userId == 'todos' || 
-          existing().isGlobal == true
-        )) ||
-        isAdmin()
+          ((isAccountActive() || isVerifiedActiveExternalUser()) && existing().userId == request.auth.uid) ||
+          (isAccountActive() && (
+            existing().userId == 'all' || 
+            existing().userId == 'todos_alunos' || 
+            existing().userId == 'todos' || 
+            existing().isGlobal == true
+          ))
+        ))
       );
 
-      // 2. Read (List): A user query only returns documents matching their UID or authorized broadcasts; Admins can query all
+      // 2. Read (List): Active members and verified active external users query strictly their own UID
+      // (institutional broadcasts restricted to active institutional members); suspended/banned/unverified users are blocked; Admins can query all.
       allow list: if isSignedIn() && (
         isAdmin() || 
         (resource != null && (
-          resource.data.userId == request.auth.uid || 
-          resource.data.userId == 'all' || 
-          resource.data.userId == 'todos_alunos' || 
-          resource.data.userId == 'todos' || 
-          resource.data.isGlobal == true
+          ((isAccountActive() || isVerifiedActiveExternalUser()) && resource.data.userId == request.auth.uid) ||
+          (isAccountActive() && (
+            resource.data.userId == 'all' || 
+            resource.data.userId == 'todos_alunos' || 
+            resource.data.userId == 'todos' || 
+            resource.data.isGlobal == true
+          ))
         ))
       );
 
       // 3. Create:
       // - Admins and Active Servidores (Campus Staff) can create notifications for any user or institutional broadcasts.
-      // - Regular active users (Students/Others) can ONLY create notifications addressed strictly to themselves (request.auth.uid).
-      // - Suspended or banned users CANNOT create notifications.
-      // - Regular users CANNOT send notifications to other users (anti-spoofing).
-      // - Regular users CANNOT create broadcast notifications (isGlobal == true, 'all', etc.).
-      // - Regular users CANNOT forge SYSTEM type notifications.
+      // - Regular active members AND verified active external users can ONLY create schema-validated notifications addressed strictly to themselves (request.auth.uid).
+      // - Suspended, banned, or unverified external users CANNOT create notifications.
+      // - Regular/external users CANNOT send notifications to other users (anti-spoofing), CANNOT create broadcasts, CANNOT inject extra fields, and CANNOT forge SYSTEM type.
       allow create: if isSignedIn() && (
         isAdmin() || 
         (isServidor() && isAccountActive()) || 
         (
-          isAccountActive() &&
+          (isAccountActive() || isVerifiedActiveExternalUser()) &&
           incoming().userId == request.auth.uid &&
           (!('isGlobal' in incoming()) || incoming().isGlobal != true) &&
           incoming().userId != 'all' &&
@@ -946,22 +1139,23 @@ service cloud.firestore {
           incoming().userId != 'todos_servidores' &&
           incoming().userId != 'global' &&
           (!('type' in incoming()) || incoming().type != 'SYSTEM') &&
-          incoming().read == false
+          incoming().read == false &&
+          isValidSelfNotificationCreate(incoming(), notificationId)
         )
       );
 
       // 4. Update:
-      // - User can ONLY mark their OWN notification as read.
-      // - Strict immutability of core fields: userId (recipientId), title, message, type, isGlobal, timestamp, relatedItemId, id.
-      // - User CANNOT change recipientId from A to B.
-      // - User CANNOT change isGlobal to true.
-      // - User CANNOT mark another user's notification as read.
+      // - User (including verified active external user) can ONLY mark their OWN notification as read (with strict type validation on read/readAt).
+      // - Strict immutability of core fields: userId, title, message, type, isGlobal, timestamp, relatedItemId, id.
+      // - User CANNOT change recipientId, isGlobal, or mark another user's notification as read.
       // - Admin can perform administrative updates if needed.
       allow update: if (
         isSignedIn() && 
-        isAccountActive() &&
+        (isAccountActive() || isVerifiedActiveExternalUser()) &&
         existing().userId == request.auth.uid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']) &&
+        incoming().read is bool &&
+        (!('readAt' in incoming()) || incoming().readAt == null || (incoming().readAt is string && incoming().readAt.size() <= 64) || incoming().readAt is timestamp) &&
         incoming().userId == existing().userId &&
         incoming().title == existing().title &&
         incoming().message == existing().message &&
@@ -973,11 +1167,11 @@ service cloud.firestore {
       ) || isAdmin();
 
       // 5. Delete:
-      // - User can ONLY delete their OWN notification (existing().userId == request.auth.uid).
+      // - User (including verified active external user) can ONLY delete their OWN notification (existing().userId == request.auth.uid).
       // - User CANNOT delete another user's notification.
       // - Admin can delete.
       allow delete: if isSignedIn() && (
-        isAccountActive() && existing().userId == request.auth.uid || 
+        (isAccountActive() || isVerifiedActiveExternalUser()) && existing().userId == request.auth.uid || 
         isAdmin()
       );
     }

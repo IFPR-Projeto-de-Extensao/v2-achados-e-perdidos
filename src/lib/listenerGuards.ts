@@ -22,6 +22,7 @@ export interface EvaluatedListenerSession {
   isEmailVerified: boolean;
   isRootAdmin: boolean;
   isAccountActive: boolean;
+  isVerifiedActiveExternalUser: boolean;
   isApprovedAdmin: boolean;
   isApprovedStaffOrAdmin: boolean;
 }
@@ -54,6 +55,7 @@ export function evaluateListenerSession(
       isEmailVerified: false,
       isRootAdmin: false,
       isAccountActive: false,
+      isVerifiedActiveExternalUser: false,
       isApprovedAdmin: false,
       isApprovedStaffOrAdmin: false,
     };
@@ -68,6 +70,9 @@ export function evaluateListenerSession(
     (user as any).active === false;
 
   const isAccountActive = !isBlockedOrInactive && user.role !== "INTRUSO";
+  const isVerifiedActiveExternalUser = Boolean(
+    isEmailVerified && !isBlockedOrInactive && user.role === "INTRUSO"
+  );
 
   const isApprovedAdmin = Boolean(
     isEmailVerified &&
@@ -87,6 +92,7 @@ export function evaluateListenerSession(
     isEmailVerified,
     isRootAdmin,
     isAccountActive,
+    isVerifiedActiveExternalUser,
     isApprovedAdmin,
     isApprovedStaffOrAdmin,
   };
@@ -125,9 +131,10 @@ export function getClaimsListenerScope(
   input: ListenerSessionInput
 ): ClaimsSubscriptionScope {
   const session = evaluateListenerSession(input);
-  if (!session.isSessionReady || !session.isAccountActive) return "NONE";
+  if (!session.isSessionReady) return "NONE";
   if (session.isApprovedStaffOrAdmin) return "ALL";
-  return "SELF";
+  if (session.isAccountActive || session.isVerifiedActiveExternalUser) return "SELF";
+  return "NONE";
 }
 
 export function getNotificationsListenerScope(
@@ -136,5 +143,6 @@ export function getNotificationsListenerScope(
   const session = evaluateListenerSession(input);
   if (!session.isSessionReady) return "NONE";
   if (session.isApprovedAdmin) return "ALL";
-  return "SELF";
+  if (session.isAccountActive || session.isVerifiedActiveExternalUser) return "SELF";
+  return "NONE";
 }

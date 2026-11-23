@@ -100,6 +100,9 @@ import {
   Loader2,
   FileSignature,
   PenTool,
+  KeyRound,
+  Copy,
+  Check,
 } from "lucide-react";
 
 export const DashboardView: React.FC = () => {
@@ -116,6 +119,7 @@ export const DashboardView: React.FC = () => {
     addToast,
     setActiveTab,
     addUserByAdmin,
+    sendUserFirstAccessLink,
     resetSystemData,
     clearAllLogsAndMetrics,
     exportFirestoreDataToJson,
@@ -174,6 +178,17 @@ export const DashboardView: React.FC = () => {
   const [isDeletingUser, setIsDeletingUser] = useState(false);
   const [userForStatusModal, setUserForStatusModal] = useState<User | null>(null);
   const [isAddingUserOpen, setIsAddingUserOpen] = useState(false);
+  const [isSubmittingNewUser, setIsSubmittingNewUser] = useState(false);
+  const [sendingFirstAccessUserId, setSendingFirstAccessUserId] = useState<string | null>(null);
+  const [firstAccessFeedback, setFirstAccessFeedback] = useState<{
+    email: string;
+    emailSent: boolean;
+    deliveryMethod: string;
+    deliveryError?: string;
+    manualSetupLink?: string;
+    authProvisioned?: boolean;
+  } | null>(null);
+  const [copiedSetupLink, setCopiedSetupLink] = useState(false);
   const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [isClearLogsConfirmOpen, setIsClearLogsConfirmOpen] = useState(false);
   const [isMasterWipeConfirmOpen, setIsMasterWipeConfirmOpen] = useState(false);
@@ -485,25 +500,36 @@ export const DashboardView: React.FC = () => {
 
   const handleAddUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUserName || !newUserEmail) {
+    if (!newUserName.trim() || !newUserEmail.trim()) {
       addToast("Preencha o nome e o e-mail do novo usuário.", "error");
       return;
     }
 
+    setIsSubmittingNewUser(true);
     try {
-      await addUserByAdmin({
-        name: newUserName,
-        email: newUserEmail,
+      const result = await addUserByAdmin({
+        name: newUserName.trim(),
+        email: newUserEmail.trim().toLowerCase(),
         role: newUserRole,
-        courseOrDept: newUserDept || "IFPR Campus Ivaiporã",
-        registrationNumber: newUserRegNumber || "2026100" + Math.floor(100 + Math.random() * 900),
-        reputationScore: 10,
-        avatarUrl: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80`,
+        courseOrDept: newUserDept.trim() || "IFPR Campus Ivaiporã",
+        registrationNumber:
+          newUserRegNumber.trim() || "2026100" + Math.floor(100 + Math.random() * 900),
+        avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(newUserName.trim())}`,
+        reputationScore: 100,
+      });
+
+      setFirstAccessFeedback({
+        email: result.user.email,
+        emailSent: result.emailSent,
+        deliveryMethod: result.deliveryMethod,
+        deliveryError: result.deliveryError,
+        manualSetupLink: result.manualSetupLink,
+        authProvisioned: result.authCreated,
       });
 
       await logAdminAction(
         "NOVO_USUARIO",
-        `Cadastrou manualmente o usuário '${newUserName}' (${newUserRole}) no IFPR Campus Ivaiporã.`
+        `Cadastrou administrativamente o usuário '${newUserName.trim()}' (${result.user.email} / ${newUserRole}) no Authentication e Firestore.`
       );
 
       setNewUserName("");
@@ -512,6 +538,28 @@ export const DashboardView: React.FC = () => {
       setIsAddingUserOpen(false);
     } catch (_) {
       // Falha tratada pelo addUserByAdmin com notificação de erro. O modal permanece aberto com os dados preenchidos para nova tentativa.
+    } finally {
+      setIsSubmittingNewUser(false);
+    }
+  };
+
+  const handleSendFirstAccessForUser = async (targetUser: User) => {
+    vibrateClick();
+    setSendingFirstAccessUserId(targetUser.id);
+    try {
+      const result = await sendUserFirstAccessLink(targetUser);
+      setFirstAccessFeedback({
+        email: result.email,
+        emailSent: result.emailSent,
+        deliveryMethod: result.deliveryMethod,
+        deliveryError: result.deliveryError,
+        manualSetupLink: result.manualSetupLink,
+        authProvisioned: result.authProvisioned,
+      });
+    } catch (_) {
+      // Erro já reportado em toast por sendUserFirstAccessLink
+    } finally {
+      setSendingFirstAccessUserId(null);
     }
   };
 
@@ -2362,6 +2410,66 @@ export const DashboardView: React.FC = () => {
                       </span>
                     </div>
 
+                    {firstAccessFeedback && (
+                      <div
+                        className={`p-4 rounded-xl border text-xs space-y-2 ${
+                          firstAccessFeedback.emailSent
+                            ? "bg-[#EBF5F0] dark:bg-emerald-950/30 border-[#16845B]/30 text-[#064E3B] dark:text-emerald-200"
+                            : "bg-amber-50 dark:bg-amber-950/30 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <p className="font-bold">
+                              {firstAccessFeedback.emailSent
+                                ? `Link de primeiro acesso enviado para ${firstAccessFeedback.email} (${firstAccessFeedback.deliveryMethod === "SMTP" ? "SMTP Institucional" : "Firebase Auth"})`
+                                : `Atenção no envio de e-mail para ${firstAccessFeedback.email}`}
+                            </p>
+                            {!firstAccessFeedback.emailSent && (
+                              <p className="opacity-90">
+                                {firstAccessFeedback.deliveryError ||
+                                  "O envio automático não pôde ser concluído. Copie o link único abaixo e entregue com segurança ao usuário."}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setFirstAccessFeedback(null)}
+                            className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
+                            aria-label="Fechar aviso"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        {firstAccessFeedback.manualSetupLink && (
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
+                            <input
+                              type="text"
+                              readOnly
+                              value={firstAccessFeedback.manualSetupLink}
+                              className="flex-1 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-mono text-[11px] select-all"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (navigator?.clipboard?.writeText && firstAccessFeedback.manualSetupLink) {
+                                  navigator.clipboard.writeText(firstAccessFeedback.manualSetupLink).catch(() => {});
+                                }
+                                setCopiedSetupLink(true);
+                                setTimeout(() => setCopiedSetupLink(false), 2500);
+                                addToast("Link de primeiro acesso copiado!", "success");
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-[#16845B] text-white font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                            >
+                              {copiedSetupLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                              <span>{copiedSetupLink ? "Copiado" : "Copiar Link de Primeiro Acesso"}</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2 pb-2 border-b border-slate-200 dark:border-slate-800">
                       <div className="flex flex-wrap items-center gap-2">
                         <button
@@ -2571,6 +2679,19 @@ export const DashboardView: React.FC = () => {
                                     })()}
                                   </td>
                                   <td className="p-3.5 text-right whitespace-nowrap">
+                                    <button
+                                      type="button"
+                                      disabled={sendingFirstAccessUserId === u.id}
+                                      title={`Enviar / reenviar link de primeiro acesso para ${u.email}`}
+                                      onClick={() => handleSendFirstAccessForUser(u)}
+                                      className="p-2 rounded-xl bg-emerald-500/10 text-[#16845B] hover:bg-[#16845B] hover:text-white border border-emerald-500/20 transition-all mr-1.5 inline-flex items-center justify-center cursor-pointer disabled:opacity-50"
+                                    >
+                                      {sendingFirstAccessUserId === u.id ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                      ) : (
+                                        <KeyRound className="w-4 h-4" />
+                                      )}
+                                    </button>
                                     <button
                                       type="button"
                                       title={`Gerenciar Status da Conta de ${u.name}`}
@@ -4373,20 +4494,30 @@ export const DashboardView: React.FC = () => {
                 />
               </div>
 
+              <div className="p-3 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/30 border border-[#16845B]/20 text-[11px] text-[#064E3B] dark:text-emerald-200 leading-relaxed">
+                <strong>Primeiro Acesso Seguro:</strong> Nenhuma senha padrão será criada. A conta será provisionada no Firebase Authentication + Firestore e o usuário receberá um link pessoal para definir sua própria senha.
+              </div>
+
               <div className="pt-4 flex justify-end space-x-3 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
+                  disabled={isSubmittingNewUser}
                   onClick={() => setIsAddingUserOpen(false)}
-                  className="px-4 py-2.5 rounded-xl text-slate-600 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  className="px-4 py-2.5 rounded-xl text-slate-600 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer"
+                  disabled={isSubmittingNewUser}
+                  className="px-5 py-2.5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold shadow-sm transition-all flex items-center space-x-1.5 cursor-pointer disabled:opacity-60"
                 >
-                  <UserCheck className="w-4 h-4" />
-                  <span>Cadastrar Usuário</span>
+                  {isSubmittingNewUser ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <UserCheck className="w-4 h-4" />
+                  )}
+                  <span>{isSubmittingNewUser ? "Provisionando..." : "Cadastrar Usuário"}</span>
                 </button>
               </div>
             </form>

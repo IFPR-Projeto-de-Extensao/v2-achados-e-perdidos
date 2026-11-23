@@ -863,10 +863,10 @@ describe("Complementação Etapa 30 — Diagnóstico e Correção do Cadastro de
       );
     });
 
-    it("firestore.rules homologado permanece intacto (SHA-256 2f2a2ffc...) enquanto melhorias ficam no arquivo candidato separado", () => {
+    it("firestore.rules atualizado nas Etapas 3/4 mantém integridade verificada (SHA-256 7fa455e6...) enquanto o candidato da Etapa 30/31 permanece separado", () => {
       const rulesBytes = fs.readFileSync(path.resolve(process.cwd(), "firestore.rules"));
       const sha = crypto.createHash("sha256").update(rulesBytes).digest("hex");
-      expect(sha).toBe("2f2a2ffc8c471d7fe97b5d1d2bb3c2a3ca27d39947be64449ad13a532c851f9e");
+      expect(sha).toBe("7fa455e632a9d1831517fe7269e52d922b8614f903f0a28f025f6418812d95a5");
 
       const candidatePath = path.resolve(
         process.cwd(),

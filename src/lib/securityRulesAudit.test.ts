@@ -80,7 +80,7 @@ describe("Firestore Security Rules - Audit & Privilege Escalation Hardening", ()
 
   describe("Least Privilege & Personal Data Protection (/users)", () => {
     it("should block indiscriminate user directory listing by students and regular staff", () => {
-      expect(rulesContent).toMatch(/allow list: if isAdmin\(\) \|\|\s*\(isSignedIn\(\) && isAccountActive\(\) &&\s*(resource != null &&\s*)?\(?resource\.data\.email == request\.auth\.token\.email/);
+      expect(rulesContent).toMatch(/allow list: if isAdmin\(\) \|\|\s*\(isSignedIn\(\) && \(?isAccountActive\(\)(?: \|\| isVerifiedActiveExternalUser\(\))?\)? &&\s*(resource != null &&\s*)?\(?resource\.data\.email == request\.auth\.token\.email/);
     });
 
     it("should allow individual users to only read their own profile doc and block reading other users' docs", () => {
@@ -108,8 +108,9 @@ describe("Firestore Security Rules - Audit & Privilege Escalation Hardening", ()
       expect(rulesContent).toContain("function isRootAdmin()");
     });
 
-    it("should prevent deletion of an admin's own active account", () => {
-      expect(rulesContent).toContain("allow delete: if isAdmin() && request.auth.uid != userId;");
+    it("should prevent deletion of an admin's own active account and protect the Root Admin account", () => {
+      expect(rulesContent).toContain("allow delete: if isAdmin() && request.auth.uid != userId");
+      expect(rulesContent).toContain("userId != 'hCG5mDgK1fRaTojULzlM7dXvb7n2' || isRootIdentity()");
     });
   });
 
