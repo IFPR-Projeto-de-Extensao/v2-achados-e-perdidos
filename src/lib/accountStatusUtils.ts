@@ -1,6 +1,7 @@
 import type { AccountStatus, User } from "../types";
 import type { Timestamp } from "firebase/firestore";
 import { safeParseDate } from "./utils";
+import type { SupportedLanguage } from "./i18n";
 
 export type DeadlineFieldValueKind =
   | "absent"
@@ -472,6 +473,22 @@ export const SUSPENSION_PRESET_OPTIONS: SuspensionPresetOption[] = [
   { id: "indefinite", label: "Por tempo indeterminado (até reativação manual)" },
 ];
 
+export function getSuspensionPresetOptions(lang: SupportedLanguage = "pt"): SuspensionPresetOption[] {
+  if (lang === "en") {
+    return [
+      { id: "1_day", label: "1 day (24 hours)", days: 1 },
+      { id: "3_days", label: "3 days", days: 3 },
+      { id: "7_days", label: "7 days (1 week)", days: 7 },
+      { id: "15_days", label: "15 days", days: 15 },
+      { id: "30_days", label: "30 days (1 month)", days: 30 },
+      { id: "60_days", label: "60 days (2 months)", days: 60 },
+      { id: "custom", label: "Custom date and time..." },
+      { id: "indefinite", label: "Indefinitely (until manual reactivation)" },
+    ];
+  }
+  return SUSPENSION_PRESET_OPTIONS;
+}
+
 /**
  * Formats a Date into `YYYY-MM-DDTHH:mm` in the user's LOCAL timezone (for `<input type="datetime-local">`),
  * avoiding UTC shifts from `.toISOString().slice(0, 16)`.
@@ -539,29 +556,50 @@ export function parseLocalDateTimeInput(value: string): Date | null {
  * Computes the ISO-8601 string for a given preset duration from now, or validates custom input.
  * Fails loudly when presetId is unknown or when custom date is invalid / not in the future.
  */
-export function calculateSuspensionDeadline(presetId: string, customInput?: string): string | undefined {
+export function calculateSuspensionDeadline(
+  presetId: string,
+  customInput?: string,
+  lang: SupportedLanguage = "pt"
+): string | undefined {
+  const isEn = lang === "en";
   if (presetId === "indefinite") {
     return undefined;
   }
 
   if (presetId === "custom") {
     if (!customInput || !customInput.trim()) {
-      throw new Error("Selecione a data e horário limite para a suspensão personalizada.");
+      throw new Error(
+        isEn
+          ? "Select the end date and time for the custom suspension."
+          : "Selecione a data e horário limite para a suspensão personalizada."
+      );
     }
     const localParsed = parseLocalDateTimeInput(customInput);
     const parsed = localParsed ?? safeParseDate(customInput);
     if (!parsed || Number.isNaN(parsed.getTime())) {
-      throw new Error("A data e hora informadas para a suspensão personalizada são inválidas.");
+      throw new Error(
+        isEn
+          ? "The date and time provided for the custom suspension are invalid."
+          : "A data e hora informadas para a suspensão personalizada são inválidas."
+      );
     }
     if (parsed.getTime() <= Date.now()) {
-      throw new Error("A data personalizada da suspensão deve estar no futuro.");
+      throw new Error(
+        isEn
+          ? "The custom suspension deadline must be in the future."
+          : "A data personalizada da suspensão deve estar no futuro."
+      );
     }
     return parsed.toISOString();
   }
 
   const preset = SUSPENSION_PRESET_OPTIONS.find((p) => p.id === presetId);
   if (!preset || !preset.days) {
-    throw new Error(`Prazo de suspensão desconhecido: '${presetId}'.`);
+    throw new Error(
+      isEn
+        ? `Unknown suspension duration: '${presetId}'.`
+        : `Prazo de suspensão desconhecido: '${presetId}'.`
+    );
   }
 
   const future = new Date(Date.now() + preset.days * 24 * 60 * 60 * 1000);
@@ -571,28 +609,38 @@ export function calculateSuspensionDeadline(presetId: string, customInput?: stri
 /**
  * Formats account status details for display.
  */
-export function formatAccountStatusDetails(user: Partial<User>): {
+export function formatAccountStatusDetails(
+  user: Partial<User>,
+  lang: SupportedLanguage = "pt"
+): {
   label: string;
   badgeClass: string;
   dotClass: string;
   description: string;
   inconsistencyAlert?: string;
 } {
+  const isEn = lang === "en";
   const resolved = resolveAccountStatus(user);
 
   const inconsistencyAlert =
     resolved.hasLegacyInconsistency && resolved.inconsistencyReasons.length > 0
-      ? resolved.inconsistencyReasons.join(" ")
+      ? isEn
+        ? "Legacy record inconsistency detected requiring administrative review."
+        : resolved.inconsistencyReasons.join(" ")
       : undefined;
 
   switch (resolved.status) {
     case "banned":
       return {
-        label: "Banido",
+        label: isEn ? "Banned" : "Banido",
         badgeClass: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900/50",
         dotClass: "bg-red-500",
         description: resolved.statusReason
-          ? `Conta banida permanentemente. Motivo: ${resolved.statusReason}`
+          ? isEn
+            ? `Account permanently banned. Reason: ${resolved.statusReason}`
+            : `Conta banida permanentemente. Motivo: ${resolved.statusReason}`
+          : isEn
+          ? "Account permanently banned for violating IFPR policies."
           : "Conta banida permanentemente por infração às normas do IFPR.",
         inconsistencyAlert,
       };
@@ -600,20 +648,26 @@ export function formatAccountStatusDetails(user: Partial<User>): {
     case "suspended": {
       if (resolved.isDeactivated) {
         return {
-          label: "Inativo / Desativado",
+          label: isEn ? "Inactive / Deactivated" : "Inativo / Desativado",
           badgeClass: "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900/50",
           dotClass: "bg-rose-500",
-          description: `Conta desativada administrativamente (active: false).${resolved.statusReason ? ` Motivo: ${resolved.statusReason}` : ""}`,
+          description: isEn
+            ? `Account administratively deactivated.${resolved.statusReason ? ` Reason: ${resolved.statusReason}` : ""}`
+            : `Conta desativada administrativamente (active: false).${resolved.statusReason ? ` Motivo: ${resolved.statusReason}` : ""}`,
           inconsistencyAlert,
         };
       }
 
       if (resolved.suspendedUntilEval.isInvalid || resolved.blockExpiresAtEval.isInvalid) {
         return {
-          label: "Bloqueado (Inconsistência)",
+          label: isEn ? "Blocked (Inconsistency)" : "Bloqueado (Inconsistência)",
           badgeClass: "bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800",
           dotClass: "bg-amber-600",
-          description: inconsistencyAlert || "Conta bloqueada por incompatibilidade cadastral nas Firestore Rules.",
+          description:
+            inconsistencyAlert ||
+            (isEn
+              ? "Account blocked due to an inconsistent security rule record."
+              : "Conta bloqueada por incompatibilidade cadastral nas Firestore Rules."),
           inconsistencyAlert,
         };
       }
@@ -625,35 +679,48 @@ export function formatAccountStatusDetails(user: Partial<User>): {
           ? user.blockExpiresAt
           : resolved.suspendedUntil;
       const untilDate = activeDeadlineRaw ? safeParseDate(activeDeadlineRaw) : null;
+      const locale = isEn ? "en-US" : "pt-BR";
       const untilStr = untilDate
-        ? ` até ${untilDate.toLocaleDateString("pt-BR")} às ${untilDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+        ? isEn
+          ? ` until ${untilDate.toLocaleDateString(locale)} at ${untilDate.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}`
+          : ` até ${untilDate.toLocaleDateString(locale)} às ${untilDate.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}`
+        : isEn
+        ? " indefinitely"
         : " por tempo indeterminado";
       return {
-        label: "Suspenso",
+        label: isEn ? "Suspended" : "Suspenso",
         badgeClass: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/50",
         dotClass: "bg-amber-500",
-        description: `Conta suspensa${untilStr}.${resolved.statusReason ? ` Motivo: ${resolved.statusReason}` : ""}`,
+        description: isEn
+          ? `Account suspended${untilStr}.${resolved.statusReason ? ` Reason: ${resolved.statusReason}` : ""}`
+          : `Conta suspensa${untilStr}.${resolved.statusReason ? ` Motivo: ${resolved.statusReason}` : ""}`,
         inconsistencyAlert,
       };
     }
 
     case "active":
       return {
-        label: "Ativo",
+        label: isEn ? "Active" : "Ativo",
         badgeClass: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50",
         dotClass: "bg-emerald-500",
         description: resolved.hasMissingStatusField
-          ? "Conta ativa via compatibilidade legada (campo 'status' ausente no documento)."
+          ? isEn
+            ? "Active account via legacy compatibility (missing 'status' field)."
+            : "Conta ativa via compatibilidade legada (campo 'status' ausente no documento)."
+          : isEn
+          ? "Active account with full access enabled."
           : "Conta ativa e com acesso liberado a todas as funcionalidades.",
         inconsistencyAlert,
       };
 
     default:
       return {
-        label: "Inativo / Restrito",
+        label: isEn ? "Inactive / Restricted" : "Inativo / Restrito",
         badgeClass: "bg-neutral-100 text-neutral-700 border-neutral-300 dark:bg-neutral-800 dark:text-neutral-300 dark:border-neutral-700",
         dotClass: "bg-neutral-400",
-        description: "Conta inativa ou com status irregular no sistema.",
+        description: isEn
+          ? "Account is inactive or has an irregular system status."
+          : "Conta inativa ou com status irregular no sistema.",
         inconsistencyAlert,
       };
   }

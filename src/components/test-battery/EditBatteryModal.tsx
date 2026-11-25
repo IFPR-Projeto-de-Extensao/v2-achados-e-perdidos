@@ -3,6 +3,8 @@ import { X, Edit3, Save, Calendar, Clock, AlertTriangle, ShieldCheck } from "luc
 import { TestBatteryExecution, TestBatteryStatus } from "../../types";
 import { vibrateClick, vibrateSuccess, vibrateWarning } from "../../lib/utils";
 import { calculateTestDuration } from "../../data/defaultTestBatteryData";
+import { useApp } from "../../context/AppContext";
+import { localize } from "../../lib/i18n";
 
 interface EditBatteryModalProps {
   isOpen: boolean;
@@ -19,6 +21,8 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
   onSaveBattery,
   darkMode,
 }) => {
+  const { language } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
   const [title, setTitle] = useState(battery.title || battery.name || "");
   const [systemVersion, setSystemVersion] = useState(battery.systemVersion || "");
   const [description, setDescription] = useState(battery.description || "");
@@ -116,12 +120,13 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
               <Edit3 className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-black tracking-tight">Editar Bateria de Testes</h2>
-              <p className="text-xs text-neutral-500 font-mono">Identificador: {battery.id}</p>
+              <h2 className="text-lg font-black tracking-tight">{L("Editar Bateria de Testes", "Edit Test Battery")}</h2>
+              <p className="text-xs text-neutral-500 font-mono">{L("Identificador:", "Identifier:")} {battery.id}</p>
             </div>
           </div>
           <button
             onClick={onClose}
+            aria-label={L("Fechar", "Close")}
             className="p-2 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition"
           >
             <X className="w-5 h-5" />
@@ -132,13 +137,13 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Nome da Bateria */}
             <div className="space-y-1 sm:col-span-2">
-              <label className="text-xs font-bold text-neutral-500 uppercase">Nome da Bateria *</label>
+              <label className="text-xs font-bold text-neutral-500 uppercase">{L("Nome da Bateria *", "Battery Name *")}</label>
               <input
                 type="text"
                 required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Ex: Bateria de Testes de Homologação v1.8.4"
+                placeholder={L("Ex.: Bateria de Testes de Homologação v1.10.13", "e.g., Approval Test Battery v1.10.13")}
                 className={`w-full text-xs font-bold px-3 py-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
                   darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
                 }`}
@@ -147,13 +152,13 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
 
             {/* Versão do Sistema */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-neutral-500 uppercase">Versão do Sistema *</label>
+              <label className="text-xs font-bold text-neutral-500 uppercase">{L("Versão do Sistema *", "System Version *")}</label>
               <input
                 type="text"
                 required
                 value={systemVersion}
                 onChange={(e) => setSystemVersion(e.target.value)}
-                placeholder="Ex: v1.8.4"
+                placeholder={L("Ex.: v1.10.13", "e.g., v1.10.13")}
                 className={`w-full text-xs font-semibold px-3 py-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
                   darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
                 }`}
@@ -162,7 +167,7 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
 
             {/* Status da Bateria */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-neutral-500 uppercase">Status da Bateria *</label>
+              <label className="text-xs font-bold text-neutral-500 uppercase">{L("Situação da Bateria *", "Battery Status *")}</label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as TestBatteryStatus)}
@@ -170,16 +175,16 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
                   darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
                 }`}
               >
-                <option value="RASCUNHO">Rascunho</option>
-                <option value="EM_ANDAMENTO">Em andamento</option>
-                <option value="CONCLUIDA">Concluída</option>
-                <option value="ARQUIVADA">Arquivada</option>
+                <option value="RASCUNHO">{L("Rascunho", "Draft")}</option>
+                <option value="EM_ANDAMENTO">{L("Em andamento", "In progress")}</option>
+                <option value="CONCLUIDA">{L("Concluída", "Completed")}</option>
+                <option value="ARQUIVADA">{L("Arquivada", "Archived")}</option>
               </select>
             </div>
 
             {/* Ambiente */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-neutral-500 uppercase">Ambiente *</label>
+              <label className="text-xs font-bold text-neutral-500 uppercase">{L("Ambiente *", "Environment *")}</label>
               <select
                 value={environment}
                 onChange={(e: any) => setEnvironment(e.target.value)}
@@ -187,15 +192,15 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
                   darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
                 }`}
               >
-                <option value="Desenvolvimento">Desenvolvimento</option>
-                <option value="Homologação">Homologação</option>
-                <option value="Produção">Produção</option>
+                <option value="Desenvolvimento">{L("Desenvolvimento", "Development")}</option>
+                <option value="Homologação">{L("Homologação", "Staging")}</option>
+                <option value="Produção">{L("Produção", "Production")}</option>
               </select>
             </div>
 
             {/* Data do Teste */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-neutral-500 uppercase">Data de Execução</label>
+              <label className="text-xs font-bold text-neutral-500 uppercase">{L("Data de Execução", "Execution Date")}</label>
               <input
                 type="date"
                 value={testDate}
@@ -208,7 +213,7 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
 
             {/* Horários */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-neutral-500 uppercase">Horário de Início</label>
+              <label className="text-xs font-bold text-neutral-500 uppercase">{L("Horário de Início", "Start Time")}</label>
               <input
                 type="time"
                 value={startTime}
@@ -220,7 +225,7 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-neutral-500 uppercase">Horário de Término</label>
+              <label className="text-xs font-bold text-neutral-500 uppercase">{L("Horário de Término", "End Time")}</label>
               <input
                 type="time"
                 value={endTime}
@@ -235,14 +240,14 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
             <div className="sm:col-span-2 p-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/60 flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-emerald-500" />
-                <span className="font-bold text-neutral-700 dark:text-neutral-300">Duração Calculada:</span>
+                <span className="font-bold text-neutral-700 dark:text-neutral-300">{L("Duração Calculada:", "Calculated Duration:")}</span>
               </div>
               <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{durationStr}</span>
             </div>
 
             {/* Responsável */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-neutral-500 uppercase">Responsável *</label>
+              <label className="text-xs font-bold text-neutral-500 uppercase">{L("Responsável *", "Responsible *")}</label>
               <input
                 type="text"
                 required
@@ -256,7 +261,7 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
 
             {/* E-mail Responsável */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-neutral-500 uppercase">E-mail do Responsável</label>
+              <label className="text-xs font-bold text-neutral-500 uppercase">{L("E-mail do Responsável", "Responsible E-mail")}</label>
               <input
                 type="email"
                 value={responsibleEmail}
@@ -270,12 +275,12 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
 
           {/* Descrição / Objetivo */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-neutral-500 uppercase">Descrição & Objetivos da Bateria</label>
+            <label className="text-xs font-bold text-neutral-500 uppercase">{L("Descrição e Objetivos da Bateria", "Battery Description & Objectives")}</label>
             <textarea
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Descreva o escopo, módulos avaliados e metas desta rodada..."
+              placeholder={L("Descreva o escopo, módulos avaliados e metas desta rodada...", "Describe the scope, evaluated modules, and goals for this cycle...")}
               className={`w-full text-xs font-medium px-3 py-2 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
                 darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
               }`}
@@ -284,12 +289,12 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
 
           {/* Observações */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-neutral-500 uppercase">Observações Gerais</label>
+            <label className="text-xs font-bold text-neutral-500 uppercase">{L("Observações Gerais", "General Notes")}</label>
             <textarea
               rows={2}
               value={observations}
               onChange={(e) => setObservations(e.target.value)}
-              placeholder="Anotações adicionais, particularidades de infraestrutura ou homologação..."
+              placeholder={L("Anotações adicionais, particularidades de infraestrutura ou homologação...", "Additional notes, infrastructure details, or approval remarks...")}
               className={`w-full text-xs font-medium px-3 py-2 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
                 darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
               }`}
@@ -302,7 +307,7 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
               onClick={onClose}
               className="px-4 py-2.5 text-xs font-semibold rounded-xl border dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
             >
-              Cancelar
+              {L("Cancelar", "Cancel")}
             </button>
             <button
               type="submit"
@@ -310,7 +315,7 @@ export const EditBatteryModal: React.FC<EditBatteryModalProps> = ({
               className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center gap-1.5"
             >
               <Save className="w-4 h-4" />
-              Salvar Alterações
+              {L("Salvar Alterações", "Save Changes")}
             </button>
           </div>
         </form>

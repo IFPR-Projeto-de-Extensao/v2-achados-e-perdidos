@@ -29,6 +29,8 @@ import {
   TestExecutionAuditEntry,
 } from "../../types";
 import { vibrateClick, vibrateSuccess, vibrateWarning } from "../../lib/utils";
+import { useApp } from "../../context/AppContext";
+import { localize, translateUserRole } from "../../lib/i18n";
 
 interface TestDistributionSectionProps {
   battery: TestBatteryExecution;
@@ -40,20 +42,20 @@ interface TestDistributionSectionProps {
   isAdmin?: boolean;
 }
 
-const CATEGORY_NAMES: Record<TestCategory, string> = {
-  AUTENTICACAO: "Autenticação & Sessão",
-  CADASTRO: "Cadastro & Persistência",
-  ACHADOS_PERDIDOS: "Achados & Perdidos",
-  REIVINDICACOES: "Reivindicações",
-  QR_CODE: "QR Code & Etiquetas",
-  IA_GEMINI: "Inteligência Artificial",
-  PWA_MOBILE: "PWA & Mobile",
-  DOCUMENTOS: "Documentos Oficiais",
-  NOTIFICACOES: "Notificações & Alertas",
-  SEGURANCA: "Segurança & Auditoria",
-  APIS_PRODUCAO: "APIs & Webhooks",
-  MONITORAMENTO: "Monitoramento & Uptime",
-};
+const getCategoryNames = (language: "pt" | "en"): Record<TestCategory, string> => ({
+  AUTENTICACAO: localize(language, "Autenticação e Sessão", "Authentication & Session"),
+  CADASTRO: localize(language, "Cadastro e Persistência", "Registration & Persistence"),
+  ACHADOS_PERDIDOS: localize(language, "Achados e Perdidos", "Lost & Found"),
+  REIVINDICACOES: localize(language, "Reivindicações", "Claims"),
+  QR_CODE: localize(language, "QR Code e Etiquetas", "QR Code & Tags"),
+  IA_GEMINI: localize(language, "Inteligência Artificial", "Artificial Intelligence"),
+  PWA_MOBILE: localize(language, "PWA e Móveis", "PWA & Mobile"),
+  DOCUMENTOS: localize(language, "Documentos Oficiais", "Official Documents"),
+  NOTIFICACOES: localize(language, "Notificações e Alertas", "Notifications & Alerts"),
+  SEGURANCA: localize(language, "Segurança e Auditoria", "Security & Audit"),
+  APIS_PRODUCAO: localize(language, "APIs e Webhooks", "APIs & Webhooks"),
+  MONITORAMENTO: localize(language, "Monitoramento e Disponibilidade", "Monitoring & Uptime"),
+});
 
 export const TestDistributionSection: React.FC<TestDistributionSectionProps> = ({
   battery,
@@ -64,6 +66,33 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
   darkMode,
   isAdmin = true,
 }) => {
+  const { language } = useApp();
+  const l = (pt: string, en: string) => localize(language, pt, en);
+  const categoryNames = useMemo(() => getCategoryNames(language), [language]);
+
+  const translateTestStatus = (status?: string) => {
+    switch (status) {
+      case "APROVADO":
+        return l("APROVADO", "PASSED");
+      case "REPROVADO":
+        return l("REPROVADO", "FAILED");
+      case "PENDENTE":
+        return l("PENDENTE", "PENDING");
+      case "NAO_EXECUTADO":
+        return l("NÃO EXECUTADO", "NOT EXECUTED");
+      case "EM_EXECUCAO":
+        return l("EM EXECUÇÃO", "IN PROGRESS");
+      case "CONCLUIDO":
+        return l("CONCLUÍDO", "COMPLETED");
+      case "PROBLEMA":
+        return l("PROBLEMA", "ISSUE");
+      case "BLOQUEADO":
+        return l("BLOQUEADO", "BLOCKED");
+      default:
+        return status || l("PENDENTE", "PENDING");
+    }
+  };
+
   const [selectedParticipantId, setSelectedParticipantId] = useState<string>("");
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<string>("ALL");
   const [assignmentFilter, setAssignmentFilter] = useState<"ALL" | "UNASSIGNED" | "ASSIGNED">("ALL");
@@ -229,7 +258,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
       return t;
     });
 
-    const catName = CATEGORY_NAMES[selectedCategoryFilter as TestCategory] || selectedCategoryFilter;
+    const catName = categoryNames[selectedCategoryFilter as TestCategory] || selectedCategoryFilter;
 
     const newAuditEntry: TestExecutionAuditEntry = {
       id: `audit-assign-cat-${Date.now()}`,
@@ -475,7 +504,14 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
 
   // Reset all assignments
   const handleResetAllAssignments = async () => {
-    if (!window.confirm("Deseja realmente desatribuir TODOS os testes da bateria? Todos os testes retornarão ao status NÃO ATRIBUÍDO.")) {
+    if (
+      !window.confirm(
+        l(
+          "Deseja realmente desatribuir TODOS os testes da bateria? Todos os testes retornarão à situação NÃO ATRIBUÍDO.",
+          "Are you sure you want to unassign ALL tests in this battery? Every test will return to UNASSIGNED status."
+        )
+      )
+    ) {
       return;
     }
 
@@ -516,7 +552,15 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
         <div className="p-3.5 rounded-xl border border-blue-500/30 bg-blue-500/10 text-blue-800 dark:text-blue-300 flex items-center gap-2.5 text-xs font-semibold">
           <Shield className="w-4 h-4 shrink-0 text-blue-500" />
           <span>
-            <strong>Modo Somente Leitura:</strong> Apenas administradores e servidores do IFPR podem distribuir testes ou alterar a equipe. Você pode consultar os testes atribuídos a você na aba <em>Meus Testes Atribuídos</em>.
+            {language === "en" ? (
+              <>
+                <strong>Read-Only Mode:</strong> Only IFPR administrators and staff can distribute tests or manage the team. You can view tests assigned to you in the <em>My Assigned Tests</em> tab.
+              </>
+            ) : (
+              <>
+                <strong>Modo Somente Leitura:</strong> Apenas administradores e servidores do IFPR podem distribuir testes ou alterar a equipe. Você pode consultar os testes atribuídos a você na aba <em>Meus Testes Atribuídos</em>.
+              </>
+            )}
           </span>
         </div>
       )}
@@ -529,12 +573,12 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
           }`}
         >
           <div className="text-[10px] font-extrabold uppercase tracking-wider text-neutral-500 mb-1">
-            Total de Testes
+            {l("Total de Testes", "Total Tests")}
           </div>
           <div className="text-xl font-black text-neutral-900 dark:text-white">
             {totalTests}
           </div>
-          <p className="text-[10px] text-neutral-400 mt-0.5">Definidos na bateria</p>
+          <p className="text-[10px] text-neutral-400 mt-0.5">{l("Definidos na bateria", "Defined in battery")}</p>
         </div>
 
         <div
@@ -543,13 +587,13 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
           }`}
         >
           <div className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-1">
-            Distribuídos
+            {l("Distribuídos", "Assigned")}
           </div>
           <div className="text-xl font-black text-emerald-600 dark:text-emerald-400">
             {assignedCount}
           </div>
           <p className="text-[10px] text-neutral-400 mt-0.5">
-            {totalTests > 0 ? ((assignedCount / totalTests) * 100).toFixed(0) : 0}% atribuídos
+            {totalTests > 0 ? ((assignedCount / totalTests) * 100).toFixed(0) : 0}% {l("atribuídos", "assigned")}
           </p>
         </div>
 
@@ -559,12 +603,12 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
           }`}
         >
           <div className="text-[10px] font-extrabold uppercase tracking-wider text-amber-600 dark:text-amber-400 mb-1">
-            Não Distribuídos
+            {l("Não Distribuídos", "Unassigned")}
           </div>
           <div className="text-xl font-black text-amber-600 dark:text-amber-400">
             {unassignedCount}
           </div>
-          <p className="text-[10px] text-neutral-400 mt-0.5">Aguardando testador</p>
+          <p className="text-[10px] text-neutral-400 mt-0.5">{l("Aguardando testador", "Awaiting tester")}</p>
         </div>
 
         <div
@@ -573,12 +617,12 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
           }`}
         >
           <div className="text-[10px] font-extrabold uppercase tracking-wider text-teal-600 dark:text-teal-400 mb-1">
-            Concluídos
+            {l("Concluídos", "Completed")}
           </div>
           <div className="text-xl font-black text-teal-600 dark:text-teal-400">
             {completedTests.length}
           </div>
-          <p className="text-[10px] text-neutral-400 mt-0.5">Finalizados</p>
+          <p className="text-[10px] text-neutral-400 mt-0.5">{l("Finalizados", "Finished")}</p>
         </div>
 
         <div
@@ -587,12 +631,12 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
           }`}
         >
           <div className="text-[10px] font-extrabold uppercase tracking-wider text-rose-600 dark:text-rose-400 mb-1">
-            Com Problemas
+            {l("Com Problemas", "With Issues")}
           </div>
           <div className="text-xl font-black text-rose-600 dark:text-rose-400">
             {failedTests.length}
           </div>
-          <p className="text-[10px] text-neutral-400 mt-0.5">Falhas apontadas</p>
+          <p className="text-[10px] text-neutral-400 mt-0.5">{l("Falhas apontadas", "Reported failures")}</p>
         </div>
 
         <div
@@ -601,12 +645,14 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
           }`}
         >
           <div className="text-[10px] font-extrabold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1">
-            Progresso Geral
+            {l("Progresso Geral", "Overall Progress")}
           </div>
           <div className="text-xl font-black text-indigo-600 dark:text-indigo-400">
             {progressPct}%
           </div>
-          <p className="text-[10px] text-neutral-400 mt-0.5">{completedTests.length}/{totalTests} casos</p>
+          <p className="text-[10px] text-neutral-400 mt-0.5">
+            {completedTests.length}/{totalTests} {l("casos", "cases")}
+          </p>
         </div>
       </div>
 
@@ -620,11 +666,14 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-emerald-600" />
             <h4 className="text-xs font-black uppercase tracking-wider text-neutral-800 dark:text-neutral-200">
-              Resumo da Distribuição por Participante
+              {l("Resumo da Distribuição por Participante", "Distribution Summary by Participant")}
             </h4>
           </div>
           <span className="text-[11px] text-neutral-500 font-semibold">
-            {totalParticipants} participante(s) • {assignedCount}/{totalTests} testes distribuídos
+            {l(
+              `${totalParticipants} participante(s) • ${assignedCount}/${totalTests} testes distribuídos`,
+              `${totalParticipants} participant(s) • ${assignedCount}/${totalTests} tests assigned`
+            )}
           </span>
         </div>
 
@@ -657,7 +706,10 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                     key={p.id}
                     className={`${colorClass} h-full transition-all duration-300 relative group cursor-pointer`}
                     style={{ width: `${widthPct}%` }}
-                    title={`${p.name}: ${count} testes (${widthPct.toFixed(1)}%)`}
+                    title={l(
+                      `${p.name}: ${count} testes (${widthPct.toFixed(1)}%)`,
+                      `${p.name}: ${count} tests (${widthPct.toFixed(1)}%)`
+                    )}
                     onClick={() => setSelectedParticipantId(p.id)}
                   />
                 );
@@ -666,20 +718,26 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                 <div
                   className="bg-amber-400 dark:bg-amber-500 h-full transition-all duration-300"
                   style={{ width: `${(unassignedCount / totalTests) * 100}%` }}
-                  title={`Não Atribuídos: ${unassignedCount} testes (${((unassignedCount / totalTests) * 100).toFixed(1)}%)`}
+                  title={l(
+                    `Não Atribuídos: ${unassignedCount} testes (${((unassignedCount / totalTests) * 100).toFixed(1)}%)`,
+                    `Unassigned: ${unassignedCount} tests (${((unassignedCount / totalTests) * 100).toFixed(1)}%)`
+                  )}
                 />
               )}
             </div>
 
             <div className="flex items-center justify-between text-[10px] text-neutral-400 font-semibold px-0.5">
-              <span>Distribuição Total ({totalTests} casos)</span>
+              <span>{l(`Distribuição Total (${totalTests} casos)`, `Total Distribution (${totalTests} cases)`)}</span>
               {unassignedCount > 0 ? (
                 <span className="text-amber-600 dark:text-amber-400 font-bold">
-                  {unassignedCount} pendentes ({((unassignedCount / totalTests) * 100).toFixed(0)}%)
+                  {l(
+                    `${unassignedCount} pendentes (${((unassignedCount / totalTests) * 100).toFixed(0)}%)`,
+                    `${unassignedCount} unassigned (${((unassignedCount / totalTests) * 100).toFixed(0)}%)`
+                  )}
                 </span>
               ) : (
                 <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                  100% dos testes distribuídos
+                  {l("100% dos testes distribuídos", "100% of tests assigned")}
                 </span>
               )}
             </div>
@@ -688,7 +746,9 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
 
         {/* Participant Cards Grid */}
         {participants.length === 0 ? (
-          <p className="text-xs text-neutral-400 italic py-2">Nenhum participante cadastrado para distribuição.</p>
+          <p className="text-xs text-neutral-400 italic py-2">
+            {l("Nenhum participante cadastrado para distribuição.", "No participants registered for distribution.")}
+          </p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-1">
             {participants.map((p, idx) => {
@@ -749,7 +809,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                                 : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
                             }`}
                           >
-                            {p.globalRole}
+                            {translateUserRole(p.globalRole, language)}
                           </span>
                         </div>
                       </div>
@@ -757,10 +817,10 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
 
                     <div className="text-right flex-shrink-0">
                       <div className="font-black text-neutral-900 dark:text-white text-xs">
-                        {totalAssigned} {totalAssigned === 1 ? "teste" : "testes"}
+                        {totalAssigned} {totalAssigned === 1 ? l("teste", "test") : l("testes", "tests")}
                       </div>
                       <div className="text-[10px] text-neutral-400">
-                        {pctOfTotal}% do total
+                        {pctOfTotal}% {l("do total", "of total")}
                       </div>
                     </div>
                   </div>
@@ -768,19 +828,19 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                   {/* Resumo com os 5 indicadores obrigatórios por testador */}
                   <div className="grid grid-cols-4 gap-1 text-[10px] pt-1.5 border-t dark:border-neutral-800/60 border-neutral-200 text-center">
                     <div className="bg-neutral-100 dark:bg-neutral-800/80 rounded py-1 px-0.5">
-                      <div className="text-neutral-400 text-[9px] font-bold">Pend.</div>
+                      <div className="text-neutral-400 text-[9px] font-bold">{l("Pend.", "Pend.")}</div>
                       <div className="font-extrabold text-neutral-700 dark:text-neutral-300">{pendingCount}</div>
                     </div>
                     <div className="bg-blue-50 dark:bg-blue-950/40 rounded py-1 px-0.5">
-                      <div className="text-blue-500 text-[9px] font-bold">Andam.</div>
+                      <div className="text-blue-500 text-[9px] font-bold">{l("Andam.", "Active")}</div>
                       <div className="font-extrabold text-blue-600 dark:text-blue-400">{inProgressCount}</div>
                     </div>
                     <div className="bg-emerald-50 dark:bg-emerald-950/40 rounded py-1 px-0.5">
-                      <div className="text-emerald-500 text-[9px] font-bold">Concl.</div>
+                      <div className="text-emerald-500 text-[9px] font-bold">{l("Concl.", "Done")}</div>
                       <div className="font-extrabold text-emerald-600 dark:text-emerald-400">{completedCount}</div>
                     </div>
                     <div className="bg-rose-50 dark:bg-rose-950/40 rounded py-1 px-0.5">
-                      <div className="text-rose-500 text-[9px] font-bold">Prob.</div>
+                      <div className="text-rose-500 text-[9px] font-bold">{l("Prob.", "Issues")}</div>
                       <div className="font-extrabold text-rose-600 dark:text-rose-400">{problemCount}</div>
                     </div>
                   </div>
@@ -798,10 +858,13 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
             <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
             <div>
               <p className="text-xs font-bold text-amber-900 dark:text-amber-200">
-                Nenhum participante cadastrado na bateria.
+                {l("Nenhum participante cadastrado na bateria.", "No participants registered in this battery.")}
               </p>
               <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
-                Adicione alunos, servidores ou administradores à equipe para iniciar a distribuição manual ou automática de testes.
+                {l(
+                  "Adicione alunos, servidores ou administradores à equipe para iniciar a distribuição manual ou automática de testes.",
+                  "Add students, staff, or administrators to the team to start manual or automatic test distribution."
+                )}
               </p>
             </div>
           </div>
@@ -811,7 +874,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
               className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition flex-shrink-0 flex items-center gap-1.5 shadow-sm"
             >
               <Users className="w-4 h-4" />
-              Adicionar Participantes
+              {l("Adicionar Participantes", "Add Participants")}
             </button>
           )}
         </div>
@@ -829,7 +892,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
             }`}
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
-            Distribuição Manual
+            {l("Distribuição Manual", "Manual Distribution")}
           </button>
 
           {totalParticipants > 0 && totalTests > 0 && (
@@ -842,7 +905,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              Distribuição Automática
+              {l("Distribuição Automática", "Automatic Distribution")}
             </button>
           )}
 
@@ -855,7 +918,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            Quadro por Participante ({participants.length})
+            {l(`Quadro por Participante (${participants.length})`, `Board by Participant (${participants.length})`)}
           </button>
         </div>
 
@@ -866,7 +929,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
             className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 dark:text-rose-400 flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-rose-500/10 transition"
           >
             <RotateCcw className="w-3 h-3" />
-            Limpar Todas as Atribuições
+            {l("Limpar Todas as Atribuições", "Clear All Assignments")}
           </button>
         )}
       </div>
@@ -877,9 +940,12 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
           {totalParticipants === 0 ? (
             <div className="text-center py-12 px-4 rounded-2xl border border-dashed dark:border-neutral-800 border-neutral-300">
               <Users className="w-10 h-10 mx-auto text-neutral-400 mb-2" />
-              <h3 className="text-sm font-bold">Cadastre participantes primeiro</h3>
+              <h3 className="text-sm font-bold">{l("Cadastre participantes primeiro", "Register participants first")}</h3>
               <p className="text-xs text-neutral-500 mt-1 max-w-md mx-auto">
-                Para distribuir testes manualmente, adicione ao menos um participante à equipe da bateria.
+                {l(
+                  "Para distribuir testes manualmente, adicione ao menos um participante à equipe da bateria.",
+                  "To manually assign tests, add at least one participant to the battery team."
+                )}
               </p>
             </div>
           ) : (
@@ -894,7 +960,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                 >
                   <label className="text-xs font-bold text-neutral-500 uppercase flex items-center gap-1.5">
                     <UserCheck className="w-4 h-4 text-emerald-600" />
-                    1. Selecionar Participante Destino
+                    {l("1. Selecionar Participante Destino", "1. Select Target Participant")}
                   </label>
 
                   <select
@@ -910,7 +976,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                       ).length;
                       return (
                         <option key={p.id} value={p.id}>
-                          {p.name} ({p.globalRole}) - {count} teste(s)
+                          {p.name} ({translateUserRole(p.globalRole, language)}) - {count} {l("teste(s)", "test(s)")}
                         </option>
                       );
                     })}
@@ -921,12 +987,15 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                       <div className="flex items-center justify-between">
                         <span className="font-bold">{activeParticipant.name}</span>
                         <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                          {activeParticipant.globalRole}
+                          {translateUserRole(activeParticipant.globalRole, language)}
                         </span>
                       </div>
                       <div className="text-[11px] text-neutral-500">{activeParticipant.email}</div>
                       <div className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 pt-1">
-                        {testsOfActiveParticipant.length} teste(s) atribuído(s) atualmente
+                        {l(
+                          `${testsOfActiveParticipant.length} teste(s) atribuído(s) atualmente`,
+                          `${testsOfActiveParticipant.length} test(s) currently assigned`
+                        )}
                       </div>
                     </div>
                   )}
@@ -940,7 +1009,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                 >
                   <label className="text-xs font-bold text-neutral-500 uppercase flex items-center gap-1.5">
                     <Briefcase className="w-4 h-4 text-emerald-600" />
-                    2. Ações de Atribuição
+                    {l("2. Ações de Atribuição", "2. Assignment Actions")}
                   </label>
 
                   <button
@@ -949,7 +1018,10 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                     className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
                   >
                     <UserCheck className="w-4 h-4" />
-                    Atribuir Selecionados ({selectedTestIds.length}) ao Participante
+                    {l(
+                      `Atribuir Selecionados (${selectedTestIds.length}) ao Participante`,
+                      `Assign Selected (${selectedTestIds.length}) to Participant`
+                    )}
                   </button>
 
                   {selectedCategoryFilter !== "ALL" && (
@@ -959,7 +1031,10 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                       className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
                     >
                       <Layers className="w-4 h-4" />
-                      Atribuir Categoria Inteira ({CATEGORY_NAMES[selectedCategoryFilter as TestCategory] || selectedCategoryFilter})
+                      {l(
+                        `Atribuir Categoria Inteira (${categoryNames[selectedCategoryFilter as TestCategory] || selectedCategoryFilter})`,
+                        `Assign Entire Category (${categoryNames[selectedCategoryFilter as TestCategory] || selectedCategoryFilter})`
+                      )}
                     </button>
                   )}
                 </div>
@@ -972,7 +1047,10 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                 >
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-neutral-500 uppercase">
-                      Testes de {activeParticipant?.name?.split(" ")[0]} ({testsOfActiveParticipant.length})
+                      {l(
+                        `Testes de ${activeParticipant?.name?.split(" ")[0]} (${testsOfActiveParticipant.length})`,
+                        `${activeParticipant?.name?.split(" ")[0]}'s Tests (${testsOfActiveParticipant.length})`
+                      )}
                     </label>
                     {testsOfActiveParticipant.length > 0 && (
                       <button
@@ -980,14 +1058,17 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                         disabled={isProcessing}
                         className="text-[10px] font-bold text-rose-600 hover:underline"
                       >
-                        Desatribuir Todos
+                        {l("Desatribuir Todos", "Unassign All")}
                       </button>
                     )}
                   </div>
 
                   {testsOfActiveParticipant.length === 0 ? (
                     <p className="text-xs text-neutral-400 italic py-2">
-                      Nenhum teste atribuído a este participante até o momento.
+                      {l(
+                        "Nenhum teste atribuído a este participante até o momento.",
+                        "No tests assigned to this participant yet."
+                      )}
                     </p>
                   ) : (
                     <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
@@ -1003,7 +1084,8 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                           <button
                             onClick={() => handleUnassignSingleTest(t.id)}
                             className="text-neutral-400 hover:text-rose-500 p-1 ml-2 transition flex-shrink-0"
-                            title="Remover atribuição deste teste"
+                            title={l("Remover atribuição deste teste", "Remove assignment from this test")}
+                            aria-label={l("Remover atribuição deste teste", "Remove assignment from this test")}
                           >
                             <UserMinus className="w-3.5 h-3.5" />
                           </button>
@@ -1032,8 +1114,10 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                         darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
                       }`}
                     >
-                      <option value="ALL">Todas as Categorias ({totalTests})</option>
-                      {Object.entries(CATEGORY_NAMES).map(([catId, catName]) => {
+                      <option value="ALL">
+                        {l(`Todas as Categorias (${totalTests})`, `All Categories (${totalTests})`)}
+                      </option>
+                      {Object.entries(categoryNames).map(([catId, catName]) => {
                         const count = tests.filter((t) => t.category === catId).length;
                         return (
                           <option key={catId} value={catId}>
@@ -1054,7 +1138,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                           : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
                       }`}
                     >
-                      Todos
+                      {l("Todos", "All")}
                     </button>
                     <button
                       onClick={() => setAssignmentFilter("UNASSIGNED")}
@@ -1064,7 +1148,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                           : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
                       }`}
                     >
-                      Não Atribuídos ({unassignedCount})
+                      {l(`Não Atribuídos (${unassignedCount})`, `Unassigned (${unassignedCount})`)}
                     </button>
                     <button
                       onClick={() => setAssignmentFilter("ASSIGNED")}
@@ -1074,7 +1158,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                           : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
                       }`}
                     >
-                      Atribuídos ({assignedCount})
+                      {l(`Atribuídos (${assignedCount})`, `Assigned (${assignedCount})`)}
                     </button>
                   </div>
 
@@ -1085,7 +1169,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Buscar teste..."
+                      placeholder={l("Buscar teste...", "Search test...")}
                       className={`w-full text-xs pl-8 pr-2.5 py-1.5 rounded-lg border outline-none ${
                         darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
                       }`}
@@ -1105,11 +1189,17 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                     ) : (
                       <Square className="w-4 h-4 text-neutral-400" />
                     )}
-                    Selecionar Todos os {filteredAvailableTests.length} Filtrados
+                    {l(
+                      `Selecionar Todos os ${filteredAvailableTests.length} Filtrados`,
+                      `Select All ${filteredAvailableTests.length} Filtered`
+                    )}
                   </button>
 
                   <span className="text-[11px] text-neutral-400">
-                    {selectedTestIds.length} teste(s) selecionado(s)
+                    {l(
+                      `${selectedTestIds.length} teste(s) selecionado(s)`,
+                      `${selectedTestIds.length} test(s) selected`
+                    )}
                   </span>
                 </div>
 
@@ -1118,18 +1208,21 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                   <table className="w-full text-left text-xs">
                     <thead className="sticky top-0 bg-neutral-100 dark:bg-neutral-800 font-bold uppercase text-[10px] text-neutral-600 dark:text-neutral-400 border-b dark:border-neutral-800 border-neutral-200 z-10">
                       <tr>
-                        <th className="py-2.5 px-3 w-8 text-center">Sel.</th>
-                        <th className="py-2.5 px-3 w-28">ID & Categoria</th>
-                        <th className="py-2.5 px-4">Caso de Teste & Procedimento</th>
-                        <th className="py-2.5 px-3 w-40">Responsável Atual</th>
-                        <th className="py-2.5 px-3 w-24 text-center">Status</th>
+                        <th className="py-2.5 px-3 w-8 text-center">{l("Sel.", "Sel.")}</th>
+                        <th className="py-2.5 px-3 w-28">{l("ID e Categoria", "ID & Category")}</th>
+                        <th className="py-2.5 px-4">{l("Caso de Teste e Procedimento", "Test Case & Procedure")}</th>
+                        <th className="py-2.5 px-3 w-40">{l("Responsável Atual", "Current Assignee")}</th>
+                        <th className="py-2.5 px-3 w-24 text-center">{l("Situação", "Status")}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
                       {filteredAvailableTests.length === 0 ? (
                         <tr>
                           <td colSpan={5} className="py-8 text-center text-neutral-400 italic">
-                            Nenhum caso de teste encontrado com os filtros selecionados.
+                            {l(
+                              "Nenhum caso de teste encontrado com os filtros selecionados.",
+                              "No test cases found with the selected filters."
+                            )}
                           </td>
                         </tr>
                       ) : (
@@ -1164,7 +1257,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                                   {t.id}
                                 </div>
                                 <div className="text-[10px] text-neutral-500 truncate max-w-[110px]">
-                                  {t.categoryName || CATEGORY_NAMES[t.category] || t.category}
+                                  {categoryNames[t.category] || t.categoryName || t.category}
                                 </div>
                               </td>
                               <td className="py-2.5 px-4">
@@ -1192,14 +1285,14 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                                         : "bg-neutral-50 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 border-neutral-300 dark:border-neutral-700"
                                       : "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700 font-bold"
                                   }`}
-                                  title="Alterar atribuição individual deste teste"
+                                  title={l("Alterar atribuição individual deste teste", "Change individual assignment of this test")}
                                 >
                                   <option value="" className="text-amber-600 font-bold">
-                                    ⚪ NÃO ATRIBUÍDO
+                                    ⚪ {l("NÃO ATRIBUÍDO", "UNASSIGNED")}
                                   </option>
                                   {participants.map((p) => (
                                     <option key={p.id} value={p.id}>
-                                      👤 {p.name} ({p.globalRole})
+                                      👤 {p.name} ({translateUserRole(p.globalRole, language)})
                                     </option>
                                   ))}
                                 </select>
@@ -1216,7 +1309,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                                       : "bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-400"
                                   }`}
                                 >
-                                  {t.status}
+                                  {translateTestStatus(t.status)}
                                 </span>
                               </td>
                             </tr>
@@ -1246,17 +1339,20 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
               </div>
               <div>
                 <h3 className="text-base font-black text-neutral-900 dark:text-white">
-                  Distribuição Automática de Testes
+                  {l("Distribuição Automática de Testes", "Automatic Test Distribution")}
                 </h3>
                 <p className="text-xs text-neutral-500">
-                  Distribui os {totalTests} casos de teste entre os {totalParticipants} participantes cadastrados com base em regras determinísticas e balanceadas.
+                  {l(
+                    `Distribui os ${totalTests} casos de teste entre os ${totalParticipants} participantes cadastrados com base em regras determinísticas e balanceadas.`,
+                    `Distributes all ${totalTests} test cases across the ${totalParticipants} registered participants using deterministic, balanced rules.`
+                  )}
                 </p>
               </div>
             </div>
 
             <div className="space-y-3 pt-2">
               <label className="text-xs font-bold text-neutral-500 uppercase">
-                Escolha a Estratégia de Distribuição:
+                {l("Escolha a Estratégia de Distribuição:", "Choose Distribution Strategy:")}
               </label>
 
               <div className="grid grid-cols-1 gap-3">
@@ -1277,11 +1373,16 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                   />
                   <div>
                     <h4 className="text-xs font-black text-neutral-900 dark:text-white">
-                      1. Distribuição Equitativa por Quantidade (Round-Robin)
+                      {l(
+                        "1. Distribuição Equitativa por Quantidade (Rodízio)",
+                        "1. Equal Split by Count (Round-Robin)"
+                      )}
                     </h4>
                     <p className="text-xs text-neutral-500 mt-0.5">
-                      Divide todos os {totalTests} testes em partes iguais entre os {totalParticipants} participantes (~
-                      {totalParticipants > 0 ? (totalTests / totalParticipants).toFixed(1) : 0} testes por pessoa).
+                      {l(
+                        `Divide todos os ${totalTests} testes em partes iguais entre os ${totalParticipants} participantes (~${totalParticipants > 0 ? (totalTests / totalParticipants).toFixed(1) : 0} testes por pessoa).`,
+                        `Divides all ${totalTests} tests equally among the ${totalParticipants} participants (~${totalParticipants > 0 ? (totalTests / totalParticipants).toFixed(1) : 0} tests per person).`
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1303,10 +1404,16 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                   />
                   <div>
                     <h4 className="text-xs font-black text-neutral-900 dark:text-white">
-                      2. Distribuição por Blocos de Categorias Temáticas
+                      {l(
+                        "2. Distribuição por Blocos de Categorias Temáticas",
+                        "2. Distribution by Functional Category Blocks"
+                      )}
                     </h4>
                     <p className="text-xs text-neutral-500 mt-0.5">
-                      Atribui módulos e categorias completas a cada participante (ex: Autenticação para Paulo, QR Code para Gabriel).
+                      {l(
+                        "Atribui módulos e categorias completas a cada participante (ex: Autenticação para Paulo, QR Code para Gabriel).",
+                        "Assigns complete functional modules and categories to each participant (e.g., Authentication to Paulo, QR Code to Gabriel)."
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1328,10 +1435,16 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                   />
                   <div>
                     <h4 className="text-xs font-black text-neutral-900 dark:text-white">
-                      3. Balancear Carga (Apenas Testes Não Atribuídos: {unassignedCount})
+                      {l(
+                        `3. Balancear Carga (Apenas Testes Não Atribuídos: ${unassignedCount})`,
+                        `3. Balance Workload (Unassigned Tests Only: ${unassignedCount})`
+                      )}
                     </h4>
                     <p className="text-xs text-neutral-500 mt-0.5">
-                      Mantém as atribuições manuais existentes intactas e distribui apenas os testes pendentes para os participantes com menor carga de trabalho.
+                      {l(
+                        "Mantém as atribuições manuais existentes intactas e distribui apenas os testes pendentes para os participantes com menor carga de trabalho.",
+                        "Keeps existing manual assignments intact and distributes only unassigned tests to participants with the lightest workload."
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1340,7 +1453,10 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
 
             <div className="pt-4 border-t dark:border-neutral-800 border-neutral-200 flex items-center justify-between">
               <span className="text-xs text-neutral-500">
-                Ação auditada e registrada na trilha imutável da bateria.
+                {l(
+                  "Ação auditada e registrada na trilha imutável da bateria.",
+                  "Audited action recorded in the battery's immutable trail."
+                )}
               </span>
 
               <button
@@ -1349,7 +1465,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                 className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition shadow-sm flex items-center gap-2"
               >
                 <Sparkles className="w-4 h-4" />
-                Executar Distribuição Automática
+                {l("Executar Distribuição Automática", "Run Automatic Distribution")}
               </button>
             </div>
           </div>
@@ -1393,14 +1509,14 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                           : "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
                       }`}
                     >
-                      {p.globalRole}
+                      {translateUserRole(p.globalRole, language)}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between text-xs font-semibold pt-1">
-                    <span className="text-neutral-500">Carga de Testes:</span>
+                    <span className="text-neutral-500">{l("Carga de Testes:", "Test Workload:")}</span>
                     <span className="font-bold text-neutral-900 dark:text-white">
-                      {count} {count === 1 ? "caso" : "casos"} ({pct}% concluído)
+                      {count} {count === 1 ? l("caso", "case") : l("casos", "cases")} ({pct}% {l("concluído", "completed")})
                     </span>
                   </div>
 
@@ -1415,10 +1531,10 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                   {/* Badges of assigned test IDs */}
                   <div className="pt-2">
                     <div className="text-[10px] font-bold uppercase text-neutral-400 mb-1.5">
-                      Casos de Teste Atribuídos:
+                      {l("Casos de Teste Atribuídos:", "Assigned Test Cases:")}
                     </div>
                     {count === 0 ? (
-                      <span className="text-xs text-neutral-400 italic">0 testes atribuídos</span>
+                      <span className="text-xs text-neutral-400 italic">{l("0 testes atribuídos", "0 assigned tests")}</span>
                     ) : (
                       <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
                         {myAssigned.map((t) => (
@@ -1431,7 +1547,7 @@ export const TestDistributionSection: React.FC<TestDistributionSectionProps> = (
                                 ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
                                 : "bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
                             }`}
-                            title={`${t.title} (${t.status})`}
+                            title={`${t.title} (${translateTestStatus(t.status)})`}
                           >
                             {t.id}
                           </span>

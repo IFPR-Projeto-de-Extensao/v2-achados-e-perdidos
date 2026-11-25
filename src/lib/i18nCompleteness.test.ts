@@ -6,16 +6,29 @@ import {
   LANGUAGE_STORAGE_KEY,
   getStoredLanguage,
   getLocaleForLanguage,
+  localize,
   translateCategory,
   translateColor,
   translateItemStatus,
   translateUserRole,
   translateCampusBlock,
+  translateBadgeTier,
+  translateClaimStatus,
+  translateAccountStatus,
+  translateApprovalStatus,
+  translateBugSeverity,
+  translateActivityAction,
+  translateLocationGroup,
+  translateCampusLocation,
 } from "./i18n";
-import { formatDate, formatDateTime } from "./utils";
+import { formatDate, formatDateTime, getItemAgeText } from "./utils";
 import { computeUploadSubtitle } from "../components/UploadStatusIndicator";
+import { calculateUserReputation } from "./reputationSystem";
+import { formatAccountStatusDetails, getSuspensionPresetOptions } from "./accountStatusUtils";
+import { getUserManualSections } from "./userManualPdfGenerator";
+import { parseAuthError } from "./authErrorHandler";
 
-describe("Internationalization (i18n) Completeness & Persistence (QA Fix #2)", () => {
+describe("Internationalization (i18n) Completeness & Persistence (Global i18n)", () => {
   const originalWindow = (globalThis as any).window;
 
   beforeEach(() => {
@@ -51,6 +64,17 @@ describe("Internationalization (i18n) Completeness & Persistence (QA Fix #2)", (
     }
   });
 
+  it("keeps Portuguese dictionary free of prohibited English anglicisms", () => {
+    const forbiddenPtAnglicisms =
+      /\b(Badges|Master Wipe|Status Override|Background Sync|Audit Trail|Dashboard|Changelog|Uptime|Error Boundary|Templates|Workflow|Releases|Dump|Timestamp)\b/i;
+    for (const [key, value] of Object.entries(translations.pt)) {
+      expect(
+        forbiddenPtAnglicisms.test(value),
+        `translations.pt.${key} contains an English anglicism: "${value}"`
+      ).toBe(false);
+    }
+  });
+
   it("persists and restores language preference across simulated reloads via ifpr_lang_preference", () => {
     expect(getStoredLanguage()).toBe("pt");
     expect(getLocaleForLanguage()).toBe("pt-BR");
@@ -68,7 +92,10 @@ describe("Internationalization (i18n) Completeness & Persistence (QA Fix #2)", (
     expect(getStoredLanguage()).toBe("pt");
   });
 
-  it("translates domain enums (categories, colors, statuses, roles, blocks) accurately", () => {
+  it("translates all domain enums, helpers, and localized utility builders accurately", () => {
+    expect(localize("pt", "Olá", "Hello")).toBe("Olá");
+    expect(localize("en", "Olá", "Hello")).toBe("Hello");
+
     expect(translateCategory("Eletrônicos", "pt")).toBe("Eletrônicos");
     expect(translateCategory("Eletrônicos", "en")).toBe("Electronics");
     expect(translateCategory("Documentos & Cartões", "en")).toBe("Documents & Cards");
@@ -92,6 +119,40 @@ describe("Internationalization (i18n) Completeness & Persistence (QA Fix #2)", (
     expect(translateCampusBlock("TODOS", "pt")).toBe("Todos os Blocos");
     expect(translateCampusBlock("TODOS", "en")).toBe("All Blocks");
     expect(translateCampusBlock("Bloco Administrativo", "en")).toBe("Block Administrativo");
+
+    expect(translateBadgeTier("OURO", "pt")).toBe("OURO");
+    expect(translateBadgeTier("OURO", "en")).toBe("GOLD");
+    expect(translateClaimStatus("PENDENTE", "en")).toBe("Under Review");
+    expect(translateAccountStatus("suspended", "en")).toBe("Suspended");
+    expect(translateAccountStatus("suspended", "pt")).toBe("Suspenso");
+    expect(translateApprovalStatus("PENDENTE", "en")).toBe("Pending Approval");
+    expect(translateBugSeverity("critica", "en")).toBe("Critical");
+    expect(translateActivityAction("ITEM_DEVOLVIDO", "en")).toBe("Object Returned");
+    expect(translateLocationGroup("Áreas Comuns & Esportes", "en")).toBe("Common Areas & Sports");
+    expect(translateCampusLocation("Biblioteca", "en")).toBe("Library");
+
+    const repEn = calculateUserReputation(
+      { id: "u1", name: "Ana", email: "ana@estudantes.ifpr.edu.br", role: "ALUNO" } as any,
+      [],
+      "en"
+    );
+    expect(repEn.levelTitle).toBe("Supportive Contributor");
+
+    const presetsEn = getSuspensionPresetOptions("en");
+    expect(presetsEn.some((p) => p.label.includes("day"))).toBe(true);
+    const statusDetailsEn = formatAccountStatusDetails({ status: "active" } as any, "en");
+    expect(statusDetailsEn.label).toBe("Active");
+
+    const manualPt = getUserManualSections("pt");
+    const manualEn = getUserManualSections("en");
+    expect(manualPt.length).toBeGreaterThan(5);
+    expect(manualEn.length).toBe(manualPt.length);
+
+    expect(getItemAgeText(new Date().toISOString(), undefined, "pt")).toBe("Agora mesmo");
+    expect(getItemAgeText(new Date().toISOString(), undefined, "en")).toBe("Just now");
+
+    expect(parseAuthError({ code: "auth/invalid-credential" }, "pt").userMessage).toMatch(/incorretos/i);
+    expect(parseAuthError({ code: "auth/invalid-credential" }, "en").userMessage).toMatch(/incorrect/i);
   });
 
   it("formats dates and datetimes according to selected language locale (pt-BR vs en-US)", () => {
@@ -137,7 +198,7 @@ describe("Internationalization (i18n) Completeness & Persistence (QA Fix #2)", (
     expect(src).toContain("ifpr_lang_preference");
   });
 
-  it("binds core UI views, navigation, and modals to useApp() i18n", () => {
+  it("binds all active UI views, admin panels, legal pages, documents, and test-battery components to i18n", () => {
     const componentsToVerify = [
       "src/App.tsx",
       "src/components/Navbar.tsx",
@@ -147,6 +208,15 @@ describe("Internationalization (i18n) Completeness & Persistence (QA Fix #2)", (
       "src/components/HomeView.tsx",
       "src/components/ObjectsView.tsx",
       "src/components/ItemCard.tsx",
+      "src/components/ItemDetailModal.tsx",
+      "src/components/AIMatchModal.tsx",
+      "src/components/RecentActivityWidget.tsx",
+      "src/components/RestrictedQRViewModal.tsx",
+      "src/components/AccessibleVoiceReader.tsx",
+      "src/components/ErrorBoundary.tsx",
+      "src/components/InstallInstructionsModal.tsx",
+      "src/components/DigitalSignaturePad.tsx",
+      "src/components/RemoteSignatureModal.tsx",
       "src/components/NotificationsView.tsx",
       "src/components/MyItemsView.tsx",
       "src/components/SettingsView.tsx",
@@ -157,15 +227,52 @@ describe("Internationalization (i18n) Completeness & Persistence (QA Fix #2)", (
       "src/components/AdminGuard.tsx",
       "src/components/AuthModal.tsx",
       "src/components/EmailVerificationView.tsx",
+      "src/components/ResetPasswordView.tsx",
       "src/components/KeyboardShortcutsModal.tsx",
       "src/components/VoiceSearchModal.tsx",
       "src/components/ExportFoundItemsReportModal.tsx",
       "src/components/QRCodeScannerModal.tsx",
       "src/components/UploadStatusIndicator.tsx",
       "src/components/SupportView.tsx",
+      "src/components/ContactSupportModal.tsx",
+      "src/components/QuickSupportButton.tsx",
+      "src/components/UserManualView.tsx",
       "src/components/ProfileView.tsx",
+      "src/components/AccountManagementView.tsx",
+      "src/components/ManageUserStatusModal.tsx",
       "src/components/RegisterItemView.tsx",
       "src/components/DashboardView.tsx",
+      "src/components/MonthlyItemsD3Chart.tsx",
+      "src/components/WeeklyFlowD3Chart.tsx",
+      "src/components/DigitalReturnsD3Chart.tsx",
+      "src/components/AppUptimeMonitor.tsx",
+      "src/components/AIEfficiencyReportView.tsx",
+      "src/components/CustodyRemindersView.tsx",
+      "src/components/ImageAnalyzerView.tsx",
+      "src/components/AuditTrailManagerView.tsx",
+      "src/components/VersionHistoryView.tsx",
+      "src/components/TestBatteryManagerView.tsx",
+      "src/components/legal/LegalDocumentLayout.tsx",
+      "src/components/legal/LegalDocumentDownloadButton.tsx",
+      "src/components/PrivacyPolicyView.tsx",
+      "src/components/TermsOfUseView.tsx",
+      "src/components/documents/DocumentFillForm.tsx",
+      "src/components/documents/DocumentPreviewModal.tsx",
+      "src/components/documents/ProjectSettingsAdminView.tsx",
+      "src/components/documents/ProjectConfigView.tsx",
+      "src/components/documents/DocumentsAdminModule.tsx",
+      "src/components/documents/DocumentTemplateEditor.tsx",
+      "src/components/test-battery/AddTestCaseModal.tsx",
+      "src/components/test-battery/DeleteBatteryModal.tsx",
+      "src/components/test-battery/DeleteTestCaseModal.tsx",
+      "src/components/test-battery/EditBatteryModal.tsx",
+      "src/components/test-battery/EditTestCaseModal.tsx",
+      "src/components/test-battery/AutoResizeTextarea.tsx",
+      "src/components/test-battery/ParticipantManagerModal.tsx",
+      "src/components/test-battery/TestAuditTrailDrawer.tsx",
+      "src/components/test-battery/TestCategoryMetricsChart.tsx",
+      "src/components/test-battery/TestEvidenceModal.tsx",
+      "src/components/test-battery/TestDistributionSection.tsx",
     ];
 
     for (const relPath of componentsToVerify) {
@@ -173,8 +280,10 @@ describe("Internationalization (i18n) Completeness & Persistence (QA Fix #2)", (
       const src = fs.readFileSync(fullPath, "utf-8");
       const usesI18n =
         /\bt\s*\(/.test(src) ||
+        /\blocalize\s*\(/.test(src) ||
         /\blanguage\s*===/.test(src) ||
-        /getLocaleForLanguage/.test(src);
+        /getLocaleForLanguage/.test(src) ||
+        /getStoredLanguage/.test(src);
       expect(usesI18n, `${relPath} must be bound to i18n`).toBe(true);
     }
   });

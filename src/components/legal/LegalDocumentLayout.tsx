@@ -19,6 +19,7 @@ import {
   Mail,
 } from "lucide-react";
 import { vibrateClick } from "../../lib/utils";
+import { localize } from "../../lib/i18n";
 
 interface LegalDocumentLayoutProps {
   data: LegalDocumentData;
@@ -33,7 +34,8 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
   otherDocumentLabel,
   otherDocumentTab,
 }) => {
-  const { setActiveTab } = useApp();
+  const { setActiveTab, language } = useApp();
+  const tr = (pt: string, en: string) => localize(language, pt, en);
   const { navigate, goBack } = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeSectionId, setActiveSectionId] = useState<string>("sec-1");
@@ -99,14 +101,14 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-[#00843D]/10 text-[#00843D] dark:text-green-400 border border-[#00843D]/20">
-                Documento Institucional • {data.project}
+                {tr("Documento Institucional", "Institutional Document")} • {data.project}
               </span>
               <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
                 {data.institution} – {data.campus}
               </span>
               {data.id === "privacy_policy" && (
                 <span className="px-3 py-1 rounded-full text-[11px] font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40">
-                  LGPD (Lei nº 13.709/2018)
+                  {tr("LGPD (Lei nº 13.709/2018)", "Brazilian Data Protection Law (LGPD)")}
                 </span>
               )}
             </div>
@@ -133,16 +135,16 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
               className="px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/60 hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-bold transition-all flex items-center space-x-1.5 shadow-2xs cursor-pointer min-h-[44px]"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Voltar ao Sistema</span>
+              <span>{tr("Voltar ao Sistema", "Back to System")}</span>
             </button>
 
             <button
               onClick={handlePrint}
-              title="Imprimir documento"
+              title={tr("Imprimir documento", "Print document")}
               className="px-3.5 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-700 text-xs font-bold transition-all flex items-center space-x-1.5 shadow-2xs cursor-pointer min-h-[44px]"
             >
               <Printer className="w-4 h-4" />
-              <span className="hidden sm:inline">Imprimir</span>
+              <span className="hidden sm:inline">{tr("Imprimir", "Print")}</span>
             </button>
           </div>
         </div>
@@ -152,14 +154,14 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
           <div className="flex items-center space-x-2">
             <Calendar className="w-4 h-4 text-[#00843D] shrink-0" />
             <span>
-              <strong>Última atualização:</strong> {data.lastUpdated}
+              <strong>{tr("Última atualização:", "Last updated:")}</strong> {data.lastUpdated}
             </span>
           </div>
 
           <div className="flex items-center space-x-4">
             <span className="flex items-center space-x-1.5">
               <ShieldCheck className="w-4 h-4 text-[#00843D]" />
-              <span>Conformidade Legal & Segurança</span>
+              <span>{tr("Conformidade Legal e Segurança", "Legal Compliance & Security")}</span>
             </span>
             <span className="flex items-center space-x-1.5">
               <Building2 className="w-4 h-4 text-neutral-400" />
@@ -172,15 +174,15 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
       {/* Main Layout: Sticky Sidebar Navigation + Content Body */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Sticky Table of Contents Sidebar */}
-        <aside aria-label={`Índice de ${data.title}`} className="lg:col-span-4 lg:sticky lg:top-20 space-y-4">
+        <aside aria-label={`${tr("Índice de", "Table of contents for")} ${data.title}`} className="lg:col-span-4 lg:sticky lg:top-20 space-y-4">
           <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl border border-neutral-200 dark:border-neutral-800 p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-black uppercase tracking-wider text-neutral-900 dark:text-white flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-[#00843D]" />
-                <span>Índice de Seções</span>
+                <span>{tr("Índice de Seções", "Section Index")}</span>
               </h2>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500">
-                {data.sections.length} seções
+                {data.sections.length} {tr("seções", "sections")}
               </span>
             </div>
 
@@ -189,7 +191,7 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
               <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-neutral-400" />
               <input
                 type="text"
-                placeholder="Filtrar seção por número ou palavra..."
+                placeholder={tr("Filtrar seção por número ou palavra...", "Filter section by number or keyword...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-8 pr-3 py-1.5 rounded-xl text-xs bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
@@ -225,7 +227,7 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
               ))}
               {filteredSections.length === 0 && (
                 <p className="text-[11px] text-neutral-400 text-center py-4">
-                  Nenhuma seção encontrada para a busca realizada.
+                  {tr("Nenhuma seção encontrada para a busca realizada.", "No sections found for your search.")}
                 </p>
               )}
             </nav>
@@ -237,7 +239,7 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
                 onClick={handleOpenOtherDocument}
                 className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 text-[11px] text-emerald-800 dark:text-emerald-300 font-bold hover:underline flex items-center justify-between"
               >
-                <span>Ver {otherDocumentLabel}</span>
+                <span>{tr("Ver", "View")} {otherDocumentLabel}</span>
                 <ExternalLink className="w-3.5 h-3.5 shrink-0" />
               </a>
             </div>
@@ -247,7 +249,7 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
           <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl border border-neutral-200 dark:border-neutral-800 p-4 shadow-sm space-y-2 text-xs">
             <div className="flex items-center space-x-2 text-[#00843D] dark:text-green-400 font-bold uppercase tracking-wide text-[11px]">
               <Mail className="w-3.5 h-3.5 shrink-0" />
-              <span>Contato Oficial</span>
+              <span>{tr("Contato Oficial", "Official Contact")}</span>
             </div>
             <p className="text-neutral-600 dark:text-neutral-400 text-[11px]">
               {data.project} • {data.institution} ({data.campus})
@@ -270,10 +272,18 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
           <div className="p-4 sm:p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-900/80 border border-neutral-200 dark:border-neutral-800 space-y-2">
             <h2 className="text-xs font-black uppercase tracking-wider text-[#00843D] dark:text-green-400 flex items-center gap-2">
               <Shield className="w-4 h-4" />
-              <span>Identificação Institucional e Apresentação</span>
+              <span>{tr("Identificação Institucional e Apresentação", "Institutional Identification & Overview")}</span>
             </h2>
             <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-normal">
-              O <strong>Localiza+</strong> é um sistema web e aplicativo progressivo (PWA) de achados e perdidos desenvolvido no contexto do projeto de extensão <strong>{data.project}</strong>, vinculado ao <strong>{data.institution} – {data.campus}</strong>, sediado na {data.address}.
+              {language === "en" ? (
+                <>
+                  <strong>Localiza+</strong> is a web system and progressive web app (PWA) for lost and found management developed within the extension project <strong>{data.project}</strong>, linked to <strong>{data.institution} – {data.campus}</strong>, located at {data.address}. The official legal text below is maintained in Brazilian Portuguese as required by Brazilian institutional regulations.
+                </>
+              ) : (
+                <>
+                  O <strong>Localiza+</strong> é um sistema web e aplicativo progressivo (PWA) de achados e perdidos desenvolvido no contexto do projeto de extensão <strong>{data.project}</strong>, vinculado ao <strong>{data.institution} – {data.campus}</strong>, sediado na {data.address}.
+                </>
+              )}
             </p>
           </div>
 
@@ -309,7 +319,7 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
                 className="px-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs"
               >
                 <ArrowLeft className="w-4 h-4" />
-                <span>Voltar ao Início</span>
+                <span>{tr("Voltar ao Início", "Back to Home")}</span>
               </button>
             </div>
           </div>
@@ -317,7 +327,7 @@ export const LegalDocumentLayout: React.FC<LegalDocumentLayoutProps> = ({
           {/* Institutional Document Footer Tag */}
           <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between text-xs text-neutral-500">
             <span>Localiza+ • {data.institution} ({data.campus})</span>
-            <span className="font-mono">Versão 2.4 (2026)</span>
+            <span className="font-mono">{tr("Versão 2.4 (2026)", "Version 2.4 (2026)")}</span>
           </div>
         </article>
       </div>

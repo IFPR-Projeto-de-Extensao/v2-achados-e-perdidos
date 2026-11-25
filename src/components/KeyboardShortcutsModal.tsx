@@ -28,12 +28,12 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
           { key: "Esc", description: "Close Open Modals & Windows" },
         ]
       : [
-          { key: "H", description: "Ir para a Página Inicial (Home)" },
+          { key: "H", description: "Ir para a Página Inicial" },
           { key: "S", description: "Pesquisar / Catálogo de Objetos" },
           { key: "R", description: "Cadastrar Novo Objeto Perdido / Achado" },
-          { key: "D", description: "Acessar Painel / Dashboard" },
+          { key: "D", description: "Acessar Painel Administrativo" },
           { key: "P", description: "Ver Perfil do Usuário" },
-          { key: "Q", description: "Abrir Scanner de QR Code do Campus" },
+          { key: "Q", description: "Abrir Leitor de QR Code do Campus" },
           { key: "?", description: "Exibir este Guia de Atalhos de Teclado" },
           { key: "Esc", description: "Fechar Modais e Janelas Abertas" },
         ];

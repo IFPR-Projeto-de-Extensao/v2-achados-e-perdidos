@@ -258,10 +258,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "ADMIN",
         tag: "Etapa 6.2 • Segurança & Consistência",
       },
+      {
+        id: "v11013-fix-global-i18n-100-percent-pt-br-en-us",
+        title: "Correção Global de Internacionalização (i18n) — Tradução Integral PT-BR e EN-US em Toda a Interface",
+        description: "Conclusão da internacionalização global do Localiza+ em Português Brasileiro (pt-BR, sem anglicismos) e Inglês (en-US, sem mistura de português) mantendo 100% de paridade entre chaves de translations.pt e translations.en em src/lib/i18n.ts e reação imediata à troca de idioma sem recarregar a página: criação dos helpers localize, translateBadgeTier, translateClaimStatus, translateAccountStatus, translateApprovalStatus, translateBugSeverity, translateActivityAction, translateLocationGroup e translateCampusLocation; localização completa de reputationSystem.ts, accountStatusUtils.ts, userManualPdfGenerator.ts, utils.ts e authErrorHandler.ts; cobertura integral de 65+ componentes incluindo Perfil, Gestão de Contas, Suporte, Manual do Usuário, Catálogo, Cadastro, Detalhes/IA/Assinatura/QR, Painel Administrativo, Gráficos D3, Auditoria, Histórico de Versões, Páginas Legais, Módulo de Documentos (6 arquivos) e Bateria de Testes completa (TestBatteryManagerView + 11 componentes em test-battery/). Validado pela suíte expandida src/lib/i18nCompleteness.test.ts sem qualquer alteração em firestore.rules, autenticação, RBAC ou fluxo de dados.",
+        module: "GERAL",
+        tag: "i18n • PT-BR & EN-US",
+      },
     ],
     stats: {
       additionsCount: 9,
-      fixesCount: 23,
+      fixesCount: 24,
     },
   },
   {

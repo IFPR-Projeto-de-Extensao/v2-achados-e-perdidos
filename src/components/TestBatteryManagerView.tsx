@@ -67,6 +67,7 @@ import {
 } from "../data/defaultTestBatteryData";
 import { downloadTestBatteryPdf } from "../lib/testBatteryPdfGenerator";
 import { useApp } from "../context/AppContext";
+import { localize, translateUserRole } from "../lib/i18n";
 import { getTodayDateString, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, sanitizeForFirestore } from "../lib/utils";
 import { collection, doc, getDocs, setDoc, deleteDoc, query, orderBy, onSnapshot, runTransaction } from "firebase/firestore";
 import { db } from "../lib/firebase";
@@ -95,7 +96,51 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
   darkMode,
   initialTab = "MATRIX",
 }) => {
-  const { currentUser, allUsers, addToast, recordAuditLog } = useApp();
+  const { currentUser, allUsers, addToast, recordAuditLog, language } = useApp();
+  const l = (pt: string, en: string) => localize(language, pt, en);
+
+  const formatOverallStatusLabel = (status?: string): string => {
+    switch (status) {
+      case "RASCUNHO":
+        return l("Rascunho", "Draft");
+      case "PLANEJADA":
+        return l("Planejada", "Planned");
+      case "EM_ANDAMENTO":
+        return l("Em Andamento", "In Progress");
+      case "CONCLUIDA":
+      case "CONCLUIDO":
+        return l("Concluída", "Completed");
+      case "ARQUIVADA":
+        return l("Arquivada", "Archived");
+      default:
+        return status || l("Em Andamento", "In Progress");
+    }
+  };
+
+  const formatDurationLabel = (durationStr: string): string => {
+    if (durationStr === "Em andamento") return l("Em andamento", "In progress");
+    if (durationStr === "Não calculado") return l("Não calculado", "Not calculated");
+    return durationStr;
+  };
+
+  const formatCategoryLabel = (category: TestCategory, fallbackName?: string): string => {
+    const map: Record<string, { pt: string; en: string }> = {
+      AUTENTICACAO: { pt: "Autenticação", en: "Authentication" },
+      CADASTRO: { pt: "Cadastro e Persistência", en: "Registration & Persistence" },
+      ACHADOS_PERDIDOS: { pt: "Achados e Perdidos", en: "Lost & Found" },
+      REIVINDICACOES: { pt: "Reivindicações", en: "Claims" },
+      QR_CODE: { pt: "QR Code", en: "QR Code" },
+      IA_GEMINI: { pt: "Inteligência Artificial", en: "Artificial Intelligence" },
+      PWA_MOBILE: { pt: "PWA / Móveis", en: "PWA / Mobile" },
+      DOCUMENTOS: { pt: "Documentos", en: "Documents" },
+      NOTIFICACOES: { pt: "Notificações", en: "Notifications" },
+      SEGURANCA: { pt: "Segurança", en: "Security" },
+      APIS_PRODUCAO: { pt: "APIs / Produção", en: "APIs / Production" },
+      MONITORAMENTO: { pt: "Monitoramento", en: "Monitoring" },
+    };
+    const entry = map[category];
+    return entry ? l(entry.pt, entry.en) : fallbackName || category;
+  };
 
   // Role-Based Access Control (RBAC)
   const isAdmin = currentUser?.role === "ADMIN" || currentUser?.role === "SERVIDOR";
@@ -322,7 +367,13 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     );
 
     if (!isAdmin && !isAssignedToMe) {
-      addToast("Apenas o testador responsável ou um administrador pode alterar o status deste caso de teste.", "warning");
+      addToast(
+        l(
+          "Apenas o testador responsável ou um administrador pode alterar a situação deste caso de teste.",
+          "Only the assigned tester or an administrator can change this test case's status."
+        ),
+        "warning"
+      );
       return;
     }
 
@@ -366,7 +417,10 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
       }).catch(() => {});
     } else {
       vibrateWarning();
-      addToast(res.error || "Erro ao salvar status no Firestore. Tente novamente.", "warning");
+      addToast(
+        res.error || l("Erro ao salvar a situação no Firestore. Tente novamente.", "Error saving status to Firestore. Please try again."),
+        "warning"
+      );
       // Rollback to previous status if failed
       setExecutions((prev) =>
         prev.map((exec) => {
@@ -385,7 +439,13 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     if (!activeExecution) return;
     vibrateClick();
     if (!isAdmin) {
-      addToast("Apenas administradores e servidores podem gerenciar a atribuição de testes.", "warning");
+      addToast(
+        l(
+          "Apenas administradores e servidores podem gerenciar a atribuição de testes.",
+          "Only administrators and staff can manage test assignments."
+        ),
+        "warning"
+      );
       return;
     }
     const now = new Date();
@@ -437,8 +497,8 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
       vibrateSuccess();
       addToast(
         participantId
-          ? `Teste #${testId} atribuído a ${assignedName}!`
-          : `Atribuição do teste #${testId} removida.`,
+          ? l(`Teste #${testId} atribuído a ${assignedName}!`, `Test #${testId} assigned to ${assignedName}!`)
+          : l(`Atribuição do teste #${testId} removida.`, `Assignment removed for test #${testId}.`),
         "info"
       );
 
@@ -464,7 +524,13 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     const now = new Date();
     const existing = activeExecution.participants || [];
     if (existing.some((p) => p.email.toLowerCase() === participant.email.toLowerCase())) {
-      addToast(`O participante com e-mail ${participant.email} já está cadastrado nesta bateria.`, "warning");
+      addToast(
+        l(
+          `O participante com e-mail ${participant.email} já está cadastrado nesta bateria.`,
+          `A participant with email ${participant.email} is already registered in this battery.`
+        ),
+        "warning"
+      );
       return;
     }
 
@@ -503,8 +569,8 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
     try {
       await setDoc(doc(db, "test_executions", updatedExecution.id), sanitizeForFirestore(updatedExecution));
-      addToast("Testador adicionado à bateria com sucesso.", "success");
-      addToast("Testes atribuídos: 0", "info");
+      addToast(l("Testador adicionado à bateria com sucesso.", "Tester added to the battery successfully."), "success");
+      addToast(l("Testes atribuídos: 0", "Assigned tests: 0"), "info");
 
       recordAuditLog({
         objectId: cleanParticipant.id,
@@ -555,7 +621,13 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     try {
       await setDoc(doc(db, "test_executions", updatedExecution.id), sanitizeForFirestore(updatedExecution));
       vibrateSuccess();
-      addToast(`Caso de teste #${newTest.id} cadastrado com sucesso!`, "success");
+      addToast(
+        l(
+          `Caso de teste #${newTest.id} cadastrado com sucesso!`,
+          `Test case #${newTest.id} registered successfully!`
+        ),
+        "success"
+      );
 
       recordAuditLog({
         objectId: newTest.id,
@@ -632,7 +704,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     try {
       await setDoc(doc(db, "test_executions", updatedExecution.id), sanitizeForFirestore(updatedExecution));
       vibrateSuccess();
-      addToast(`Participante desvinculado com sucesso.`, "info");
+      addToast(l("Participante desvinculado com sucesso.", "Participant removed successfully."), "info");
     } catch (err) {
       console.error("Erro ao remover participante no Firestore:", err);
     }
@@ -643,7 +715,13 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     if (!activeExecution) return;
     const participants = activeExecution.participants || [];
     if (participants.length === 0) {
-      addToast("Adicione pelo menos um participante antes de distribuir os testes.", "warning");
+      addToast(
+        l(
+          "Adicione pelo menos um participante antes de distribuir os testes.",
+          "Add at least one participant before distributing tests."
+        ),
+        "warning"
+      );
       return;
     }
 
@@ -690,7 +768,13 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     try {
       await setDoc(doc(db, "test_executions", updatedExecution.id), sanitizeForFirestore(updatedExecution));
       vibrateSuccess();
-      addToast(`Distribuição automática concluída! ${tests.length} testes distribuídos com sucesso.`, "success");
+      addToast(
+        l(
+          `Distribuição automática concluída! ${tests.length} testes distribuídos com sucesso.`,
+          `Auto-distribution complete! ${tests.length} tests distributed successfully.`
+        ),
+        "success"
+      );
 
       recordAuditLog({
         objectId: activeExecution.id,
@@ -724,12 +808,12 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     assignedToEmail?: string
   ): Promise<{ success: boolean; error?: string }> => {
     if (!activeExecution) {
-      return { success: false, error: "Nenhuma bateria de testes selecionada." };
+      return { success: false, error: l("Nenhuma bateria de testes selecionada.", "No test battery selected.") };
     }
     vibrateClick();
     const currentTest = activeExecution.tests.find((t) => t.id === testId);
     if (!currentTest) {
-      return { success: false, error: "Caso de teste não encontrado na execução ativa." };
+      return { success: false, error: l("Caso de teste não encontrado na execução ativa.", "Test case not found in active execution.") };
     }
 
     const txId = evidence.transactionId || `tx-evidence-${activeExecution.id}-${testId}-${Date.now()}`;
@@ -751,7 +835,13 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
     if (res.success && res.updatedBattery) {
       vibrateSuccess();
-      addToast(`Evidências do teste #${testId} salvas com sucesso no Firestore!`, "success");
+      addToast(
+        l(
+          `Evidências do teste #${testId} salvas com sucesso no Firestore!`,
+          `Evidence for test #${testId} saved to Firestore successfully!`
+        ),
+        "success"
+      );
 
       setExecutions((prev) =>
         prev.map((e) => (e.id === res.updatedBattery!.id ? res.updatedBattery! : e))
@@ -773,7 +863,12 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
       return { success: true };
     } else {
       vibrateWarning();
-      const msg = res.error || "Erro ao persistir no Firestore. Seus dados foram preservados no formulário.";
+      const msg =
+        res.error ||
+        l(
+          "Erro ao persistir no Firestore. Seus dados foram preservados no formulário.",
+          "Error saving to Firestore. Your data has been preserved in the form."
+        );
       addToast(msg, "warning");
       return { success: false, error: msg };
     }
@@ -834,7 +929,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     try {
       await setDoc(doc(db, "test_executions", updated.id), sanitizeForFirestore(updated));
       vibrateSuccess();
-      addToast(`Bateria ${updated.id} iniciada com sucesso!`, "success");
+      addToast(l(`Bateria ${updated.id} iniciada com sucesso!`, `Battery ${updated.id} started successfully!`), "success");
 
       recordAuditLog({
         objectId: updated.id,
@@ -888,7 +983,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     try {
       await setDoc(doc(db, "test_executions", updated.id), sanitizeForFirestore(updated));
       vibrateSuccess();
-      addToast(`Bateria ${updated.id} finalizada com sucesso!`, "success");
+      addToast(l(`Bateria ${updated.id} finalizada com sucesso!`, `Battery ${updated.id} completed successfully!`), "success");
 
       recordAuditLog({
         objectId: updated.id,
@@ -940,7 +1035,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     try {
       await setDoc(doc(db, "test_executions", updated.id), sanitizeForFirestore(updated));
       vibrateSuccess();
-      addToast(`Bateria ${updated.id} arquivada no histórico!`, "info");
+      addToast(l(`Bateria ${updated.id} arquivada no histórico!`, `Battery ${updated.id} archived to history!`), "info");
     } catch (err) {
       console.error("Erro ao arquivar bateria:", err);
     }
@@ -975,7 +1070,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     try {
       await setDoc(doc(db, "test_executions", finalizedBattery.id), sanitizeForFirestore(finalizedBattery));
       vibrateSuccess();
-      addToast(`Bateria ${finalizedBattery.id} atualizada com sucesso!`, "success");
+      addToast(l(`Bateria ${finalizedBattery.id} atualizada com sucesso!`, `Battery ${finalizedBattery.id} updated successfully!`), "success");
 
       recordAuditLog({
         objectId: finalizedBattery.id,
@@ -1004,7 +1099,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
         setSelectedExecutionId("");
       }
       vibrateSuccess();
-      addToast(`Bateria ${batteryId} excluída com sucesso!`, "success");
+      addToast(l(`Bateria ${batteryId} excluída com sucesso!`, `Battery ${batteryId} deleted successfully!`), "success");
 
       recordAuditLog({
         objectId: batteryId,
@@ -1017,7 +1112,13 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
       }).catch(() => {});
     } catch (err) {
       console.error("Erro ao excluir bateria do Firestore:", err);
-      addToast("Erro ao excluir bateria. Verifique a conexão com o banco.", "error");
+      addToast(
+        l(
+          "Erro ao excluir bateria. Verifique a conexão com o banco.",
+          "Error deleting battery. Check the database connection."
+        ),
+        "error"
+      );
     }
   };
 
@@ -1079,7 +1180,13 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
       }
 
       vibrateSuccess();
-      addToast(`Caso de teste #${updatedTest.id} atualizado com sucesso!`, "success");
+      addToast(
+        l(
+          `Caso de teste #${updatedTest.id} atualizado com sucesso!`,
+          `Test case #${updatedTest.id} updated successfully!`
+        ),
+        "success"
+      );
 
       recordAuditLog({
         objectId: updatedTest.id,
@@ -1092,7 +1199,11 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
       }).catch(() => {});
     } catch (err: any) {
       console.error("Erro ao salvar caso de teste editado:", err);
-      addToast("Erro ao salvar alterações no Firestore: " + (err?.message || "Tente novamente"), "warning");
+      addToast(
+        l("Erro ao salvar alterações no Firestore: ", "Error saving changes to Firestore: ") +
+          (err?.message || l("Tente novamente", "Please try again")),
+        "warning"
+      );
     }
   };
 
@@ -1132,7 +1243,13 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     try {
       await setDoc(doc(db, "test_executions", updatedBattery.id), sanitizeForFirestore(updatedBattery));
       vibrateSuccess();
-      addToast(`Caso de teste #${testId} excluído com sucesso!`, "success");
+      addToast(
+        l(
+          `Caso de teste #${testId} excluído com sucesso!`,
+          `Test case #${testId} deleted successfully!`
+        ),
+        "success"
+      );
 
       recordAuditLog({
         objectId: testId,
@@ -1199,7 +1316,10 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     try {
       await setDoc(doc(db, "test_executions", updatedBattery.id), sanitizeForFirestore(updatedBattery));
       vibrateSuccess();
-      addToast(`Caso de teste duplicado como #${newId}!`, "success");
+      addToast(
+        l(`Caso de teste duplicado como #${newId}!`, `Test case duplicated as #${newId}!`),
+        "success"
+      );
 
       recordAuditLog({
         objectId: newId,
@@ -1221,12 +1341,17 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
     const nextNum = executions.length + 1;
     const autoId = `BT-2026-${String(nextNum).padStart(3, "0")}`;
     setNewBatteryId(autoId);
-    setNewBatteryTitle(`Bateria de Testes ${autoId}`);
-    setNewBatteryDescription("Bateria de validação técnica, homologação e conformidade funcional do Localiza+.");
+    setNewBatteryTitle(l(`Bateria de Testes ${autoId}`, `Test Battery ${autoId}`));
+    setNewBatteryDescription(
+      l(
+        "Bateria de validação técnica, homologação e conformidade funcional do Localiza+.",
+        "Technical validation, staging approval, and functional compliance battery for Localiza+."
+      )
+    );
     setNewBatteryDate(getTodayDateString());
     setNewBatteryStartTime("09:00");
     setNewBatteryEndTime("");
-    setNewBatteryResponsible(currentUser?.name || "Administrador TI");
+    setNewBatteryResponsible(currentUser?.name || l("Administrador de TI", "IT Administrator"));
     setNewBatteryEnvironment("Produção");
     setNewBatteryVersion("v1.10.13");
     setNewBatteryStatus("RASCUNHO");
@@ -1237,12 +1362,18 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
   const handleConfirmCreateBattery = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBatteryId.trim()) {
-      addToast("O identificador da execução é obrigatório.", "error");
+      addToast(l("O identificador da execução é obrigatório.", "The execution identifier is required."), "error");
       return;
     }
 
     if (executions.some((ex) => ex.id.toUpperCase() === newBatteryId.trim().toUpperCase())) {
-      addToast(`Já existe uma execução cadastrada com o identificador ${newBatteryId}. Escolha outro ID.`, "error");
+      addToast(
+        l(
+          `Já existe uma execução cadastrada com o identificador ${newBatteryId}. Escolha outro ID.`,
+          `An execution with identifier ${newBatteryId} already exists. Please choose another ID.`
+        ),
+        "error"
+      );
       return;
     }
 
@@ -1288,7 +1419,10 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
       await setDoc(doc(db, "test_executions", newBattery.id), sanitizeForFirestore(newBattery));
       vibrateSuccess();
       addToast(
-        `Bateria de testes ${newBattery.id} criada com sucesso (${initialTestsList.length} testes)!`,
+        l(
+          `Bateria de testes ${newBattery.id} criada com sucesso (${initialTestsList.length} testes)!`,
+          `Test battery ${newBattery.id} created successfully (${initialTestsList.length} tests)!`
+        ),
         "success"
       );
 
@@ -1305,7 +1439,13 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
       }).catch(() => {});
     } catch (err) {
       console.error("Erro ao salvar nova bateria no Firestore:", err);
-      addToast("Bateria criada em sessão local. Erro de persistência no Firestore.", "warning");
+      addToast(
+        l(
+          "Bateria criada em sessão local. Erro de persistência no Firestore.",
+          "Battery created in local session. Firestore persistence error."
+        ),
+        "warning"
+      );
     }
   };
 
@@ -1316,10 +1456,22 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
       vibrateClick();
       const protocol = downloadTestBatteryPdf(activeExecution);
       vibrateSuccess();
-      addToast(`Relatório oficial da bateria ${activeExecution.id} baixado com sucesso! Protocolo: ${protocol}`, "success");
+      addToast(
+        l(
+          `Relatório oficial da bateria ${activeExecution.id} baixado com sucesso! Protocolo: ${protocol}`,
+          `Official report for battery ${activeExecution.id} downloaded successfully! Protocol: ${protocol}`
+        ),
+        "success"
+      );
     } catch (err) {
       console.error("Erro ao gerar PDF da bateria:", err);
-      addToast("Não foi possível gerar o PDF da bateria. Tente novamente.", "error");
+      addToast(
+        l(
+          "Não foi possível gerar o PDF da bateria. Tente novamente.",
+          "Could not generate the battery PDF. Please try again."
+        ),
+        "error"
+      );
     }
   };
 
@@ -1368,13 +1520,21 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
               <Plus className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-base">Nova Execução de Bateria de Testes</h3>
-              <p className="text-[11px] text-neutral-500">Configure os parâmetros e o modo de inicialização da bateria</p>
+              <h3 className="font-bold text-base">
+                {l("Nova Execução de Bateria de Testes", "New Test Battery Execution")}
+              </h3>
+              <p className="text-[11px] text-neutral-500">
+                {l(
+                  "Configure os parâmetros e o modo de inicialização da bateria",
+                  "Configure the parameters and initialization mode for the battery"
+                )}
+              </p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => setIsNewBatteryModalOpen(false)}
+            aria-label={l("Fechar", "Close")}
             className="p-1 rounded-lg text-neutral-400 hover:text-neutral-600"
           >
             ✕
@@ -1383,13 +1543,15 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
           <div className="space-y-1 sm:col-span-2">
-            <label className="font-bold text-neutral-500 uppercase">Identificador Único (ID da Bateria)</label>
+            <label className="font-bold text-neutral-500 uppercase">
+              {l("Identificador Único (ID da Bateria)", "Unique Identifier (Battery ID)")}
+            </label>
             <input
               type="text"
               required
               value={newBatteryId}
               onChange={(e) => setNewBatteryId(e.target.value.toUpperCase())}
-              placeholder="Ex: BT-2026-001"
+              placeholder={l("Ex.: BT-2026-001", "e.g. BT-2026-001")}
               className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 font-bold ${
                 darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
               }`}
@@ -1397,13 +1559,18 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           </div>
 
           <div className="space-y-1 sm:col-span-2">
-            <label className="font-bold text-neutral-500 uppercase">Nome / Título da Bateria</label>
+            <label className="font-bold text-neutral-500 uppercase">
+              {l("Nome / Título da Bateria", "Battery Name / Title")}
+            </label>
             <input
               type="text"
               required
               value={newBatteryTitle}
               onChange={(e) => setNewBatteryTitle(e.target.value)}
-              placeholder="Ex: Bateria de Homologação Presencial Alunos"
+              placeholder={l(
+                "Ex.: Bateria de Homologação Presencial de Alunos",
+                "e.g. On-site Student Validation Battery"
+              )}
               className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
                 darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
               }`}
@@ -1411,12 +1578,17 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           </div>
 
           <div className="space-y-1 sm:col-span-2">
-            <label className="font-bold text-neutral-500 uppercase">Descrição / Objetivo</label>
+            <label className="font-bold text-neutral-500 uppercase">
+              {l("Descrição / Objetivo", "Description / Objective")}
+            </label>
             <textarea
               rows={2}
               value={newBatteryDescription}
               onChange={(e) => setNewBatteryDescription(e.target.value)}
-              placeholder="Descreva o escopo e os objetivos desta execução..."
+              placeholder={l(
+                "Descreva o escopo e os objetivos desta execução...",
+                "Describe the scope and goals of this execution..."
+              )}
               className={`w-full p-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 resize-none ${
                 darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
               }`}
@@ -1424,7 +1596,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           </div>
 
           <div className="space-y-1">
-            <label className="font-bold text-neutral-500 uppercase">Status Inicial</label>
+            <label className="font-bold text-neutral-500 uppercase">
+              {l("Situação Inicial", "Initial Status")}
+            </label>
             <select
               value={newBatteryStatus}
               onChange={(e: any) => setNewBatteryStatus(e.target.value)}
@@ -1432,14 +1606,16 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                 darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
               }`}
             >
-              <option value="RASCUNHO">Rascunho (Não iniciada)</option>
-              <option value="PLANEJADA">Planejada (Agendada)</option>
-              <option value="EM_ANDAMENTO">Em Andamento</option>
+              <option value="RASCUNHO">{l("Rascunho (Não iniciada)", "Draft (Not started)")}</option>
+              <option value="PLANEJADA">{l("Planejada (Agendada)", "Planned (Scheduled)")}</option>
+              <option value="EM_ANDAMENTO">{l("Em Andamento", "In Progress")}</option>
             </select>
           </div>
 
           <div className="space-y-1">
-            <label className="font-bold text-neutral-500 uppercase">Ambiente</label>
+            <label className="font-bold text-neutral-500 uppercase">
+              {l("Ambiente", "Environment")}
+            </label>
             <select
               value={newBatteryEnvironment}
               onChange={(e: any) => setNewBatteryEnvironment(e.target.value)}
@@ -1447,14 +1623,16 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                 darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
               }`}
             >
-              <option value="Desenvolvimento">Desenvolvimento</option>
-              <option value="Homologação">Homologação</option>
-              <option value="Produção">Produção</option>
+              <option value="Desenvolvimento">{l("Desenvolvimento", "Development")}</option>
+              <option value="Homologação">{l("Homologação", "Staging")}</option>
+              <option value="Produção">{l("Produção", "Production")}</option>
             </select>
           </div>
 
           <div className="space-y-1">
-            <label className="font-bold text-neutral-500 uppercase">Versão do Sistema</label>
+            <label className="font-bold text-neutral-500 uppercase">
+              {l("Versão do Sistema", "System Version")}
+            </label>
             <input
               type="text"
               required
@@ -1467,7 +1645,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           </div>
 
           <div className="space-y-1">
-            <label className="font-bold text-neutral-500 uppercase">Responsável Técnico</label>
+            <label className="font-bold text-neutral-500 uppercase">
+              {l("Responsável Técnico", "Technical Lead")}
+            </label>
             <input
               type="text"
               required
@@ -1480,7 +1660,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           </div>
 
           <div className="space-y-1">
-            <label className="font-bold text-neutral-500 uppercase">Data Prevista</label>
+            <label className="font-bold text-neutral-500 uppercase">
+              {l("Data Prevista", "Planned Date")}
+            </label>
             <input
               type="date"
               required
@@ -1493,7 +1675,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           </div>
 
           <div className="space-y-1">
-            <label className="font-bold text-neutral-500 uppercase">Hora de Início</label>
+            <label className="font-bold text-neutral-500 uppercase">
+              {l("Hora de Início", "Start Time")}
+            </label>
             <input
               type="time"
               required
@@ -1506,7 +1690,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           </div>
 
           <div className="space-y-1 sm:col-span-2">
-            <label className="font-bold text-neutral-500 uppercase">Hora de Término (Opcional)</label>
+            <label className="font-bold text-neutral-500 uppercase">
+              {l("Hora de Término (Opcional)", "End Time (Optional)")}
+            </label>
             <input
               type="time"
               value={newBatteryEndTime}
@@ -1520,7 +1706,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           <div className="sm:col-span-2 p-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/60 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-emerald-500" />
-              <span className="font-bold text-xs text-neutral-700 dark:text-neutral-300">Duração Calculada em Tempo Real:</span>
+              <span className="font-bold text-xs text-neutral-700 dark:text-neutral-300">
+                {l("Duração Calculada em Tempo Real:", "Calculated Duration (Real-Time):")}
+              </span>
             </div>
             {(() => {
               const durationStr = calculateTestDuration(newBatteryStartTime, newBatteryEndTime);
@@ -1536,7 +1724,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                       : "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800"
                   }`}
                 >
-                  {durationStr}
+                  {formatDurationLabel(durationStr)}
                 </span>
               );
             })()}
@@ -1545,7 +1733,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           <div className="sm:col-span-2 space-y-2 p-3.5 rounded-xl border border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20">
             <label className="font-bold text-neutral-700 dark:text-neutral-300 uppercase flex items-center gap-2">
               <Layers className="w-4 h-4 text-emerald-600" />
-              Casos de Teste Iniciais da Bateria
+              {l("Casos de Teste Iniciais da Bateria", "Initial Battery Test Cases")}
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <label
@@ -1564,9 +1752,14 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                   className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
                 />
                 <div>
-                  <span className="font-bold block text-neutral-900 dark:text-white">Bateria Vazia (0 testes)</span>
+                  <span className="font-bold block text-neutral-900 dark:text-white">
+                    {l("Bateria Vazia (0 testes)", "Empty Battery (0 tests)")}
+                  </span>
                   <span className="text-[11px] text-neutral-500 leading-tight block mt-0.5">
-                    Inicia limpa para cadastrar e distribuir casos de teste manualmente conforme diretriz de governança.
+                    {l(
+                      "Inicia limpa para cadastrar e distribuir casos de teste manualmente conforme diretriz de governança.",
+                      "Starts blank so you can manually register and assign test cases according to governance guidelines."
+                    )}
                   </span>
                 </div>
               </label>
@@ -1587,9 +1780,14 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                   className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
                 />
                 <div>
-                  <span className="font-bold block text-neutral-900 dark:text-white">Template Padrão (55 testes)</span>
+                  <span className="font-bold block text-neutral-900 dark:text-white">
+                    {l("Modelo Padrão (55 testes)", "Standard Template (55 tests)")}
+                  </span>
                   <span className="text-[11px] text-neutral-500 leading-tight block mt-0.5">
-                    Carrega os 55 testes padrão com procedimentos e passos oficiais prontos para validação.
+                    {l(
+                      "Carrega os 55 testes padrão com procedimentos e passos oficiais prontos para validação.",
+                      "Loads all 55 standard tests with official procedures and steps ready for validation."
+                    )}
                   </span>
                 </div>
               </label>
@@ -1603,14 +1801,14 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
             onClick={() => setIsNewBatteryModalOpen(false)}
             className="px-4 py-2 text-xs font-semibold rounded-xl border border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300"
           >
-            Cancelar
+            {l("Cancelar", "Cancel")}
           </button>
           <button
             type="submit"
             className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center gap-1.5"
           >
             <Plus className="w-3.5 h-3.5" />
-            Criar Execução
+            {l("Criar Execução", "Create Execution")}
           </button>
         </div>
       </form>
@@ -1630,16 +1828,19 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
-                  Governança & QA Oficial
+                  {l("Governança e Qualidade Oficial", "Official Governance & QA")}
                 </span>
                 <span className="text-xs font-semibold text-neutral-500">IFPR Campus Ivaiporã</span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-2.5">
                 <ShieldCheck className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
-                Bateria de Testes, Participantes & Validação
+                {l("Bateria de Testes, Participantes e Validação", "Test Battery, Participants & Validation")}
               </h1>
               <p className="text-sm text-neutral-600 dark:text-neutral-400 max-w-3xl">
-                Registro formal de baterias de testes reais armazenadas no Firestore, sem dados fictícios ou pré-preenchidos.
+                {l(
+                  "Registro formal de baterias de testes reais armazenadas no Firestore, sem dados fictícios ou pré-preenchidos.",
+                  "Formal record of real test batteries stored in Firestore, with no mock or pre-filled data."
+                )}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
@@ -1654,7 +1855,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                 }`}
               >
                 <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
-                Sincronizar
+                {l("Sincronizar", "Sync")}
               </button>
               {isAdmin && (
                 <button
@@ -1664,7 +1865,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                   className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs sm:text-sm font-bold rounded-xl shadow-sm transition"
                 >
                   <Plus className="w-4 h-4" />
-                  Nova Execução
+                  {l("Nova Execução", "New Execution")}
                 </button>
               )}
             </div>
@@ -1682,13 +1883,16 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           <div className="space-y-1 max-w-md mx-auto">
             <h2 className="text-lg font-bold">
               {isLoading
-                ? "Carregando baterias de teste do Firestore..."
-                : "Nenhuma bateria de testes registrada"}
+                ? l("Carregando baterias de teste do Firestore...", "Loading test batteries from Firestore...")
+                : l("Nenhuma bateria de testes registrada", "No test batteries registered")}
             </h2>
             <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
               {isLoading
-                ? "Consultando registros reais na coleção test_executions."
-                : "O banco de dados não possui execuções de testes cadastradas no momento. Crie uma nova execução quando desejar registrar uma bateria real de QA."}
+                ? l("Consultando registros reais na coleção test_executions.", "Querying live records in the test_executions collection.")
+                : l(
+                    "O banco de dados não possui execuções de testes cadastradas no momento. Crie uma nova execução quando desejar registrar uma bateria real de qualidade.",
+                    "There are currently no registered test executions in the database. Create a new execution whenever you want to log a real QA battery."
+                  )}
             </p>
           </div>
           {!isLoading && isAdmin && (
@@ -1698,7 +1902,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold transition shadow-sm"
             >
               <Plus className="w-4 h-4" />
-              Criar Primeira Execução Real
+              {l("Criar Primeira Execução Real", "Create First Real Execution")}
             </button>
           )}
         </div>
@@ -1723,16 +1927,19 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
-                Governança & QA Oficial
+                {l("Governança e Qualidade Oficial", "Official Governance & QA")}
               </span>
               <span className="text-xs font-semibold text-neutral-500">IFPR Campus Ivaiporã</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight flex items-center gap-2.5">
               <ShieldCheck className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
-              Bateria de Testes, Participantes & Validação
+              {l("Bateria de Testes, Participantes e Validação", "Test Battery, Participants & Validation")}
             </h1>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 max-w-3xl">
-              Registro formal e independente de baterias de testes periódicas, delegação para testadores (discentes e servidores), auditoria de ciclo de vida e matriz de validação.
+              {l(
+                "Registro formal e independente de baterias de testes periódicas, delegação para testadores (discentes e servidores), auditoria de ciclo de vida e matriz de validação.",
+                "Formal, independent log of periodic test batteries, tester delegation (students and staff), lifecycle auditing, and validation matrix."
+              )}
             </p>
           </div>
 
@@ -1747,7 +1954,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs sm:text-sm font-bold rounded-xl shadow-sm transition"
             >
               <Users className="w-4 h-4" />
-              Equipe ({participants.length})
+              {l("Equipe", "Team")} ({participants.length})
             </button>
             {isAdmin && (
               <button
@@ -1756,7 +1963,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                 className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs sm:text-sm font-bold rounded-xl shadow-sm transition"
               >
                 <Plus className="w-4 h-4" />
-                Nova Execução
+                {l("Nova Execução", "New Execution")}
               </button>
             )}
             <button
@@ -1769,7 +1976,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
               }`}
             >
               <Download className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              Exportar PDF Oficial
+              {l("Exportar PDF Oficial", "Export Official PDF")}
             </button>
             <button
               id="btn-toggle-audit-trail"
@@ -1782,7 +1989,8 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                   ? "bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-300"
                   : "bg-neutral-50 hover:bg-neutral-100 border-neutral-300 text-neutral-700"
               }`}
-              title="Ver Trilha de Auditoria"
+              title={l("Ver Trilha de Auditoria", "View Audit Trail")}
+              aria-label={l("Ver Trilha de Auditoria", "View Audit Trail")}
             >
               <History className="w-4 h-4" />
             </button>
@@ -1798,20 +2006,26 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
         <div className="flex items-center gap-2">
           <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
           <h2 className="text-sm font-extrabold uppercase tracking-wide">
-            Diretriz Crítica de Persistência Real de Dados (RNF-04 & Governança)
+            {l(
+              "Diretriz Crítica de Persistência Real de Dados (RNF-04 e Governança)",
+              "Critical Real Data Persistence Policy (NFR-04 & Governance)"
+            )}
           </h2>
         </div>
         <p className="text-xs sm:text-sm leading-relaxed font-medium">
-          «Uma operação somente poderá ser considerada concluída com sucesso após confirmação de persistência dos dados no backend/banco de dados. A existência temporária de dados no frontend, cache, estado React, IndexedDB ou interface visual não constitui confirmação de cadastro.»
+          {l(
+            "«Uma operação somente poderá ser considerada concluída com sucesso após confirmação de persistência dos dados no servidor/banco de dados. A existência temporária de dados na interface, no cache, no estado React ou no IndexedDB não constitui confirmação de cadastro.»",
+            "\"An operation may only be considered successfully completed after data persistence is confirmed in the backend/database. Temporary data in the frontend, cache, React state, IndexedDB, or visual UI does not constitute registration confirmation.\""
+          )}
         </p>
         <div className="flex flex-wrap items-center gap-4 pt-1 text-xs text-amber-800 dark:text-amber-300">
           <span className="flex items-center gap-1.5 font-bold">
             <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            Dados no Firestore = Cadastro Confirmado
+            {l("Dados no Firestore = Cadastro Confirmado", "Data in Firestore = Confirmed Registration")}
           </span>
           <span className="flex items-center gap-1.5 font-bold">
             <Clock className="w-4 h-4 text-amber-600" />
-            Dados em Cache/PWA = Aguardando Sincronização
+            {l("Dados em Cache/PWA = Aguardando Sincronização", "Data in Cache/PWA = Pending Synchronization")}
           </span>
         </div>
       </div>
@@ -1826,7 +2040,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-bold text-neutral-500 uppercase tracking-wider">
             <Layers className="w-4 h-4 text-emerald-500" />
-            Histórico de Baterias Executadas ({executions.length})
+            {l("Histórico de Baterias Executadas", "Executed Test Batteries History")} ({executions.length})
           </div>
           <button
             onClick={loadExecutionsFromFirestore}
@@ -1834,7 +2048,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
             className="flex items-center gap-1 text-xs text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 transition"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
-            Sincronizar
+            {l("Sincronizar", "Sync")}
           </button>
         </div>
 
@@ -1869,15 +2083,17 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                         : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
                     }`}
                   >
-                    {exec.overallStatus}
+                    {formatOverallStatusLabel(exec.overallStatus)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-xs mt-1 opacity-90">
-                  <span>{exec.testDate || "Data não inf."}</span>
+                  <span>{exec.testDate || l("Data não inf.", "No date")}</span>
                   <span>•</span>
                   <span>{exec.systemVersion}</span>
                   <span>•</span>
-                  <span className="font-bold">{execSummary.passRate}% Aprov.</span>
+                  <span className="font-bold">
+                    {execSummary.passRate}% {l("Aprov.", "Pass")}
+                  </span>
                 </div>
               </button>
             );
@@ -1899,28 +2115,25 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                 {activeExecution.id}
               </span>
               <h2 className="font-bold text-lg text-neutral-900 dark:text-white">
-                {activeExecution.title || activeExecution.name || `Bateria de Testes ${activeExecution.id}`}
+                {activeExecution.title ||
+                  activeExecution.name ||
+                  l(`Bateria de Testes ${activeExecution.id}`, `Test Battery ${activeExecution.id}`)}
               </h2>
               {/* Status Badge */}
               {(() => {
                 const st = activeExecution.status || "EM_ANDAMENTO";
                 let badgeClass = "bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200 border-neutral-300 dark:border-neutral-700";
-                let label: string = String(st);
+                const label = formatOverallStatusLabel(String(st));
                 if (st === "RASCUNHO") {
                   badgeClass = "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-300 border-slate-300 dark:border-slate-700";
-                  label = "Rascunho";
                 } else if (st === "PLANEJADA") {
                   badgeClass = "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800";
-                  label = "Planejada";
                 } else if (st === "EM_ANDAMENTO") {
                   badgeClass = "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-300 dark:border-blue-800";
-                  label = "Em Andamento";
                 } else if (st === "CONCLUIDA" || st === "CONCLUIDO") {
                   badgeClass = "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800";
-                  label = "Concluída";
                 } else if (st === "ARQUIVADA") {
                   badgeClass = "bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-300 border-purple-300 dark:border-purple-800";
-                  label = "Arquivada";
                 }
                 return (
                   <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border uppercase tracking-wider ${badgeClass}`}>
@@ -1935,12 +2148,18 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
               </p>
             )}
             <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-500 pt-0.5">
-              <span><strong>Responsável:</strong> {activeExecution.responsible || "Não definido"}</span>
+              <span>
+                <strong>{l("Responsável:", "Lead:")}</strong> {activeExecution.responsible || l("Não definido", "Not set")}
+              </span>
               {activeExecution.responsibleEmail && <span>({activeExecution.responsibleEmail})</span>}
               <span>•</span>
-              <span><strong>Casos de Teste:</strong> {activeExecution.tests?.length || 0}</span>
+              <span>
+                <strong>{l("Casos de Teste:", "Test Cases:")}</strong> {activeExecution.tests?.length || 0}
+              </span>
               <span>•</span>
-              <span><strong>Participantes:</strong> {activeExecution.participants?.length || 0}</span>
+              <span>
+                <strong>{l("Participantes:", "Participants:")}</strong> {activeExecution.participants?.length || 0}
+              </span>
             </div>
           </div>
 
@@ -1951,10 +2170,10 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
               <button
                 onClick={handleStartBattery}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition"
-                title="Iniciar execução desta bateria"
+                title={l("Iniciar execução desta bateria", "Start executing this battery")}
               >
                 <Play className="w-3.5 h-3.5 fill-current" />
-                <span>Iniciar Bateria</span>
+                <span>{l("Iniciar Bateria", "Start Battery")}</span>
               </button>
             )}
 
@@ -1962,10 +2181,10 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
               <button
                 onClick={handleFinishBattery}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition"
-                title="Finalizar execução desta bateria"
+                title={l("Finalizar execução desta bateria", "Complete this battery execution")}
               >
                 <CheckSquare className="w-3.5 h-3.5" />
-                <span>Finalizar Bateria</span>
+                <span>{l("Finalizar Bateria", "Finish Battery")}</span>
               </button>
             )}
 
@@ -1973,10 +2192,10 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
               <button
                 onClick={handleArchiveBattery}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white shadow-sm transition"
-                title="Arquivar histórico desta bateria"
+                title={l("Arquivar histórico desta bateria", "Archive this battery history")}
               >
                 <Archive className="w-3.5 h-3.5" />
-                <span>Arquivar</span>
+                <span>{l("Arquivar", "Archive")}</span>
               </button>
             )}
 
@@ -1992,10 +2211,10 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                     ? "bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-200"
                     : "bg-neutral-50 hover:bg-neutral-100 border-neutral-300 text-neutral-800"
                 }`}
-                title="Editar dados cadastrais e parâmetros da bateria"
+                title={l("Editar dados cadastrais e parâmetros da bateria", "Edit battery details and parameters")}
               >
                 <Edit2 className="w-3.5 h-3.5 text-blue-500" />
-                <span>Editar</span>
+                <span>{l("Editar", "Edit")}</span>
               </button>
             )}
 
@@ -2007,10 +2226,10 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                   setIsAddTestCaseModalOpen(true);
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition"
-                title="Cadastrar novo caso de teste nesta bateria"
+                title={l("Cadastrar novo caso de teste nesta bateria", "Add new test case to this battery")}
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Novo Teste</span>
+                <span>{l("Novo Teste", "New Test")}</span>
               </button>
             )}
 
@@ -2022,7 +2241,8 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                   setIsDeleteBatteryModalOpen(true);
                 }}
                 className="p-2 rounded-xl text-xs font-bold border bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:border-rose-900 dark:text-rose-400 transition"
-                title="Excluir esta bateria de testes permanentemente"
+                title={l("Excluir esta bateria de testes permanentemente", "Permanently delete this test battery")}
+                aria-label={l("Excluir bateria de testes", "Delete test battery")}
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>
@@ -2033,7 +2253,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
           {/* Data */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-neutral-500 uppercase">Data do Teste</label>
+            <label className="text-xs font-bold text-neutral-500 uppercase">
+              {l("Data do Teste", "Test Date")}
+            </label>
             <input
               type="date"
               id="input-exec-date"
@@ -2048,7 +2270,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
           {/* Hora de Início */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-neutral-500 uppercase">Hora de Início</label>
+            <label className="text-xs font-bold text-neutral-500 uppercase">
+              {l("Hora de Início", "Start Time")}
+            </label>
             <input
               type="time"
               id="input-exec-start-time"
@@ -2063,7 +2287,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
           {/* Hora de Término */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-neutral-500 uppercase">Hora de Término</label>
+            <label className="text-xs font-bold text-neutral-500 uppercase">
+              {l("Hora de Término", "End Time")}
+            </label>
             <input
               type="time"
               id="input-exec-end-time"
@@ -2078,20 +2304,24 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
           {/* Duração Calculada */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-neutral-500 uppercase">Duração Calculada</label>
+            <label className="text-xs font-bold text-neutral-500 uppercase">
+              {l("Duração Calculada", "Calculated Duration")}
+            </label>
             <div
               className={`w-full text-xs font-bold px-3 py-2 rounded-xl border flex items-center justify-between ${
                 darkMode ? "bg-neutral-800/60 border-neutral-700 text-emerald-400" : "bg-emerald-50/60 border-emerald-200 text-emerald-800"
               }`}
             >
-              <span>{summary.duration}</span>
+              <span>{formatDurationLabel(summary.duration)}</span>
               <Clock className="w-3.5 h-3.5 text-emerald-500" />
             </div>
           </div>
 
           {/* Ambiente */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-neutral-500 uppercase">Ambiente</label>
+            <label className="text-xs font-bold text-neutral-500 uppercase">
+              {l("Ambiente", "Environment")}
+            </label>
             <select
               id="select-exec-environment"
               disabled={!isAdmin}
@@ -2101,15 +2331,17 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                 darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
               }`}
             >
-              <option value="Desenvolvimento">Desenvolvimento</option>
-              <option value="Homologação">Homologação</option>
-              <option value="Produção">Produção</option>
+              <option value="Desenvolvimento">{l("Desenvolvimento", "Development")}</option>
+              <option value="Homologação">{l("Homologação", "Staging")}</option>
+              <option value="Produção">{l("Produção", "Production")}</option>
             </select>
           </div>
 
           {/* Versão */}
           <div className="space-y-1">
-            <label className="text-xs font-bold text-neutral-500 uppercase">Versão Testada</label>
+            <label className="text-xs font-bold text-neutral-500 uppercase">
+              {l("Versão Testada", "Tested Version")}
+            </label>
             <input
               type="text"
               id="input-exec-version"
@@ -2138,7 +2370,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           }`}
         >
           <Layers className="w-4 h-4" />
-          Matriz Completa ({activeExecution.tests?.length || 0})
+          {l("Matriz Completa", "Full Matrix")} ({activeExecution.tests?.length || 0})
         </button>
 
         <button
@@ -2154,7 +2386,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           }`}
         >
           <Shuffle className="w-4 h-4" />
-          Distribuição de Testes
+          {l("Distribuição de Testes", "Test Distribution")}
         </button>
 
         <button
@@ -2170,7 +2402,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           }`}
         >
           <UserCheck className="w-4 h-4" />
-          Meus Testes Atribuídos ({myAssignedCount})
+          {l("Meus Testes Atribuídos", "My Assigned Tests")} ({myAssignedCount})
         </button>
 
         <button
@@ -2186,7 +2418,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
           }`}
         >
           <BarChart3 className="w-4 h-4" />
-          Painel de Métricas & Desempenho
+          {l("Painel de Métricas e Desempenho", "Metrics & Performance Panel")}
         </button>
       </div>
 
@@ -2231,10 +2463,12 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                   <div>
                     <div className="flex items-center gap-2">
                       <h2 className="text-sm sm:text-base font-black text-neutral-900 dark:text-white">
-                        {currentUser?.name || "Testador"}
+                        {currentUser?.name || l("Testador", "Tester")}
                       </h2>
                       <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                        {currentUser?.role === "ADMIN" ? "Administrador" : currentUser?.role === "SERVIDOR" ? "Servidor / TAE" : "Aluno / Testador"}
+                        {currentUser?.role
+                          ? translateUserRole(currentUser.role, language)
+                          : l("Aluno / Testador", "Student / Tester")}
                       </span>
                     </div>
                     <p className="text-xs text-neutral-500">
@@ -2243,7 +2477,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                   </div>
                 </div>
                 <div className="text-left md:text-right">
-                  <span className="text-xs text-neutral-400 font-semibold">Progresso dos Meus Testes</span>
+                  <span className="text-xs text-neutral-400 font-semibold">
+                    {l("Progresso dos Meus Testes", "My Test Progress")}
+                  </span>
                   <div className="flex items-center gap-2 mt-0.5 md:justify-end">
                     <span className="text-sm font-black text-neutral-900 dark:text-white">
                       {myAssignedCount > 0 ? Math.round((myApprovedCount / myAssignedCount) * 100) : 0}%
@@ -2261,19 +2497,27 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
               {/* 4 Metrics for Tester */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3.5">
                 <div className="p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800/60 border dark:border-neutral-700/60 border-neutral-200/80">
-                  <span className="text-[10px] font-bold text-neutral-500 uppercase">Atribuídos a Mim</span>
+                  <span className="text-[10px] font-bold text-neutral-500 uppercase">
+                    {l("Atribuídos a Mim", "Assigned to Me")}
+                  </span>
                   <p className="text-lg font-black text-neutral-900 dark:text-white mt-0.5">{myAssignedCount}</p>
                 </div>
                 <div className="p-2.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border dark:border-emerald-900/40 border-emerald-200/80">
-                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">Aprovados</span>
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">
+                    {l("Aprovados", "Passed")}
+                  </span>
                   <p className="text-lg font-black text-emerald-600 dark:text-emerald-400 mt-0.5">{myApprovedCount}</p>
                 </div>
                 <div className="p-2.5 rounded-xl bg-rose-50/60 dark:bg-rose-950/20 border dark:border-rose-900/40 border-rose-200/80">
-                  <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase">Reprovados</span>
+                  <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase">
+                    {l("Reprovados", "Failed")}
+                  </span>
                   <p className="text-lg font-black text-rose-600 dark:text-rose-400 mt-0.5">{myFailedCount}</p>
                 </div>
                 <div className="p-2.5 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border dark:border-amber-900/40 border-amber-200/80">
-                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase">Pendentes / Em Execução</span>
+                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase">
+                    {l("Pendentes / Em Execução", "Pending / Running")}
+                  </span>
                   <p className="text-lg font-black text-amber-600 dark:text-amber-400 mt-0.5">{myPendingCount + myInProgressCount}</p>
                 </div>
               </div>
@@ -2290,26 +2534,34 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
             >
               <div className="flex flex-wrap items-center gap-3">
                 <span className="font-bold text-neutral-900 dark:text-white">
-                  Matriz Completa ({activeExecution.tests?.length || 0} Casos Cadastrados)
+                  {l(
+                    `Matriz Completa (${activeExecution.tests?.length || 0} Casos Cadastrados)`,
+                    `Full Matrix (${activeExecution.tests?.length || 0} Registered Cases)`
+                  )}
                 </span>
                 <span className="text-neutral-400">•</span>
                 <span className="text-neutral-600 dark:text-neutral-300">
-                  Exibindo <strong>{filteredTests.length}</strong> {filteredTests.length === 1 ? "teste" : "testes"}
+                  {l("Exibindo", "Showing")} <strong>{filteredTests.length}</strong>{" "}
+                  {filteredTests.length === 1 ? l("teste", "test") : l("testes", "tests")}
                 </span>
                 <span className="text-neutral-400">•</span>
                 <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                  {summary.completed} Aprovados
+                  {summary.completed} {l("Aprovados", "Passed")}
                 </span>
                 <span className="text-rose-600 dark:text-rose-400 font-semibold">
-                  {summary.failed} Reprovados
+                  {summary.failed} {l("Reprovados", "Failed")}
                 </span>
                 <span className="text-neutral-500 font-semibold">
-                  {activeExecution.tests?.filter((t) => !t.assignedToUserId).length || 0} Sem Responsável
+                  {activeExecution.tests?.filter((t) => !t.assignedToUserId).length || 0}{" "}
+                  {l("Sem Responsável", "Unassigned")}
                 </span>
               </div>
               {isAdmin && (
                 <span className="text-[11px] font-medium text-neutral-500">
-                  Modo Administrador: Controle Total de Edição e Distribuição
+                  {l(
+                    "Modo Administrador: Controle Total de Edição e Distribuição",
+                    "Admin Mode: Full Editing and Assignment Control"
+                  )}
                 </span>
               )}
             </div>
@@ -2329,7 +2581,10 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                 <input
                   type="text"
                   id="input-search-tests"
-                  placeholder="Buscar por ID, título, testador ou área..."
+                  placeholder={l(
+                    "Buscar por ID, título, testador ou área...",
+                    "Search by ID, title, tester, or area..."
+                  )}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className={`w-full pl-9 pr-3 py-2 text-xs rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
@@ -2349,19 +2604,19 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                     darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
                   }`}
                 >
-                  <option value="ALL">Todas as Áreas (12 Categorias)</option>
-                  <option value="AUTENTICACAO">Autenticação</option>
-                  <option value="CADASTRO">Cadastro & Persistência</option>
-                  <option value="ACHADOS_PERDIDOS">Achados e Perdidos</option>
-                  <option value="REIVINDICACOES">Reivindicações</option>
+                  <option value="ALL">{l("Todas as Áreas (12 Categorias)", "All Areas (12 Categories)")}</option>
+                  <option value="AUTENTICACAO">{l("Autenticação", "Authentication")}</option>
+                  <option value="CADASTRO">{l("Cadastro e Persistência", "Registration & Persistence")}</option>
+                  <option value="ACHADOS_PERDIDOS">{l("Achados e Perdidos", "Lost & Found")}</option>
+                  <option value="REIVINDICACOES">{l("Reivindicações", "Claims")}</option>
                   <option value="QR_CODE">QR Code</option>
-                  <option value="IA_GEMINI">Inteligência Artificial</option>
-                  <option value="PWA_MOBILE">PWA / Mobile</option>
-                  <option value="DOCUMENTOS">Documentos</option>
-                  <option value="NOTIFICACOES">Notificações</option>
-                  <option value="SEGURANCA">Segurança</option>
-                  <option value="APIS_PRODUCAO">APIs / Produção</option>
-                  <option value="MONITORAMENTO">Monitoramento</option>
+                  <option value="IA_GEMINI">{l("Inteligência Artificial", "Artificial Intelligence")}</option>
+                  <option value="PWA_MOBILE">{l("PWA / Móveis", "PWA / Mobile")}</option>
+                  <option value="DOCUMENTOS">{l("Documentos", "Documents")}</option>
+                  <option value="NOTIFICACOES">{l("Notificações", "Notifications")}</option>
+                  <option value="SEGURANCA">{l("Segurança", "Security")}</option>
+                  <option value="APIS_PRODUCAO">{l("APIs / Produção", "APIs / Production")}</option>
+                  <option value="MONITORAMENTO">{l("Monitoramento", "Monitoring")}</option>
                 </select>
 
                 {/* Select Status */}
@@ -2373,12 +2628,12 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                     darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
                   }`}
                 >
-                  <option value="ALL">Todos os Status</option>
-                  <option value="APROVADO">Aprovados</option>
-                  <option value="REPROVADO">Reprovados</option>
-                  <option value="NAO_EXECUTADO">Não Executados</option>
-                  <option value="PENDENTE">Pendentes</option>
-                  <option value="BLOQUEADO">Bloqueados</option>
+                  <option value="ALL">{l("Todas as Situações", "All Statuses")}</option>
+                  <option value="APROVADO">{l("Aprovados", "Passed")}</option>
+                  <option value="REPROVADO">{l("Reprovados", "Failed")}</option>
+                  <option value="NAO_EXECUTADO">{l("Não Executados", "Not Executed")}</option>
+                  <option value="PENDENTE">{l("Pendentes", "Pending")}</option>
+                  <option value="BLOQUEADO">{l("Bloqueados", "Blocked")}</option>
                 </select>
 
                 {/* Select Tester Filter (if on full matrix) */}
@@ -2391,11 +2646,11 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                       darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
                     }`}
                   >
-                    <option value="ALL">Todos os Testadores</option>
-                    <option value="UNASSIGNED">Não Atribuídos</option>
+                    <option value="ALL">{l("Todos os Testadores", "All Testers")}</option>
+                    <option value="UNASSIGNED">{l("Não Atribuídos", "Unassigned")}</option>
                     {participants.map((p) => (
                       <option key={p.id} value={p.email}>
-                        {p.name} ({p.globalRole})
+                        {p.name} ({translateUserRole(p.globalRole, language)})
                       </option>
                     ))}
                   </select>
@@ -2417,7 +2672,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                   }`}
                 >
                   <AlertTriangle className="w-3.5 h-3.5" />
-                  Persistência Crítica
+                  {l("Persistência Crítica", "Critical Persistence")}
                 </button>
 
                 {/* New Test Case Button - Admin Only */}
@@ -2431,7 +2686,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                     className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white shadow-sm transition"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    Novo Caso de Teste
+                    {l("Novo Caso de Teste", "New Test Case")}
                   </button>
                 )}
               </div>
@@ -2449,13 +2704,25 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                 <ShieldCheck className="w-12 h-12 mx-auto text-neutral-400 mb-3" />
                 <p className="font-bold text-base">
                   {activeMainTab === "MY_TESTS"
-                    ? "Você foi adicionado à bateria, mas ainda não possui testes atribuídos."
-                    : "Nenhum teste encontrado para os filtros selecionados."}
+                    ? l(
+                        "Você foi adicionado à bateria, mas ainda não possui testes atribuídos.",
+                        "You have been added to the battery, but do not have any assigned tests yet."
+                      )
+                    : l(
+                        "Nenhum teste encontrado para os filtros selecionados.",
+                        "No tests found for the selected filters."
+                      )}
                 </p>
                 <p className="text-xs mt-1">
                   {activeMainTab === "MY_TESTS"
-                    ? "Aguarde a distribuição de casos de teste pelo administrador ou consulte a Matriz Completa."
-                    : "Ajuste o termo de pesquisa ou os filtros de categoria/status."}
+                    ? l(
+                        "Aguarde a distribuição de casos de teste pelo administrador ou consulte a Matriz Completa.",
+                        "Wait for an administrator to assign test cases or view the Full Matrix."
+                      )
+                    : l(
+                        "Ajuste o termo de pesquisa ou os filtros de categoria e situação.",
+                        "Adjust your search term or category/status filters."
+                      )}
                 </p>
               </div>
             ) : (
@@ -2488,11 +2755,11 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                           </span>
                           <span className="flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
                             {getCategoryIcon(test.category)}
-                            {test.categoryName || test.category}
+                            {formatCategoryLabel(test.category, test.categoryName)}
                           </span>
                           {test.isCriticalPersistence && (
                             <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                              ★ TESTE CRÍTICO DE PERSISTÊNCIA (RNF-04)
+                              ★ {l("TESTE CRÍTICO DE PERSISTÊNCIA (RNF-04)", "CRITICAL PERSISTENCE TEST (NFR-04)")}
                             </span>
                           )}
 
@@ -2506,11 +2773,11 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                               }`}
                             >
                               <User className="w-3 h-3" />
-                              Testador: {test.assignedToName} {isAssignedToMe && "(Você)"}
+                              {l("Testador:", "Tester:")} {test.assignedToName} {isAssignedToMe && l("(Você)", "(You)")}
                             </span>
                           ) : (
                             <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-neutral-200/60 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-400">
-                              Sem atribuição
+                              {l("Sem atribuição", "Unassigned")}
                             </span>
                           )}
                         </div>
@@ -2519,12 +2786,16 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
 
                         <div className="text-xs space-y-1 text-neutral-600 dark:text-neutral-400">
                           <p>
-                            <strong className="text-neutral-700 dark:text-neutral-300">Resultado Esperado:</strong>{" "}
+                            <strong className="text-neutral-700 dark:text-neutral-300">
+                              {l("Resultado Esperado:", "Expected Result:")}
+                            </strong>{" "}
                             {test.expectedResult}
                           </p>
                           {test.obtainedResult && (
                             <p>
-                              <strong className="text-neutral-700 dark:text-neutral-300">Resultado Obtido:</strong>{" "}
+                              <strong className="text-neutral-700 dark:text-neutral-300">
+                                {l("Resultado Obtido:", "Actual Result:")}
+                              </strong>{" "}
                               <span
                                 className={
                                   test.status === "APROVADO"
@@ -2540,7 +2811,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                           )}
                           {test.evidence?.recordId && (
                             <p className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400">
-                              <strong>ID do Registro Backend:</strong> {test.evidence.recordId}
+                              <strong>{l("ID do Registro no Servidor:", "Backend Record ID:")}</strong> {test.evidence.recordId}
                             </p>
                           )}
                         </div>
@@ -2556,9 +2827,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                             className={`text-xs font-semibold px-2 py-1.5 rounded-xl border outline-none max-w-[140px] truncate ${
                               darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-white border-neutral-300 text-neutral-900"
                             }`}
-                            title="Atribuir caso de teste a um participante"
+                            title={l("Atribuir caso de teste a um participante", "Assign test case to a participant")}
                           >
-                            <option value="">Atribuir a...</option>
+                            <option value="">{l("Atribuir a...", "Assign to...")}</option>
                             {participants.map((p) => (
                               <option key={p.id} value={p.id}>
                                 {p.name}
@@ -2574,8 +2845,11 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                           }`}
                           title={
                             canModifyTestStatus
-                              ? "Alterar status do caso de teste"
-                              : "Apenas o testador responsável ou um administrador pode alterar o status deste caso."
+                              ? l("Alterar situação do caso de teste", "Change test case status")
+                              : l(
+                                  "Apenas o testador responsável ou um administrador pode alterar a situação deste caso.",
+                                  "Only the assigned tester or an administrator can change this case's status."
+                                )
                           }
                         >
                           <button
@@ -2586,9 +2860,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                                 ? "bg-emerald-600 text-white shadow-sm"
                                 : "text-neutral-600 hover:text-emerald-600 dark:text-neutral-300"
                             }`}
-                            title="Marcar como Aprovado / Concluído"
+                            title={l("Marcar como Aprovado / Concluído", "Mark as Passed / Completed")}
                           >
-                            Aprovado
+                            {l("Aprovado", "Passed")}
                           </button>
                           <button
                             disabled={!canModifyTestStatus}
@@ -2598,9 +2872,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                                 ? "bg-rose-600 text-white shadow-sm"
                                 : "text-neutral-600 hover:text-rose-600 dark:text-neutral-300"
                             }`}
-                            title="Marcar como Reprovado / Com Problema"
+                            title={l("Marcar como Reprovado / Com Problema", "Mark as Failed / Issue")}
                           >
-                            Reprovado
+                            {l("Reprovado", "Failed")}
                           </button>
                           <button
                             disabled={!canModifyTestStatus}
@@ -2610,9 +2884,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                                 ? "bg-blue-600 text-white shadow-sm"
                                 : "text-neutral-600 hover:text-blue-600 dark:text-neutral-300"
                             }`}
-                            title="Marcar como Em Andamento"
+                            title={l("Marcar como Em Andamento", "Mark as In Progress")}
                           >
-                            Em And.
+                            {l("Em And.", "Running")}
                           </button>
                           <button
                             disabled={!canModifyTestStatus}
@@ -2622,9 +2896,9 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                                 ? "bg-amber-600 text-white shadow-sm"
                                 : "text-neutral-600 hover:text-amber-600 dark:text-neutral-300"
                             }`}
-                            title="Marcar como Pendente"
+                            title={l("Marcar como Pendente", "Mark as Pending")}
                           >
-                            Pendente
+                            {l("Pendente", "Pending")}
                           </button>
                           <button
                             disabled={!canModifyTestStatus}
@@ -2634,7 +2908,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                                 ? "bg-purple-600 text-white shadow-sm"
                                 : "text-neutral-500 hover:text-purple-600 dark:text-neutral-400"
                             }`}
-                            title="Marcar como Não se Aplica"
+                            title={l("Marcar como Não se Aplica", "Mark as Not Applicable")}
                           >
                             N/A
                           </button>
@@ -2651,10 +2925,10 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                               ? "bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-200"
                               : "bg-neutral-50 hover:bg-neutral-100 border-neutral-300 text-neutral-800"
                           }`}
-                          title="Registrar Evidência ou Observação Técnica"
+                          title={l("Registrar Evidência ou Observação Técnica", "Record Evidence or Technical Note")}
                         >
                           <Edit3 className="w-3.5 h-3.5 text-emerald-500" />
-                          <span>Evidências</span>
+                          <span>{l("Evidências", "Evidence")}</span>
                         </button>
 
                         {/* Edit Test Button - Admin Only */}
@@ -2669,7 +2943,8 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                                 ? "bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-200"
                                 : "bg-neutral-50 hover:bg-neutral-100 border-neutral-300 text-neutral-800"
                             }`}
-                            title="Editar Caso de Teste"
+                            title={l("Editar Caso de Teste", "Edit Test Case")}
+                            aria-label={l("Editar Caso de Teste", "Edit Test Case")}
                           >
                             <Edit2 className="w-3.5 h-3.5 text-blue-500" />
                           </button>
@@ -2684,7 +2959,8 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                                 ? "bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-200"
                                 : "bg-neutral-50 hover:bg-neutral-100 border-neutral-300 text-neutral-800"
                             }`}
-                            title="Duplicar Caso de Teste"
+                            title={l("Duplicar Caso de Teste", "Duplicate Test Case")}
+                            aria-label={l("Duplicar Caso de Teste", "Duplicate Test Case")}
                           >
                             <Copy className="w-3.5 h-3.5 text-indigo-500" />
                           </button>
@@ -2698,7 +2974,8 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                               setTestToDelete(test);
                             }}
                             className="p-1.5 text-xs font-bold rounded-xl border transition bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:border-rose-900 dark:text-rose-400"
-                            title="Excluir Caso de Teste"
+                            title={l("Excluir Caso de Teste", "Delete Test Case")}
+                            aria-label={l("Excluir Caso de Teste", "Delete Test Case")}
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -2713,7 +2990,8 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                                 ? "bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-300"
                                 : "bg-neutral-50 hover:bg-neutral-100 border-neutral-300 text-neutral-700"
                             }`}
-                            title="Ver passos do procedimento de teste"
+                            title={l("Ver passos do procedimento de teste", "View test procedure steps")}
+                            aria-label={l("Ver passos do procedimento de teste", "View test procedure steps")}
                           >
                             {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                           </button>
@@ -2726,7 +3004,7 @@ export const TestBatteryManagerView: React.FC<TestBatteryManagerViewProps> = ({
                       <div className="mt-4 pt-3 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-800/30 p-3.5 rounded-xl space-y-2">
                         <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wide flex items-center gap-1.5">
                           <ClipboardList className="w-3.5 h-3.5 text-emerald-500" />
-                          Procedimento Oficial de Execução (Passo a Passo)
+                          {l("Procedimento Oficial de Execução (Passo a Passo)", "Official Execution Procedure (Step by Step)")}
                         </span>
                         <ul className="space-y-1.5 text-xs text-neutral-600 dark:text-neutral-400 pl-1">
                           {(test.procedureSteps || test.procedure)!.map((step, sIdx) => (

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from "react";
 import { useApp } from "../context/AppContext";
-import { translateUserRole } from "../lib/i18n";
+import { translateUserRole, translateBadgeTier, translateClaimStatus, localize } from "../lib/i18n";
 import { ItemCard } from "./ItemCard";
 import { formatDateTime, vibrateClick, vibrateSuccess, formatPhone, isValidPhone } from "../lib/utils";
 import { UserRole, BadgeTier } from "../types";
@@ -72,6 +72,8 @@ export const ProfileView: React.FC = () => {
     cancelClaim,
   } = useApp();
 
+  const L = (pt: string, en: string) => localize(language, pt, en);
+
   const [activeTab, setActiveTab] = useState<"my_items" | "claims">("my_items");
   const [isEditing, setIsEditing] = useState(false);
   const [isSubscribingFCM, setIsSubscribingFCM] = useState(false);
@@ -92,14 +94,26 @@ export const ProfileView: React.FC = () => {
     // Validate type
     const validTypes = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
     if (!validTypes.includes(file.type)) {
-      addToast("Formato de imagem não suportado. Por favor, utilize JPG, PNG ou WebP.", "warning");
+      addToast(
+        L(
+          "Formato de imagem não suportado. Por favor, utilize JPG, PNG ou WebP.",
+          "Unsupported image format. Please use JPG, PNG, or WebP."
+        ),
+        "warning"
+      );
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
     // Validate size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      addToast("A fotografia selecionada é muito grande. O tamanho máximo permitido é de 5 MB.", "warning");
+      addToast(
+        L(
+          "A fotografia selecionada é muito grande. O tamanho máximo permitido é de 5 MB.",
+          "Selected photo is too large. Maximum allowed size is 5 MB."
+        ),
+        "warning"
+      );
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
@@ -150,7 +164,13 @@ export const ProfileView: React.FC = () => {
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editPhone && !isValidPhone(editPhone)) {
-      addToast("Telefone inválido. Informe o DDD e o número completo (ex: (43) 99876-5432).", "warning");
+      addToast(
+        L(
+          "Telefone inválido. Informe o DDD e o número completo (ex: (43) 99876-5432).",
+          "Invalid phone number. Include area code and full number (e.g., (43) 99876-5432)."
+        ),
+        "warning"
+      );
       return;
     }
     await updateUserProfileData({
@@ -172,8 +192,8 @@ export const ProfileView: React.FC = () => {
   // Calculate user reputation and badge system
   const [showBadges, setShowBadges] = useState(false);
   const reputation = useMemo(() => {
-    return calculateUserReputation(currentUser, items);
-  }, [currentUser, items]);
+    return calculateUserReputation(currentUser, items, language);
+  }, [currentUser, items, language]);
 
   // Helper for Tier Badge colors & icons
   const getTierDetails = (tier: BadgeTier) => {
@@ -326,34 +346,42 @@ export const ProfileView: React.FC = () => {
                     onChange={(e) => updateUserRole(currentUser.id, e.target.value as UserRole)}
                     className="bg-transparent text-xs font-bold text-[#172B2A] dark:text-white outline-none cursor-pointer"
                   >
-                    <option value="ALUNO" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">ALUNO</option>
-                    <option value="SERVIDOR" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">SERVIDOR</option>
-                    <option value="ADMIN" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">ADMIN</option>
-                    <option value="INTRUSO" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">Usuário externo</option>
+                    <option value="ALUNO" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{translateUserRole("ALUNO", language).toUpperCase()}</option>
+                    <option value="SERVIDOR" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{translateUserRole("SERVIDOR", language).toUpperCase()}</option>
+                    <option value="ADMIN" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{translateUserRole("ADMIN", language).toUpperCase()}</option>
+                    <option value="INTRUSO" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{translateUserRole("INTRUSO", language)}</option>
                   </select>
                 </div>
               ) : (
                 <button
                   type="button"
-                  onClick={() => addToast("Sua função é definida e alterada apenas pelo Administrador do IFPR.", "info")}
+                  onClick={() =>
+                    addToast(
+                      L(
+                        "Sua função é definida e alterada apenas pelo Administrador do IFPR.",
+                        "Your role can only be defined and updated by an IFPR Administrator."
+                      ),
+                      "info"
+                    )
+                  }
                   className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 flex items-center gap-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-                  title="Somente Administradores do IFPR podem alterar perfis e permissões"
+                  title={L("Somente Administradores do IFPR podem alterar perfis e permissões", "Only IFPR Administrators can modify roles and permissions")}
                 >
                   <Lock className="w-3.5 h-3.5 text-amber-500" />
-                  <span>Função: {currentUser.role === "INTRUSO" ? "Usuário externo" : currentUser.role}</span>
+                  <span>{L("Função:", "Role:")} {translateUserRole(currentUser.role, language)}</span>
                 </button>
               )}
 
               {/* Account Status Badge */}
               {(() => {
-                const statusInfo = formatAccountStatusDetails(currentUser);
+                const statusInfo = formatAccountStatusDetails(currentUser, language);
                 return (
                   <div
                     className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold ${statusInfo.badgeClass}`}
                     title={statusInfo.description}
                   >
                     <span className={`w-2 h-2 rounded-full ${statusInfo.dotClass}`} />
-                    <span>Conta: {statusInfo.label}</span>
+                    <span>{L("Conta:", "Account:")} {statusInfo.label}</span>
                   </div>
                 );
               })()}
@@ -368,11 +396,11 @@ export const ProfileView: React.FC = () => {
               </div>
               <div className="flex items-center justify-center md:justify-start space-x-2">
                 <IdCard className="w-4 h-4 text-[#16845B] shrink-0" />
-                <span>Matrícula: {currentUser.registrationNumber}</span>
+                <span>{L("Matrícula:", "ID:")} {currentUser.registrationNumber || L("Não informada", "Not provided")}</span>
               </div>
               <div className="flex items-center justify-center md:justify-start space-x-2">
                 <Phone className="w-4 h-4 text-[#16845B] shrink-0" />
-                <span>{currentUser.phone ? formatPhone(currentUser.phone) : "Telefone não informado"}</span>
+                <span>{currentUser.phone ? formatPhone(currentUser.phone) : L("Telefone não informado", "Phone not provided")}</span>
               </div>
             </div>
           ) : (
@@ -468,11 +496,14 @@ export const ProfileView: React.FC = () => {
                   {reputation.levelTitle}
                 </h2>
                 <span className={`px-3 py-0.5 rounded-lg text-xs font-bold uppercase tracking-wider border ${currentTierDetails.bg}`}>
-                  Nível {reputation.level} • {reputation.levelTier}
+                  {t("levelLabel")} {reputation.level} • {translateBadgeTier(reputation.levelTier, language)}
                 </span>
               </div>
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 max-w-xl">
-                Reconhecimento comunitário por devolver pertences encontrados e fortalecer a honestidade no IFPR Campus Ivaiporã.
+                {L(
+                  "Reconhecimento comunitário por devolver pertences encontrados e fortalecer a honestidade no IFPR Campus Ivaiporã.",
+                  "Community recognition for returning found belongings and promoting integrity at IFPR Ivaiporã Campus."
+                )}
               </p>
             </div>
           </div>
@@ -484,7 +515,7 @@ export const ProfileView: React.FC = () => {
                 {reputation.totalPoints}
               </span>
               <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tight">
-                Pontos
+                {t("points")}
               </span>
             </div>
 
@@ -493,7 +524,7 @@ export const ProfileView: React.FC = () => {
                 {reputation.itemsReturnedCount}
               </span>
               <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tight">
-                Devoluções
+                {t("itemsReturnedMetric")}
               </span>
             </div>
 
@@ -502,7 +533,7 @@ export const ProfileView: React.FC = () => {
                 {reputation.badges.filter((b) => b.unlocked).length}/{reputation.badges.length}
               </span>
               <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-tight">
-                Medalhas
+                {t("badgesUnlockedMetric")}
               </span>
             </div>
           </div>
@@ -513,7 +544,7 @@ export const ProfileView: React.FC = () => {
           <div className="flex items-center justify-between text-xs font-semibold">
             <span className="text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Progresso para a Próxima Categoria ({reputation.progressToNextLevel}%)</span>
+              <span>{t("badgesProgressLabel")} ({reputation.progressToNextLevel}%)</span>
             </span>
             <span className="text-[#16845B] dark:text-emerald-400 font-bold">
               {reputation.totalPoints} / {reputation.nextLevelPoints} pts
@@ -540,7 +571,7 @@ export const ProfileView: React.FC = () => {
               className="flex items-center gap-2 font-bold text-xs sm:text-sm text-[#172B2A] dark:text-white uppercase tracking-wider hover:text-[#16845B] transition-colors cursor-pointer"
             >
               <Award className="w-4 h-4 text-[#16845B]" />
-              <span>Galeria de Medalhas e Conquistas ({reputation.badges.filter((b) => b.unlocked).length}/{reputation.badges.length})</span>
+              <span>{t("badges")} ({reputation.badges.filter((b) => b.unlocked).length}/{reputation.badges.length})</span>
               {showBadges ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
             </button>
 
@@ -552,7 +583,7 @@ export const ProfileView: React.FC = () => {
               }}
               className="text-[11px] font-semibold text-[#16845B] dark:text-emerald-400 hover:underline cursor-pointer"
             >
-              {showBadges ? "Ocultar Galeria" : "Exibir Galeria"}
+              {showBadges ? t("hideBadgesGallery") : t("viewBadgesGallery")}
             </button>
           </div>
 
@@ -603,7 +634,7 @@ export const ProfileView: React.FC = () => {
 
                         <div className="flex items-center gap-1.5">
                           <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase border ${tierInfo.bg}`}>
-                            {badge.tier}
+                            {translateBadgeTier(badge.tier, language)}
                           </span>
                           {isUnlocked && (
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400 border border-[#16845B]/20">
@@ -722,7 +753,7 @@ export const ProfileView: React.FC = () => {
                   onClick={handleSubscribeFCM}
                   disabled={isSubscribingFCM}
                   className="px-3 py-2 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 font-semibold text-xs flex items-center space-x-1 border border-[#16845B]/20 hover:bg-emerald-100/70 cursor-pointer"
-                  title="Atualizar Token FCM"
+                  title={L("Atualizar token de notificações", "Refresh FCM notification token")}
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>{t("fcmConfigured", "Configurado")}</span>
@@ -909,15 +940,7 @@ export const ProfileView: React.FC = () => {
                               : "slate"
                           }
                         >
-                          {claim.status === "PENDENTE"
-                            ? "Em Análise"
-                            : claim.status === "APROVADO"
-                            ? "Aprovado"
-                            : claim.status === "REJEITADO"
-                            ? "Rejeitado"
-                            : claim.status === "CONCLUIDO"
-                            ? "Concluído"
-                            : "Cancelado"}
+                          {translateClaimStatus(claim.status, language)}
                         </UIBadge>
                       </div>
                     </div>
@@ -925,16 +948,16 @@ export const ProfileView: React.FC = () => {
                     {/* Declared Features */}
                     <div className="space-y-1 text-xs">
                       <span className="font-semibold text-slate-700 dark:text-slate-300 block">
-                        Características particulares informadas (RNF04):
+                        {t("claimFeaturesLabel")}:
                       </span>
                       <SubtlePanel className="p-3">
                         <p className="text-[#172B2A] dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
-                          {claim.distinctiveFeatures || claim.verificationAnswer || "Sem características descritas."}
+                          {claim.distinctiveFeatures || claim.verificationAnswer || L("Sem características descritas.", "No identifying details provided.")}
                         </p>
                       </SubtlePanel>
                       {claim.additionalInfo && (
                         <p className="text-[11px] text-slate-500 italic mt-1">
-                          Informações adicionais: {claim.additionalInfo}
+                          {L("Informações adicionais:", "Additional information:")} {claim.additionalInfo}
                         </p>
                       )}
                     </div>
@@ -944,10 +967,13 @@ export const ProfileView: React.FC = () => {
                       <div className="p-3.5 bg-[#EBF5F0] dark:bg-emerald-950/40 border border-[#16845B]/25 rounded-xl text-xs text-[#064E3B] dark:text-emerald-200 space-y-1">
                         <div className="flex items-center gap-2 font-bold text-[#16845B] dark:text-emerald-300">
                           <ShieldCheck className="w-4 h-4 shrink-0" />
-                          <span>Pedido Aprovado pela Secretaria!</span>
+                          <span>{L("Pedido Aprovado pela Secretaria!", "Claim Approved by Campus Secretariat!")}</span>
                         </div>
                         <p className="text-[11px] leading-relaxed">
-                          Sua solicitação de posse foi aceita. Compareça à Secretaria / SEBAC portando um documento oficial com foto para realizar a retirada física do pertence.
+                          {L(
+                            "Sua solicitação de posse foi aceita. Compareça à Secretaria / SEBAC portando um documento oficial com foto para realizar a retirada física do pertence.",
+                            "Your ownership claim has been approved. Visit the Secretariat / SEBAC with an official photo ID to pick up your belonging."
+                          )}
                         </p>
                       </div>
                     )}
@@ -957,10 +983,10 @@ export const ProfileView: React.FC = () => {
                       <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 rounded-xl text-xs text-rose-900 dark:text-rose-200 space-y-1">
                         <div className="flex items-center gap-2 font-bold text-rose-700 dark:text-rose-400">
                           <AlertOctagon className="w-4 h-4 shrink-0" />
-                          <span>Solicitação Não Aprovada</span>
+                          <span>{L("Solicitação Não Aprovada", "Claim Not Approved")}</span>
                         </div>
                         <p className="text-[11px] leading-relaxed">
-                          Motivo informado: <strong>{claim.rejectionReason}</strong>
+                          {L("Motivo informado:", "Reason provided:")} <strong>{claim.rejectionReason}</strong>
                         </p>
                       </div>
                     )}
@@ -976,7 +1002,7 @@ export const ProfileView: React.FC = () => {
                           }}
                           className="text-xs font-semibold text-[#16845B] hover:text-[#064E3B] dark:text-emerald-400 hover:underline cursor-pointer"
                         >
-                          Ver Detalhes do Objeto
+                          {L("Ver Detalhes do Objeto", "View Object Details")}
                         </button>
                       ) : (
                         <span className="text-[10px] text-slate-400">ID #{claim.itemId}</span>
@@ -987,7 +1013,14 @@ export const ProfileView: React.FC = () => {
                           type="button"
                           disabled={cancellingClaimId === claim.id}
                           onClick={async () => {
-                            if (!window.confirm("Deseja realmente cancelar esta solicitação de devolução?")) {
+                            if (
+                              !window.confirm(
+                                L(
+                                  "Deseja realmente cancelar esta solicitação de devolução?",
+                                  "Are you sure you want to cancel this return claim?"
+                                )
+                              )
+                            ) {
                               return;
                             }
                             vibrateClick();
@@ -995,16 +1028,27 @@ export const ProfileView: React.FC = () => {
                               setCancellingClaimId(claim.id);
                               await cancelClaim(claim.id);
                               vibrateSuccess();
-                              addToast("Solicitação de devolução cancelada com sucesso.", "info");
+                              addToast(
+                                L(
+                                  "Solicitação de devolução cancelada com sucesso.",
+                                  "Return claim cancelled successfully."
+                                ),
+                                "info"
+                              );
                             } catch (e: any) {
-                              addToast(e?.message || "Erro ao cancelar solicitação.", "error");
+                              addToast(
+                                e?.message || L("Erro ao cancelar solicitação.", "Error cancelling claim."),
+                                "error"
+                              );
                             } finally {
                               setCancellingClaimId(null);
                             }
                           }}
                           className="px-3.5 py-1.5 rounded-xl border border-rose-200 dark:border-rose-800/70 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
                         >
-                          {cancellingClaimId === claim.id ? "Cancelando..." : "Cancelar Solicitação"}
+                          {cancellingClaimId === claim.id
+                            ? L("Cancelando...", "Cancelling...")
+                            : t("cancelClaimBtn")}
                         </button>
                       )}
                     </div>

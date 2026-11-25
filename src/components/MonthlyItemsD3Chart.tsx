@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import * as d3 from "d3";
 import { LostFoundItem } from "../types";
-import { TrendingUp, BarChart3, Info } from "lucide-react";
+import { BarChart3, Info } from "lucide-react";
 import { safeParseDate } from "../lib/utils";
+import { useApp } from "../context/AppContext";
+import { localize } from "../lib/i18n";
 
 interface MonthlyItemsD3ChartProps {
   items: LostFoundItem[];
@@ -19,6 +21,8 @@ interface MonthData {
 }
 
 export const MonthlyItemsD3Chart: React.FC<MonthlyItemsD3ChartProps> = ({ items, darkMode = false }) => {
+  const { language } = useApp();
+  const l = (pt: string, en: string) => localize(language, pt, en);
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -50,7 +54,10 @@ export const MonthlyItemsD3Chart: React.FC<MonthlyItemsD3ChartProps> = ({ items,
       }
     });
 
-    const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const monthNames =
+      language === "en"
+        ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        : ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 
     return Array.from(monthMap.entries()).map(([key, val]) => ({
       monthKey: key,
@@ -60,7 +67,7 @@ export const MonthlyItemsD3Chart: React.FC<MonthlyItemsD3ChartProps> = ({ items,
       devolvidos: val.devolvidos,
       total: val.perdidos + val.encontrados,
     }));
-  }, [items]);
+  }, [items, language]);
 
   // Responsive container observer
   useEffect(() => {
@@ -178,7 +185,10 @@ export const MonthlyItemsD3Chart: React.FC<MonthlyItemsD3ChartProps> = ({ items,
           d3.select(this).attr("opacity", 1).attr("stroke", darkMode ? "#ffffff" : "#000000").attr("stroke-width", 1.5);
           if (tooltipRef.current) {
             const count = key === "perdidos" ? d.perdidos : d.encontrados;
-            const label = key === "perdidos" ? "Itens Perdidos" : "Itens Encontrados";
+            const label =
+              key === "perdidos"
+                ? localize(language, "Itens Perdidos", "Lost Items")
+                : localize(language, "Itens Encontrados", "Found Items");
             const tooltipEl = tooltipRef.current;
             tooltipEl.style.opacity = "1";
             tooltipEl.style.left = `${event.pageX + 10}px`;
@@ -222,7 +232,7 @@ export const MonthlyItemsD3Chart: React.FC<MonthlyItemsD3ChartProps> = ({ items,
     return () => {
       svg.selectAll("*").remove();
     };
-  }, [chartData, dimensions, darkMode]);
+  }, [chartData, dimensions, darkMode, language]);
 
   const totalPerdidos = useMemo(() => chartData.reduce((acc, curr) => acc + curr.perdidos, 0), [chartData]);
   const totalEncontrados = useMemo(() => chartData.reduce((acc, curr) => acc + curr.encontrados, 0), [chartData]);
@@ -235,11 +245,14 @@ export const MonthlyItemsD3Chart: React.FC<MonthlyItemsD3ChartProps> = ({ items,
           <div className="flex items-center space-x-2">
             <BarChart3 className="w-5 h-5 text-[#00843D]" />
             <h3 className="font-extrabold text-base text-neutral-900 dark:text-white">
-              Evolução Temporal • Perdidos vs Encontrados (D3.js)
+              {l("Evolução Temporal • Perdidos vs. Encontrados (D3.js)", "Timeline • Lost vs. Found (D3.js)")}
             </h3>
           </div>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-            Distribuição mensal das ocorrências registradas no campus nos últimos 6 meses.
+            {l(
+              "Distribuição mensal das ocorrências registradas no campus nos últimos 6 meses.",
+              "Monthly distribution of reports registered on campus over the last 6 months."
+            )}
           </p>
         </div>
 
@@ -247,11 +260,11 @@ export const MonthlyItemsD3Chart: React.FC<MonthlyItemsD3ChartProps> = ({ items,
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-1.5 text-xs font-bold text-neutral-700 dark:text-neutral-300">
             <span className="w-3 h-3 rounded-md bg-[#EF4444]" />
-            <span>Perdidos ({totalPerdidos})</span>
+            <span>{l(`Perdidos (${totalPerdidos})`, `Lost (${totalPerdidos})`)}</span>
           </div>
           <div className="flex items-center space-x-1.5 text-xs font-bold text-neutral-700 dark:text-neutral-300">
             <span className="w-3 h-3 rounded-md bg-[#00843D]" />
-            <span>Encontrados ({totalEncontrados})</span>
+            <span>{l(`Encontrados (${totalEncontrados})`, `Found (${totalEncontrados})`)}</span>
           </div>
         </div>
       </div>
@@ -262,7 +275,10 @@ export const MonthlyItemsD3Chart: React.FC<MonthlyItemsD3ChartProps> = ({ items,
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 space-y-2">
             <Info className="w-8 h-8 text-neutral-400" />
             <p className="text-xs font-bold text-neutral-600 dark:text-neutral-400">
-              Nenhum dado histórico registrado para exibir no gráfico.
+              {l(
+                "Nenhum dado histórico registrado para exibir no gráfico.",
+                "No historical data recorded to display on the chart."
+              )}
             </p>
           </div>
         ) : (

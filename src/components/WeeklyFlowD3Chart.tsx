@@ -2,19 +2,14 @@ import React, { useEffect, useRef, useState, useMemo } from "react";
 import * as d3 from "d3";
 import { LostFoundItem } from "../types";
 import { safeParseDate } from "../lib/utils";
-import { normalizeCategory, isCategoryMatch, getCategoryDisplay } from "../lib/categoryUtils";
+import { normalizeCategory, isCategoryMatch } from "../lib/categoryUtils";
+import { useApp } from "../context/AppContext";
+import { localize, translateCategory } from "../lib/i18n";
 import {
   BarChart3,
-  Calendar,
-  Layers,
   Sparkles,
-  TrendingUp,
   Filter,
   CheckCircle2,
-  AlertCircle,
-  HelpCircle,
-  ArrowUpRight,
-  PieChart as PieIcon,
   Flame,
 } from "lucide-react";
 
@@ -23,31 +18,35 @@ interface WeeklyFlowD3ChartProps {
   darkMode?: boolean;
 }
 
-const DAYS_OF_WEEK = [
-  { index: 0, key: "DOMINGO", short: "Dom", name: "Domingo" },
-  { index: 1, key: "SEGUNDA", short: "Seg", name: "Segunda-feira" },
-  { index: 2, key: "TERCA", short: "Ter", name: "Terça-feira" },
-  { index: 3, key: "QUARTA", short: "Qua", name: "Quarta-feira" },
-  { index: 4, key: "QUINTA", short: "Qui", name: "Quinta-feira" },
-  { index: 5, key: "SEXTA", short: "Sex", name: "Sexta-feira" },
-  { index: 6, key: "SABADO", short: "Sáb", name: "Sábado" },
-];
-
-const CATEGORY_COLORS: Record<string, string> = {
-  Eletrônicos: "#3B82F6", // Blue
-  Documentos: "#F59E0B", // Amber
-  Roupas: "#EC4899", // Pink
-  Chaves: "#8B5CF6", // Purple
-  "Material Escolar": "#10B981", // Emerald
-  "Mochilas & Bolsas": "#6366F1", // Indigo
-  Acessórios: "#14B8A6", // Teal
-  Outros: "#64748B", // Slate
-};
+const getDaysOfWeek = (language: "pt" | "en") =>
+  language === "en"
+    ? [
+        { index: 0, key: "DOMINGO", short: "Sun", name: "Sunday" },
+        { index: 1, key: "SEGUNDA", short: "Mon", name: "Monday" },
+        { index: 2, key: "TERCA", short: "Tue", name: "Tuesday" },
+        { index: 3, key: "QUARTA", short: "Wed", name: "Wednesday" },
+        { index: 4, key: "QUINTA", short: "Thu", name: "Thursday" },
+        { index: 5, key: "SEXTA", short: "Fri", name: "Friday" },
+        { index: 6, key: "SABADO", short: "Sat", name: "Saturday" },
+      ]
+    : [
+        { index: 0, key: "DOMINGO", short: "Dom", name: "Domingo" },
+        { index: 1, key: "SEGUNDA", short: "Seg", name: "Segunda-feira" },
+        { index: 2, key: "TERCA", short: "Ter", name: "Terça-feira" },
+        { index: 3, key: "QUARTA", short: "Qua", name: "Quarta-feira" },
+        { index: 4, key: "QUINTA", short: "Qui", name: "Quinta-feira" },
+        { index: 5, key: "SEXTA", short: "Sex", name: "Sexta-feira" },
+        { index: 6, key: "SABADO", short: "Sáb", name: "Sábado" },
+      ];
 
 export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
   items,
   darkMode = false,
 }) => {
+  const { language } = useApp();
+  const l = (pt: string, en: string) => localize(language, pt, en);
+  const daysOfWeek = useMemo(() => getDaysOfWeek(language), [language]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -68,7 +67,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
 
   // Aggregate item stats by day of the week and category
   const aggregatedData = useMemo(() => {
-    const daysData = DAYS_OF_WEEK.map((day) => ({
+    const daysData = daysOfWeek.map((day) => ({
       ...day,
       total: 0,
       perdidos: 0,
@@ -104,7 +103,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
     });
 
     return daysData;
-  }, [items, selectedTypeFilter, selectedCategoryFilter]);
+  }, [items, selectedTypeFilter, selectedCategoryFilter, daysOfWeek]);
 
   // Summary Metrics
   const peakDay = useMemo(() => {
@@ -131,8 +130,8 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
         top = k;
       }
     });
-    return { name: top, count: max };
-  }, [items]);
+    return { name: top === "N/A" ? "N/A" : translateCategory(top, language), count: max };
+  }, [items, language]);
 
   // ResizeObserver for responsive D3 canvas
   useEffect(() => {
@@ -175,7 +174,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
       // -------------------------------------------------------------
       const x0 = d3
         .scaleBand()
-        .domain(DAYS_OF_WEEK.map((d) => d.name))
+        .domain(daysOfWeek.map((d) => d.name))
         .rangeRound([0, width])
         .paddingInner(0.25);
 
@@ -221,7 +220,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
         .attr("font-size", "11px")
         .attr("font-weight", "600")
         .text((d: any) => {
-          const found = DAYS_OF_WEEK.find((item) => item.name === d);
+          const found = daysOfWeek.find((item) => item.name === d);
           return width < 500 ? (found ? found.short : d) : d;
         });
 
@@ -271,9 +270,16 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
         .attr("fill", (d) => colorScale(d.key) as string)
         .attr("opacity", 0.9)
         .style("cursor", "pointer")
-        .on("pointerover", function (event, d) {
+        .on("pointerover", function (_event, d) {
           d3.select(this).attr("opacity", 1).attr("stroke", "#FFFFFF").attr("stroke-width", 1.5);
-          const typeLabel = d.key === "perdidos" ? "Perdidos" : "Encontrados";
+          const typeLabel =
+            d.key === "perdidos"
+              ? localize(language, "Perdidos", "Lost")
+              : localize(language, "Encontrados", "Found");
+          const onDayLabel = localize(language, `${typeLabel} no dia:`, `${typeLabel} on day:`);
+          const totalDayLabel = localize(language, "Total no dia:", "Daily total:");
+          const returnedLabel = localize(language, "Devolvidos:", "Returned:");
+          const itemsUnit = localize(language, "itens", "items");
           tooltip
             .style("opacity", 1)
             .html(`
@@ -286,15 +292,15 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
                 </div>
                 <div class="space-y-1">
                   <div class="flex justify-between gap-3 text-neutral-600 dark:text-neutral-300">
-                    <span>${typeLabel} no dia:</span>
-                    <strong class="text-neutral-900 dark:text-white font-mono">${d.value} itens</strong>
+                    <span>${onDayLabel}</span>
+                    <strong class="text-neutral-900 dark:text-white font-mono">${d.value} ${itemsUnit}</strong>
                   </div>
                   <div class="flex justify-between gap-3 text-neutral-500 text-[11px]">
-                    <span>Total no dia:</span>
-                    <span class="font-mono">${d.dayData.total} itens</span>
+                    <span>${totalDayLabel}</span>
+                    <span class="font-mono">${d.dayData.total} ${itemsUnit}</span>
                   </div>
                   <div class="flex justify-between gap-3 text-neutral-500 text-[11px]">
-                    <span>Devolvidos:</span>
+                    <span>${returnedLabel}</span>
                     <span class="font-mono text-blue-500 font-bold">${d.dayData.devolvidos}</span>
                   </div>
                 </div>
@@ -347,7 +353,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
 
       const xBand = d3
         .scaleBand()
-        .domain(DAYS_OF_WEEK.map((d) => d.name))
+        .domain(daysOfWeek.map((d) => d.name))
         .range([0, width])
         .padding(0.12);
 
@@ -384,7 +390,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
         .attr("font-size", "11px")
         .attr("font-weight", "bold")
         .text((d: any) => {
-          const found = DAYS_OF_WEEK.find((item) => item.name === d);
+          const found = daysOfWeek.find((item) => item.name === d);
           return width < 520 ? (found ? found.short : d) : d;
         });
 
@@ -394,12 +400,14 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
         .selectAll("text")
         .attr("fill", darkMode ? "#A0AEC0" : "#4A5568")
         .attr("font-size", "10px")
-        .attr("font-weight", "600");
+        .attr("font-weight", "600")
+        .text((d: any) => translateCategory(String(d), language));
 
       // Draw Matrix Cells
       aggregatedData.forEach((day) => {
         distinctCats.forEach((cat) => {
           const count = day.byCategory[cat] || 0;
+          const catLabel = translateCategory(cat, language);
 
           g.append("rect")
             .attr("x", xBand(day.name)!)
@@ -411,18 +419,18 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
             .attr("stroke", darkMode ? "#27272A" : "#E2E8F0")
             .attr("stroke-width", 1)
             .style("cursor", "pointer")
-            .on("pointerover", function (event) {
+            .on("pointerover", function () {
               d3.select(this).attr("stroke", "#00843D").attr("stroke-width", 2);
               tooltip
                 .style("opacity", 1)
                 .html(`
                   <div class="font-sans text-xs">
                     <div class="font-extrabold text-neutral-900 dark:text-white border-b border-neutral-200 dark:border-neutral-700 pb-1 mb-1">
-                      ${day.name} • ${cat}
+                      ${day.name} • ${catLabel}
                     </div>
                     <div class="flex justify-between gap-3 text-neutral-600 dark:text-neutral-300">
-                      <span>Ocorrências registradas:</span>
-                      <strong class="text-[#00843D] dark:text-green-400 font-mono">${count} itens</strong>
+                      <span>${localize(language, "Ocorrências registradas:", "Recorded reports:")}</span>
+                      <strong class="text-[#00843D] dark:text-green-400 font-mono">${count} ${localize(language, "itens", "items")}</strong>
                     </div>
                   </div>
                 `);
@@ -455,7 +463,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
       // -------------------------------------------------------------
       const x = d3
         .scalePoint()
-        .domain(DAYS_OF_WEEK.map((d) => d.name))
+        .domain(daysOfWeek.map((d) => d.name))
         .range([0, width])
         .padding(0.2);
 
@@ -484,7 +492,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
         .attr("font-size", "11px")
         .attr("font-weight", "600")
         .text((d: any) => {
-          const found = DAYS_OF_WEEK.find((item) => item.name === d);
+          const found = daysOfWeek.find((item) => item.name === d);
           return width < 500 ? (found ? found.short : d) : d;
         });
 
@@ -559,12 +567,12 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
           .attr("stroke", "#FFFFFF")
           .attr("stroke-width", 1.5)
           .style("cursor", "pointer")
-          .on("pointerover", function (event) {
+          .on("pointerover", function () {
             d3.select(this).attr("r", 7);
             tooltip.style("opacity", 1).html(`
               <div class="font-sans text-xs">
-                <div class="font-bold text-red-500">${d.name} • Perdidos</div>
-                <div class="text-neutral-700 dark:text-neutral-200 font-mono font-bold">${d.perdidos} itens perdidos</div>
+                <div class="font-bold text-red-500">${d.name} • ${localize(language, "Perdidos", "Lost")}</div>
+                <div class="text-neutral-700 dark:text-neutral-200 font-mono font-bold">${d.perdidos} ${localize(language, "itens perdidos", "lost items")}</div>
               </div>
             `);
           })
@@ -586,12 +594,12 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
           .attr("stroke", "#FFFFFF")
           .attr("stroke-width", 1.5)
           .style("cursor", "pointer")
-          .on("pointerover", function (event) {
+          .on("pointerover", function () {
             d3.select(this).attr("r", 7);
             tooltip.style("opacity", 1).html(`
               <div class="font-sans text-xs">
-                <div class="font-bold text-[#00843D] dark:text-green-400">${d.name} • Encontrados</div>
-                <div class="text-neutral-700 dark:text-neutral-200 font-mono font-bold">${d.encontrados} itens encontrados</div>
+                <div class="font-bold text-[#00843D] dark:text-green-400">${d.name} • ${localize(language, "Encontrados", "Found")}</div>
+                <div class="text-neutral-700 dark:text-neutral-200 font-mono font-bold">${d.encontrados} ${localize(language, "itens encontrados", "found items")}</div>
               </div>
             `);
           })
@@ -605,7 +613,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
           });
       });
     }
-  }, [aggregatedData, dimensions, darkMode, viewMode, categoriesList]);
+  }, [aggregatedData, dimensions, darkMode, viewMode, categoriesList, daysOfWeek, language]);
 
   return (
     <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-6 sm:p-7 border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-6">
@@ -617,11 +625,17 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
               <BarChart3 className="w-5 h-5" />
             </div>
             <h2 className="text-lg font-extrabold text-neutral-900 dark:text-white">
-              Fluxo de Ocorrências por Dia da Semana & Categoria
+              {l(
+                "Fluxo de Ocorrências por Dia da Semana e Categoria",
+                "Report Flow by Day of Week & Category"
+              )}
             </h2>
           </div>
           <p className="text-xs text-neutral-500 dark:text-neutral-400">
-            Análise comportamental D3.js de achados e perdas ao longo dos dias letivos no Campus Ivaiporã.
+            {l(
+              "Análise comportamental D3.js de achados e perdas ao longo dos dias letivos no Campus Ivaiporã.",
+              "D3.js behavioral analysis of lost and found reports across school days at Campus Ivaiporã."
+            )}
           </p>
         </div>
 
@@ -636,7 +650,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
                 : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
             }`}
           >
-            Barras Comparativas
+            {l("Barras Comparativas", "Comparison Bars")}
           </button>
           <button
             type="button"
@@ -647,7 +661,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
                 : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
             }`}
           >
-            Matriz de Categorias
+            {l("Matriz de Categorias", "Category Matrix")}
           </button>
           <button
             type="button"
@@ -658,7 +672,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
                 : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900"
             }`}
           >
-            Curva de Fluxo
+            {l("Curva de Fluxo", "Flow Curve")}
           </button>
         </div>
       </div>
@@ -667,7 +681,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
       <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-bold text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
-            <Filter className="w-3.5 h-3.5" /> Tipo:
+            <Filter className="w-3.5 h-3.5" /> {l("Tipo:", "Type:")}
           </span>
           {(["TODOS", "PERDIDO", "ENCONTRADO"] as const).map((t) => (
             <button
@@ -683,23 +697,29 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
                   : "bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200"
               }`}
             >
-              {t === "TODOS" ? "Todos os Tipos" : t === "PERDIDO" ? "Apenas Perdidos" : "Apenas Encontrados"}
+              {t === "TODOS"
+                ? l("Todos os Tipos", "All Types")
+                : t === "PERDIDO"
+                ? l("Apenas Perdidos", "Lost Only")
+                : l("Apenas Encontrados", "Found Only")}
             </button>
           ))}
         </div>
 
         {/* Category Dropdown */}
         <div className="flex items-center space-x-2">
-          <span className="font-bold text-neutral-500 dark:text-neutral-400">Categoria:</span>
+          <span className="font-bold text-neutral-500 dark:text-neutral-400">
+            {l("Categoria:", "Category:")}
+          </span>
           <select
             value={selectedCategoryFilter}
             onChange={(e) => setSelectedCategoryFilter(e.target.value)}
             className="py-1 px-3 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 font-bold text-xs outline-none cursor-pointer text-neutral-800 dark:text-neutral-200"
           >
-            <option value="TODAS">Todas as Categorias</option>
+            <option value="TODAS">{l("Todas as Categorias", "All Categories")}</option>
             {categoriesList.map((c) => (
               <option key={c} value={c}>
-                {c}
+                {translateCategory(c, language)}
               </option>
             ))}
           </select>
@@ -726,14 +746,14 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
           </div>
           <div>
             <span className="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">
-              Dia de Maior Movimento
+              {l("Dia de Maior Movimento", "Busiest Day")}
             </span>
             <div className="flex items-center space-x-2">
               <span className="text-sm font-extrabold text-neutral-900 dark:text-white">
                 {peakDay.name}
               </span>
               <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 text-[10px] font-black">
-                {peakDay.total} registros
+                {l(`${peakDay.total} registros`, `${peakDay.total} records`)}
               </span>
             </div>
           </div>
@@ -745,14 +765,14 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
           </div>
           <div>
             <span className="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">
-              Categoria Predominante
+              {l("Categoria Predominante", "Top Category")}
             </span>
             <div className="flex items-center space-x-2">
               <span className="text-sm font-extrabold text-neutral-900 dark:text-white">
                 {topCategory.name}
               </span>
               <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 text-[10px] font-black">
-                {topCategory.count} ocorrências
+                {l(`${topCategory.count} ocorrências`, `${topCategory.count} reports`)}
               </span>
             </div>
           </div>
@@ -764,7 +784,7 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
           </div>
           <div>
             <span className="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider block">
-              Taxa de Resolução Semanal
+              {l("Taxa de Resolução Semanal", "Weekly Resolution Rate")}
             </span>
             <div className="flex items-center space-x-2">
               <span className="text-sm font-extrabold text-emerald-600 dark:text-green-400">
@@ -774,7 +794,9 @@ export const WeeklyFlowD3Chart: React.FC<WeeklyFlowD3ChartProps> = ({
                     )}%`
                   : "0%"}
               </span>
-              <span className="text-xs text-neutral-500">devoluções concluídas</span>
+              <span className="text-xs text-neutral-500">
+                {l("devoluções concluídas", "completed returns")}
+              </span>
             </div>
           </div>
         </div>

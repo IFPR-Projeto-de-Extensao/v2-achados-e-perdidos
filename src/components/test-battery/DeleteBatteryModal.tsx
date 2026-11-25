@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { X, Trash2, AlertTriangle, ShieldAlert } from "lucide-react";
 import { TestBatteryExecution } from "../../types";
 import { vibrateClick, vibrateWarning, vibrateSuccess } from "../../lib/utils";
+import { useApp } from "../../context/AppContext";
+import { localize } from "../../lib/i18n";
 
 interface DeleteBatteryModalProps {
   isOpen: boolean;
@@ -18,6 +20,8 @@ export const DeleteBatteryModal: React.FC<DeleteBatteryModalProps> = ({
   onConfirmDeleteBattery,
   darkMode,
 }) => {
+  const { language } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
   const [typedConfirm, setTypedConfirm] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -57,12 +61,13 @@ export const DeleteBatteryModal: React.FC<DeleteBatteryModalProps> = ({
               <ShieldAlert className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-black tracking-tight">Excluir Bateria de Testes</h2>
-              <p className="text-xs text-white/80">Ação Crítica Exclusiva para Administrador</p>
+              <h2 className="text-base font-black tracking-tight">{L("Excluir Bateria de Testes", "Delete Test Battery")}</h2>
+              <p className="text-xs text-white/80">{L("Ação Crítica Exclusiva para Administrador", "Critical Administrator-Only Action")}</p>
             </div>
           </div>
           <button
             onClick={onClose}
+            aria-label={L("Fechar", "Close")}
             className="p-1.5 rounded-lg text-white/80 hover:text-white transition"
           >
             <X className="w-5 h-5" />
@@ -73,31 +78,32 @@ export const DeleteBatteryModal: React.FC<DeleteBatteryModalProps> = ({
           <div className="p-3.5 rounded-xl bg-rose-500/10 border-2 border-rose-500/30 text-rose-950 dark:text-rose-200 text-xs space-y-2">
             <div className="flex items-center gap-2 font-bold text-rose-700 dark:text-rose-400">
               <AlertTriangle className="w-4 h-4 shrink-0" />
-              Atenção: Ação Permanente e Irreversível
+              {L("Atenção: Ação Permanente e Irreversível", "Warning: Permanent and Irreversible Action")}
             </div>
             <p>
-              Você está prestes a excluir a bateria{" "}
+              {L("Você está prestes a excluir a bateria ", "You are about to delete the test battery ")}
               <strong>{battery.title || battery.name || battery.id}</strong> ({battery.id}).
             </p>
             <p>
-              Isso removerá permanentemente do Firestore:
+              {L("Isso removerá permanentemente do Firestore:", "This will permanently remove from Firestore:")}
             </p>
             <ul className="list-disc pl-5 space-y-1 font-semibold">
-              <li>{testCount} caso(s) de teste e seus resultados associados</li>
-              <li>{participantCount} registro(s) de atribuição de testadores</li>
-              <li>Toda a trilha de auditoria e métricas desta bateria</li>
+              <li>{L(`${testCount} caso(s) de teste e seus resultados associados`, `${testCount} test case(s) and their associated results`)}</li>
+              <li>{L(`${participantCount} registro(s) de atribuição de testadores`, `${participantCount} tester assignment record(s)`)}</li>
+              <li>{L("Toda a trilha de auditoria e métricas desta bateria", "The entire audit trail and metrics for this battery")}</li>
             </ul>
           </div>
 
           <div className="space-y-2">
             <label className="text-xs font-bold text-neutral-500 uppercase">
-              Para confirmar, digite exatamente o ID da bateria (<span className="font-mono text-rose-600 dark:text-rose-400">{battery.id}</span>):
+              {L("Para confirmar, digite exatamente o ID da bateria (", "To confirm, type the exact battery ID (")}
+              <span className="font-mono text-rose-600 dark:text-rose-400">{battery.id}</span>):
             </label>
             <input
               type="text"
               value={typedConfirm}
               onChange={(e) => setTypedConfirm(e.target.value)}
-              placeholder={`Digite ${battery.id}`}
+              placeholder={L(`Digite ${battery.id}`, `Type ${battery.id}`)}
               className={`w-full text-xs font-mono font-bold px-3 py-2.5 rounded-xl border outline-none focus:ring-2 focus:ring-rose-500 ${
                 darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
               }`}
@@ -112,7 +118,7 @@ export const DeleteBatteryModal: React.FC<DeleteBatteryModalProps> = ({
             disabled={isDeleting}
             className="px-4 py-2.5 text-xs font-semibold rounded-xl border dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
           >
-            Cancelar
+            {L("Cancelar", "Cancel")}
           </button>
           <button
             type="button"
@@ -125,7 +131,7 @@ export const DeleteBatteryModal: React.FC<DeleteBatteryModalProps> = ({
             }`}
           >
             <Trash2 className="w-4 h-4" />
-            {isDeleting ? "Excluindo..." : "Excluir Definitivamente"}
+            {isDeleting ? L("Excluindo...", "Deleting...") : L("Excluir Definitivamente", "Delete Permanently")}
           </button>
         </div>
       </div>

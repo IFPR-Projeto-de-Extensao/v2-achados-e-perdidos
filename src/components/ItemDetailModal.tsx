@@ -13,15 +13,41 @@ import { normalizeCategory, getCategoryDisplay, CANONICAL_ITEM_CATEGORIES } from
 import { canOperateFormalReturn, canReopenFormalReturn, canStartFormalReturnForItem } from "../lib/devolutionAuth";
 import { IFPR_LOCATIONS, IFPR_LOCATION_GROUPS } from "../data/mockData";
 import { escapeHtml, isSafeDataImageUrl } from "../lib/htmlSanitizer";
+import {
+  SupportedLanguage,
+  getLocaleForLanguage,
+  getStoredLanguage,
+  localize,
+  translateActivityAction,
+  translateCampusLocation,
+  translateCategory,
+  translateColor,
+  translateItemStatus,
+  translateLocationGroup,
+  translateUserRole,
+} from "../lib/i18n";
 
 /**
  * Utilitário 'formatSafeDate' para validação e formatação segura de datas (Timestamp, string, number ou Date).
- * Valida todas as propriedades de data antes de renderizar e retorna 'Data não informada'
+ * Valida todas as propriedades de data antes de renderizar e retorna fallback localizado
  * em caso de dados nulos, indefinidos ou malformatados, eliminando completamente falhas com 'RangeError'.
  */
-export function formatSafeDate(input: unknown, fallback = "Data não informada"): string {
+export function formatSafeDate(
+  input: unknown,
+  fallback?: string,
+  lang?: SupportedLanguage
+): string {
+  const effectiveLang = lang ?? getStoredLanguage();
+  const locale = getLocaleForLanguage(effectiveLang);
+  const resolvedFallback =
+    fallback !== undefined
+      ? fallback
+      : effectiveLang === "en"
+      ? "Date not provided"
+      : "Data não informada";
+
   if (input === null || input === undefined || input === "" || input === "null" || input === "undefined") {
-    return fallback;
+    return resolvedFallback;
   }
 
   // 1. Suporte a Firestore Timestamp com método .toDate()
@@ -29,25 +55,25 @@ export function formatSafeDate(input: unknown, fallback = "Data não informada")
     try {
       const d = (input as any).toDate();
       if (d instanceof Date && !isNaN(d.getTime())) {
-        return new Intl.DateTimeFormat("pt-BR", {
+        return new Intl.DateTimeFormat(locale, {
           day: "2-digit",
           month: "2-digit",
           year: "numeric",
         }).format(d);
       }
     } catch {
-      return fallback;
+      return resolvedFallback;
     }
   }
 
   // 2. Parser seguro resiliente contra strings e números
   const date = safeParseDate(input);
   if (!date || isNaN(date.getTime())) {
-    return fallback;
+    return resolvedFallback;
   }
 
   try {
-    return new Intl.DateTimeFormat("pt-BR", {
+    return new Intl.DateTimeFormat(locale, {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
@@ -57,9 +83,9 @@ export function formatSafeDate(input: unknown, fallback = "Data não informada")
       const d = String(date.getDate()).padStart(2, "0");
       const m = String(date.getMonth() + 1).padStart(2, "0");
       const y = date.getFullYear();
-      return `${d}/${m}/${y}`;
+      return effectiveLang === "en" ? `${m}/${d}/${y}` : `${d}/${m}/${y}`;
     } catch {
-      return fallback;
+      return resolvedFallback;
     }
   }
 }
@@ -143,7 +169,27 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     setSelectedItemForDetail,
     returnModalAutoOpen,
     setReturnModalAutoOpen,
+    language,
+    t,
   } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
+  const fmtDate = (value: unknown) => formatSafeDate(value, undefined, language);
+  const fmtDateTime = (value: unknown) => formatDateTime(value, undefined, language);
+  const getBondLabel = (bond?: string) => {
+    switch (bond) {
+      case "Aluno":
+      case "Aluno(a)":
+        return L("Aluno(a)", "Student");
+      case "Servidor":
+        return L("Servidor", "Staff");
+      case "Terceirizado":
+        return L("Terceirizado", "Contractor");
+      case "Visitante":
+        return L("Visitante", "Visitor");
+      default:
+        return bond || L("Comunidade IFPR", "IFPR Community");
+    }
+  };
   const currentItem = items.find((i) => i.id === item.id) || item;
   const canPerformFormalReturn = canStartFormalReturnForItem(currentUser, auth.currentUser, currentItem, isGuest);
   const canSignAsStaff = canOperateFormalReturn(currentUser, auth.currentUser, isGuest);
@@ -230,7 +276,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const handleConfirmStaffSignatureSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!staffSignatureDataUrl) {
-      addToast("Por favor, forneça sua assinatura no campo indicado.", "error");
+      addToast(L("Por favor, forneça sua assinatura no campo indicado.", "Please provide your signature in the field below."), "error");
       return;
     }
 
@@ -240,7 +286,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       const userToken = await auth.currentUser?.getIdToken();
       if (!userToken) {
-        addToast("Sessão expirada. Faça login novamente com sua conta institucional.", "error");
+        addToast(L("Sessão expirada. Faça login novamente com sua conta institucional.", "Session expired. Please sign in again with your institutional account."), "error");
         return;
       }
 
@@ -260,11 +306,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Falha ao registrar assinatura do atendente.");
+        throw new Error(data.error || L("Falha ao registrar assinatura do atendente.", "Failed to record attendant signature."));
       }
 
       vibrateSuccess();
-      addToast("Atestação e assinatura do atendente registradas com sucesso!", "success");
+      addToast(L("Atestação e assinatura do atendente registradas com sucesso!", "Attendant attestation and signature recorded successfully!"), "success");
 
       // Sync open detail view immediately in-memory (backend transaction already persisted in Firestore)
       setSelectedItemForDetail({
@@ -282,7 +328,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       setStaffSignatureDataUrl("");
     } catch (err: any) {
       console.error("Erro ao registrar assinatura do atendente:", err);
-      addToast(err?.message || "Erro ao registrar assinatura institucional.", "error");
+      addToast(err?.message || L("Erro ao registrar assinatura institucional.", "Error recording institutional signature."), "error");
     } finally {
       setIsSubmittingStaffSignature(false);
     }
@@ -326,19 +372,37 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   // Institutional notification modal state
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState(currentItem?.contactInfo || "localizamais0@gmail.com");
-  const [emailSubject, setEmailSubject] = useState(`[IFPR Achados & Perdidos] Consulta: ${currentItem?.title || "Item"}`);
-  const [emailBody, setEmailBody] = useState(`Olá,\n\nEstou entrando em contato a respeito do item "${currentItem?.title || "Item"}" (ID: ${currentItem?.id || ""}) cadastrado no Achados e Perdidos do IFPR Campus Ivaiporã.\n\nAtenciosamente,\n${currentUser?.name || "Usuário IFPR"}`);
+  const [emailSubject, setEmailSubject] = useState(
+    L(
+      `[IFPR Achados & Perdidos] Consulta: ${currentItem?.title || "Item"}`,
+      `[IFPR Lost & Found] Inquiry: ${currentItem?.title || "Item"}`
+    )
+  );
+  const [emailBody, setEmailBody] = useState(
+    L(
+      `Olá,\n\nEstou entrando em contato a respeito do item "${currentItem?.title || "Item"}" (ID: ${currentItem?.id || ""}) cadastrado no Achados e Perdidos do IFPR Campus Ivaiporã.\n\nAtenciosamente,\n${currentUser?.name || "Usuário IFPR"}`,
+      `Hello,\n\nI am reaching out regarding the item "${currentItem?.title || "Item"}" (ID: ${currentItem?.id || ""}) registered in the IFPR Campus Ivaiporã Lost & Found system.\n\nBest regards,\n${currentUser?.name || "IFPR User"}`
+    )
+  );
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   useEffect(() => {
     if (!emailModalOpen) {
       setRecipientEmail(currentItem?.contactInfo || "localizamais0@gmail.com");
-      setEmailSubject(`[IFPR Achados & Perdidos] Consulta: ${currentItem?.title || "Item"}`);
+      setEmailSubject(
+        L(
+          `[IFPR Achados & Perdidos] Consulta: ${currentItem?.title || "Item"}`,
+          `[IFPR Lost & Found] Inquiry: ${currentItem?.title || "Item"}`
+        )
+      );
       setEmailBody(
-        `Olá,\n\nEstou entrando em contato a respeito do item "${currentItem?.title || "Item"}" (ID: ${currentItem?.id || ""}) cadastrado no Achados e Perdidos do IFPR Campus Ivaiporã.\n\nAtenciosamente,\n${currentUser?.name || "Usuário IFPR"}`
+        L(
+          `Olá,\n\nEstou entrando em contato a respeito do item "${currentItem?.title || "Item"}" (ID: ${currentItem?.id || ""}) cadastrado no Achados e Perdidos do IFPR Campus Ivaiporã.\n\nAtenciosamente,\n${currentUser?.name || "Usuário IFPR"}`,
+          `Hello,\n\nI am reaching out regarding the item "${currentItem?.title || "Item"}" (ID: ${currentItem?.id || ""}) registered in the IFPR Campus Ivaiporã Lost & Found system.\n\nBest regards,\n${currentUser?.name || "IFPR User"}`
+        )
       );
     }
-  }, [emailModalOpen, currentItem?.id, currentItem?.title, currentItem?.contactInfo, currentUser?.name]);
+  }, [emailModalOpen, currentItem?.id, currentItem?.title, currentItem?.contactInfo, currentUser?.name, language]);
 
   // Restricted Public View QR Modal State
   const [showRestrictedQRView, setShowRestrictedQRView] = useState(false);
@@ -350,7 +414,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       id: h?.id || `h-${Math.random()}`,
       action: h?.action,
       actorId: h?.actorId || h?.userId || "system",
-      actorName: h?.actorName || h?.userName || "Usuário IFPR",
+      actorName: h?.actorName || h?.userName || L("Usuário IFPR", "IFPR User"),
       actorRole: h?.actorRole || h?.userRole || "SISTEMA",
       timestamp: h?.timestamp || new Date().toISOString(),
       details: h?.details,
@@ -439,8 +503,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       const doc = new jsPDF("p", "mm", "a4");
       const safeId = String(currentItem?.id ?? "ITEM").replace(/[^a-zA-Z0-9_-]/g, "").toUpperCase();
       const docReportCode = `LAUDO-IFPR-${safeId}-${Date.now().toString().slice(-4)}`;
-      const emissionDate = new Date().toLocaleString("pt-BR");
-      const safeTitle = currentItem?.title || "Item sem Título";
+      const emissionDate = new Date().toLocaleString(getLocaleForLanguage(language));
+      const safeTitle = currentItem?.title || L("Item sem Título", "Untitled Item");
 
       // 1. Institutional Top Banner (IFPR Emerald Green #00843D)
       doc.setFillColor(0, 132, 61);
@@ -458,21 +522,39 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8.5);
-      doc.text("SISTEMA OFICIAL DE ACHADOS E PERDIDOS • LAUDO INDIVIDUAL DE PERTENCE", 14, 18);
+      doc.text(
+        L(
+          "SISTEMA OFICIAL DE ACHADOS E PERDIDOS • LAUDO INDIVIDUAL DE PERTENCE",
+          "OFFICIAL LOST AND FOUND SYSTEM • INDIVIDUAL ITEM REPORT"
+        ),
+        14,
+        18
+      );
 
       // 2. Report Overview & Identification Metadata
       doc.setTextColor(15, 23, 42);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
-      doc.text("FICHA CADASTRAL E LAUDO DE GESTÃO PATRIMONIAL", 14, 34);
+      doc.text(
+        L(
+          "FICHA CADASTRAL E LAUDO DE GESTÃO PATRIMONIAL",
+          "REGISTRATION RECORD AND CUSTODY MANAGEMENT REPORT"
+        ),
+        14,
+        34
+      );
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(8);
       doc.setTextColor(71, 85, 105);
-      doc.text(`Código do Laudo: ${docReportCode}`, 14, 40);
-      doc.text(`Data de Emissão: ${emissionDate}`, 14, 45);
-      doc.text(`Emitido por: ${currentUser?.name || "Usuário IFPR"} (${currentUser?.role || "USUÁRIO"} • ${currentUser?.email || "campus.ivaipora@ifpr.edu.br"})`, 14, 50);
-      doc.text(`Código de Rastreamento QR: ${currentItem?.qrCodeId || currentItem?.id}`, 14, 55);
+      doc.text(`${L("Código do Laudo", "Report Code")}: ${docReportCode}`, 14, 40);
+      doc.text(`${L("Data de Emissão", "Issue Date")}: ${emissionDate}`, 14, 45);
+      doc.text(
+        `${L("Emitido por", "Issued by")}: ${currentUser?.name || L("Usuário IFPR", "IFPR User")} (${translateUserRole(currentUser?.role, language)} • ${currentUser?.email || "campus.ivaipora@ifpr.edu.br"})`,
+        14,
+        50
+      );
+      doc.text(`${L("Código de Rastreamento QR", "QR Tracking Code")}: ${currentItem?.qrCodeId || currentItem?.id}`, 14, 55);
 
       // Status Badge inside document
       doc.setFont("helvetica", "bold");
@@ -483,9 +565,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       else if (currentItem.status === "DEVOLVIDO") statusColor = [37, 99, 235];
 
       doc.setFillColor(statusColor[0], statusColor[1], statusColor[2]);
-      doc.roundedRect(14, 58, 48, 6.5, 1.5, 1.5, "F");
+      doc.roundedRect(14, 58, 54, 6.5, 1.5, 1.5, "F");
       doc.setTextColor(255, 255, 255);
-      doc.text(`STATUS: ${String(currentItem?.status || "REGISTRADO").replace("_", " ")}`, 16, 62.5);
+      doc.text(
+        `${L("SITUAÇÃO", "STATUS")}: ${translateItemStatus(currentItem?.status, language).toUpperCase()}`,
+        16,
+        62.5
+      );
 
       // Render QR Code onto the top-right corner if available
       try {
@@ -498,7 +584,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           doc.setFontSize(6.5);
           doc.setTextColor(0, 132, 61);
           doc.setFont("helvetica", "bold");
-          doc.text("QR OFICIAL", 180.5, 64, { align: "center" });
+          doc.text(L("QR OFICIAL", "OFFICIAL QR"), 180.5, 64, { align: "center" });
         }
       } catch (e) {
         console.warn("QR code render in PDF skipped:", e);
@@ -506,17 +592,51 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       // 3. Section 1 Table: Dados Cadastrais do Objeto
       const generalDataRows = [
-        ["ID da Ocorrência:", currentItem.id, "Tipo do Registro:", currentItem.type === "PERDIDO" ? "Perdido (Procura-se)" : "Encontrado (No Acervo)"],
-        ["Título / Denominação:", safeTitle, "Categoria:", getCategoryDisplay(currentItem.category)],
-        ["Local da Ocorrência:", currentItem.location || "Campus IFPR", "Data do Registro / Entrada:", formatDate(currentItem.date)],
-        ["Cor Predominante:", currentItem.color || "Não especificada", "Marca / Fabricante:", currentItem.brand || "Não identificada"],
-        ["Cadastrado por:", `${currentItem.registeredByName || "Usuário IFPR"} (${currentItem.registeredByRole || "IFPR"})`, "Validação de Posse (RNF04):", currentItem.secretVerificationKey || currentItem.secretVerificationHint ? "Chave Secreta Configurada (Ativa)" : "Verificação Convencional"],
-        ["Setor de Custódia / Contato:", currentItem.contactInfo || "Guarita Principal / SEBAC Campus Ivaiporã", "Código de Etiqueta QR:", currentItem.qrCodeId || currentItem.id],
+        [
+          L("ID da Ocorrência:", "Record ID:"),
+          currentItem.id,
+          L("Tipo do Registro:", "Record Type:"),
+          currentItem.type === "PERDIDO"
+            ? L("Perdido (Procura-se)", "Lost (Missing)")
+            : L("Encontrado (No Acervo)", "Found (In Custody)"),
+        ],
+        [
+          L("Título / Denominação:", "Title / Name:"),
+          safeTitle,
+          L("Categoria:", "Category:"),
+          translateCategory(getCategoryDisplay(currentItem.category), language),
+        ],
+        [
+          L("Local da Ocorrência:", "Occurrence Location:"),
+          translateCampusLocation(currentItem.location, language) || "Campus IFPR",
+          L("Data do Registro / Entrada:", "Registration Date:"),
+          fmtDate(currentItem.date),
+        ],
+        [
+          L("Cor Predominante:", "Primary Color:"),
+          currentItem.color ? translateColor(currentItem.color, language) : L("Não especificada", "Not specified"),
+          L("Marca / Fabricante:", "Brand / Manufacturer:"),
+          currentItem.brand || L("Não identificada", "Not identified"),
+        ],
+        [
+          L("Cadastrado por:", "Registered by:"),
+          `${currentItem.registeredByName || L("Usuário IFPR", "IFPR User")} (${translateUserRole(currentItem.registeredByRole, language)})`,
+          L("Validação de Posse (RNF04):", "Ownership Validation (RNF04):"),
+          currentItem.secretVerificationKey || currentItem.secretVerificationHint
+            ? L("Chave Secreta Configurada (Ativa)", "Secret Key Configured (Active)")
+            : L("Verificação Convencional", "Standard Verification"),
+        ],
+        [
+          L("Setor de Custódia / Contato:", "Custody Desk / Contact:"),
+          currentItem.contactInfo || L("Guarita Principal / SEBAC Campus Ivaiporã", "Main Gatehouse / SEBAC Campus Ivaiporã"),
+          L("Código de Etiqueta QR:", "QR Tag Code:"),
+          currentItem.qrCodeId || currentItem.id,
+        ],
       ];
 
       autoTable(doc, {
         startY: 68,
-        head: [["1. DADOS DE IDENTIFICAÇÃO E CARACTERÍSTICAS", "", "", ""]],
+        head: [[L("1. DADOS DE IDENTIFICAÇÃO E CARACTERÍSTICAS", "1. IDENTIFICATION DETAILS AND CHARACTERISTICS"), "", "", ""]],
         body: generalDataRows,
         theme: "grid",
         headStyles: {
@@ -543,8 +663,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       // 4. Section 2: Descrição Detalhada
       autoTable(doc, {
         startY: currentY,
-        head: [["2. DESCRIÇÃO DETALHADA E CARACTERÍSTICAS VISUAIS"]],
-        body: [[currentItem.description || "Nenhuma observação descritiva complementar informada no momento do registro."]],
+        head: [[L("2. DESCRIÇÃO DETALHADA E CARACTERÍSTICAS VISUAIS", "2. DETAILED DESCRIPTION AND VISUAL DETAILS")]],
+        body: [[currentItem.description || L("Nenhuma observação descritiva complementar informada no momento do registro.", "No additional descriptive notes provided at registration.")]],
         theme: "grid",
         headStyles: {
           fillColor: [30, 41, 59],
@@ -565,21 +685,21 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       const timelineRows = (sortedTimeline.length > 0 ? sortedTimeline : [
         {
           timestamp: currentItem.date,
-          action: "Registro do Objeto no Sistema",
-          actorName: currentItem.registeredByName || "Sistema",
-          actorRole: "AUTOR",
-          details: "Objeto inserido no banco de dados oficial de Achados & Perdidos.",
+          action: L("Registro do Objeto no Sistema", "Item Registered in System"),
+          actorName: currentItem.registeredByName || L("Sistema", "System"),
+          actorRole: L("AUTOR", "AUTHOR"),
+          details: L("Objeto inserido no banco de dados oficial de Achados & Perdidos.", "Item inserted into the official Lost & Found database."),
         },
       ]).slice(0, 10).map((log: any) => [
-        formatDateTime(log.timestamp),
-        log.action || "Registro",
-        `${log.actorName || log.userName || "Usuário"} (${log.actorRole || log.userRole || "IFPR"})`,
+        fmtDateTime(log.timestamp),
+        translateActivityAction(log.action, language) || L("Registro", "Record"),
+        `${log.actorName || log.userName || L("Usuário", "User")} (${translateUserRole(log.actorRole || log.userRole, language)})`,
         log.details || "-",
       ]);
 
       autoTable(doc, {
         startY: currentY,
-        head: [["Data / Hora", "Ação Registrada", "Responsável", "Detalhes da Tramitação"]],
+        head: [[L("Data / Hora", "Date / Time"), L("Ação Registrada", "Recorded Action"), L("Responsável", "Responsible"), L("Detalhes da Tramitação", "Handling Details")]],
         body: timelineRows,
         theme: "striped",
         headStyles: {
@@ -610,14 +730,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
       // 6. Section 4: Informações de Restituição / Reivindicação (se houver)
       if (approvedClaim || currentItem.status === "DEVOLVIDO") {
-        const claimerName = approvedClaim ? approvedClaim.claimerName : (currentItem.registeredByName || "Proprietário Identificado");
-        const claimerEmail = approvedClaim ? approvedClaim.claimerEmail : (currentUser?.email || "E-mail Registrado");
+        const claimerName = approvedClaim ? approvedClaim.claimerName : (currentItem.registeredByName || L("Proprietário Identificado", "Identified Owner"));
+        const claimerEmail = approvedClaim ? approvedClaim.claimerEmail : (currentUser?.email || L("E-mail Registrado", "Registered Email"));
 
         autoTable(doc, {
           startY: currentY,
-          head: [["4. DADOS DA RESTITUIÇÃO E ENCERRAMENTO"]],
+          head: [[L("4. DADOS DA RESTITUIÇÃO E ENCERRAMENTO", "4. RETURN AND CLOSURE DETAILS")]],
           body: [
-            [`Proprietário / Recebedor: ${claimerName} (${claimerEmail})\nData de Encerramento: ${currentItem.resolutionDate ? formatDateTime(currentItem.resolutionDate) : emissionDate}\nComprovação Registrada: ${approvedClaim?.verificationAnswer || "Conferência presencial realizada na guarita / SEBAC com documento oficial."}`],
+            [
+              `${L("Proprietário / Recebedor", "Owner / Recipient")}: ${claimerName} (${claimerEmail})\n${L("Data de Encerramento", "Closure Date")}: ${currentItem.resolutionDate ? fmtDateTime(currentItem.resolutionDate) : emissionDate}\n${L("Comprovação Registrada", "Recorded Proof")}: ${approvedClaim?.verificationAnswer || L("Conferência presencial realizada na guarita / SEBAC com documento oficial.", "In-person verification performed at the gatehouse / SEBAC with official ID.")}`,
+            ],
           ],
           theme: "grid",
           headStyles: {
@@ -646,7 +768,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       doc.setFont("helvetica", "italic");
       doc.setTextColor(100, 116, 139);
       doc.text(
-        "Declaro para os devidos fins institucionais e regulamentares que as informações acima transcritas correspondem fielmente aos registros oficiais do Sistema de Achados e Perdidos do IFPR Campus Ivaiporã.",
+        L(
+          "Declaro para os devidos fins institucionais e regulamentares que as informações acima transcritas correspondem fielmente aos registros oficiais do Sistema de Achados e Perdidos do IFPR Campus Ivaiporã.",
+          "I hereby declare for institutional and regulatory purposes that the information above accurately reflects the official records of the IFPR Campus Ivaiporã Lost and Found System."
+        ),
         14,
         currentY,
         { maxWidth: 182 }
@@ -663,7 +788,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7.5);
       doc.setTextColor(30, 41, 59);
-      doc.text("Servidor Responsável (SEBAC / Portaria)", 55, currentY + 4, { align: "center" });
+      doc.text(L("Servidor Responsável (SEBAC / Portaria)", "Responsible Staff (SEBAC / Gatehouse)"), 55, currentY + 4, { align: "center" });
       doc.setFont("helvetica", "normal");
       doc.setFontSize(6.5);
       doc.setTextColor(100, 116, 139);
@@ -674,11 +799,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7.5);
       doc.setTextColor(30, 41, 59);
-      doc.text("Proprietário / Requerente do Pertence", 155, currentY + 4, { align: "center" });
+      doc.text(L("Proprietário / Requerente do Pertence", "Item Owner / Claimant"), 155, currentY + 4, { align: "center" });
       doc.setFont("helvetica", "normal");
       doc.setFontSize(6.5);
       doc.setTextColor(100, 116, 139);
-      doc.text("Assinatura e Documento", 155, currentY + 7.5, { align: "center" });
+      doc.text(L("Assinatura e Documento", "Signature and ID"), 155, currentY + 7.5, { align: "center" });
 
       // 8. Footer on All Pages with Page Numbers & Institutional Watermark
       const totalPages = (doc as any).internal.getNumberOfPages();
@@ -689,12 +814,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
         doc.setDrawColor(226, 232, 240);
         doc.line(14, 286, 196, 286);
         doc.text(
-          `IFPR Campus Ivaiporã • Sistema de Gestão de Achados e Perdidos • Laudo ${docReportCode} • Página ${i} de ${totalPages}`,
+          L(
+            `IFPR Campus Ivaiporã • Sistema de Gestão de Achados e Perdidos • Laudo ${docReportCode} • Página ${i} de ${totalPages}`,
+            `IFPR Campus Ivaiporã • Lost and Found Management System • Report ${docReportCode} • Page ${i} of ${totalPages}`
+          ),
           14,
           290
         );
         doc.text(
-          `Emitido em ${emissionDate}`,
+          `${L("Emitido em", "Issued on")} ${emissionDate}`,
           196,
           290,
           { align: "right" }
@@ -720,10 +848,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       } catch (_) {}
 
       vibrateSuccess();
-      addToast("Relatório oficial PDF gerado e baixado com sucesso!", "success");
+      addToast(L("Relatório oficial PDF gerado e baixado com sucesso!", "Official PDF report generated and downloaded successfully!"), "success");
     } catch (error: any) {
       console.error("Erro ao gerar relatório oficial PDF:", error);
-      addToast("Erro ao gerar relatório em PDF. Tente novamente.", "error");
+      addToast(L("Erro ao gerar relatório em PDF. Tente novamente.", "Error generating PDF report. Please try again."), "error");
     }
   };
 
@@ -746,7 +874,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
     const printWindow = window.open("", "_blank", "width=750,height=900");
     if (!printWindow) {
-      addToast("Permita pop-ups no seu navegador para gerar o recibo PDF em tela cheia.", "error");
+      addToast(L("Permita pop-ups no seu navegador para gerar o recibo PDF em tela cheia.", "Allow pop-ups in your browser to generate the full-screen PDF receipt."), "error");
       return;
     }
 
@@ -756,7 +884,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       currentItem.recipientName ||
       currentItem.recipientSignatureName ||
       (approvedClaim ? approvedClaim.claimerName : "") ||
-      "Proprietário / Receptor";
+      L("Proprietário / Receptor", "Owner / Recipient");
 
     const recipientEmail =
       overrideRecipient?.email ||
@@ -764,30 +892,31 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       currentItem.recipientEmail ||
       currentItem.recipientSignatureEmail ||
       (approvedClaim ? approvedClaim.claimerEmail : "") ||
-      "Não informado";
+      L("Não informado", "Not provided");
 
-    const recipientBond =
+    const recipientBond = getBondLabel(
       overrideRecipient?.bond ||
-      returnRecipientBond ||
-      currentItem.recipientBond ||
-      currentItem.recipientSignatureBond ||
-      "Aluno(a)";
+        returnRecipientBond ||
+        currentItem.recipientBond ||
+        currentItem.recipientSignatureBond ||
+        "Aluno"
+    );
 
     const recipientDoc =
       overrideRecipient?.doc ||
       returnRecipientDocument.trim() ||
       currentItem.recipientDocument ||
-      "Documento oficial com foto conferido no balcão";
+      L("Documento oficial com foto conferido no balcão", "Official photo ID verified at the desk");
 
     const attendantName =
       currentItem.returnedByName ||
       currentUser?.name ||
-      "Servidor Responsável SEBAC / Portaria";
+      L("Servidor Responsável SEBAC / Portaria", "Responsible Staff SEBAC / Gatehouse");
 
-    const attendantRole =
-      currentItem.returnedByRole ||
-      currentUser?.role ||
-      "Servidor";
+    const attendantRole = translateUserRole(
+      currentItem.returnedByRole || currentUser?.role || "SERVIDOR",
+      language
+    );
 
     const signatureDataUrl =
       overrideRecipient?.signatureDataUrl ||
@@ -806,7 +935,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>Comprovante de Devolução IFPR - ${currentItem.id}</title>
+          <title>${escapeHtml(L("Comprovante de Devolução IFPR", "IFPR Return Receipt"))} - ${escapeHtml(currentItem.id)}</title>
           <style>
             @media print {
               body { margin: 0; padding: 20px; background: white; }
@@ -837,66 +966,66 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             <div class="watermark">IFPR IVAIPORÃ</div>
             <div class="header">
               <h1>Instituto Federal do Paraná</h1>
-              <p>Campus Ivaiporã • Seção de Apoio ao Estudante (SEBAC)</p>
-              <div class="title-badge">Recibo Oficial de Devolução de Pertence</div>
+              <p>${escapeHtml(L("Campus Ivaiporã • Seção de Apoio ao Estudante (SEBAC)", "Campus Ivaiporã • Student Support Section (SEBAC)"))}</p>
+              <div class="title-badge">${escapeHtml(L("Recibo Oficial de Devolução de Pertence", "Official Item Return Receipt"))}</div>
             </div>
 
             <div class="receipt-id">
-              Código de Validação: <strong>${escapeHtml(receiptCode)}</strong><br/>
-              Data de Emissão: <strong>${escapeHtml(formatDateTime(new Date().toISOString()))}</strong>
+              ${escapeHtml(L("Código de Validação", "Validation Code"))}: <strong>${escapeHtml(receiptCode)}</strong><br/>
+              ${escapeHtml(L("Data de Emissão", "Issue Date"))}: <strong>${escapeHtml(fmtDateTime(new Date().toISOString()))}</strong>
             </div>
 
-            <div class="section-title">1. Dados do Objeto Entregue</div>
+            <div class="section-title">${escapeHtml(L("1. Dados do Objeto Entregue", "1. Returned Item Details"))}</div>
             <table class="data-grid">
-              <tr><td class="label">ID da Ocorrência:</td><td class="value">#${escapeHtml(currentItem.id)}</td></tr>
-              <tr><td class="label">Título / Descrição:</td><td class="value">${escapeHtml(currentItem.title)}</td></tr>
-              <tr><td class="label">Categoria / Tipo:</td><td class="value">${escapeHtml(getCategoryDisplay(currentItem.category))} (${escapeHtml(currentItem.type)})</td></tr>
-              <tr><td class="label">Local onde foi Encontrado:</td><td class="value">${escapeHtml(currentItem.location)}</td></tr>
-              <tr><td class="label">Cor / Marca:</td><td class="value">${escapeHtml(currentItem.color || "N/I")} • ${escapeHtml(currentItem.brand || "N/I")}</td></tr>
-              <tr><td class="label">Código de Rastreamento QR:</td><td class="value" style="font-family: monospace; color: #00843D;">${escapeHtml(currentItem.qrCodeId || currentItem.id)}</td></tr>
+              <tr><td class="label">${escapeHtml(L("ID da Ocorrência:", "Record ID:"))}</td><td class="value">#${escapeHtml(currentItem.id)}</td></tr>
+              <tr><td class="label">${escapeHtml(L("Título / Descrição:", "Title / Description:"))}</td><td class="value">${escapeHtml(currentItem.title)}</td></tr>
+              <tr><td class="label">${escapeHtml(L("Categoria / Tipo:", "Category / Type:"))}</td><td class="value">${escapeHtml(translateCategory(getCategoryDisplay(currentItem.category), language))} (${escapeHtml(translateItemStatus(currentItem.type, language))})</td></tr>
+              <tr><td class="label">${escapeHtml(L("Local onde foi Encontrado:", "Location Found:"))}</td><td class="value">${escapeHtml(translateCampusLocation(currentItem.location, language))}</td></tr>
+              <tr><td class="label">${escapeHtml(L("Cor / Marca:", "Color / Brand:"))}</td><td class="value">${escapeHtml(currentItem.color ? translateColor(currentItem.color, language) : "N/A")} • ${escapeHtml(currentItem.brand || "N/A")}</td></tr>
+              <tr><td class="label">${escapeHtml(L("Código de Rastreamento QR:", "QR Tracking Code:"))}</td><td class="value" style="font-family: monospace; color: #00843D;">${escapeHtml(currentItem.qrCodeId || currentItem.id)}</td></tr>
             </table>
 
-            <div class="section-title">2. Dados do Proprietário / Recebedor</div>
+            <div class="section-title">${escapeHtml(L("2. Dados do Proprietário / Recebedor", "2. Owner / Recipient Details"))}</div>
             <table class="data-grid">
-              <tr><td class="label">Nome Completo:</td><td class="value"><strong>${escapeHtml(recipientName)}</strong></td></tr>
-              <tr><td class="label">E-mail do Receptor:</td><td class="value">${escapeHtml(recipientEmail)}</td></tr>
-              <tr><td class="label">Vínculo com o Campus:</td><td class="value">${escapeHtml(recipientBond)} • IFPR Ivaiporã</td></tr>
-              <tr><td class="label">Documento / Matrícula:</td><td class="value">${escapeHtml(recipientDoc)}</td></tr>
-              <tr><td class="label">Atendente Responsável:</td><td class="value">${escapeHtml(attendantName)} (${escapeHtml(attendantRole)})</td></tr>
+              <tr><td class="label">${escapeHtml(L("Nome Completo:", "Full Name:"))}</td><td class="value"><strong>${escapeHtml(recipientName)}</strong></td></tr>
+              <tr><td class="label">${escapeHtml(L("E-mail do Receptor:", "Recipient Email:"))}</td><td class="value">${escapeHtml(recipientEmail)}</td></tr>
+              <tr><td class="label">${escapeHtml(L("Vínculo com o Campus:", "Campus Affiliation:"))}</td><td class="value">${escapeHtml(recipientBond)} • IFPR Ivaiporã</td></tr>
+              <tr><td class="label">${escapeHtml(L("Documento / Matrícula:", "ID / Enrollment:"))}</td><td class="value">${escapeHtml(recipientDoc)}</td></tr>
+              <tr><td class="label">${escapeHtml(L("Atendente Responsável:", "Responsible Attendant:"))}</td><td class="value">${escapeHtml(attendantName)} (${escapeHtml(attendantRole)})</td></tr>
             </table>
 
             <div class="signatures">
               <div class="sig-line">
                 ${
                   isSafeDataImageUrl(signatureDataUrl)
-                    ? `<img src="${signatureDataUrl}" style="max-height: 52px; max-width: 220px; margin: 0 auto 6px auto; display: block;" alt="Assinatura Digital" />`
+                    ? `<img src="${signatureDataUrl}" style="max-height: 52px; max-width: 220px; margin: 0 auto 6px auto; display: block;" alt="${escapeHtml(L("Assinatura Digital", "Digital Signature"))}" />`
                     : isPendingRemote
-                    ? `<div style="height: 40px; display: flex; align-items: center; justify-content: center; color: #d97706; font-size: 11px; font-weight: bold; font-style: italic;">[Assinatura Remota Pendente - Link Enviado]</div>`
+                    ? `<div style="height: 40px; display: flex; align-items: center; justify-content: center; color: #d97706; font-size: 11px; font-weight: bold; font-style: italic;">${escapeHtml(L("[Assinatura Remota Pendente - Link Enviado]", "[Remote Signature Pending - Link Sent]"))}</div>`
                     : `<div style="height: 52px;"></div>`
                 }
                 <strong>${escapeHtml(recipientName)}</strong><br/>
-                <span style="font-weight: normal; font-size: 10px; color: #64748b;">Assinatura do Recebedor (${escapeHtml(recipientBond)})</span>
+                <span style="font-weight: normal; font-size: 10px; color: #64748b;">${escapeHtml(L("Assinatura do Recebedor", "Recipient Signature"))} (${escapeHtml(recipientBond)})</span>
               </div>
               <div class="sig-line">
                 ${
                   isSafeDataImageUrl(currentItem.staffSignatureUrl)
-                    ? `<img src="${currentItem.staffSignatureUrl}" style="max-height: 52px; max-width: 220px; margin: 0 auto 6px auto; display: block;" alt="Assinatura do Atendente" />`
+                    ? `<img src="${currentItem.staffSignatureUrl}" style="max-height: 52px; max-width: 220px; margin: 0 auto 6px auto; display: block;" alt="${escapeHtml(L("Assinatura do Atendente", "Attendant Signature"))}" />`
                     : currentItem.staffSignatureStatus === "PENDING_STAFF"
-                    ? `<div style="height: 40px; display: flex; align-items: center; justify-content: center; color: #d97706; font-size: 11px; font-weight: bold; font-style: italic;">[Atestação Institucional Pendente]</div>`
+                    ? `<div style="height: 40px; display: flex; align-items: center; justify-content: center; color: #d97706; font-size: 11px; font-weight: bold; font-style: italic;">${escapeHtml(L("[Atestação Institucional Pendente]", "[Institutional Attestation Pending]"))}</div>`
                     : `<div style="height: 52px;"></div>`
                 }
                 <strong>${escapeHtml(currentItem.staffSignerName || attendantName)}</strong><br/>
-                <span style="font-weight: normal; font-size: 10px; color: #64748b;">${escapeHtml(attendantRole)} • SEBAC / Portaria IFPR</span>
+                <span style="font-weight: normal; font-size: 10px; color: #64748b;">${escapeHtml(attendantRole)} • ${escapeHtml(L("SEBAC / Portaria IFPR", "SEBAC / IFPR Gatehouse"))}</span>
               </div>
             </div>
 
             <div class="footer">
-              Este recibo comprova a restituição legal do pertence registrado no Sistema de Achados & Perdidos do IFPR Campus Ivaiporã.<br/>
-              Em conformidade com a Lei Federal nº 14.063/2020 (Art. 5º, I - Assinatura Eletrônica Simples).
+              ${escapeHtml(L("Este recibo comprova a restituição legal do pertence registrado no Sistema de Achados & Perdidos do IFPR Campus Ivaiporã.", "This receipt certifies the lawful return of the item registered in the IFPR Campus Ivaiporã Lost & Found System."))}<br/>
+              ${escapeHtml(L("Em conformidade com a Lei Federal nº 14.063/2020 (Art. 5º, I - Assinatura Eletrônica Simples).", "In accordance with Brazilian Federal Law No. 14.063/2020 (Art. 5, I - Simple Electronic Signature)."))}
             </div>
           </div>
 
-          <button id="btnPrintReceipt" class="btn-print no-print">🖨️ Imprimir / Salvar Recibo PDF</button>
+          <button id="btnPrintReceipt" class="btn-print no-print">🖨️ ${escapeHtml(L("Imprimir / Salvar Recibo PDF", "Print / Save PDF Receipt"))}</button>
         </body>
       </html>
     `;
@@ -934,7 +1063,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     try {
       const qrSvg = document.getElementById(`qr-code-svg-${currentItem.id}`) as unknown as SVGElement | null;
       if (!qrSvg) {
-        addToast("Código QR não encontrado no documento.", "error");
+        addToast(L("Código QR não encontrado no documento.", "QR Code not found in the document."), "error");
         return;
       }
 
@@ -964,7 +1093,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
           ctx.font = "bold 18px sans-serif";
           ctx.fillStyle = "#00843D";
-          ctx.fillText("SISTEMA DE ACHADOS E PERDIDOS", canvas.width / 2, 90);
+          ctx.fillText(L("SISTEMA DE ACHADOS E PERDIDOS", "LOST AND FOUND SYSTEM"), canvas.width / 2, 90);
 
           // Draw QR Code Image
           const qrSize = 340;
@@ -979,24 +1108,39 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           // QR Code ID Tag
           ctx.font = "bold 18px monospace";
           ctx.fillStyle = "#00843D";
-          ctx.fillText(`CÓDIGO: ${currentItem.qrCodeId}`, canvas.width / 2, 535);
+          ctx.fillText(`${L("CÓDIGO", "CODE")}: ${currentItem.qrCodeId}`, canvas.width / 2, 535);
 
           // Location & Date Info
           ctx.font = "16px sans-serif";
           ctx.fillStyle = "#475569";
-          ctx.fillText(`Local: ${currentItem.location} • Data: ${formatDate(currentItem.date)}`, canvas.width / 2, 570);
+          ctx.fillText(
+            `${L("Local", "Location")}: ${translateCampusLocation(currentItem.location, language)} • ${L("Data", "Date")}: ${fmtDate(currentItem.date)}`,
+            canvas.width / 2,
+            570
+          );
 
           // Category & Type Badge Info
           ctx.font = "14px sans-serif";
           ctx.fillStyle = "#64748B";
-          ctx.fillText(`Categoria: ${getCategoryDisplay(currentItem.category)} (${currentItem.type})`, canvas.width / 2, 600);
+          ctx.fillText(
+            `${L("Categoria", "Category")}: ${translateCategory(getCategoryDisplay(currentItem.category), language)} (${translateItemStatus(currentItem.type, language)})`,
+            canvas.width / 2,
+            600
+          );
 
           // Footer Guidance
           ctx.fillStyle = "#F8FAFC";
           ctx.fillRect(20, 630, canvas.width - 40, 50);
           ctx.font = "13px sans-serif";
           ctx.fillStyle = "#334155";
-          ctx.fillText("Apresente na guarita / SEBAC para identificação e devolução.", canvas.width / 2, 660);
+          ctx.fillText(
+            L(
+              "Apresente na guarita / SEBAC para identificação e devolução.",
+              "Present at the gatehouse / SEBAC for identification and return."
+            ),
+            canvas.width / 2,
+            660
+          );
 
           const pngUrl = canvas.toDataURL("image/png");
           const downloadLink = document.createElement("a");
@@ -1008,22 +1152,25 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           URL.revokeObjectURL(url);
 
           vibrateSuccess();
-          addToast("QR Code baixado em formato PNG de alta resolução!", "success");
+          addToast(L("Código QR baixado em formato PNG de alta resolução!", "QR Code downloaded as a high-resolution PNG!"), "success");
         }
       };
       img.src = url;
     } catch (err) {
       console.error("Erro ao fazer download do QR Code:", err);
-      addToast("Erro ao exportar imagem do QR Code.", "error");
+      addToast(L("Erro ao exportar imagem do Código QR.", "Error exporting QR Code image."), "error");
     }
   };
 
   // Web Share API Implementation for native sharing (WhatsApp, Email, Telegram, System Share Sheet)
   const handleShareItem = async () => {
     vibrateClick();
-    const typeLabel = currentItem.type === "PERDIDO" ? "Objeto Perdido" : "Objeto Encontrado";
-    const shareTitle = `[IFPR Achados e Perdidos] ${typeLabel}: ${currentItem.title}`;
-    const shareText = `Campus Ivaiporã • ${typeLabel}: "${currentItem.title}" (${getCategoryDisplay(currentItem.category)})\nLocal: ${currentItem.location}\nData: ${formatDate(currentItem.date)}\nStatus: ${String(currentItem.status).replace("_", " ")}\n\nConsulte o item no Localiza+ IFPR:`;
+    const typeLabel =
+      currentItem.type === "PERDIDO"
+        ? L("Objeto Perdido", "Lost Item")
+        : L("Objeto Encontrado", "Found Item");
+    const shareTitle = `[${L("IFPR Achados e Perdidos", "IFPR Lost & Found")}] ${typeLabel}: ${currentItem.title}`;
+    const shareText = `${L("Campus Ivaiporã", "Campus Ivaiporã")} • ${typeLabel}: "${currentItem.title}" (${translateCategory(getCategoryDisplay(currentItem.category), language)})\n${L("Local", "Location")}: ${translateCampusLocation(currentItem.location, language)}\n${L("Data", "Date")}: ${fmtDate(currentItem.date)}\n${L("Situação", "Status")}: ${translateItemStatus(currentItem.status, language)}\n\n${L("Consulte o item no Localiza+ IFPR:", "View this item on Localiza+ IFPR:")}`;
     const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/?tab=${currentItem.type === "PERDIDO" ? "lost" : "found"}&itemId=${encodeURIComponent(currentItem.id)}` : "";
 
     if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
@@ -1034,7 +1181,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           url: shareUrl,
         });
         vibrateSuccess();
-        addToast("Detalhes do item compartilhados com sucesso!", "success");
+        addToast(L("Detalhes do item compartilhados com sucesso!", "Item details shared successfully!"), "success");
       } catch (err: any) {
         if (err?.name !== "AbortError") {
           console.warn("Aviso ao acionar Web Share API:", err);
@@ -1053,13 +1200,19 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
         .writeText(fullText)
         .then(() => {
           vibrateSuccess();
-          addToast("Link e informações do objeto copiados! Você já pode colar no WhatsApp ou E-mail.", "info");
+          addToast(
+            L(
+              "Link e informações do objeto copiados! Você já pode colar no WhatsApp ou E-mail.",
+              "Item link and details copied! You can now paste them in WhatsApp or email."
+            ),
+            "info"
+          );
         })
         .catch(() => {
-          addToast(`Link do item: ${url}`, "info");
+          addToast(`${L("Link do item", "Item link")}: ${url}`, "info");
         });
     } else {
-      addToast(`Link do item: ${url}`, "info");
+      addToast(`${L("Link do item", "Item link")}: ${url}`, "info");
     }
   };
 
@@ -1080,10 +1233,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   // Resolve authoritative signature token/link strictly via backend /api/signature/send-request
   const resolveRemoteSignatureLink = async (mode: "LINK_ONLY" | "EMAIL"): Promise<{ token: string; signatureLink: string; message?: string }> => {
     if (!currentItem?.id) {
-      throw new Error("Identificador da ocorrência ausente.");
+      throw new Error(L("Identificador da ocorrência ausente.", "Missing record identifier."));
     }
     if (!canSignAsStaff || !auth.currentUser) {
-      throw new Error("Apenas servidores emissores ou administradores ativos podem gerenciar links de assinatura.");
+      throw new Error(L("Apenas servidores emissores ou administradores ativos podem gerenciar links de assinatura.", "Only issuing staff or active administrators can manage signature links."));
     }
 
     const idToken = await auth.currentUser.getIdToken();
@@ -1102,11 +1255,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
     const resJson = await res.json().catch(() => ({}));
     if (!res.ok || !resJson?.success) {
-      throw new Error(resJson?.error || `Erro HTTP ${res.status} ao obter link de assinatura.`);
+      throw new Error(resJson?.error || L(`Erro HTTP ${res.status} ao obter link de assinatura.`, `HTTP ${res.status} error while retrieving signature link.`));
     }
 
     if (!resJson.token || !resJson.signatureLink) {
-      throw new Error("Servidor não retornou token ou link válido de assinatura.");
+      throw new Error(L("Servidor não retornou token ou link válido de assinatura.", "Server did not return a valid signature token or link."));
     }
 
     return {
@@ -1125,7 +1278,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       setRemoteSignatureModalOpen(true);
     } catch (e: any) {
       console.error("[handleOpenInPersonRemoteSignature] Falha:", e?.message || e);
-      addToast(e?.message || "Erro ao preparar assinatura presencial do termo pendente.", "error");
+      addToast(e?.message || L("Erro ao preparar assinatura presencial do termo pendente.", "Error preparing in-person signature for the pending form."), "error");
     } finally {
       setIsResolvingRemoteLink(false);
     }
@@ -1140,10 +1293,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
         await navigator.clipboard.writeText(signatureLink);
       }
       vibrateSuccess();
-      addToast("Link de assinatura digital copiado para a área de transferência!", "success");
+      addToast(L("Link de assinatura digital copiado para a área de transferência!", "Digital signature link copied to clipboard!"), "success");
     } catch (e: any) {
       console.error("[handleCopyRemoteSignatureLink] Falha:", e?.message || e);
-      addToast(e?.message || "Erro ao obter link seguro de assinatura.", "error");
+      addToast(e?.message || L("Erro ao obter link seguro de assinatura.", "Error retrieving secure signature link."), "error");
     } finally {
       setIsResolvingRemoteLink(false);
     }
@@ -1156,10 +1309,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     try {
       const resJson = await resolveRemoteSignatureLink("EMAIL");
       vibrateSuccess();
-      addToast(resJson.message || "Link de assinatura digital reenviado com sucesso por e-mail!", "success");
+      addToast(resJson.message || L("Link de assinatura digital reenviado com sucesso por e-mail!", "Digital signature link resent via email!"), "success");
     } catch (e: any) {
       console.error("[handleResendSignatureEmail] Falha:", e?.message || e);
-      addToast(e?.message || "Erro ao reenviar e-mail de assinatura.", "error");
+      addToast(e?.message || L("Erro ao reenviar e-mail de assinatura.", "Error resending signature email."), "error");
     } finally {
       setIsResendingSignatureEmail(false);
     }
@@ -1169,12 +1322,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const handleRegisterReturnSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!returnRecipientName.trim() || !returnRecipientEmail.trim() || !returnIdentityConfirmed) {
-      addToast("Preencha os dados do receptor e confirme a verificação do documento com foto.", "error");
+      addToast(L("Preencha os dados do receptor e confirme a verificação do documento com foto.", "Fill in the recipient details and confirm photo ID verification."), "error");
       return;
     }
 
     if (returnSignatureMode === "IN_PERSON_DEVICE" && !returnSignatureDataUrl) {
-      addToast("Por favor, colha a assinatura digital do recebedor no quadro abaixo antes de confirmar.", "error");
+      addToast(L("Por favor, colha a assinatura digital do recebedor no quadro abaixo antes de confirmar.", "Please collect the recipient's digital signature in the box below before confirming."), "error");
       return;
     }
 
@@ -1195,8 +1348,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       vibrateSuccess();
       addToast(
         returnSignatureMode === "IN_PERSON_DEVICE"
-          ? `Devolução e Assinatura Digital do objeto "${currentItem.title}" registradas com sucesso!`
-          : `Devolução registrada! Link de assinatura digital despachado para ${returnRecipientEmail}.`,
+          ? L(
+              `Devolução e Assinatura Digital do objeto "${currentItem.title}" registradas com sucesso!`,
+              `Return and digital signature for "${currentItem.title}" recorded successfully!`
+            )
+          : L(
+              `Devolução registrada! Link de assinatura digital enviado para ${returnRecipientEmail}.`,
+              `Return recorded! Digital signature link dispatched to ${returnRecipientEmail}.`
+            ),
         "success"
       );
       setReturnModalOpen(false);
@@ -1210,7 +1369,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       onClose();
     } catch (err: any) {
       console.error(err);
-      addToast(err?.message || "Erro ao registrar devolução do objeto.", "error");
+      addToast(err?.message || L("Erro ao registrar devolução do objeto.", "Error registering item return."), "error");
     } finally {
       setIsRegisteringReturn(false);
     }
@@ -1220,7 +1379,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const handleReopenReturnSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reopenReason.trim()) {
-      addToast("Por favor, preencha a justificativa para a reabertura.", "error");
+      addToast(L("Por favor, preencha a justificativa para a reabertura.", "Please provide a reason for reopening."), "error");
       return;
     }
 
@@ -1240,7 +1399,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const handleDestinationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!destinationNotes.trim()) {
-      addToast("Informe a justificativa/destinatário da destinação.", "error");
+      addToast(L("Informe a justificativa/destinatário da destinação.", "Enter the beneficiary or reason for disposal/donation."), "error");
       return;
     }
 
@@ -1261,7 +1420,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const handlePrintQRTag = () => {
     const printWindow = window.open("", "_blank", "width=700,height=800");
     if (!printWindow) {
-      addToast("Permita pop-ups no navegador para visualizar e imprimir a etiqueta em PDF.", "error");
+      addToast(L("Permita pop-ups no navegador para visualizar e imprimir a etiqueta em PDF.", "Allow browser pop-ups to preview and print the PDF tag."), "error");
       return;
     }
     const htmlContent = `
@@ -1269,7 +1428,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>Etiqueta IFPR - ${escapeHtml(currentItem.id)}</title>
+          <title>${escapeHtml(L("Etiqueta IFPR", "IFPR Tag"))} - ${escapeHtml(currentItem.id)}</title>
           <style>
             @media print {
               body { margin: 0; padding: 10px; background: white; }
@@ -1294,26 +1453,26 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           <div class="tag-card">
             <div class="header">
               <h1>IFPR Campus Ivaiporã</h1>
-              <p>Achados e Perdidos • Etiqueta de Identificação</p>
+              <p>${escapeHtml(L("Achados e Perdidos • Etiqueta de Identificação", "Lost & Found • Identification Tag"))}</p>
             </div>
             <div class="qr-box">
-              <img class="qr-code-img" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getItemPublicUrl(currentItem))}" alt="QR Code" />
+              <img class="qr-code-img" src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getItemPublicUrl(currentItem))}" alt="${escapeHtml(L("Código QR", "QR Code"))}" />
               <div class="qr-id">${escapeHtml(currentItem.qrCodeId || currentItem.id)}</div>
             </div>
             <table class="info-table">
-              <tr><td class="label">ID da Ocorrência:</td><td><strong>${escapeHtml(currentItem.id)}</strong></td></tr>
-              <tr><td class="label">Título do Item:</td><td><strong>${escapeHtml(currentItem.title)}</strong></td></tr>
-              <tr><td class="label">Categoria / Tipo:</td><td>${escapeHtml(getCategoryDisplay(currentItem.category))} (${escapeHtml(currentItem.type)})</td></tr>
-              <tr><td class="label">Local Encontrado:</td><td>${escapeHtml(currentItem.location)}</td></tr>
-              <tr><td class="label">Data de Entrada:</td><td>${escapeHtml(formatDate(currentItem.date))}</td></tr>
-              <tr><td class="label">Cor / Marca:</td><td>${escapeHtml(currentItem.color || "N/I")} • ${escapeHtml(currentItem.brand || "N/I")}</td></tr>
-              <tr><td class="label">Atendimento:</td><td>Guarita Principal / SEBAC Campus Ivaiporã</td></tr>
+              <tr><td class="label">${escapeHtml(L("ID da Ocorrência:", "Record ID:"))}</td><td><strong>${escapeHtml(currentItem.id)}</strong></td></tr>
+              <tr><td class="label">${escapeHtml(L("Título do Item:", "Item Title:"))}</td><td><strong>${escapeHtml(currentItem.title)}</strong></td></tr>
+              <tr><td class="label">${escapeHtml(L("Categoria / Tipo:", "Category / Type:"))}</td><td>${escapeHtml(translateCategory(getCategoryDisplay(currentItem.category), language))} (${escapeHtml(translateItemStatus(currentItem.type, language))})</td></tr>
+              <tr><td class="label">${escapeHtml(L("Local Encontrado:", "Location Found:"))}</td><td>${escapeHtml(translateCampusLocation(currentItem.location, language))}</td></tr>
+              <tr><td class="label">${escapeHtml(L("Data de Entrada:", "Entry Date:"))}</td><td>${escapeHtml(fmtDate(currentItem.date))}</td></tr>
+              <tr><td class="label">${escapeHtml(L("Cor / Marca:", "Color / Brand:"))}</td><td>${escapeHtml(currentItem.color ? translateColor(currentItem.color, language) : "N/A")} • ${escapeHtml(currentItem.brand || "N/A")}</td></tr>
+              <tr><td class="label">${escapeHtml(L("Atendimento:", "Service Desk:"))}</td><td>${escapeHtml(L("Guarita Principal / SEBAC Campus Ivaiporã", "Main Gatehouse / SEBAC Campus Ivaiporã"))}</td></tr>
             </table>
             <div class="footer">
-              Sistema Oficial de Gestão de Achados e Perdidos • IFPR Campus Ivaiporã
+              ${escapeHtml(L("Sistema Oficial de Gestão de Achados e Perdidos • IFPR Campus Ivaiporã", "Official Lost and Found Management System • IFPR Campus Ivaiporã"))}
             </div>
           </div>
-          <button id="btnPrintTag" class="btn-print no-print">🖨️ Imprimir / Salvar como PDF</button>
+          <button id="btnPrintTag" class="btn-print no-print">🖨️ ${escapeHtml(L("Imprimir / Salvar como PDF", "Print / Save as PDF"))}</button>
         </body>
       </html>
     `;
@@ -1347,7 +1506,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const handleSendEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!emailSubject || !emailBody) {
-      addToast("Preencha o assunto e a mensagem.", "error");
+      addToast(L("Preencha o assunto e a mensagem.", "Please enter a subject and message."), "error");
       return;
     }
     setIsSendingEmail(true);
@@ -1355,21 +1514,24 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       const targetUser = allUsers.find((u) => u.email === recipientEmail);
       const targetUserId = targetUser?.id || (currentItem.registeredByUserId && currentItem.registeredByUserId !== "guest_visitor" ? currentItem.registeredByUserId : null);
       if (!targetUserId || targetUserId === "all") {
-        addToast("Não foi possível identificar o destinatário específico associado a este item.", "error");
+        addToast(L("Não foi possível identificar o destinatário específico associado a este item.", "Could not identify the specific recipient associated with this item."), "error");
         setIsSendingEmail(false);
         return;
       }
       await sendNotificationToUser(
         targetUserId,
         emailSubject,
-        `Mensagem referente ao item "${currentItem.title}": ${emailBody}`,
+        L(
+          `Mensagem referente ao item "${currentItem.title}": ${emailBody}`,
+          `Message regarding item "${currentItem.title}": ${emailBody}`
+        ),
         currentItem.id
       );
       setEmailModalOpen(false);
       setEmailBody("");
     } catch (err: any) {
       console.error("Erro ao registrar notificação:", err);
-      addToast("Erro ao processar notificação institucional.", "error");
+      addToast(L("Erro ao processar notificação institucional.", "Error processing institutional notification."), "error");
     } finally {
       setIsSendingEmail(false);
     }
@@ -1391,11 +1553,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
   const handleSaveEditedItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAuthorizedToEdit) {
-      addToast("Você não possui autorização para editar as informações deste objeto.", "error");
+      addToast(L("Você não possui autorização para editar as informações deste objeto.", "You are not authorized to edit this item's details."), "error");
       return;
     }
     if (!editTitle.trim()) {
-      addToast("O título do objeto não pode ficar em branco.", "error");
+      addToast(L("O título do objeto não pode ficar em branco.", "The item title cannot be empty."), "error");
       return;
     }
     const textValidation = validateItemTextFields({
@@ -1407,12 +1569,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       contactInfo: editContactInfo,
     }, false);
     if (!textValidation.isValid) {
-      addToast(textValidation.error || "Limite de caracteres excedido.", "error");
+      addToast(textValidation.error || L("Limite de caracteres excedido.", "Character limit exceeded."), "error");
       return;
     }
-    const dateValidation = validateItemOccurrenceDate(editDate, "A data da ocorrência");
+    const dateValidation = validateItemOccurrenceDate(editDate, L("A data da ocorrência", "The occurrence date"));
     if (!dateValidation.isValid) {
-      addToast(dateValidation.error || "Data inválida ou futura não permitida.", "error");
+      addToast(dateValidation.error || L("Data inválida ou futura não permitida.", "Invalid or future date is not allowed."), "error");
       return;
     }
     setIsSavingEdit(true);
@@ -1429,22 +1591,22 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       });
       setIsSavingEdit(false);
       setEditItemModalOpen(false);
-      addToast("Informações do objeto atualizadas com sucesso!", "success");
+      addToast(L("Informações do objeto atualizadas com sucesso!", "Item details updated successfully!"), "success");
     } catch (err) {
       setIsSavingEdit(false);
       console.error("Erro ao atualizar objeto:", err);
-      addToast("Erro ao gravar alterações do objeto.", "error");
+      addToast(L("Erro ao gravar alterações do objeto.", "Error saving item changes."), "error");
     }
   };
 
   const handleClaimSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isGuest || !currentUser || currentUser.id === "guest") {
-      addToast("Faça login com sua conta para solicitar a devolução deste objeto.", "warning");
+      addToast(L("Faça login com sua conta para solicitar a devolução deste objeto.", "Sign in to your account to claim this item."), "warning");
       return;
     }
     if (!claimDistinctiveFeatures.trim()) {
-      addToast("Informe as características particulares para comprovar a posse do objeto.", "error");
+      addToast(L("Informe as características particulares para comprovar a posse do objeto.", "Provide distinctive features to prove ownership of the item."), "error");
       return;
     }
 
@@ -1462,7 +1624,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
       }
 
       vibrateSuccess();
-      addToast(result?.message || "Solicitação de devolução registrada com sucesso! A Secretaria avaliará suas informações.", "success");
+      addToast(
+        result?.message ||
+          L(
+            "Solicitação de devolução registrada com sucesso! A Secretaria avaliará suas informações.",
+            "Return claim submitted successfully! The campus office will review your information."
+          ),
+        "success"
+      );
       setClaimModalOpen(false);
       setClaimDistinctiveFeatures("");
       setClaimAdditionalInfo("");
@@ -1474,7 +1643,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
         !err?.message?.includes("indisponível") &&
         !err?.message?.includes("não recebe novas")
       ) {
-        addToast(err?.message || "Erro ao registrar solicitação de devolução.", "error");
+        addToast(err?.message || L("Erro ao registrar solicitação de devolução.", "Error submitting return claim."), "error");
       }
     } finally {
       setIsSubmittingClaim(false);
@@ -1498,20 +1667,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
     }
   };
 
-  const getStatusLabel = (status: LostFoundItem["status"]) => {
-    switch (status) {
-      case "PERDIDO":
-        return "Perdido";
-      case "ENCONTRADO":
-        return "Encontrado";
-      case "EM_ANALISE":
-        return "Em Análise";
-      case "DEVOLVIDO":
-        return "Devolvido";
-      default:
-        return String(status || "Registrado").replace("_", " ");
-    }
-  };
+  const getStatusLabel = (status: LostFoundItem["status"]) =>
+    translateItemStatus(status || "REGISTRADO", language);
 
   // Progress Tracker Step States
   const step1Done = true; // Reported/Registered
@@ -1550,7 +1707,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               className="min-h-[40px] inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4 text-[#16845B]" />
-              <span>Voltar</span>
+              <span>{t("back")}</span>
             </button>
 
             <UIBadge tone={getStatusBadgeTone(currentItem?.status || "PERDIDO")}>
@@ -1561,9 +1718,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <span
                 id={`detail-new-badge-${currentItem.id}`}
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-[#16845B] text-white"
-                title="Cadastrado nas últimas 24 horas no campus"
+                title={L("Cadastrado nas últimas 24 horas no campus", "Registered on campus in the last 24 hours")}
               >
-                <span>Recente</span>
+                <span>{L("Recente", "Recent")}</span>
               </span>
             )}
 
@@ -1574,12 +1731,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 if (typeof navigator !== "undefined" && navigator.clipboard) {
                   navigator.clipboard.writeText(currentItem.id);
                   addToast(
-                    "ID do objeto copiado para a área de transferência!",
+                    L(
+                      "ID do objeto copiado para a área de transferência!",
+                      "Item ID copied to clipboard!"
+                    ),
                     "info"
                   );
                 }
               }}
-              title="Clique para copiar o ID do registro"
+              title={L("Clique para copiar o ID do registro", "Click to copy record ID")}
               className="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-mono transition-colors cursor-pointer"
             >
               <Copy className="w-3 h-3 text-slate-400" />
@@ -1598,8 +1758,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 vibrateClick();
                 handleGenerateItemSummaryPDF();
               }}
-              aria-label="Gerar Laudo e Relatório Oficial em PDF deste Item"
-              title="Gerar Laudo / Relatório Oficial em PDF (jsPDF)"
+              aria-label={L("Gerar Laudo e Relatório Oficial em PDF deste Item", "Generate official PDF report for this item")}
+              title={L("Gerar Laudo / Relatório Oficial em PDF", "Generate Official PDF Report")}
             >
               <FileText className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">PDF</span>
@@ -1613,11 +1773,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 vibrateClick();
                 handleShareItem();
               }}
-              aria-label="Compartilhar link deste item"
-              title="Compartilhar Link do Item"
+              aria-label={L("Compartilhar link deste item", "Share link to this item")}
+              title={L("Compartilhar Link do Item", "Share Item Link")}
             >
               <Share2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Compartilhar</span>
+              <span className="hidden sm:inline">{L("Compartilhar", "Share")}</span>
             </UIButton>
 
             <button
@@ -1626,7 +1786,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 vibrateClick();
                 onClose();
               }}
-              aria-label="Fechar detalhes do item"
+              aria-label={L("Fechar detalhes do item", "Close item details")}
               className="w-10 h-10 inline-flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
@@ -1652,16 +1812,19 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               ) : (
                 <div
                   className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-slate-500 dark:text-slate-400 bg-[#F8FAFC] dark:bg-slate-900"
-                  aria-label="Sem foto anexada"
+                  aria-label={L("Sem foto anexada", "No photo attached")}
                 >
                   <div className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-400 mb-2">
                     <CameraOff className="w-5 h-5" />
                   </div>
                   <span className="text-xs font-semibold text-[#172B2A] dark:text-slate-200">
-                    Sem foto anexada
+                    {L("Sem foto anexada", "No photo attached")}
                   </span>
                   <span className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 max-w-xs leading-relaxed">
-                    Este objeto foi registrado no IFPR Campus Ivaiporã sem fotografia.
+                    {L(
+                      "Este objeto foi registrado no IFPR Campus Ivaiporã sem fotografia.",
+                      "This item was registered at IFPR Campus Ivaiporã without a photo."
+                    )}
                   </span>
                 </div>
               )}
@@ -1699,10 +1862,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <div className="flex items-center justify-between text-xs font-semibold text-[#172B2A] dark:text-slate-200">
                 <div className="flex items-center gap-1.5 text-[#16845B] dark:text-emerald-400">
                   <Clock className="w-4 h-4" />
-                  <span>Jornada de Tramitação</span>
+                  <span>{L("Jornada de Tramitação", "Handling Progress")}</span>
                 </div>
                 <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                  {currentItem.status === "DEVOLVIDO" ? "Concluído" : "Em andamento"}
+                  {currentItem.status === "DEVOLVIDO"
+                    ? L("Concluído", "Completed")
+                    : L("Em andamento", "In progress")}
                 </span>
               </div>
 
@@ -1723,10 +1888,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     <CheckCircle2 className="w-4 h-4" />
                   </div>
                   <span className="font-semibold text-[11px] text-[#172B2A] dark:text-slate-200">
-                    Registrado
+                    {L("Registrado", "Registered")}
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
-                    {formatDate(currentItem.date)}
+                    {fmtDate(currentItem.date)}
                   </span>
                 </div>
 
@@ -1748,10 +1913,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                         : "text-slate-400 dark:text-slate-500"
                     }`}
                   >
-                    Em Análise
+                    {L("Em Análise", "Under Review")}
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                    Validação SEBAC
+                    {L("Validação SEBAC", "SEBAC Verification")}
                   </span>
                 </div>
 
@@ -1773,12 +1938,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                         : "text-slate-400 dark:text-slate-500"
                     }`}
                   >
-                    Devolvido
+                    {L("Devolvido", "Returned")}
                   </span>
                   <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
                     {currentItem.resolutionDate
-                      ? formatDate(currentItem.resolutionDate)
-                      : "Pendente"}
+                      ? fmtDate(currentItem.resolutionDate)
+                      : L("Pendente", "Pending")}
                   </span>
                 </div>
               </div>
@@ -1798,13 +1963,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <div className="min-w-0 flex-1">
                   <h5 className="font-bold text-xs text-[#172B2A] dark:text-white flex items-center gap-1.5">
                     <QrCode className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />{" "}
-                    Código Etiqueta QR
+                    {L("Código Etiqueta QR", "QR Tag Code")}
                   </h5>
                   <p className="text-[11px] text-[#16845B] dark:text-emerald-400 font-mono font-semibold mt-0.5 truncate">
                     {currentItem.qrCodeId}
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                    Apresente este código no setor responsável do IFPR para identificação e baixa oficial.
+                    {L(
+                      "Apresente este código no setor responsável do IFPR para identificação e baixa oficial.",
+                      "Present this code at the IFPR service desk for identification and official check-out."
+                    )}
                   </p>
                 </div>
               </div>
@@ -1817,7 +1985,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   onClick={() => setShowRestrictedQRView(true)}
                 >
                   <Eye className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
-                  <span>Modo QR</span>
+                  <span>{L("Modo QR", "QR Mode")}</span>
                 </UIButton>
 
                 <UIButton
@@ -1825,10 +1993,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   variant="primary"
                   size="sm"
                   onClick={handleDownloadQRCodePNG}
-                  title="Baixar imagem PNG do QR Code em alta resolução"
+                  title={L("Baixar imagem PNG do Código QR em alta resolução", "Download high-resolution QR Code PNG image")}
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Baixar PNG</span>
+                  <span>{L("Baixar PNG", "Download PNG")}</span>
                 </UIButton>
 
                 <UIButton
@@ -1838,7 +2006,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   onClick={handlePrintQRTag}
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>Etiqueta</span>
+                  <span>{L("Etiqueta", "Tag")}</span>
                 </UIButton>
 
                 <UIButton
@@ -1846,10 +2014,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   variant="secondary"
                   size="sm"
                   onClick={handleGenerateItemSummaryPDF}
-                  title="Gerar Ficha / Relatório Oficial do Campus em PDF (jsPDF)"
+                  title={L("Gerar Ficha / Relatório Oficial do Campus em PDF", "Generate Official Campus PDF Report")}
                 >
                   <FileText className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
-                  <span>Laudo PDF</span>
+                  <span>{L("Laudo PDF", "PDF Report")}</span>
                 </UIButton>
 
                 <UIButton
@@ -1858,10 +2026,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   size="sm"
                   onClick={handlePrintReceiptPDF}
                   className="col-span-2 sm:col-span-1"
-                  title="Recibo de Devolução Individual"
+                  title={L("Recibo de Devolução Individual", "Individual Return Receipt")}
                 >
                   <FileCheck className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-                  <span>Recibo PDF</span>
+                  <span>{L("Recibo PDF", "PDF Receipt")}</span>
                 </UIButton>
               </div>
             </SubtlePanel>
@@ -1874,7 +2042,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#16845B] dark:text-emerald-400">
                   <Tag className="w-3.5 h-3.5" />
-                  <span>{getCategoryDisplay(currentItem.category)}</span>
+                  <span>{translateCategory(getCategoryDisplay(currentItem.category), language)}</span>
                 </span>
                 <span className="text-slate-300 dark:text-slate-700">•</span>
                 <UIBadge tone={getStatusBadgeTone(currentItem?.status || "PERDIDO")}>
@@ -1893,17 +2061,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <div className="space-y-1.5 pt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
                 <div className="flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0" />
-                  <span className="font-medium">{formatDate(currentItem.date)}</span>
+                  <span className="font-medium">{fmtDate(currentItem.date)}</span>
                   {currentItem.createdAt && (
                     <span className="text-xs text-slate-400 dark:text-slate-500">
-                      • {getItemAgeText(currentItem.createdAt)}
+                      • {getItemAgeText(currentItem.createdAt, undefined, language)}
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0" />
                   <span className="font-medium text-[#172B2A] dark:text-white">
-                    {currentItem.location}
+                    {translateCampusLocation(currentItem.location, language)}
                   </span>
                 </div>
               </div>
@@ -1912,7 +2080,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             {/* Description Section */}
             <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
               <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Descrição do Objeto
+                {L("Descrição do Objeto", "Item Description")}
               </h4>
               <p className="text-sm text-[#172B2A] dark:text-slate-200 leading-relaxed break-words">
                 {currentItem.description}
@@ -1923,23 +2091,23 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
               <div className="p-3 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70">
                 <span className="text-slate-500 dark:text-slate-400 block mb-0.5 text-[11px]">
-                  Cor Predominante
+                  {L("Cor Predominante", "Primary Color")}
                 </span>
                 <span className="font-semibold text-[#172B2A] dark:text-slate-100">
-                  {currentItem.color || "Não informada"}
+                  {currentItem.color ? translateColor(currentItem.color, language) : L("Não informada", "Not provided")}
                 </span>
               </div>
               <div className="p-3 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70">
                 <span className="text-slate-500 dark:text-slate-400 block mb-0.5 text-[11px]">
-                  Marca / Fabricante
+                  {L("Marca / Fabricante", "Brand / Manufacturer")}
                 </span>
                 <span className="font-semibold text-[#172B2A] dark:text-slate-100">
-                  {currentItem.brand || "Não informada"}
+                  {currentItem.brand || L("Não informada", "Not provided")}
                 </span>
               </div>
               <div className="p-3 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70 col-span-2 sm:col-span-1">
                 <span className="text-slate-500 dark:text-slate-400 block mb-0.5 text-[11px]">
-                  Cadastrado por
+                  {L("Cadastrado por", "Registered by")}
                 </span>
                 <span className="font-semibold text-[#172B2A] dark:text-slate-100 truncate block">
                   {currentItem.registeredByName}
@@ -1954,14 +2122,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             <div className="p-4 rounded-2xl bg-[#EBF5F0]/70 dark:bg-emerald-950/30 border border-[#16845B]/20 dark:border-emerald-800/50 space-y-1.5">
               <div className="flex items-center gap-2 text-sm font-bold text-[#064E3B] dark:text-emerald-300">
                 <Building className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0" />
-                <span>Como recuperar?</span>
+                <span>{L("Como recuperar?", "How to recover?")}</span>
               </div>
               <p className="text-xs sm:text-sm text-[#172B2A] dark:text-slate-200 leading-relaxed">
-                Compareça na administração / ponto de guarda do campus com um documento oficial de identificação ou envie uma solicitação abaixo.
+                {L(
+                  "Compareça na administração / ponto de guarda do campus com um documento oficial de identificação ou envie uma solicitação abaixo.",
+                  "Visit the campus office / custody desk with an official photo ID, or submit a claim below."
+                )}
               </p>
               {currentItem.contactInfo && (
                 <p className="text-xs font-semibold text-[#064E3B] dark:text-emerald-300 pt-1">
-                  Ponto de atendimento / Contato: {currentItem.contactInfo}
+                  {L("Ponto de atendimento / Contato:", "Service desk / Contact:")} {currentItem.contactInfo}
                 </p>
               )}
             </div>
@@ -1993,7 +2164,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h4 className="font-bold text-xs text-[#172B2A] dark:text-white uppercase tracking-wider">
-                          Termo de Devolução & Assinatura Digital
+                          {L("Termo de Devolução & Assinatura Digital", "Return Form & Digital Signature")}
                         </h4>
                         <UIBadge
                           tone={
@@ -2005,32 +2176,52 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                         >
                           {currentItem.recipientSignatureStatus === "SIGNED" ||
                           currentItem.recipientSignatureUrl
-                            ? "Assinado Digitalmente"
-                            : "Aguardando Assinatura Remota"}
+                            ? L("Assinado Digitalmente", "Digitally Signed")
+                            : L("Aguardando Assinatura Remota", "Awaiting Remote Signature")}
                         </UIBadge>
                       </div>
 
                       <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
                         {currentItem.recipientSignatureStatus === "SIGNED" ||
                         currentItem.recipientSignatureUrl
-                          ? `Recebido por: ${
-                              currentItem.recipientName ||
-                              currentItem.recipientSignatureName ||
-                              "Proprietário"
-                            } (${
-                              currentItem.recipientBond ||
-                              currentItem.recipientSignatureBond ||
-                              "Comunidade IFPR"
-                            }) em ${formatDateTime(
-                              currentItem.signedAt ||
-                              currentItem.recipientSignatureDate ||
-                              currentItem.resolutionDate
-                            )}.`
-                          : `Link de assinatura despachado para ${
-                              currentItem.recipientEmail ||
-                              currentItem.recipientSignatureEmail ||
-                              "o e-mail cadastrado do proprietário"
-                            }.`}
+                          ? L(
+                              `Recebido por: ${
+                                currentItem.recipientName ||
+                                currentItem.recipientSignatureName ||
+                                "Proprietário"
+                              } (${getBondLabel(
+                                currentItem.recipientBond ||
+                                  currentItem.recipientSignatureBond
+                              )}) em ${fmtDateTime(
+                                currentItem.signedAt ||
+                                  currentItem.recipientSignatureDate ||
+                                  currentItem.resolutionDate
+                              )}.`,
+                              `Received by: ${
+                                currentItem.recipientName ||
+                                currentItem.recipientSignatureName ||
+                                "Owner"
+                              } (${getBondLabel(
+                                currentItem.recipientBond ||
+                                  currentItem.recipientSignatureBond
+                              )}) on ${fmtDateTime(
+                                currentItem.signedAt ||
+                                  currentItem.recipientSignatureDate ||
+                                  currentItem.resolutionDate
+                              )}.`
+                            )
+                          : L(
+                              `Link de assinatura enviado para ${
+                                currentItem.recipientEmail ||
+                                currentItem.recipientSignatureEmail ||
+                                "o e-mail cadastrado do proprietário"
+                              }.`,
+                              `Signature link dispatched to ${
+                                currentItem.recipientEmail ||
+                                currentItem.recipientSignatureEmail ||
+                                "the owner's registered email"
+                              }.`
+                            )}
                       </p>
                     </div>
                   </div>
@@ -2045,16 +2236,16 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                           src={
                             currentItem.recipientSignatureUrl || returnSignatureDataUrl
                           }
-                          alt="Assinatura Digital"
+                          alt={L("Assinatura Digital", "Digital Signature")}
                           className="h-10 max-w-[140px] object-contain"
                         />
                       </div>
                       <div className="text-[11px]">
                         <span className="font-semibold text-[#172B2A] dark:text-slate-200 block">
-                          Assinatura Registrada
+                          {L("Assinatura Registrada", "Recorded Signature")}
                         </span>
                         <span className="text-slate-500 dark:text-slate-400 text-[10px] font-mono">
-                          Código: {currentItem.receiptValidationCode || currentItem.id}
+                          {L("Código:", "Code:")} {currentItem.receiptValidationCode || currentItem.id}
                         </span>
                       </div>
                     </div>
@@ -2066,7 +2257,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                       onClick={handlePrintReceiptPDF}
                     >
                       <Printer className="w-3.5 h-3.5" />
-                      <span>Imprimir Recibo Assinado</span>
+                      <span>{L("Imprimir Recibo Assinado", "Print Signed Receipt")}</span>
                     </UIButton>
                   </div>
                 )}
@@ -2087,8 +2278,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                         <PenTool className="w-3.5 h-3.5" />
                         <span>
                           {isResolvingRemoteLink
-                            ? "Preparando..."
-                            : "Assinar no Dispositivo Agora"}
+                            ? L("Preparando...", "Preparing...")
+                            : L("Assinar no Dispositivo Agora", "Sign on Device Now")}
                         </span>
                       </UIButton>
 
@@ -2101,7 +2292,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                           disabled={isResolvingRemoteLink || isResendingSignatureEmail}
                         >
                           <Copy className="w-3.5 h-3.5" />
-                          <span>Copiar Link</span>
+                          <span>{L("Copiar Link", "Copy Link")}</span>
                         </UIButton>
 
                         <UIButton
@@ -2118,8 +2309,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                           />
                           <span>
                             {isResendingSignatureEmail
-                              ? "Reenviando..."
-                              : "Reenviar E-mail"}
+                              ? L("Reenviando...", "Resending...")
+                              : L("Reenviar E-mail", "Resend Email")}
                           </span>
                         </UIButton>
                       </div>
@@ -2138,10 +2329,13 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                     <div>
                       <h4 className="font-bold text-xs uppercase tracking-wider">
-                        Atestação Bloqueada — Emissor Não Identificado
+                        {L("Atestação Bloqueada — Emissor Não Identificado", "Attestation Blocked — Unidentified Issuer")}
                       </h4>
                       <p className="text-[11px] text-amber-800 dark:text-amber-300/90 leading-relaxed mt-0.5">
-                        Esta devolução não possui o servidor emissor registrado no sistema. Por segurança e auditoria, a atestação está bloqueada para impedir a atribuição retroativa não comprovada.
+                        {L(
+                          "Esta devolução não possui o servidor emissor registrado no sistema. Por segurança e auditoria, a atestação está bloqueada para impedir a atribuição retroativa não comprovada.",
+                          "This return does not have an issuing staff member recorded. For security and audit integrity, attestation is blocked to prevent unverified retroactive attribution."
+                        )}
                       </p>
                     </div>
                   </div>
@@ -2160,14 +2354,21 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     <FileSignature className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                     <div>
                       <h4 className="font-bold text-xs uppercase tracking-wider">
-                        Atestação Institucional do Atendente Pendente
+                        {L("Atestação Institucional do Atendente Pendente", "Pending Staff Institutional Attestation")}
                       </h4>
                       <p className="text-[11px] text-amber-800 dark:text-amber-300/90 leading-relaxed mt-0.5">
-                        O receptor (
-                        {currentItem.recipientName ||
-                          currentItem.recipientSignatureName ||
-                          "Aluno"}
-                        ) assinou a devolução. Registre sua atestação e assinatura como servidor emissor responsável.
+                        {L(
+                          `O receptor (${
+                            currentItem.recipientName ||
+                            currentItem.recipientSignatureName ||
+                            "Aluno"
+                          }) assinou a devolução. Registre sua atestação e assinatura como servidor emissor responsável.`,
+                          `The recipient (${
+                            currentItem.recipientName ||
+                            currentItem.recipientSignatureName ||
+                            "Student"
+                          }) signed the return. Record your attestation and signature as the responsible issuing staff member.`
+                        )}
                       </p>
                     </div>
                   </div>
@@ -2179,7 +2380,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     onClick={() => setStaffSignatureModalOpen(true)}
                   >
                     <PenTool className="w-4 h-4" />
-                    <span>Atestar e Assinar Devolução (Atendente)</span>
+                    <span>{L("Atestar e Assinar Devolução (Atendente)", "Attest & Sign Return (Attendant)")}</span>
                   </UIButton>
                 </div>
               )}
@@ -2201,14 +2402,20 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                       <ShieldCheck className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
                       <span>
                         {userActiveClaim.status === "APROVADO"
-                          ? "Sua solicitação foi APROVADA pela Secretaria!"
-                          : "Solicitação de Devolução em Análise"}
+                          ? L("Sua solicitação foi APROVADA pela Secretaria!", "Your claim has been APPROVED by the Campus Office!")
+                          : L("Solicitação de Devolução em Análise", "Return Claim Under Review")}
                       </span>
                     </div>
                     <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
                       {userActiveClaim.status === "APROVADO"
-                        ? "Compareça à Secretaria / SEBAC portando documento oficial com foto para concluir a retirada do pertence."
-                        : "Você já enviou uma solicitação para este objeto. A equipe da Secretaria está analisando as informações fornecidas. Você pode acompanhar ou cancelar seu pedido na aba 'Meu Perfil'."}
+                        ? L(
+                            "Compareça à Secretaria / SEBAC portando documento oficial com foto para concluir a retirada do pertence.",
+                            "Visit the Campus Office / SEBAC with an official photo ID to complete item pickup."
+                          )
+                        : L(
+                            "Você já enviou uma solicitação para este objeto. A equipe da Secretaria está analisando as informações fornecidas. Você pode acompanhar ou cancelar seu pedido na aba 'Meu Perfil'.",
+                            "You have already submitted a claim for this item. The Campus Office team is reviewing your details. You can track or cancel your request in the 'My Profile' tab."
+                          )}
                     </p>
                   </div>
                 ) : (
@@ -2220,7 +2427,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     onClick={() => setClaimModalOpen(true)}
                   >
                     <ShieldCheck className="w-5 h-5" />
-                    <span>Solicitar Este Objeto (Reclamar Posse)</span>
+                    <span>{L("Solicitar Este Objeto (Reclamar Posse)", "Claim This Item")}</span>
                   </UIButton>
                 ))}
 
@@ -2254,8 +2461,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                           <Clock className="w-4 h-4" />
                           <span>
                             {isConfirmingArrival
-                              ? "Confirmando Chegada..."
-                              : "Confirmar Chegada na Guarita (Em Análise)"}
+                              ? L("Confirmando Chegada...", "Confirming Arrival...")
+                              : L("Confirmar Chegada na Guarita (Em Análise)", "Confirm Arrival at Gatehouse (Under Review)")}
                           </span>
                         </UIButton>
                       )}
@@ -2268,7 +2475,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                         onClick={() => setReturnModalOpen(true)}
                       >
                         <CheckCircle className="w-4 h-4" />
-                        <span>Registrar Devolução Formal</span>
+                        <span>{L("Registrar Devolução Formal", "Register Formal Return")}</span>
                       </UIButton>
 
                       <UIButton
@@ -2279,7 +2486,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                         onClick={() => setDestinationModalOpen(true)}
                       >
                         <PackageCheck className="w-4 h-4" />
-                        <span>Registrar Destinação</span>
+                        <span>{L("Registrar Destinação", "Register Disposal")}</span>
                       </UIButton>
                     </div>
                   </div>
@@ -2296,7 +2503,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   className="border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300"
                 >
                   <RotateCcw className="w-4 h-4" />
-                  <span>[Admin] Reabrir Devolução (Corrigir Erro)</span>
+                  <span>{L("[Admin] Reabrir Devolução (Corrigir Erro)", "[Admin] Reopen Return (Fix Mistake)")}</span>
                 </UIButton>
               )}
 
@@ -2310,7 +2517,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   onClick={() => setEmailModalOpen(true)}
                 >
                   <Send className="w-3.5 h-3.5 text-[#16845B]" />
-                  <span>Enviar Mensagem</span>
+                  <span>{L("Enviar Mensagem", "Send Message")}</span>
                 </UIButton>
 
                 {isAuthorizedToEdit && (
@@ -2330,10 +2537,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                       setEditContactInfo(currentItem.contactInfo || "");
                       setEditItemModalOpen(true);
                     }}
-                    title="Editar dados e informações do objeto"
+                    title={L("Editar dados e informações do objeto", "Edit item details")}
                   >
                     <Edit className="w-3.5 h-3.5" />
-                    <span>Editar Informações</span>
+                    <span>{L("Editar Informações", "Edit Details")}</span>
                   </UIButton>
                 )}
               </div>
@@ -2343,14 +2550,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             <div className="space-y-3 pt-3 border-t border-slate-200/80 dark:border-slate-800">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-bold text-[#172B2A] dark:text-white flex items-center gap-1.5 uppercase tracking-wider">
-                  <MessageSquare className="w-4 h-4 text-[#16845B]" /> Perguntas & Comentários ({itemComments.length})
+                  <MessageSquare className="w-4 h-4 text-[#16845B]" /> {L("Perguntas & Comentários", "Questions & Comments")} ({itemComments.length})
                 </h4>
               </div>
 
               <div className="space-y-2.5 max-h-48 overflow-y-auto pr-1">
                 {itemComments.length === 0 ? (
                   <p className="text-xs text-slate-500 italic py-2">
-                    Nenhum comentário cadastrado para este pertence.
+                    {L("Nenhum comentário cadastrado para este pertence.", "No comments registered for this item.")}
                   </p>
                 ) : (
                   itemComments.map((com) => (
@@ -2363,10 +2570,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                           <span className="font-bold text-[#172B2A] dark:text-slate-200">
                             {com.userName}
                           </span>
-                          <UIBadge tone="emerald">{com.userRole}</UIBadge>
+                          <UIBadge tone="emerald">{translateUserRole(com.userRole, language)}</UIBadge>
                         </div>
                         <span className="text-[10px] text-slate-400 font-mono">
-                          {formatDateTime(com.createdAt)}
+                          {fmtDateTime(com.createdAt)}
                         </span>
                       </div>
                       <p className="text-slate-600 dark:text-slate-300 leading-snug">
@@ -2385,7 +2592,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     required
                     value={newCommentText}
                     onChange={(e) => setNewCommentText(e.target.value)}
-                    placeholder="Escreva uma pergunta ou esclarecimento..."
+                    placeholder={L("Escreva uma pergunta ou esclarecimento...", "Write a question or clarification...")}
                   />
                 </div>
                 <UIButton
@@ -2395,7 +2602,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   disabled={isPostingComment}
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Enviar</span>
+                  <span>{L("Enviar", "Send")}</span>
                 </UIButton>
               </form>
             </div>
@@ -2404,17 +2611,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             <div className="space-y-3 pt-3 border-t border-slate-200/80 dark:border-slate-800">
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-[#172B2A] dark:text-white flex items-center gap-1.5">
-                  <History className="w-4 h-4 text-[#16845B]" /> Trilha de Auditoria ({sortedTimeline.length})
+                  <History className="w-4 h-4 text-[#16845B]" /> {L("Trilha de Auditoria", "Audit Trail")} ({sortedTimeline.length})
                 </h4>
                 <span className="text-[10px] text-slate-400 font-mono">
-                  Registro Histórico
+                  {L("Registro Histórico", "Historical Record")}
                 </span>
               </div>
 
               <div className="max-h-56 overflow-y-auto pr-2">
                 {sortedTimeline.length === 0 ? (
                   <div className="p-3 bg-[#F8FAFC] dark:bg-slate-800/70 rounded-xl text-xs text-slate-500 italic">
-                    Nenhum evento registrado ainda nesta ocorrência.
+                    {L("Nenhum evento registrado ainda nesta ocorrência.", "No events recorded for this item yet.")}
                   </div>
                 ) : (
                   <div className="relative border-l border-slate-200 dark:border-slate-700 ml-3 pl-4 space-y-3.5 py-1">
@@ -2426,10 +2633,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                         <div className="p-3 rounded-xl bg-[#F8FAFC] dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/70 text-xs space-y-1">
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-bold text-[#172B2A] dark:text-slate-200 text-xs">
-                              {log.action}
+                              {translateActivityAction(log.action, language)}
                             </span>
                             <span className="text-[10px] font-mono text-slate-400 shrink-0">
-                              {formatDateTime(log.timestamp)}
+                              {fmtDateTime(log.timestamp)}
                             </span>
                           </div>
 
@@ -2442,12 +2649,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                           <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1 pt-0.5">
                             <User className="w-3 h-3 text-[#16845B] shrink-0" />
                             <span>
-                              Responsável:{" "}
+                              {L("Responsável:", "Responsible:")}{" "}
                               <strong className="text-[#172B2A] dark:text-slate-200">
-                                {log.actorName || log.userName || "Usuário"}
+                                {log.actorName || log.userName || L("Usuário", "User")}
                               </strong>
                               {log.actorRole || log.userRole
-                                ? ` (${log.actorRole || log.userRole})`
+                                ? ` (${translateUserRole(log.actorRole || log.userRole, language)})`
                                 : ""}
                             </span>
                           </div>
@@ -2483,17 +2690,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     id="claim-modal-title"
                     className="font-bold text-base sm:text-lg text-[#172B2A] dark:text-white"
                   >
-                    Solicitar Devolução de Objeto
+                    {L("Solicitar Devolução de Objeto", "Request Item Return")}
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Verificação de Posse • IFPR Campus Ivaiporã
+                    {L("Verificação de Posse • IFPR Campus Ivaiporã", "Ownership Verification • IFPR Campus Ivaiporã")}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setClaimModalOpen(false)}
-                aria-label="Fechar janela de reivindicação"
+                aria-label={L("Fechar janela de reivindicação", "Close claim dialog")}
                 className="p-2 rounded-xl text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -2503,23 +2710,26 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             <SubtlePanel className="space-y-1.5">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-bold text-xs text-[#172B2A] dark:text-white">
-                  Objeto selecionado: {currentItem.title}
+                  {L("Objeto selecionado:", "Selected item:")} {currentItem.title}
                 </span>
                 <UIBadge tone="emerald">
-                  {getCategoryDisplay(currentItem.category)}
+                  {translateCategory(getCategoryDisplay(currentItem.category), language)}
                 </UIBadge>
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                Para comprovar a titularidade do pertence junto à Secretaria (SEBAC), descreva características particulares (marcas de uso, adesivos, chaveiros, itens internos ou detalhes específicos).
+                {L(
+                  "Para comprovar a titularidade do pertence junto à Secretaria (SEBAC), descreva características particulares (marcas de uso, adesivos, chaveiros, itens internos ou detalhes específicos).",
+                  "To prove ownership to the Campus Office (SEBAC), describe distinctive details (wear marks, stickers, keychains, contents inside, or specific traits)."
+                )}
               </p>
             </SubtlePanel>
 
             <form onSubmit={handleClaimSubmit} className="space-y-4">
               <UIFieldGroup
-                label="Características Particulares / Marcas de Identificação"
+                label={L("Características Particulares / Marcas de Identificação", "Distinctive Features / Identifying Marks")}
                 htmlFor="claim-distinctive-features"
                 required
-                hint="Informe detalhes que apenas o proprietário do objeto saberia descrever."
+                hint={L("Informe detalhes que apenas o proprietário do objeto saberia descrever.", "Provide details only the rightful owner would know.")}
               >
                 <UITextarea
                   id="claim-distinctive-features"
@@ -2527,12 +2737,15 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   rows={4}
                   value={claimDistinctiveFeatures}
                   onChange={(e) => setClaimDistinctiveFeatures(e.target.value)}
-                  placeholder="Ex: No bolso interno há um adesivo azul, pequena marca de arranhão na lateral, capa protetora preta..."
+                  placeholder={L(
+                    "Ex: No bolso interno há um adesivo azul, pequena marca de arranhão na lateral, capa protetora preta...",
+                    "E.g. Blue sticker inside the inner pocket, small scratch on the side, black protective case..."
+                  )}
                 />
               </UIFieldGroup>
 
               <UIFieldGroup
-                label="Informações Adicionais (Opcional)"
+                label={L("Informações Adicionais (Opcional)", "Additional Information (Optional)")}
                 htmlFor="claim-additional-info"
               >
                 <UITextarea
@@ -2540,14 +2753,20 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   rows={2}
                   value={claimAdditionalInfo}
                   onChange={(e) => setClaimAdditionalInfo(e.target.value)}
-                  placeholder="Ex: Horário aproximado em que perdeu, turma/curso ou telefone adicional..."
+                  placeholder={L(
+                    "Ex: Horário aproximado em que perdeu, turma/curso ou telefone adicional...",
+                    "E.g. Approximate time it was lost, class/program, or additional phone number..."
+                  )}
                 />
               </UIFieldGroup>
 
               <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5">
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
                 <span className="leading-relaxed">
-                  Sua solicitação será analisada pela equipe administrativa (SEBAC). Após aprovação, compareça ao setor munido de documento oficial com foto para retirar o pertence.
+                  {L(
+                    "Sua solicitação será analisada pela equipe administrativa (SEBAC). Após aprovação, compareça ao setor munido de documento oficial com foto para retirar o pertence.",
+                    "Your claim will be reviewed by the administrative team (SEBAC). Once approved, visit the desk with an official photo ID to retrieve your item."
+                  )}
                 </span>
               </div>
 
@@ -2558,7 +2777,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   size="md"
                   onClick={() => setClaimModalOpen(false)}
                 >
-                  Cancelar
+                  {t("cancel")}
                 </UIButton>
                 <UIButton
                   type="submit"
@@ -2570,7 +2789,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>
-                    {isSubmittingClaim ? "Enviando..." : "Enviar Solicitação"}
+                    {isSubmittingClaim
+                      ? L("Enviando...", "Submitting...")
+                      : L("Enviar Solicitação", "Submit Claim")}
                   </span>
                 </UIButton>
               </div>
@@ -2585,11 +2806,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           <div className="bg-white dark:bg-[#111827] text-[#172B2A] dark:text-slate-100 rounded-2xl sm:rounded-3xl p-6 max-w-lg w-full border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-3">
               <h3 className="font-bold text-base text-[#172B2A] dark:text-white flex items-center gap-2">
-                <Send className="w-5 h-5 text-[#16845B]" /> Enviar Notificação Institucional
+                <Send className="w-5 h-5 text-[#16845B]" /> {L("Enviar Notificação Institucional", "Send Institutional Notification")}
               </h3>
               <button
                 type="button"
                 onClick={() => setEmailModalOpen(false)}
+                aria-label={t("close")}
                 className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -2597,13 +2819,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              Envie uma notificação institucional sobre o objeto{" "}
-              <strong>"{currentItem.title}"</strong>. A mensagem será registrada no sistema e entregue ao destinatário no Localiza+.
+              {L("Envie uma notificação institucional sobre o objeto", "Send an institutional notification regarding the item")}{" "}
+              <strong>"{currentItem.title}"</strong>.{" "}
+              {L(
+                "A mensagem será registrada no sistema e entregue ao destinatário no Localiza+.",
+                "The message will be logged in the system and delivered to the recipient inside Localiza+."
+              )}
             </p>
 
             <form onSubmit={handleSendEmailSubmit} className="space-y-3.5">
               <UIFieldGroup
-                label="Destinatário (E-mail / Contato)"
+                label={L("Destinatário (E-mail / Contato)", "Recipient (Email / Contact)")}
                 required
               >
                 <UIInput
@@ -2615,23 +2841,23 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 />
               </UIFieldGroup>
 
-              <UIFieldGroup label="Assunto" required>
+              <UIFieldGroup label={L("Assunto", "Subject")} required>
                 <UIInput
                   type="text"
                   required
                   value={emailSubject}
                   onChange={(e) => setEmailSubject(e.target.value)}
-                  placeholder="Ex: Informação sobre objeto encontrado"
+                  placeholder={L("Ex: Informação sobre objeto encontrado", "E.g. Information about found item")}
                 />
               </UIFieldGroup>
 
-              <UIFieldGroup label="Conteúdo da Mensagem" required>
+              <UIFieldGroup label={L("Conteúdo da Mensagem", "Message Body")} required>
                 <UITextarea
                   required
                   rows={4}
                   value={emailBody}
                   onChange={(e) => setEmailBody(e.target.value)}
-                  placeholder="Escreva os detalhes ou esclarecimentos necessários..."
+                  placeholder={L("Escreva os detalhes ou esclarecimentos necessários...", "Write any necessary details or clarifications...")}
                 />
               </UIFieldGroup>
 
@@ -2642,7 +2868,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   size="md"
                   onClick={() => setEmailModalOpen(false)}
                 >
-                  Cancelar
+                  {t("cancel")}
                 </UIButton>
                 <UIButton
                   type="submit"
@@ -2652,7 +2878,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 >
                   <Send className="w-3.5 h-3.5" />
                   <span>
-                    {isSendingEmail ? "Enviando..." : "Enviar Notificação"}
+                    {isSendingEmail
+                      ? L("Enviando...", "Sending...")
+                      : L("Enviar Notificação", "Send Notification")}
                   </span>
                 </UIButton>
               </div>
@@ -2670,16 +2898,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <FileSignature className="w-5 h-5 text-[#16845B]" />
                 <div>
                   <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
-                    Registrar Devolução & Assinatura Digital
+                    {L("Registrar Devolução & Assinatura Digital", "Register Return & Digital Signature")}
                   </h3>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Protocolo Oficial SEBAC • IFPR Campus Ivaiporã
+                    {L("Protocolo Oficial SEBAC • IFPR Campus Ivaiporã", "Official SEBAC Protocol • IFPR Campus Ivaiporã")}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setReturnModalOpen(false)}
+                aria-label={t("close")}
                 className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -2688,7 +2917,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
             <form onSubmit={handleRegisterReturnSubmit} className="space-y-3.5">
               <UIFieldGroup
-                label="Nome Completo do Receptor / Proprietário"
+                label={L("Nome Completo do Receptor / Proprietário", "Recipient / Owner Full Name")}
                 required
               >
                 <UIInput
@@ -2696,12 +2925,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   required
                   value={returnRecipientName}
                   onChange={(e) => setReturnRecipientName(e.target.value)}
-                  placeholder="Nome de quem está recebendo o pertence..."
+                  placeholder={L("Nome de quem está recebendo o pertence...", "Name of the person receiving the item...")}
                 />
               </UIFieldGroup>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <UIFieldGroup label="E-mail do Receptor" required>
+                <UIFieldGroup label={L("E-mail do Receptor", "Recipient Email")} required>
                   <UIInput
                     type="email"
                     required
@@ -2711,30 +2940,30 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   />
                 </UIFieldGroup>
 
-                <UIFieldGroup label="Vínculo no Campus" required>
+                <UIFieldGroup label={L("Vínculo no Campus", "Campus Affiliation")} required>
                   <UISelect
                     value={returnRecipientBond}
                     onChange={(e) =>
                       setReturnRecipientBond(e.target.value as any)
                     }
                   >
-                    <option value="Aluno">Aluno(a)</option>
-                    <option value="Servidor">Servidor / TAE / Professor</option>
+                    <option value="Aluno">{L("Aluno(a)", "Student")}</option>
+                    <option value="Servidor">{L("Servidor / TAE / Professor", "Staff / Faculty")}</option>
                     <option value="Terceirizado">
-                      Funcionário Terceirizado
+                      {L("Funcionário Terceirizado", "Contractor")}
                     </option>
-                    <option value="Visitante">Visitante Externo</option>
+                    <option value="Visitante">{L("Visitante Externo", "External Visitor")}</option>
                   </UISelect>
                 </UIFieldGroup>
 
-                <UIFieldGroup label="Matrícula / Doc. ID">
+                <UIFieldGroup label={L("Matrícula / Doc. ID", "Enrollment / ID")}>
                   <UIInput
                     type="text"
                     value={returnRecipientDocument}
                     onChange={(e) =>
                       setReturnRecipientDocument(e.target.value)
                     }
-                    placeholder="RG, CPF ou Matrícula..."
+                    placeholder={L("RG, CPF ou Matrícula...", "ID or Enrollment number...")}
                   />
                 </UIFieldGroup>
               </div>
@@ -2742,7 +2971,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               {/* Signature Method Selector */}
               <div className="space-y-1.5 pt-1">
                 <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200">
-                  Etapa de Assinatura Digital de Recebimento
+                  {L("Etapa de Assinatura Digital de Recebimento", "Digital Receipt Signature Step")}
                 </label>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -2757,10 +2986,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   >
                     <div className="flex items-center gap-1.5 text-xs font-bold">
                       <PenTool className="w-4 h-4 text-[#16845B]" />
-                      <span>Presencial no Dispositivo</span>
+                      <span>{L("Presencial no Dispositivo", "In-Person on Device")}</span>
                     </div>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                      O aluno/servidor assina agora na tela do atendente.
+                      {L("O aluno/servidor assina agora na tela do atendente.", "The recipient signs right now on the attendant's screen.")}
                     </p>
                   </button>
 
@@ -2775,10 +3004,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   >
                     <div className="flex items-center gap-1.5 text-xs font-bold">
                       <Send className="w-4 h-4 text-[#16845B]" />
-                      <span>Link por E-mail (Remoto)</span>
+                      <span>{L("Link por E-mail (Remoto)", "Email Link (Remote)")}</span>
                     </div>
                     <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
-                      Envia link seguro para assinatura posterior no celular.
+                      {L("Envia link seguro para assinatura posterior no celular.", "Sends a secure link to sign later on a mobile device.")}
                     </p>
                   </button>
                 </div>
@@ -2788,7 +3017,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               {returnSignatureMode === "IN_PERSON_DEVICE" ? (
                 <div className="pt-1">
                   <DigitalSignaturePad
-                    signerName={returnRecipientName || "Aluno / Servidor"}
+                    signerName={returnRecipientName || L("Aluno / Servidor", "Student / Staff")}
                     signerBond={returnRecipientBond}
                     signerEmail={returnRecipientEmail}
                     onSignatureCapture={(url) => setReturnSignatureDataUrl(url)}
@@ -2799,24 +3028,33 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <div className="p-3.5 bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/60 rounded-xl text-xs text-sky-900 dark:text-sky-200 space-y-1.5">
                   <div className="flex items-center gap-2 font-bold text-sky-800 dark:text-sky-300">
                     <MailCheck className="w-4 h-4" />
-                    <span>Disparo Automático do Termo de Recebimento</span>
+                    <span>{L("Envio Automático do Termo de Recebimento", "Automatic Dispatch of Receipt Form")}</span>
                   </div>
                   <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
-                    Ao registrar, um e-mail com link exclusivo e token de segurança será enviado para{" "}
+                    {L(
+                      "Ao registrar, um e-mail com link exclusivo e token de segurança será enviado para",
+                      "Upon submission, an email with a unique link and security token will be sent to"
+                    )}{" "}
                     <strong>
-                      {returnRecipientEmail || "o e-mail do receptor"}
+                      {returnRecipientEmail || L("o e-mail do receptor", "the recipient's email")}
                     </strong>
-                    . Ele poderá assinar pelo próprio celular a qualquer momento.
+                    {L(
+                      ". Ele poderá assinar pelo próprio celular a qualquer momento.",
+                      ". They will be able to sign from their own phone at any time."
+                    )}
                   </p>
                 </div>
               )}
 
-              <UIFieldGroup label="Observações de Entrega">
+              <UIFieldGroup label={L("Observações de Entrega", "Handover Observations")}>
                 <UITextarea
                   rows={2}
                   value={returnObservations}
                   onChange={(e) => setReturnObservations(e.target.value)}
-                  placeholder="Ex: Objeto conferido com êxito pelo proprietário na SEBAC..."
+                  placeholder={L(
+                    "Ex: Objeto conferido com êxito pelo proprietário na SEBAC...",
+                    "E.g. Item verified successfully by the owner at SEBAC..."
+                  )}
                 />
               </UIFieldGroup>
 
@@ -2833,7 +3071,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   htmlFor="confirmIdentityCheck"
                   className="text-xs text-[#064E3B] dark:text-emerald-200 cursor-pointer font-semibold"
                 >
-                  Confirmo que conferi presencialmente o documento oficial com foto do receptor antes da liberação do objeto.
+                  {L(
+                    "Confirmo que conferi presencialmente o documento oficial com foto do receptor antes da liberação do objeto.",
+                    "I confirm that I personally verified the recipient's official photo ID before releasing the item."
+                  )}
                 </label>
               </div>
 
@@ -2844,7 +3085,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   size="md"
                   onClick={() => setReturnModalOpen(false)}
                 >
-                  Cancelar
+                  {t("cancel")}
                 </UIButton>
                 <UIButton
                   type="submit"
@@ -2855,10 +3096,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   <CheckCircle className="w-3.5 h-3.5" />
                   <span>
                     {isRegisteringReturn
-                      ? "Registrando..."
+                      ? L("Registrando...", "Registering...")
                       : returnSignatureMode === "IN_PERSON_DEVICE"
-                      ? "Concluir Devolução com Assinatura"
-                      : "Concluir & Enviar Link de Assinatura"}
+                      ? L("Concluir Devolução com Assinatura", "Complete Return with Signature")
+                      : L("Concluir & Enviar Link de Assinatura", "Complete & Send Signature Link")}
                   </span>
                 </UIButton>
               </div>
@@ -2879,7 +3120,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
           onSuccess={() => {
             setRemoteSignatureModalOpen(false);
             setResolvedRemoteToken("");
-            addToast("Assinatura digital registrada com sucesso!", "success");
+            addToast(L("Assinatura digital registrada com sucesso!", "Digital signature recorded successfully!"), "success");
           }}
         />
       )}
@@ -2893,16 +3134,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <RotateCcw className="w-5 h-5 text-amber-500" />
                 <div>
                   <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
-                    Reabrir Devolução de Objeto
+                    {L("Reabrir Devolução de Objeto", "Reopen Item Return")}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    Ação Administrativa de Ajuste
+                    {L("Ação Administrativa de Ajuste", "Administrative Adjustment Action")}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setReopenModalOpen(false)}
+                aria-label={t("close")}
                 className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -2910,17 +3152,23 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             </div>
 
             <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
-              A reabertura do item alterará o status de volta para ativo, removerá o carimbo de devolução e gravará um log de auditoria associado ao seu usuário.
+              {L(
+                "A reabertura do item alterará a situação de volta para ativa, removerá o carimbo de devolução e gravará um registro de auditoria associado ao seu usuário.",
+                "Reopening this item will restore its active status, remove the return stamp, and write an audit log entry linked to your account."
+              )}
             </div>
 
             <form onSubmit={handleReopenReturnSubmit} className="space-y-3.5">
-              <UIFieldGroup label="Justificativa da Reabertura" required>
+              <UIFieldGroup label={L("Justificativa da Reabertura", "Reason for Reopening")} required>
                 <UITextarea
                   required
                   rows={3}
                   value={reopenReason}
                   onChange={(e) => setReopenReason(e.target.value)}
-                  placeholder="Ex: Devolução cadastrada por engano no item incorreto durante conferência de estoque..."
+                  placeholder={L(
+                    "Ex: Devolução cadastrada por engano no item incorreto durante conferência de estoque...",
+                    "E.g. Return mistakenly recorded on the wrong item during inventory verification..."
+                  )}
                 />
               </UIFieldGroup>
 
@@ -2931,7 +3179,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   size="md"
                   onClick={() => setReopenModalOpen(false)}
                 >
-                  Cancelar
+                  {t("cancel")}
                 </UIButton>
                 <UIButton
                   type="submit"
@@ -2941,7 +3189,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>
-                    {isReopeningReturn ? "Reabrindo..." : "Confirmar Reabertura"}
+                    {isReopeningReturn
+                      ? L("Reabrindo...", "Reopening...")
+                      : L("Confirmar Reabertura", "Confirm Reopening")}
                   </span>
                 </UIButton>
               </div>
@@ -2959,16 +3209,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <PackageCheck className="w-5 h-5 text-[#16845B]" />
                 <div>
                   <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
-                    Destinação de Pertence Não Reclamado
+                    {L("Destinação de Pertence Não Reclamado", "Unclaimed Item Disposal")}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    Destinação Institucional (Até 60 dias)
+                    {L("Destinação Institucional (Até 60 dias)", "Institutional Disposal (Up to 60 days)")}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setDestinationModalOpen(false)}
+                aria-label={t("close")}
                 className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -2976,26 +3227,26 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             </div>
 
             <form onSubmit={handleDestinationSubmit} className="space-y-3.5">
-              <UIFieldGroup label="Tipo de Destinação" required>
+              <UIFieldGroup label={L("Tipo de Destinação", "Disposal Type")} required>
                 <UISelect
                   value={destinationType}
                   onChange={(e) => setDestinationType(e.target.value as any)}
                 >
                   <option value="DOACAO">
-                    Doação para Entidade / Projeto Social
+                    {L("Doação para Entidade / Projeto Social", "Donation to Charity / Social Project")}
                   </option>
                   <option value="DESCARTE">
-                    Descarte Ecológico / Lixo Eletrônico
+                    {L("Descarte Ecológico / Lixo Eletrônico", "Eco-friendly Disposal / E-Waste")}
                   </option>
                   <option value="LEILAO_PROJETO">
-                    Uso em Projetos de Ensino / Pesquisa
+                    {L("Uso em Projetos de Ensino / Pesquisa", "Use in Teaching / Research Projects")}
                   </option>
-                  <option value="OUTRO">Outra Destinação Autorizada</option>
+                  <option value="OUTRO">{L("Outra Destinação Autorizada", "Other Authorized Disposal")}</option>
                 </UISelect>
               </UIFieldGroup>
 
               <UIFieldGroup
-                label="Entidade Beneficiária / Justificativa"
+                label={L("Entidade Beneficiária / Justificativa", "Beneficiary / Justification")}
                 required
               >
                 <UITextarea
@@ -3003,7 +3254,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   rows={3}
                   value={destinationNotes}
                   onChange={(e) => setDestinationNotes(e.target.value)}
-                  placeholder="Ex: Entregue à Instituição Social de Ivaiporã conforme autorização da Direção Geral..."
+                  placeholder={L(
+                    "Ex: Entregue à Instituição Social de Ivaiporã conforme autorização da Direção Geral...",
+                    "E.g. Donated to a local social institution as authorized by the Campus Director..."
+                  )}
                 />
               </UIFieldGroup>
 
@@ -3014,7 +3268,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   size="md"
                   onClick={() => setDestinationModalOpen(false)}
                 >
-                  Cancelar
+                  {t("cancel")}
                 </UIButton>
                 <UIButton
                   type="submit"
@@ -3025,8 +3279,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   <PackageCheck className="w-3.5 h-3.5" />
                   <span>
                     {isRegisteringDestination
-                      ? "Registrando..."
-                      : "Confirmar & Encerrar"}
+                      ? L("Registrando...", "Registering...")
+                      : L("Confirmar & Encerrar", "Confirm & Close")}
                   </span>
                 </UIButton>
               </div>
@@ -3044,16 +3298,20 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <Edit className="w-5 h-5 text-[#16845B]" />
                 <div>
                   <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
-                    Editar Informações do Objeto
+                    {L("Editar Informações do Objeto", "Edit Item Details")}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    Apenas o Cadastrador do Item ou Servidores/Admins podem alterar
+                    {L(
+                      "Apenas o Cadastrador do Item ou Servidores/Administradores podem alterar",
+                      "Only the item submitter or Staff/Administrators can edit"
+                    )}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setEditItemModalOpen(false)}
+                aria-label={t("close")}
                 className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -3064,7 +3322,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200">
-                    Título / Nome do Objeto *
+                    {L("Título / Nome do Objeto *", "Item Title / Name *")}
                   </label>
                   <span
                     id="edit-title-char-counter"
@@ -3073,9 +3331,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                         ? "text-amber-600 font-bold"
                         : "text-slate-500"
                     }`}
-                    title={`Limite máximo: ${ITEM_FIELD_LIMITS.TITLE} caracteres`}
+                    title={L(`Limite máximo: ${ITEM_FIELD_LIMITS.TITLE} caracteres`, `Maximum limit: ${ITEM_FIELD_LIMITS.TITLE} characters`)}
                   >
-                    {editTitle.length} / {ITEM_FIELD_LIMITS.TITLE} caracteres
+                    {editTitle.length} / {ITEM_FIELD_LIMITS.TITLE} {L("caracteres", "characters")}
                   </span>
                 </div>
                 <UIInput
@@ -3090,7 +3348,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200">
-                    Descrição Detalhada
+                    {L("Descrição Detalhada", "Detailed Description")}
                   </label>
                   <span
                     id="edit-description-char-counter"
@@ -3099,9 +3357,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                         ? "text-amber-600 font-bold"
                         : "text-slate-500"
                     }`}
-                    title={`Limite máximo: ${ITEM_FIELD_LIMITS.DESCRIPTION} caracteres`}
+                    title={L(`Limite máximo: ${ITEM_FIELD_LIMITS.DESCRIPTION} caracteres`, `Maximum limit: ${ITEM_FIELD_LIMITS.DESCRIPTION} characters`)}
                   >
-                    {editDescription.length} / {ITEM_FIELD_LIMITS.DESCRIPTION} caracteres
+                    {editDescription.length} / {ITEM_FIELD_LIMITS.DESCRIPTION} {L("caracteres", "characters")}
                   </span>
                 </div>
                 <UITextarea
@@ -3113,7 +3371,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <UIFieldGroup label="Categoria">
+                <UIFieldGroup label={L("Categoria", "Category")}>
                   <UISelect
                     value={editCategory}
                     onChange={(e) =>
@@ -3122,7 +3380,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   >
                     {CANONICAL_ITEM_CATEGORIES.map((cat) => (
                       <option key={cat} value={cat}>
-                        {cat}
+                        {translateCategory(cat, language)}
                       </option>
                     ))}
                   </UISelect>
@@ -3131,10 +3389,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200">
-                      Localização no Campus
+                      {L("Localização no Campus", "Campus Location")}
                     </label>
                     <span className="text-[10px] font-mono text-slate-500">
-                      Máx. {ITEM_FIELD_LIMITS.LOCATION} carac.
+                      {L(`Máx. ${ITEM_FIELD_LIMITS.LOCATION} carac.`, `Max ${ITEM_FIELD_LIMITS.LOCATION} chars`)}
                     </span>
                   </div>
                   <UISelect
@@ -3142,24 +3400,24 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                     onChange={(e) => setEditLocation(e.target.value)}
                   >
                     {IFPR_LOCATION_GROUPS.map((group) => (
-                      <optgroup key={group.group} label={group.group}>
+                      <optgroup key={group.group} label={translateLocationGroup(group.group, language)}>
                         {group.locations.map((loc) => (
                           <option key={loc} value={loc}>
-                            {loc}
+                            {translateCampusLocation(loc, language)}
                           </option>
                         ))}
                       </optgroup>
                     ))}
                     {editLocation && !IFPR_LOCATIONS.includes(editLocation) && (
                       <option value={editLocation}>
-                        {editLocation} (Legado)
+                        {editLocation} ({L("Legado", "Legacy")})
                       </option>
                     )}
                   </UISelect>
                 </div>
               </div>
 
-              <UIFieldGroup label="Data da Ocorrência" required>
+              <UIFieldGroup label={L("Data da Ocorrência", "Occurrence Date")} required>
                 <UIInput
                   type="date"
                   required
@@ -3173,10 +3431,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200">
-                      Cor Predominante
+                      {L("Cor Predominante", "Primary Color")}
                     </label>
                     <span className="text-[10px] font-mono text-slate-500">
-                      Máx. {ITEM_FIELD_LIMITS.COLOR} carac.
+                      {L(`Máx. ${ITEM_FIELD_LIMITS.COLOR} carac.`, `Max ${ITEM_FIELD_LIMITS.COLOR} chars`)}
                     </span>
                   </div>
                   <UIInput
@@ -3190,10 +3448,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200">
-                      Marca / Fabricante
+                      {L("Marca / Fabricante", "Brand / Manufacturer")}
                     </label>
                     <span className="text-[10px] font-mono text-slate-500">
-                      Máx. {ITEM_FIELD_LIMITS.BRAND} carac.
+                      {L(`Máx. ${ITEM_FIELD_LIMITS.BRAND} carac.`, `Max ${ITEM_FIELD_LIMITS.BRAND} chars`)}
                     </span>
                   </div>
                   <UIInput
@@ -3208,10 +3466,10 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200">
-                    Contato / Instruções de Devolução
+                    {L("Contato / Instruções de Devolução", "Contact / Return Instructions")}
                   </label>
                   <span className="text-[10px] font-mono text-slate-500">
-                    Máx. {ITEM_FIELD_LIMITS.CONTACT_INFO} carac.
+                    {L(`Máx. ${ITEM_FIELD_LIMITS.CONTACT_INFO} carac.`, `Max ${ITEM_FIELD_LIMITS.CONTACT_INFO} chars`)}
                   </span>
                 </div>
                 <UIInput
@@ -3229,7 +3487,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   size="md"
                   onClick={() => setEditItemModalOpen(false)}
                 >
-                  Cancelar
+                  {t("cancel")}
                 </UIButton>
                 <UIButton
                   type="submit"
@@ -3239,7 +3497,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>
-                    {isSavingEdit ? "Salvando..." : "Salvar Alterações"}
+                    {isSavingEdit
+                      ? L("Salvando...", "Saving...")
+                      : L("Salvar Alterações", "Save Changes")}
                   </span>
                 </UIButton>
               </div>
@@ -3257,16 +3517,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                 <FileSignature className="w-5 h-5 text-[#16845B]" />
                 <div>
                   <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
-                    Atestação Institucional do Atendente
+                    {L("Atestação Institucional do Atendente", "Staff Institutional Attestation")}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    IFPR Campus Ivaiporã • Servidor Responsável
+                    {L("IFPR Campus Ivaiporã • Servidor Responsável", "IFPR Campus Ivaiporã • Responsible Staff")}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setStaffSignatureModalOpen(false)}
+                aria-label={t("close")}
                 className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -3275,20 +3536,20 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
 
             <SubtlePanel className="text-xs space-y-1">
               <p className="font-bold text-[#172B2A] dark:text-white">
-                Objeto: {currentItem.title} (#{currentItem.id})
+                {L("Objeto:", "Item:")} {currentItem.title} (#{currentItem.id})
               </p>
               <p className="text-slate-600 dark:text-slate-300">
-                Receptor:{" "}
+                {L("Receptor:", "Recipient:")}{" "}
                 <strong>
                   {currentItem.recipientName ||
                     currentItem.recipientSignatureName ||
-                    "Receptor"}
+                    L("Receptor", "Recipient")}
                 </strong>{" "}
-                ({currentItem.recipientBond || "Aluno(a)"})
+                ({getBondLabel(currentItem.recipientBond || "Aluno")})
               </p>
               <p className="text-slate-400 text-[10px] font-mono">
-                Assinado pelo receptor em:{" "}
-                {formatDateTime(
+                {L("Assinado pelo receptor em:", "Signed by recipient on:")}{" "}
+                {fmtDateTime(
                   currentItem.signedAt || currentItem.resolutionDate
                 )}
               </p>
@@ -3300,11 +3561,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
             >
               <div>
                 <label className="block text-xs font-semibold text-[#172B2A] dark:text-slate-200 mb-2">
-                  Assinatura Digital do Servidor Atendente (
-                  {currentUser?.name || "Servidor IFPR"}) *
+                  {L("Assinatura Digital do Servidor Atendente", "Attendant Staff Digital Signature")} (
+                  {currentUser?.name || L("Servidor IFPR", "IFPR Staff")}) *
                 </label>
                 <DigitalSignaturePad
-                  signerName={currentUser?.name || "Servidor Atendente"}
+                  signerName={currentUser?.name || L("Servidor Atendente", "Attendant Staff")}
                   signerBond="Servidor"
                   signerEmail={currentUser?.email}
                   onSignatureCapture={(dataUrl, method) => {
@@ -3324,7 +3585,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   size="md"
                   onClick={() => setStaffSignatureModalOpen(false)}
                 >
-                  Cancelar
+                  {t("cancel")}
                 </UIButton>
                 <UIButton
                   type="submit"
@@ -3337,8 +3598,8 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose 
                   <PenTool className="w-3.5 h-3.5" />
                   <span>
                     {isSubmittingStaffSignature
-                      ? "Registrando..."
-                      : "Confirmar Atestação e Assinatura"}
+                      ? L("Registrando...", "Registering...")
+                      : L("Confirmar Atestação e Assinatura", "Confirm Attestation & Signature")}
                   </span>
                 </UIButton>
               </div>

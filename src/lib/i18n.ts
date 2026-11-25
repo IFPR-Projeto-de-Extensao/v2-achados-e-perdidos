@@ -136,6 +136,286 @@ export function translateCampusBlock(blockId: string, lang: SupportedLanguage): 
   return blockId.replace(/^Bloco\s+/i, "Block ");
 }
 
+/**
+ * Convenience helper for inline bilingual rendering when a specialized or contextual
+ * phrase is rendered dynamically based on the active language.
+ */
+export function localize(lang: SupportedLanguage, pt: string, en: string): string {
+  return lang === "en" ? en : pt;
+}
+
+export function translateBadgeTier(tier: string | undefined | null, lang: SupportedLanguage): string {
+  const t = (tier || "").toUpperCase();
+  if (lang === "en") {
+    switch (t) {
+      case "DIAMANTE":
+        return "DIAMOND";
+      case "OURO":
+        return "GOLD";
+      case "PRATA":
+        return "SILVER";
+      case "BRONZE":
+        return "BRONZE";
+      default:
+        return t || "BRONZE";
+    }
+  }
+  switch (t) {
+    case "DIAMANTE":
+      return "DIAMANTE";
+    case "OURO":
+      return "OURO";
+    case "PRATA":
+      return "PRATA";
+    case "BRONZE":
+      return "BRONZE";
+    default:
+      return t || "BRONZE";
+  }
+}
+
+export function translateClaimStatus(status: string | undefined | null, lang: SupportedLanguage): string {
+  const s = (status || "").toUpperCase();
+  if (lang === "en") {
+    switch (s) {
+      case "PENDENTE":
+        return "Under Review";
+      case "APROVADO":
+      case "APROVADA":
+        return "Approved";
+      case "REJEITADO":
+      case "REJEITADA":
+        return "Rejected";
+      case "CANCELADO":
+      case "CANCELADA":
+        return "Cancelled";
+      case "CONCLUIDO":
+      case "CONCLUIDA":
+        return "Completed";
+      default:
+        return status || "Pending";
+    }
+  }
+  switch (s) {
+    case "PENDENTE":
+      return "Em Análise";
+    case "APROVADO":
+    case "APROVADA":
+      return "Aprovada";
+    case "REJEITADO":
+    case "REJEITADA":
+      return "Recusada";
+    case "CANCELADO":
+    case "CANCELADA":
+      return "Cancelada";
+    case "CONCLUIDO":
+    case "CONCLUIDA":
+      return "Concluída";
+    default:
+      return status || "Pendente";
+  }
+}
+
+export function translateAccountStatus(status: string | undefined | null, lang: SupportedLanguage): string {
+  const s = (status || "").toLowerCase();
+  if (lang === "en") {
+    switch (s) {
+      case "active":
+        return "Active";
+      case "suspended":
+        return "Suspended";
+      case "banned":
+        return "Banned";
+      case "inactive":
+        return "Inactive";
+      default:
+        return "Active";
+    }
+  }
+  switch (s) {
+    case "active":
+      return "Ativo";
+    case "suspended":
+      return "Suspenso";
+    case "banned":
+      return "Banido";
+    case "inactive":
+      return "Inativo";
+    default:
+      return "Ativo";
+  }
+}
+
+export function translateApprovalStatus(status: string | undefined | null, lang: SupportedLanguage): string {
+  const s = (status || "").toUpperCase();
+  if (lang === "en") {
+    switch (s) {
+      case "APROVADO":
+        return "Approved";
+      case "PENDENTE":
+        return "Pending Approval";
+      case "REJEITADO":
+        return "Rejected";
+      default:
+        return "Approved";
+    }
+  }
+  switch (s) {
+    case "APROVADO":
+      return "Aprovado";
+    case "PENDENTE":
+      return "Pendente de Aprovação";
+    case "REJEITADO":
+      return "Rejeitado";
+    default:
+      return "Aprovado";
+  }
+}
+
+export function translateBugSeverity(severity: string | undefined | null, lang: SupportedLanguage): string {
+  const s = (severity || "").toUpperCase();
+  if (lang === "en") {
+    switch (s) {
+      case "BAIXA":
+        return "Low";
+      case "MEDIA":
+        return "Medium";
+      case "ALTA":
+        return "High";
+      case "CRITICA":
+        return "Critical";
+      default:
+        return severity || "Medium";
+    }
+  }
+  switch (s) {
+    case "BAIXA":
+      return "Baixa";
+    case "MEDIA":
+      return "Média";
+    case "ALTA":
+      return "Alta";
+    case "CRITICA":
+      return "Crítica";
+    default:
+      return severity || "Média";
+  }
+}
+
+export function translateActivityAction(action: string | undefined | null, lang: SupportedLanguage): string {
+  const a = (action || "").toUpperCase();
+  if (lang === "en") {
+    const map: Record<string, string> = {
+      ITEM_CADASTRADO: "Object Registered",
+      ITEM_DEVOLVIDO: "Object Returned",
+      ITEM_ATUALIZADO: "Object Updated",
+      ITEM_EXCLUIDO: "Object Deleted",
+      REIVINDICACAO_CRIADA: "Claim Submitted",
+      REIVINDICACAO_APROVADA: "Claim Approved",
+      REIVINDICACAO_REJEITADA: "Claim Rejected",
+      REIVINDICACAO_CANCELADA: "Claim Cancelled",
+      USUARIO_CADASTRADO: "User Registered",
+      USUARIO_ATUALIZADO: "User Updated",
+      USUARIO_STATUS_ALTERADO: "Account Status Changed",
+      USUARIO_EXCLUIDO: "User Deleted",
+      ACESSO_BLOQUEADO: "Access Blocked",
+      PRIMEIRO_ACESSO_ENVIADO: "First Access Link Sent",
+      TERMO_ASSINADO: "Return Receipt Signed",
+      EXPORTACAO_RELATORIO: "Report Exported",
+      BACKUP_SISTEMA: "System Backup",
+      MANUTENCAO_ALTERADA: "Maintenance Mode Updated",
+    };
+    return map[a] || action || "System Activity";
+  }
+  const mapPt: Record<string, string> = {
+    ITEM_CADASTRADO: "Objeto Cadastrado",
+    ITEM_DEVOLVIDO: "Objeto Devolvido",
+    ITEM_ATUALIZADO: "Objeto Atualizado",
+    ITEM_EXCLUIDO: "Objeto Excluído",
+    REIVINDICACAO_CRIADA: "Reivindicação Enviada",
+    REIVINDICACAO_APROVADA: "Reivindicação Aprovada",
+    REIVINDICACAO_REJEITADA: "Reivindicação Recusada",
+    REIVINDICACAO_CANCELADA: "Reivindicação Cancelada",
+    USUARIO_CADASTRADO: "Usuário Cadastrado",
+    USUARIO_ATUALIZADO: "Usuário Atualizado",
+    USUARIO_STATUS_ALTERADO: "Situação de Conta Alterada",
+    USUARIO_EXCLUIDO: "Usuário Excluído",
+    ACESSO_BLOQUEADO: "Acesso Bloqueado",
+    PRIMEIRO_ACESSO_ENVIADO: "Link de Primeiro Acesso Enviado",
+    TERMO_ASSINADO: "Recibo de Devolução Assinado",
+    EXPORTACAO_RELATORIO: "Relatório Exportado",
+    BACKUP_SISTEMA: "Cópia de Segurança do Sistema",
+    MANUTENCAO_ALTERADA: "Modo de Manutenção Alterado",
+  };
+  return mapPt[a] || action || "Atividade do Sistema";
+}
+
+export function translateLocationGroup(group: string | undefined | null, lang: SupportedLanguage): string {
+  const raw = (group || "").trim();
+  if (!raw || lang === "pt") return raw;
+  const map: Record<string, string> = {
+    "Bloco Didático I (Salas 1 a 10)": "Teaching Block I (Rooms 1–10)",
+    "Bloco Didático II (Salas 11 a 20)": "Teaching Block II (Rooms 11–20)",
+    "Laboratórios de Informática e Agroindústria": "IT & Agroindustry Labs",
+    "Setor Administrativo & Atendimento": "Administrative & Service Wing",
+    "Áreas Comuns & Esportes": "Common Areas & Sports",
+    "Outros Locais": "Other Locations",
+  };
+  return map[raw] || raw.replace(/^Bloco\s+/i, "Block ");
+}
+
+export function translateCampusLocation(loc: string | undefined | null, lang: SupportedLanguage): string {
+  const raw = (loc || "").trim();
+  if (!raw || lang === "pt") return raw;
+  const exact: Record<string, string> = {
+    "Portaria Principal": "Main Gate",
+    "Portaria Principal (Entrada)": "Main Gate (Entrance)",
+    "Secretaria Acadêmica": "Academic Secretariat",
+    "Secretaria / SEPAE": "Secretariat / SEPAE",
+    "SEPAE (Atendimento ao Estudante)": "SEPAE (Student Support)",
+    "SEBAC": "SEBAC",
+    "Biblioteca": "Library",
+    "Biblioteca do Campus": "Campus Library",
+    "Cantina / Refeitório": "Cafeteria / Dining Hall",
+    "Cantina": "Cafeteria",
+    "Refeitório": "Dining Hall",
+    "Auditório": "Auditorium",
+    "Auditório Principal": "Main Auditorium",
+    "Quadra Poliesportiva": "Sports Court",
+    "Quadra de Esportes": "Sports Court",
+    "Estacionamento": "Parking Lot",
+    "Estacionamento Principal": "Main Parking Lot",
+    "Pátio Central": "Central Courtyard",
+    "Corredor Principal": "Main Hallway",
+    "Banheiro Masculino": "Men's Restroom",
+    "Banheiro Feminino": "Women's Restroom",
+    "Banheiros": "Restrooms",
+    "Direção Geral": "General Directorate",
+    "Coordenação de Cursos": "Course Coordination",
+    "Sala dos Professores": "Faculty Lounge",
+    "Laboratório de Informática 01": "Computer Lab 01",
+    "Laboratório de Informática 02": "Computer Lab 02",
+    "Laboratório de Informática 03": "Computer Lab 03",
+    "Laboratório de Informática 1": "Computer Lab 1",
+    "Laboratório de Informática 2": "Computer Lab 2",
+    "Laboratório de Informática 3": "Computer Lab 3",
+    "Laboratório de Química": "Chemistry Lab",
+    "Laboratório de Física": "Physics Lab",
+    "Laboratório de Biologia": "Biology Lab",
+    "Laboratório de Agroindústria": "Agroindustry Lab",
+    "Laboratório de Solos": "Soil Lab",
+    "Outro Local no Campus": "Other Campus Location",
+    "Outro (especificar na descrição)": "Other (specify in description)",
+  };
+  if (exact[raw]) return exact[raw];
+  return raw
+    .replace(/^Sala\s+/i, "Room ")
+    .replace(/^Bloco\s+/i, "Block ")
+    .replace(/^Laboratório\s+de\s+/i, "Lab — ")
+    .replace(/^Laboratório\s+/i, "Lab ")
+    .replace(/^Banheiro\s+/i, "Restroom ");
+}
+
 export interface TranslationDictionary {
   // Brand & Header
   appName: string;
@@ -610,6 +890,33 @@ export interface TranslationDictionary {
   userManualTitle: string;
   userManualNavLabel: string;
 
+  // Account Management & User Status
+  userManagementTitle: string;
+  userManagementSubtitle: string;
+  roleColumnLabel: string;
+  statusColumnLabel: string;
+  actionsColumnLabel: string;
+  userColumnLabel: string;
+  registrationColumnLabel: string;
+  manageAccountStatusBtn: string;
+  deleteUserPermanentlyBtn: string;
+  rootAdminOnlyLabel: string;
+  confirmPermanentDeleteTitle: string;
+
+  // Profile Badges & Claims
+  badgesGalleryTitle: string;
+  badgesProgressLabel: string;
+  viewBadgesGallery: string;
+  hideBadgesGallery: string;
+  levelLabel: string;
+  itemsReturnedMetric: string;
+  itemsFoundMetric: string;
+  badgesUnlockedMetric: string;
+  noClaimsYetTitle: string;
+  noClaimsYetDesc: string;
+  cancelClaimBtn: string;
+  claimFeaturesLabel: string;
+
   // Footer
   footerRights: string;
   footerCampusInfo: string;
@@ -810,10 +1117,10 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     unreadBadge: "não lidas",
     markAllRead: "Marcar todas lidas",
     clearHistory: "Limpar histórico",
-    enablePushTitle: "Ativar Notificações Push do IFPR",
+    enablePushTitle: "Ativar Notificações do IFPR",
     enablePushDesc: "Seja avisado instantaneamente no seu navegador ou smartphone quando alguém encontrar um objeto que você perdeu no campus.",
-    enablePushBtn: "Ativar Notificações Push",
-    enablePushShort: "Ativar Push",
+    enablePushBtn: "Ativar Notificações",
+    enablePushShort: "Ativar Alertas",
     enablePushNavHint: "Ative alertas em tempo real no navegador.",
     filterAll: "Todas",
     filterUnread: "Não Lidas",
@@ -866,9 +1173,9 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     languageLocalizationDesc: "Selecione o idioma de exibição do sistema",
     ifprDefault: "Padrão IFPR",
     international: "Internacional",
-    pushNotificationsTitle: "Notificações Push FCM",
+    pushNotificationsTitle: "Notificações em Tempo Real (FCM)",
     pushNotificationsDesc: "Alertas em tempo real sobre correspondências e devoluções",
-    browserPushPermission: "Permissão Push no Navegador",
+    browserPushPermission: "Permissão de Notificações no Navegador",
     allowedAndActive: "Permitido e ativo",
     notGrantedYet: "Ainda não concedido",
     grantPermission: "Conceder",
@@ -934,12 +1241,12 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     signOut: "Sair da conta",
 
     contactSupport: "Suporte",
-    sendFeedback: "Enviar Feedback",
-    reportBug: "Reportar Bug",
-    supportEyebrow: "Atendimento & Suporte",
+    sendFeedback: "Enviar Sugestão",
+    reportBug: "Relatar Erro",
+    supportEyebrow: "Atendimento e Suporte",
     supportTitle: "Central de Ajuda e Atendimento",
-    supportSubtitle: "Tire dúvidas frequentes, envie sugestões de melhoria ou reporte problemas técnicos à equipe do IFPR Campus Ivaiporã.",
-    feedbackReportBugLink: "Feedback / Relatar Bug",
+    supportSubtitle: "Tire dúvidas frequentes, envie sugestões de melhoria ou relate problemas técnicos à equipe do IFPR Campus Ivaiporã.",
+    feedbackReportBugLink: "Sugestões / Relatar Erro",
     privacyShort: "Privacidade",
     selectLanguageAria: "Seletor de Idioma da Interface",
     footerOfficeHours: "Portaria Principal e SEPAE · Atendimento de segunda a sexta, das 07h às 22h · (43) 3126-9400",
@@ -951,7 +1258,7 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     maintenanceTitle: "Sistema em Atualização Técnica",
     adminItAccess: "Acesso Administrador TI",
     versionHistoryRestrictedTitle: "Histórico Oficial de Versões",
-    versionHistoryRestrictedDesc: "O acesso ao changelog institucional e histórico de releases é restrito a membros autenticados da comunidade acadêmica do IFPR. Entre com sua conta institucional (@ifpr.edu.br ou @estudantes.ifpr.edu.br).",
+    versionHistoryRestrictedDesc: "O acesso ao histórico institucional de versões e atualizações é restrito a membros autenticados da comunidade acadêmica do IFPR. Entre com sua conta institucional (@ifpr.edu.br ou @estudantes.ifpr.edu.br).",
     signInInstitutional: "Entrar com Conta Institucional",
     backToHome: "Voltar ao Início",
     notFoundTitle: "Página não encontrada",
@@ -970,7 +1277,7 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     pwaUpdateDesc: "Toque para atualizar agora",
     pwaUpdateBtn: "Atualizar",
     pwaInstallTitle: "Instalar Localiza+",
-    pwaNativeTag: "PWA Nativo",
+    pwaNativeTag: "Aplicativo Web",
     pwaAddToHome: "Adicionar à Tela Inicial",
     pwaInstallBtn: "Instalar",
     pwaInstructionsBtn: "Instruções",
@@ -1003,8 +1310,8 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     emailVerifySubtitle: "Para garantir a autenticidade das comunicações e proteger a comunidade do IFPR Campus Ivaiporã, confirme o acesso à sua caixa postal antes de continuar.",
     emailVerifyAlreadyVerified: "Já verifiquei meu e-mail",
     emailVerifyResend: "Reenviar e-mail de verificação",
-    uploadStatusTitle: "Status de Upload",
-    uploadNoPending: "Nenhum upload pendente.",
+    uploadStatusTitle: "Situação dos Envios",
+    uploadNoPending: "Nenhum envio pendente.",
     themeDarkMode: "Modo Escuro",
     themeLightMode: "Modo Claro",
     themeSwitchToLight: "Alternar para Modo Claro",
@@ -1020,7 +1327,7 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     stopReading: "Parar Leitura",
 
     reputation: "Reputação",
-    badges: "Conquistas & Badges",
+    badges: "Conquistas e Medalhas",
     points: "pontos",
     editProfile: "Editar Perfil",
     saveChanges: "Salvar Alterações",
@@ -1032,8 +1339,8 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     saving: "Salvando...",
 
     contactCopied: "Copiado!",
-    contactModalTitle: "Suporte & Feedback Institucional",
-    contactSuccessTitle: "Mensagem & Notificação Encaminhadas com Sucesso!",
+    contactModalTitle: "Suporte e Sugestões Institucionais",
+    contactSuccessTitle: "Mensagem e Notificação Encaminhadas com Sucesso!",
     contactSuccessDesc: "Seu relato foi registrado e notificado para a equipe de apoio e canais de atendimento do IFPR Campus Ivaiporã.",
     contactProtocolLabel: "Protocolo de Atendimento",
     contactCopyProtocol: "Copiar",
@@ -1046,30 +1353,55 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     contactMessageLabel: "Mensagem / Descrição Detalhada",
     contactDirectMailBtn: "Abrir no Meu Aplicativo de E-mail",
     contactSubmitting: "Enviando à equipe...",
-    contactSubmitBtn: "Enviar Mensagem & Notificar",
+    contactSubmitBtn: "Enviar Mensagem e Notificar",
 
-    fcmTitle: "Notificações Push do Sistema (FCM)",
+    fcmTitle: "Notificações no Dispositivo (FCM)",
     fcmSubscribed: "Ativo no Dispositivo",
     fcmUnsubscribed: "Não Inscrito",
     fcmDescription: "Receba alertas automáticos via Firebase Cloud Messaging no navegador ou celular quando um objeto que você registrou como perdido for encontrado ou devolvido no campus.",
     fcmProcessing: "Solicitando Permissão...",
     subscribeNotifications: "Assinar Notificações",
-    fcmTestBtn: "Testar Alerta Push",
+    fcmTestBtn: "Testar Alerta",
     fcmConfigured: "Configurado",
 
-    tourDialogLabel: "Tour guiado do Localiza+",
+    tourDialogLabel: "Guia interativo do Localiza+",
     tourStepOf: "de",
     tourBack: "Voltar",
     tourNext: "Próximo",
     tourFinish: "Concluir",
-    tourSkip: "Pular tour",
-    tourCloseAria: "Fechar tour guiado",
-    tourReplayBtn: "Iniciar Tour Guiado",
-    tourReplayShort: "Tour Guiado",
+    tourSkip: "Pular guia",
+    tourCloseAria: "Fechar guia interativo",
+    tourReplayBtn: "Iniciar Guia Interativo",
+    tourReplayShort: "Guia Interativo",
 
     helpButton: "Ajuda",
     userManualTitle: "Manual de Utilização do Localiza+",
-    userManualNavLabel: "Ajuda & Manual do Usuário",
+    userManualNavLabel: "Ajuda e Manual do Usuário",
+
+    userManagementTitle: "Gestão de Contas e Moderação",
+    userManagementSubtitle: "Controle a situação das contas, aplique suspensões temporárias, banimentos e exclusões com registro em auditoria.",
+    roleColumnLabel: "Função / Perfil",
+    statusColumnLabel: "Situação",
+    actionsColumnLabel: "Ações",
+    userColumnLabel: "Usuário",
+    registrationColumnLabel: "Cadastro / Vínculo",
+    manageAccountStatusBtn: "Gerenciar Situação",
+    deleteUserPermanentlyBtn: "Excluir Conta",
+    rootAdminOnlyLabel: "Exclusivo Admin. Raiz",
+    confirmPermanentDeleteTitle: "Confirmar Exclusão Permanente",
+
+    badgesGalleryTitle: "Galeria de Medalhas",
+    badgesProgressLabel: "Progresso para o próximo nível",
+    viewBadgesGallery: "Ver todas as medalhas",
+    hideBadgesGallery: "Ocultar galeria de medalhas",
+    levelLabel: "Nível",
+    itemsReturnedMetric: "Devoluções",
+    itemsFoundMetric: "Achados Registrados",
+    badgesUnlockedMetric: "Medalhas",
+    noClaimsYetTitle: "Nenhuma reivindicação enviada",
+    noClaimsYetDesc: "Quando você solicitar a devolução de um objeto no catálogo, poderá acompanhar a análise por aqui.",
+    cancelClaimBtn: "Cancelar solicitação",
+    claimFeaturesLabel: "Características informadas",
 
     footerRights: "IFPR Campus Ivaiporã • Todos os direitos reservados",
     footerCampusInfo: "IFPR Campus Ivaiporã · Central de Achados e Perdidos",
@@ -1528,6 +1860,31 @@ export const translations: Record<SupportedLanguage, TranslationDictionary> = {
     helpButton: "Help",
     userManualTitle: "Localiza+ User Manual",
     userManualNavLabel: "Help & User Manual",
+
+    userManagementTitle: "Account Management & Moderation",
+    userManagementSubtitle: "Manage account statuses, apply temporary suspensions, bans, and permanent deletions with audit logging.",
+    roleColumnLabel: "Role",
+    statusColumnLabel: "Status",
+    actionsColumnLabel: "Actions",
+    userColumnLabel: "User",
+    registrationColumnLabel: "Registration / Affiliation",
+    manageAccountStatusBtn: "Manage Status",
+    deleteUserPermanentlyBtn: "Delete Account",
+    rootAdminOnlyLabel: "Root Admin Only",
+    confirmPermanentDeleteTitle: "Confirm Permanent Deletion",
+
+    badgesGalleryTitle: "Badges Gallery",
+    badgesProgressLabel: "Progress to next level",
+    viewBadgesGallery: "View all badges",
+    hideBadgesGallery: "Hide badges gallery",
+    levelLabel: "Level",
+    itemsReturnedMetric: "Returns",
+    itemsFoundMetric: "Found Registered",
+    badgesUnlockedMetric: "Badges",
+    noClaimsYetTitle: "No claims submitted yet",
+    noClaimsYetDesc: "When you request the return of an object from the catalog, you can track its review status here.",
+    cancelClaimBtn: "Cancel claim",
+    claimFeaturesLabel: "Provided identifying details",
 
     footerRights: "IFPR Ivaiporã Campus • All rights reserved",
     footerCampusInfo: "IFPR Ivaiporã Campus · Lost & Found Center",

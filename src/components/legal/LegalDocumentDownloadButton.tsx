@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { Download, CheckCircle2, AlertCircle, Loader2, FileDown } from "lucide-react";
 import { LegalDocumentData } from "../../data/legalDocumentsData";
 import { generateLegalDocumentPdf } from "../../lib/legalDocumentPdfGenerator";
+import { useApp } from "../../context/AppContext";
+import { localize } from "../../lib/i18n";
 
 interface LegalDocumentDownloadButtonProps {
   documentData: LegalDocumentData;
@@ -14,6 +16,8 @@ export const LegalDocumentDownloadButton: React.FC<LegalDocumentDownloadButtonPr
   className = "",
   variant = "primary",
 }) => {
+  const { language } = useApp();
+  const tr = (pt: string, en: string) => localize(language, pt, en);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
 
@@ -36,7 +40,9 @@ export const LegalDocumentDownloadButton: React.FC<LegalDocumentDownloadButtonPr
     } catch (err) {
       console.error("[Download Legal PDF Error]", err);
       setStatus("error");
-      setErrorMessage("Não foi possível gerar o PDF. Tente novamente.");
+      setErrorMessage(
+        tr("Não foi possível gerar o PDF. Tente novamente.", "Could not generate the PDF. Please try again.")
+      );
       setTimeout(() => {
         setStatus("idle");
         setErrorMessage("");
@@ -46,17 +52,17 @@ export const LegalDocumentDownloadButton: React.FC<LegalDocumentDownloadButtonPr
 
   const getButtonText = () => {
     if (status === "loading") {
-      return "Gerando PDF...";
+      return tr("Gerando PDF...", "Generating PDF...");
     }
     if (status === "success") {
-      return "PDF baixado com sucesso.";
+      return tr("PDF baixado com sucesso.", "PDF downloaded successfully.");
     }
     if (status === "error") {
-      return errorMessage || "Não foi possível gerar o PDF. Tente novamente.";
+      return errorMessage || tr("Não foi possível gerar o PDF. Tente novamente.", "Could not generate the PDF. Please try again.");
     }
     return documentData.id === "privacy_policy"
-      ? "Baixar Política de Privacidade em PDF"
-      : "Baixar Termos de Uso em PDF";
+      ? tr("Baixar Política de Privacidade em PDF", "Download Privacy Policy (PDF)")
+      : tr("Baixar Termos de Uso em PDF", "Download Terms of Use (PDF)");
   };
 
   // Estilos base com foco visível e acessibilidade

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useApp } from "../context/AppContext";
-import { translateItemStatus } from "../lib/i18n";
+import { localize, translateItemStatus } from "../lib/i18n";
 import { LostFoundItem } from "../types";
 import { vibrateClick, vibrateSuccess, vibrateWarning, sanitizeQuery } from "../lib/utils";
 import { parseQrCodeOrUrl, findItemInList, fetchItemFromFirestore, classifyQrLookupError } from "../lib/qrCodeUtils";
@@ -81,7 +81,14 @@ export const QRCodeScannerModal: React.FC = () => {
       const query = sanitizeQuery(codeToSearch);
       if (!query) {
         vibrateWarning();
-        addToast("Digite ou escaneie um código ou link válido.", "info");
+        addToast(
+          localize(
+            language,
+            "Digite ou leia um código ou link válido.",
+            "Enter or scan a valid code or link."
+          ),
+          "info"
+        );
         return;
       }
 
@@ -100,11 +107,25 @@ export const QRCodeScannerModal: React.FC = () => {
         if (item) {
           vibrateSuccess();
           setFoundItem(item);
-          addToast(`QR Code identificado: "${item.title}"`, "success");
+          addToast(
+            localize(
+              language,
+              `QR Code identificado: "${item.title}"`,
+              `QR Code identified: "${item.title}"`
+            ),
+            "success"
+          );
         } else {
           vibrateWarning();
           setFoundItem(null);
-          addToast("Nenhum objeto correspondente encontrado no acervo do campus.", "error");
+          addToast(
+            localize(
+              language,
+              "Nenhum objeto correspondente encontrado no acervo do campus.",
+              "No matching item found in the campus catalog."
+            ),
+            "error"
+          );
         }
       } catch (err) {
         console.warn("[QRCodeScannerModal] Erro na busca remota do QR:", err);
@@ -116,7 +137,7 @@ export const QRCodeScannerModal: React.FC = () => {
         setIsSearching(false);
       }
     },
-    [items, addToast]
+    [items, addToast, language]
   );
 
   // Live Barcode/QR scanning loop from video stream
@@ -129,7 +150,13 @@ export const QRCodeScannerModal: React.FC = () => {
     const barcodeDetectorSupported = typeof window !== "undefined" && "BarcodeDetector" in window;
 
     if (!barcodeDetectorSupported) {
-      setScannerInitError("Leitura automática indisponível neste navegador. Digite o código do objeto ou cole o link manualmente abaixo.");
+      setScannerInitError(
+        localize(
+          language,
+          "Leitura automática indisponível neste navegador. Digite o código do objeto ou cole o link manualmente abaixo.",
+          "Automatic scanning is unavailable in this browser. Type the item code or paste the link manually below."
+        )
+      );
       return () => {
         isScanning = false;
       };
@@ -161,7 +188,13 @@ export const QRCodeScannerModal: React.FC = () => {
             if (consecutiveDetectErrors >= 15 && !hasReportedFrameError) {
               hasReportedFrameError = true;
               console.warn("[QRCodeScannerModal] Falha recorrente na leitura de quadros do BarcodeDetector:", detectErr);
-              setScannerInitError("O leitor automático encontrou instabilidade com a câmera deste dispositivo. Você pode usar a busca manual pelo código ou link.");
+              setScannerInitError(
+                localize(
+                  language,
+                  "O leitor automático encontrou instabilidade com a câmera deste dispositivo. Você pode usar a busca manual pelo código ou link.",
+                  "The automatic reader experienced instability with this device's camera. You can use manual search by code or link."
+                )
+              );
             }
           }
         }
@@ -174,7 +207,13 @@ export const QRCodeScannerModal: React.FC = () => {
       animationFrameRef.current = requestAnimationFrame(scanFrame);
     } catch (initErr) {
       console.warn("[QRCodeScannerModal] Falha ao inicializar BarcodeDetector:", initErr);
-      setScannerInitError("Não foi possível inicializar o leitor automático de QR Code neste navegador. Utilize a busca manual abaixo.");
+      setScannerInitError(
+        localize(
+          language,
+          "Não foi possível inicializar o leitor automático de QR Code neste navegador. Utilize a busca manual abaixo.",
+          "Could not initialize the automatic QR Code reader in this browser. Please use manual search below."
+        )
+      );
     }
 
     return () => {
@@ -184,7 +223,7 @@ export const QRCodeScannerModal: React.FC = () => {
         animationFrameRef.current = null;
       }
     };
-  }, [cameraActive, handleScanOrSearch, stopCamera]);
+  }, [cameraActive, handleScanOrSearch, stopCamera, language]);
 
   const startCamera = async () => {
     vibrateClick();
@@ -194,7 +233,13 @@ export const QRCodeScannerModal: React.FC = () => {
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Seu navegador ou ambiente não suporta acesso direto à câmera.");
+        throw new Error(
+          localize(
+            language,
+            "Seu navegador ou ambiente não suporta acesso direto à câmera.",
+            "Your browser or environment does not support direct camera access."
+          )
+        );
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -218,7 +263,14 @@ export const QRCodeScannerModal: React.FC = () => {
       setCameraActive(true);
       setCameraPermissionStatus("granted");
       vibrateSuccess();
-      addToast("Câmera ativada! Aponte para o QR Code da etiqueta.", "success");
+      addToast(
+        localize(
+          language,
+          "Câmera ativada! Aponte para o QR Code da etiqueta.",
+          "Camera activated! Point it at the label QR Code."
+        ),
+        "success"
+      );
     } catch (err: any) {
       console.error("Erro ao solicitar acesso à câmera:", err);
       setCameraActive(false);
@@ -226,11 +278,33 @@ export const QRCodeScannerModal: React.FC = () => {
       vibrateWarning();
 
       if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-        setCameraError("Permissão de câmera negada pelo usuário ou pelo navegador. Permita o acesso nas configurações do site para usar o scanner.");
-        addToast("Permissão de câmera negada. Habilite a câmera para utilizar o leitor óptico.", "error");
+        setCameraError(
+          localize(
+            language,
+            "Permissão de câmera negada pelo usuário ou pelo navegador. Permita o acesso nas configurações do site para usar o leitor.",
+            "Camera permission was denied by the user or browser. Allow access in site settings to use the scanner."
+          )
+        );
+        addToast(
+          localize(
+            language,
+            "Permissão de câmera negada. Habilite a câmera para utilizar o leitor óptico.",
+            "Camera permission denied. Enable the camera to use the optical reader."
+          ),
+          "error"
+        );
       } else {
-        setCameraError("Não foi possível acessar a câmera. Verifique se o dispositivo possui câmera disponível.");
-        addToast("Não foi possível iniciar a câmera.", "error");
+        setCameraError(
+          localize(
+            language,
+            "Não foi possível acessar a câmera. Verifique se o dispositivo possui câmera disponível.",
+            "Could not access the camera. Check whether your device has an available camera."
+          )
+        );
+        addToast(
+          localize(language, "Não foi possível iniciar a câmera.", "Could not start the camera."),
+          "error"
+        );
       }
     }
   };
@@ -263,7 +337,14 @@ export const QRCodeScannerModal: React.FC = () => {
 
   const handleStartFormalReturn = (item: LostFoundItem) => {
     if (!canStartFormalReturnForItem(currentUser, auth.currentUser, item, isGuest)) {
-      addToast("Apenas servidores ou administradores ativos e aprovados podem iniciar a devolução formal.", "error");
+      addToast(
+        localize(
+          language,
+          "Apenas servidores ou administradores ativos e aprovados podem iniciar a devolução formal.",
+          "Only active, approved staff or administrators can initiate a formal return."
+        ),
+        "error"
+      );
       return;
     }
     vibrateClick();
@@ -437,7 +518,11 @@ export const QRCodeScannerModal: React.FC = () => {
                         handleScanOrSearch(scannedCode);
                       }
                     }}
-                    placeholder="Ex: https://...?itemId=ifpr-101 / QR-IFPR-101-GARRAFA"
+                    placeholder={
+                      language === "en"
+                        ? "e.g. https://...?itemId=ifpr-101 / QR-IFPR-101-BOTTLE"
+                        : "Ex.: https://...?itemId=ifpr-101 / QR-IFPR-101-GARRAFA"
+                    }
                   />
                 </div>
                 <UIButton
@@ -555,7 +640,7 @@ export const QRCodeScannerModal: React.FC = () => {
                     </>
                   ) : (
                     <>
-                      Este objeto já possui status <strong>{foundItem.status}</strong> e não permite novo registro de entrega.
+                      Este objeto já possui a situação <strong>{translateItemStatus(foundItem.status, language)}</strong> e não permite novo registro de entrega.
                     </>
                   )}
                 </p>

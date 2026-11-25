@@ -8,6 +8,7 @@ import {
   DocumentFieldType,
 } from "../../types";
 import { useApp } from "../../context/AppContext";
+import { localize } from "../../lib/i18n";
 import { DocumentPreviewModal } from "./DocumentPreviewModal";
 import { PROJECT_AVAILABLE_TAGS } from "../../lib/projectSettingsConstants";
 import {
@@ -40,7 +41,8 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
   onBack,
   onSaveSuccess,
 }) => {
-  const { saveDocumentTemplate, addToast, currentUser } = useApp();
+  const { saveDocumentTemplate, addToast, currentUser, language } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
 
   const isEditing = Boolean(initialTemplate && initialTemplate.id);
 
@@ -171,9 +173,9 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
   const handleAddSection = () => {
     const newSection: DocumentSection = {
       id: `sec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      title: "Nova Seção",
+      title: L("Nova Seção", "New Section"),
       type: "paragraph",
-      content: "Insira o conteúdo do parágrafo aqui...",
+      content: L("Insira o conteúdo do parágrafo aqui...", "Enter paragraph content here..."),
       fontSize: 10,
       isBold: false,
       isItalic: false,
@@ -220,7 +222,10 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
         return sec;
       }),
     }));
-    addToast(`Tag {{${tagName}}} inserida na seção.`, "info");
+    addToast(
+      L(`Marcador {{${tagName}}} inserido na seção.`, `Tag {{${tagName}}} inserted into the section.`),
+      "info"
+    );
   };
 
   // Field Handlers
@@ -228,12 +233,12 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
     const newField: DocumentField = {
       id: `fld_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       name: `campo_${template.fields.length + 1}`,
-      label: `Novo Campo ${template.fields.length + 1}`,
+      label: L(`Novo Campo ${template.fields.length + 1}`, `New Field ${template.fields.length + 1}`),
       type: "text",
       defaultValue: "",
       placeholder: "",
       required: false,
-      section: "Campos Adicionais",
+      section: L("Campos Adicionais", "Additional Fields"),
     };
     setTemplate((prev) => ({ ...prev, fields: [...prev.fields, newField] }));
   };
@@ -256,10 +261,10 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
   const handleAddSignature = () => {
     const newSig: DocumentSignature = {
       id: `sig_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      title: "Signatário",
-      nameTag: "Nome do Signatário",
-      roleTag: "Cargo ou Função",
-      cpfOrDocTag: "Documento de Identificação",
+      title: L("Signatário", "Signatory"),
+      nameTag: L("Nome do Signatário", "Signatory Name"),
+      roleTag: L("Cargo ou Função", "Position or Role"),
+      cpfOrDocTag: L("Documento de Identificação", "Identification Document"),
     };
     setTemplate((prev) => ({ ...prev, signatures: [...(prev.signatures || []), newSig] }));
   };
@@ -281,11 +286,11 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
   // Save Full Template
   const handleSave = async () => {
     if (!template.title.trim()) {
-      addToast("Informe o título do modelo.", "error");
+      addToast(L("Informe o título do modelo.", "Please enter the template title."), "error");
       return;
     }
     if (!template.code.trim()) {
-      addToast("Informe o código identificador do modelo.", "error");
+      addToast(L("Informe o código identificador do modelo.", "Please enter the template identifier code."), "error");
       return;
     }
 
@@ -296,7 +301,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
       onBack();
     } catch (err) {
       console.error("Erro ao salvar modelo:", err);
-      addToast("Erro ao salvar o modelo.", "error");
+      addToast(L("Erro ao salvar o modelo.", "Error saving the template."), "error");
     } finally {
       setIsSaving(false);
     }
@@ -312,19 +317,23 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
             size="sm"
             onClick={onBack}
             className="!p-2.5"
-            title="Voltar"
+            title={L("Voltar", "Back")}
+            aria-label={L("Voltar", "Back")}
           >
             <ArrowLeft className="w-5 h-5" />
           </UIButton>
           <div className="min-w-0">
             <div className="flex items-center flex-wrap gap-2">
-              <UIBadge tone="emerald">{isEditing ? "Edição de Modelo" : "Novo Modelo"}</UIBadge>
+              <UIBadge tone="emerald">{isEditing ? L("Edição de Modelo", "Edit Template") : L("Novo Modelo", "New Template")}</UIBadge>
               <h2 className="text-lg font-bold text-[#172B2A] dark:text-white tracking-tight truncate">
-                {template.title || "Sem Título"}
+                {template.title || L("Sem Título", "Untitled")}
               </h2>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Configure cabeçalho, seções dinâmicas, variáveis e assinaturas
+              {L(
+                "Configure cabeçalho, seções dinâmicas, variáveis e assinaturas",
+                "Configure header, dynamic sections, variables, and signatures"
+              )}
             </p>
           </div>
         </div>
@@ -336,7 +345,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
             onClick={() => setIsPreviewOpen(true)}
           >
             <Eye className="w-4 h-4" />
-            <span>Ver Prévia A4</span>
+            <span>{L("Ver Prévia A4", "View A4 Preview")}</span>
           </UIButton>
 
           <UIButton
@@ -346,7 +355,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
             disabled={isSaving}
           >
             <Save className="w-4 h-4" />
-            <span>{isSaving ? "Salvando..." : "Salvar Modelo"}</span>
+            <span>{isSaving ? L("Salvando...", "Saving...") : L("Salvar Modelo", "Save Template")}</span>
           </UIButton>
         </div>
       </SurfaceCard>
@@ -363,7 +372,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
           }`}
         >
           <Layers className="w-4 h-4" />
-          <span>1. Seções do Documento ({template.sections?.length || 0})</span>
+          <span>{L(`1. Seções do Documento (${template.sections?.length || 0})`, `1. Document Sections (${template.sections?.length || 0})`)}</span>
         </button>
 
         <button
@@ -376,7 +385,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
           }`}
         >
           <Tag className="w-4 h-4" />
-          <span>2. Campos & Variáveis ({template.fields?.length || 0})</span>
+          <span>{L(`2. Campos e Variáveis (${template.fields?.length || 0})`, `2. Fields & Variables (${template.fields?.length || 0})`)}</span>
         </button>
 
         <button
@@ -389,7 +398,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
           }`}
         >
           <PenTool className="w-4 h-4" />
-          <span>3. Assinaturas ({template.signatures?.length || 0})</span>
+          <span>{L(`3. Assinaturas (${template.signatures?.length || 0})`, `3. Signatures (${template.signatures?.length || 0})`)}</span>
         </button>
 
         <button
@@ -402,7 +411,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
           }`}
         >
           <Settings className="w-4 h-4" />
-          <span>4. Cabeçalho & Geral</span>
+          <span>{L("4. Cabeçalho e Geral", "4. Header & General")}</span>
         </button>
       </div>
 
@@ -411,14 +420,19 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
         <div className="space-y-4">
           <SubtlePanel padding="sm" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-bold text-[#172B2A] dark:text-white">Estrutura de Conteúdo e Parágrafos</h3>
+              <h3 className="text-sm font-bold text-[#172B2A] dark:text-white">
+                {L("Estrutura de Conteúdo e Parágrafos", "Content Structure & Paragraphs")}
+              </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Organize os blocos de texto. Você pode clicar nos botões de variáveis abaixo para inseri-las no texto.
+                {L(
+                  "Organize os blocos de texto. Você pode clicar nos botões de variáveis abaixo para inseri-las no texto.",
+                  "Organize text blocks. You can click the variable buttons below to insert them into the text."
+                )}
               </p>
             </div>
             <UIButton variant="outline" size="sm" onClick={handleAddSection}>
               <Plus className="w-4 h-4" />
-              <span>Adicionar Seção</span>
+              <span>{L("Adicionar Seção", "Add Section")}</span>
             </UIButton>
           </SubtlePanel>
 
@@ -427,7 +441,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
             <SurfaceCard padding="sm" className="space-y-2">
               <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center space-x-1">
                 <Sparkles className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
-                <span>Variáveis disponíveis para inserção no texto:</span>
+                <span>{L("Variáveis disponíveis para inserção no texto:", "Variables available to insert into text:")}</span>
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {template.fields.map((fld) => (
@@ -455,7 +469,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                       type="text"
                       value={section.title}
                       onChange={(e) => handleUpdateSection(section.id, { title: e.target.value })}
-                      placeholder="Título da Seção (ex: 1. Dados do Parceiro)"
+                      placeholder={L("Título da Seção (ex.: 1. Dados do Parceiro)", "Section Title (e.g., 1. Partner Data)")}
                       className="bg-transparent border-none text-sm font-bold text-[#172B2A] dark:text-white focus:outline-none focus:ring-1 focus:ring-[#16845B] rounded-lg px-2 py-1 w-full"
                     />
                   </div>
@@ -466,7 +480,8 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                       onClick={() => handleMoveSection(idx, "up")}
                       disabled={idx === 0}
                       className="p-1.5 text-slate-400 hover:text-[#172B2A] dark:hover:text-white disabled:opacity-30 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                      title="Mover para cima"
+                      title={L("Mover para cima", "Move up")}
+                      aria-label={L("Mover para cima", "Move up")}
                     >
                       <MoveUp className="w-4 h-4" />
                     </button>
@@ -475,7 +490,8 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                       onClick={() => handleMoveSection(idx, "down")}
                       disabled={idx === template.sections.length - 1}
                       className="p-1.5 text-slate-400 hover:text-[#172B2A] dark:hover:text-white disabled:opacity-30 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                      title="Mover para baixo"
+                      title={L("Mover para baixo", "Move down")}
+                      aria-label={L("Mover para baixo", "Move down")}
                     >
                       <MoveDown className="w-4 h-4" />
                     </button>
@@ -483,7 +499,8 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                       type="button"
                       onClick={() => handleRemoveSection(section.id)}
                       className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-slate-800 transition-colors ml-1 cursor-pointer"
-                      title="Excluir seção"
+                      title={L("Excluir seção", "Delete section")}
+                      aria-label={L("Excluir seção", "Delete section")}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -492,32 +509,36 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                   <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Tipo de Seção</label>
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">
+                      {L("Tipo de Seção", "Section Type")}
+                    </label>
                     <UISelect
                       value={section.type}
                       onChange={(e) =>
                         handleUpdateSection(section.id, { type: e.target.value as DocumentSectionType })
                       }
                     >
-                      <option value="paragraph">Parágrafo Padrão</option>
-                      <option value="numbered_section">Seção Numerada / Caixa de Dados</option>
-                      <option value="declarations_list">Lista de Declarações (I, II, III...)</option>
-                      <option value="heading">Título Destacado</option>
+                      <option value="paragraph">{L("Parágrafo Padrão", "Standard Paragraph")}</option>
+                      <option value="numbered_section">{L("Seção Numerada / Caixa de Dados", "Numbered Section / Data Box")}</option>
+                      <option value="declarations_list">{L("Lista de Declarações (I, II, III...)", "Declarations List (I, II, III...)")}</option>
+                      <option value="heading">{L("Título Destacado", "Highlighted Heading")}</option>
                     </UISelect>
                   </div>
 
                   <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Alinhamento do Texto</label>
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">
+                      {L("Alinhamento do Texto", "Text Alignment")}
+                    </label>
                     <UISelect
                       value={section.align || "justify"}
                       onChange={(e) =>
                         handleUpdateSection(section.id, { align: e.target.value as any })
                       }
                     >
-                      <option value="justify">Justificado</option>
-                      <option value="left">Alinhado à Esquerda</option>
-                      <option value="center">Centralizado</option>
-                      <option value="right">Alinhado à Direita</option>
+                      <option value="justify">{L("Justificado", "Justified")}</option>
+                      <option value="left">{L("Alinhado à Esquerda", "Left Aligned")}</option>
+                      <option value="center">{L("Centralizado", "Centered")}</option>
+                      <option value="right">{L("Alinhado à Direita", "Right Aligned")}</option>
                     </UISelect>
                   </div>
 
@@ -529,7 +550,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                         onChange={(e) => handleUpdateSection(section.id, { isBold: e.target.checked })}
                         className="rounded border-slate-300 dark:border-slate-700 text-[#16845B] focus:ring-[#16845B]"
                       />
-                      <span>Negrito</span>
+                      <span>{L("Negrito", "Bold")}</span>
                     </label>
 
                     <label className="flex items-center space-x-1.5 text-[#172B2A] dark:text-slate-300 cursor-pointer font-medium">
@@ -539,7 +560,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                         onChange={(e) => handleUpdateSection(section.id, { isItalic: e.target.checked })}
                         className="rounded border-slate-300 dark:border-slate-700 text-[#16845B] focus:ring-[#16845B]"
                       />
-                      <span>Itálico</span>
+                      <span>{L("Itálico", "Italic")}</span>
                     </label>
                   </div>
                 </div>
@@ -547,10 +568,10 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                 <div>
                   <div className="flex flex-wrap items-center justify-between gap-1.5 mb-1.5">
                     <label className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                      Conteúdo do Texto (Suporta tags dinâmicas)
+                      {L("Conteúdo do Texto (Suporta marcadores dinâmicos)", "Text Content (Supports dynamic tags)")}
                     </label>
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold mr-1">Inserir:</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold mr-1">{L("Inserir:", "Insert:")}</span>
                       {/* Project quick tags */}
                       {["nome_equipe", "integrantes_com_matricula", "professor_responsavel", "instituicao", "endereco_completo"].map((tag) => (
                         <button
@@ -558,7 +579,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                           type="button"
                           onClick={() => insertTagIntoSection(section.id, tag)}
                           className="text-[10px] px-1.5 py-0.5 bg-[#EBF5F0] dark:bg-emerald-950/60 hover:bg-[#16845B]/15 text-[#064E3B] dark:text-emerald-300 rounded border border-[#16845B]/20 dark:border-emerald-700/50 transition-colors cursor-pointer"
-                          title={`Inserir tag do projeto {{${tag}}}`}
+                          title={L(`Inserir marcador do projeto {{${tag}}}`, `Insert project tag {{${tag}}}`)}
                         >
                           + {tag}
                         </button>
@@ -570,7 +591,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                           type="button"
                           onClick={() => insertTagIntoSection(section.id, f.name)}
                           className="text-[10px] px-1.5 py-0.5 bg-sky-50 dark:bg-slate-800 hover:bg-sky-100 dark:hover:bg-slate-700 text-sky-700 dark:text-sky-400 rounded border border-sky-200 dark:border-slate-700 transition-colors cursor-pointer"
-                          title={`Inserir {{${f.name}}}`}
+                          title={L(`Inserir {{${f.name}}}`, `Insert {{${f.name}}}`)}
                         >
                           + {f.name}
                         </button>
@@ -581,7 +602,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                     rows={4}
                     value={section.content}
                     onChange={(e) => handleUpdateSection(section.id, { content: e.target.value })}
-                    placeholder="Conteúdo do texto..."
+                    placeholder={L("Conteúdo do texto...", "Text content...")}
                     className="leading-relaxed font-sans"
                   />
                 </div>
@@ -596,14 +617,19 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
         <div className="space-y-4">
           <SubtlePanel padding="sm" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-bold text-[#172B2A] dark:text-white">Campos Dinâmicos e Formulário</h3>
+              <h3 className="text-sm font-bold text-[#172B2A] dark:text-white">
+                {L("Campos Dinâmicos e Formulário", "Dynamic Fields & Form")}
+              </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Campos que o administrador preencherá ao gerar o PDF. Cada campo cria uma tag `&#123;&#123;nome_tag&#125;&#125;`.
+                {L(
+                  "Campos que o administrador preencherá ao gerar o PDF. Cada campo cria um marcador {{nome_marcador}}.",
+                  "Fields that the administrator will fill when generating the PDF. Each field creates a {{tag_name}} tag."
+                )}
               </p>
             </div>
             <UIButton variant="outline" size="sm" onClick={handleAddField}>
               <Plus className="w-4 h-4" />
-              <span>Novo Campo</span>
+              <span>{L("Novo Campo", "New Field")}</span>
             </UIButton>
           </SubtlePanel>
 
@@ -622,7 +648,8 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                     type="button"
                     onClick={() => handleRemoveField(field.id)}
                     className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                    title="Remover campo"
+                    title={L("Remover campo", "Remove field")}
+                    aria-label={L("Remover campo", "Remove field")}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -630,7 +657,9 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
                   <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Nome da Tag (sem espaços)</label>
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">
+                      {L("Nome do Marcador (sem espaços)", "Tag Name (no spaces)")}
+                    </label>
                     <UIInput
                       type="text"
                       value={field.name}
@@ -644,7 +673,9 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Rótulo / Label no Formulário</label>
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">
+                      {L("Rótulo no Formulário", "Form Field Label")}
+                    </label>
                     <UIInput
                       type="text"
                       value={field.label}
@@ -653,39 +684,45 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Tipo de Campo</label>
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">
+                      {L("Tipo de Campo", "Field Type")}
+                    </label>
                     <UISelect
                       value={field.type}
                       onChange={(e) =>
                         handleUpdateField(field.id, { type: e.target.value as DocumentFieldType })
                       }
                     >
-                      <option value="text">Texto Curto</option>
-                      <option value="textarea">Texto Longo (Parágrafo)</option>
-                      <option value="number">Número</option>
-                      <option value="date">Data</option>
+                      <option value="text">{L("Texto Curto", "Short Text")}</option>
+                      <option value="textarea">{L("Texto Longo (Parágrafo)", "Long Text (Paragraph)")}</option>
+                      <option value="number">{L("Número", "Number")}</option>
+                      <option value="date">{L("Data", "Date")}</option>
                     </UISelect>
                   </div>
 
                   <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Seção de Agrupamento</label>
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">
+                      {L("Seção de Agrupamento", "Grouping Section")}
+                    </label>
                     <UIInput
                       type="text"
                       value={field.section || ""}
                       onChange={(e) => handleUpdateField(field.id, { section: e.target.value })}
-                      placeholder="Ex: 1. Dados do Parceiro"
+                      placeholder={L("Ex.: 1. Dados do Parceiro", "e.g., 1. Partner Data")}
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
                   <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Valor Padrão Inicial</label>
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">
+                      {L("Valor Padrão Inicial", "Initial Default Value")}
+                    </label>
                     <UIInput
                       type="text"
                       value={field.defaultValue || ""}
                       onChange={(e) => handleUpdateField(field.id, { defaultValue: e.target.value })}
-                      placeholder="Texto pré-preenchido no formulário"
+                      placeholder={L("Texto pré-preenchido no formulário", "Pre-filled text in the form")}
                     />
                   </div>
 
@@ -697,7 +734,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                         onChange={(e) => handleUpdateField(field.id, { required: e.target.checked })}
                         className="rounded border-slate-300 dark:border-slate-700 text-[#16845B] focus:ring-[#16845B]"
                       />
-                      <span>Preenchimento Obrigatório</span>
+                      <span>{L("Preenchimento Obrigatório", "Required Field")}</span>
                     </label>
                   </div>
                 </div>
@@ -712,14 +749,19 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
         <div className="space-y-4">
           <SubtlePanel padding="sm" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-bold text-[#172B2A] dark:text-white">Blocos de Assinatura</h3>
+              <h3 className="text-sm font-bold text-[#172B2A] dark:text-white">
+                {L("Blocos de Assinatura", "Signature Blocks")}
+              </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Configure as linhas de assinatura e os cargos institucionais ao final do documento.
+                {L(
+                  "Configure as linhas de assinatura e os cargos institucionais ao final do documento.",
+                  "Configure signature lines and institutional titles at the end of the document."
+                )}
               </p>
             </div>
             <UIButton variant="outline" size="sm" onClick={handleAddSignature}>
               <Plus className="w-4 h-4" />
-              <span>Adicionar Assinatura</span>
+              <span>{L("Adicionar Assinatura", "Add Signature")}</span>
             </UIButton>
           </SubtlePanel>
 
@@ -727,11 +769,15 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
             {template.signatures.map((sig, idx) => (
               <SurfaceCard key={sig.id} padding="sm" className="space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-                  <span className="text-xs font-bold text-[#172B2A] dark:text-slate-200">Assinatura #{idx + 1}</span>
+                  <span className="text-xs font-bold text-[#172B2A] dark:text-slate-200">
+                    {L(`Assinatura #${idx + 1}`, `Signature #${idx + 1}`)}
+                  </span>
                   <button
                     type="button"
                     onClick={() => handleRemoveSignature(sig.id)}
                     className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    title={L("Remover assinatura", "Remove signature")}
+                    aria-label={L("Remover assinatura", "Remove signature")}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -739,43 +785,51 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
 
                 <div className="space-y-2.5 text-xs">
                   <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Título do Signatário</label>
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">
+                      {L("Título do Signatário", "Signatory Title")}
+                    </label>
                     <UIInput
                       type="text"
                       value={sig.title}
                       onChange={(e) => handleUpdateSignature(sig.id, { title: e.target.value })}
-                      placeholder="Ex: Representante do Parceiro"
+                      placeholder={L("Ex.: Representante do Parceiro", "e.g., Partner Representative")}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Nome / Tag Dinâmica</label>
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">
+                      {L("Nome / Marcador Dinâmico", "Name / Dynamic Tag")}
+                    </label>
                     <UIInput
                       type="text"
                       value={sig.nameTag || ""}
                       onChange={(e) => handleUpdateSignature(sig.id, { nameTag: e.target.value })}
-                      placeholder="Ex: {{responsavel}} ou Nome Fixo"
+                      placeholder={L("Ex.: {{responsavel}} ou Nome Fixo", "e.g., {{responsavel}} or Fixed Name")}
                       className="font-mono"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Cargo / Função / Tag</label>
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">
+                      {L("Cargo / Função / Marcador", "Position / Role / Tag")}
+                    </label>
                     <UIInput
                       type="text"
                       value={sig.roleTag || ""}
                       onChange={(e) => handleUpdateSignature(sig.id, { roleTag: e.target.value })}
-                      placeholder="Ex: {{cargo_responsavel}} ou Diretor Geral"
+                      placeholder={L("Ex.: {{cargo_responsavel}} ou Diretor Geral", "e.g., {{cargo_responsavel}} or General Director")}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">Documento / Vínculo / Tag</label>
+                    <label className="block text-slate-500 dark:text-slate-400 font-medium mb-1">
+                      {L("Documento / Vínculo / Marcador", "Document / Affiliation / Tag")}
+                    </label>
                     <UIInput
                       type="text"
                       value={sig.cpfOrDocTag || ""}
                       onChange={(e) => handleUpdateSignature(sig.id, { cpfOrDocTag: e.target.value })}
-                      placeholder="Ex: CPF: {{cpf}} ou IFPR Campus Ivaiporã"
+                      placeholder={L("Ex.: CPF: {{cpf}} ou IFPR Campus Ivaiporã", "e.g., ID: {{cpf}} or IFPR Campus Ivaiporã")}
                       className="font-mono"
                     />
                   </div>
@@ -791,7 +845,9 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
         <SurfaceCard padding="md" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div>
-              <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5">Título do Modelo</label>
+              <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5">
+                {L("Título do Modelo", "Template Title")}
+              </label>
               <UIInput
                 type="text"
                 value={template.title}
@@ -801,7 +857,9 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
             </div>
 
             <div>
-              <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5">Código Identificador</label>
+              <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5">
+                {L("Código Identificador", "Identifier Code")}
+              </label>
               <UIInput
                 type="text"
                 value={template.code}
@@ -816,34 +874,38 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
             </div>
 
             <div>
-              <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5">Categoria</label>
+              <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5">
+                {L("Categoria", "Category")}
+              </label>
               <UISelect
                 value={template.category}
                 onChange={(e) => setTemplate((prev) => ({ ...prev, category: e.target.value as any }))}
               >
-                <option value="EXTENSAO">Extensão Universitária</option>
-                <option value="ACHADOS_PERDIDOS">Achados e Perdidos / Custódia</option>
-                <option value="INSTITUCIONAL">Institucional / Direção</option>
-                <option value="ESTAGIO">Estágio & Carreira</option>
-                <option value="OUTRO">Outros</option>
+                <option value="EXTENSAO">{L("Extensão Universitária", "University Extension")}</option>
+                <option value="ACHADOS_PERDIDOS">{L("Achados e Perdidos / Custódia", "Lost & Found / Custody")}</option>
+                <option value="INSTITUCIONAL">{L("Institucional / Direção", "Institutional / Management")}</option>
+                <option value="ESTAGIO">{L("Estágio e Carreira", "Internship & Career")}</option>
+                <option value="OUTRO">{L("Outros", "Other")}</option>
               </UISelect>
             </div>
 
             <div>
-              <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5">Status do Modelo</label>
+              <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5">
+                {L("Situação do Modelo", "Template Status")}
+              </label>
               <UISelect
                 value={template.status}
                 onChange={(e) => setTemplate((prev) => ({ ...prev, status: e.target.value as any }))}
               >
-                <option value="ATIVO">ATIVO (Disponível para emissão)</option>
-                <option value="INATIVO">INATIVO (Oculto na listagem padrão)</option>
+                <option value="ATIVO">{L("ATIVO (Disponível para emissão)", "ACTIVE (Available for issuance)")}</option>
+                <option value="INATIVO">{L("INATIVO (Oculto na listagem padrão)", "INACTIVE (Hidden from default list)")}</option>
               </UISelect>
             </div>
           </div>
 
           <div>
             <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5 text-xs">
-              Descrição da Finalidade
+              {L("Descrição da Finalidade", "Purpose Description")}
             </label>
             <UITextarea
               rows={2}
@@ -854,7 +916,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
 
           <div>
             <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5 text-xs">
-              Texto do Cabeçalho Oficial (Linhas separadas por Enter)
+              {L("Texto do Cabeçalho Oficial (Linhas separadas por Enter)", "Official Header Text (Lines separated by Enter)")}
             </label>
             <UITextarea
               rows={4}
@@ -866,7 +928,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
 
           <div>
             <label className="block text-[#172B2A] dark:text-slate-300 font-semibold mb-1.5 text-xs">
-              Texto do Rodapé Oficial
+              {L("Texto do Rodapé Oficial", "Official Footer Text")}
             </label>
             <UIInput
               type="text"
@@ -883,7 +945,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                 onChange={(e) => setTemplate((prev) => ({ ...prev, includeHeader: e.target.checked }))}
                 className="rounded border-slate-300 dark:border-slate-700 text-[#16845B] focus:ring-[#16845B]"
               />
-              <span>Exibir Cabeçalho</span>
+              <span>{L("Exibir Cabeçalho", "Show Header")}</span>
             </label>
 
             <label className="flex items-center space-x-2 text-[#172B2A] dark:text-slate-300 cursor-pointer font-medium">
@@ -895,7 +957,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                 }
                 className="rounded border-slate-300 dark:border-slate-700 text-[#16845B] focus:ring-[#16845B]"
               />
-              <span>Número de Controle</span>
+              <span>{L("Número de Controle", "Control Number")}</span>
             </label>
 
             <label className="flex items-center space-x-2 text-[#172B2A] dark:text-slate-300 cursor-pointer font-medium">
@@ -905,7 +967,7 @@ export const DocumentTemplateEditor: React.FC<DocumentTemplateEditorProps> = ({
                 onChange={(e) => setTemplate((prev) => ({ ...prev, includeFooter: e.target.checked }))}
                 className="rounded border-slate-300 dark:border-slate-700 text-[#16845B] focus:ring-[#16845B]"
               />
-              <span>Exibir Rodapé</span>
+              <span>{L("Exibir Rodapé", "Show Footer")}</span>
             </label>
           </div>
         </SurfaceCard>

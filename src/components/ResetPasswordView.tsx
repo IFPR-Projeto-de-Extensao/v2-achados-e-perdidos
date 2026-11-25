@@ -422,7 +422,9 @@ export const ResetPasswordView: React.FC = () => {
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400">
                   {errorMsg ||
-                    "Este link de definição ou redefinição de senha expirou ou já foi utilizado."}
+                    (language === "en"
+                      ? "This password setup or reset link has expired or has already been used."
+                      : "Este link de definição ou redefinição de senha expirou ou já foi utilizado.")}
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-3">

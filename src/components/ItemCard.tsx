@@ -3,7 +3,7 @@ import { LostFoundItem } from "../types";
 import { useApp } from "../context/AppContext";
 import { formatDate, vibrateClick } from "../lib/utils";
 import { getCategoryDisplay, normalizeCategory } from "../lib/categoryUtils";
-import { translateCategory, translateColor } from "../lib/i18n";
+import { translateCategory, translateColor, translateCampusLocation } from "../lib/i18n";
 import {
   Laptop,
   FileText,
@@ -195,7 +195,11 @@ export const ItemCard: React.FC<ItemCardProps> = ({
         {/* Linha 3: Localização + Cor (quando informada) */}
         <div className="mt-1.5 sm:mt-3 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
           <p className="truncate">
-            <span>{item?.location || t("locationNotProvided", "Local não informado")}</span>
+            <span>
+              {item?.location
+                ? translateCampusLocation(item.location, language)
+                : t("locationNotProvided", "Local não informado")}
+            </span>
             {item?.color && (
               <>
                 <span aria-hidden="true"> · </span>

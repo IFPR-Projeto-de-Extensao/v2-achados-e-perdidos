@@ -308,7 +308,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
         })
         .catch(() => {});
     }
-    addToast(`Domínio '${domainToCopy}' copiado com sucesso!`, "success");
+    addToast(
+      language === "en"
+        ? `Domain '${domainToCopy}' copied successfully!`
+        : `Domínio '${domainToCopy}' copiado com sucesso!`,
+      "success"
+    );
   };
 
   return (
@@ -462,7 +467,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               {errorMsg.includes("não está autorizado") && (
                 <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-red-200 dark:border-red-800/60 text-[11px] text-slate-700 dark:text-slate-200 space-y-1.5">
                   <p className="font-bold text-red-700 dark:text-red-300">
-                    Adicione este domínio no Firebase Console:
+                    {language === "en"
+                      ? "Add this domain in Firebase Console:"
+                      : "Adicione este domínio no Firebase Console:"}
                   </p>
                   <UIButton
                     type="button"
@@ -476,7 +483,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                     ) : (
                       <Copy className="w-3.5 h-3.5" />
                     )}
-                    <span>{copiedDomain ? "Copiado!" : "Copiar Domínio Atual"}</span>
+                    <span>
+                      {copiedDomain
+                        ? language === "en" ? "Copied!" : "Copiado!"
+                        : language === "en" ? "Copy Current Domain" : "Copiar Domínio Atual"}
+                    </span>
                   </UIButton>
                 </div>
               )}
@@ -506,7 +517,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   type="email"
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder="seu.nome@ifpr.edu.br"
+                  placeholder={language === "en" ? "your.name@ifpr.edu.br" : "seu.nome@ifpr.edu.br"}
                   required
                   leftIcon={<Mail className="w-4 h-4" />}
                 />
@@ -608,7 +619,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   type="email"
                   value={resetEmail}
                   onChange={(e) => setResetEmail(e.target.value)}
-                  placeholder="seu.nome@ifpr.edu.br"
+                  placeholder={language === "en" ? "your.name@ifpr.edu.br" : "seu.nome@ifpr.edu.br"}
                   required
                   leftIcon={<Mail className="w-4 h-4" />}
                 />
@@ -677,7 +688,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   type="email"
                   value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}
-                  placeholder="seu.nome@estudantes.ifpr.edu.br"
+                  placeholder={language === "en" ? "your.name@estudantes.ifpr.edu.br" : "seu.nome@estudantes.ifpr.edu.br"}
                   required
                   leftIcon={<Mail className="w-4 h-4" />}
                 />
@@ -763,7 +774,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                     type="text"
                     value={regMatricula}
                     onChange={(e) => setRegMatricula(e.target.value)}
-                    placeholder="Ex: 2026109823"
+                    placeholder={language === "en" ? "e.g., 2026109823" : "Ex: 2026109823"}
                     leftIcon={<Hash className="w-4 h-4" />}
                   />
                 </UIFieldGroup>

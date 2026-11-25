@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { useRouter } from "../context/RouterContext";
 import { submitSupportFeedback } from "../lib/supportFeedbackService";
+import { localize } from "../lib/i18n";
 import {
   LifeBuoy,
   MessageSquare,
@@ -36,6 +37,7 @@ interface SupportViewProps {
 
 export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) => {
   const { currentUser, addToast, language, t } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
   const { routeKey, navigate } = useRouter();
 
   // Determine active tab based on routeKey or prop
@@ -139,14 +141,14 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
   const handleSubmitFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!feedbackMessage.trim()) {
-      addToast("Por favor, digite sua mensagem ou sugestão.", "error");
+      addToast(L("Por favor, digite sua mensagem ou sugestão.", "Please enter your message or suggestion."), "error");
       return;
     }
 
     setIsSubmittingFeedback(true);
     try {
       const result = await submitSupportFeedback({
-        name: (feedbackSenderName || currentUser.name || "Membro da Comunidade").trim(),
+        name: (feedbackSenderName || currentUser.name || L("Membro da Comunidade", "Community Member")).trim(),
         email: (feedbackSenderEmail || currentUser.email || "localizamais0@gmail.com").trim(),
         category: "FEEDBACK",
         subject: `[Feedback] ${feedbackCategory} - Avaliação: ${feedbackRating} estrelas`,
@@ -158,15 +160,21 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
       });
 
       if (!result.success) {
-        throw new Error(result.error || "Erro ao processar feedback no servidor.");
+        throw new Error(result.error || L("Erro ao processar sugestão no servidor.", "Error processing feedback on server."));
       }
 
       vibrateSuccess();
       setFeedbackSubmitted(true);
-      addToast("Feedback e notificação enviados à equipe do Campus Ivaiporã!", "success");
+      addToast(
+        L(
+          "Sugestão e notificação enviadas à equipe do Campus Ivaiporã!",
+          "Feedback and notification sent to the Ivaiporã Campus team!"
+        ),
+        "success"
+      );
     } catch (err: any) {
       console.warn("Feedback notice:", err);
-      addToast(err?.message || "Obrigado pelo seu feedback!", "info");
+      addToast(err?.message || L("Obrigado pela sua sugestão!", "Thank you for your feedback!"), "info");
       setFeedbackSubmitted(true);
     } finally {
       setIsSubmittingFeedback(false);
@@ -176,7 +184,13 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
   const handleSubmitBug = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bugTitle.trim() || !bugSteps.trim()) {
-      addToast("Preencha o título do erro e os passos para reproduzi-lo.", "error");
+      addToast(
+        L(
+          "Preencha o título do erro e os passos para reproduzi-lo.",
+          "Please fill in the issue title and steps to reproduce it."
+        ),
+        "error"
+      );
       return;
     }
 
@@ -200,7 +214,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
         .join("\n\n");
 
       const result = await submitSupportFeedback({
-        name: (currentUser.name || "Membro da Comunidade").trim(),
+        name: (currentUser.name || L("Membro da Comunidade", "Community Member")).trim(),
         email: (currentUser.email || "localizamais0@gmail.com").trim(),
         category: "BUG_REPORT",
         subject: `[Bug Report] ${bugTitle.trim()}`,
@@ -212,15 +226,21 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
       });
 
       if (!result.success) {
-        throw new Error(result.error || "Erro ao processar relato no servidor.");
+        throw new Error(result.error || L("Erro ao processar relato no servidor.", "Error processing report on server."));
       }
 
       vibrateSuccess();
       setBugSubmitted(true);
-      addToast("Relato de bug enviado diretamente ao Discord e à equipe de TI!", "success");
+      addToast(
+        L(
+          "Relato de erro enviado diretamente ao Discord e à equipe de TI!",
+          "Bug report sent directly to Discord and the IT team!"
+        ),
+        "success"
+      );
     } catch (err: any) {
       console.warn("Bug report notice:", err);
-      addToast(err?.message || "Relato registrado com sucesso!", "info");
+      addToast(err?.message || L("Relato registrado com sucesso!", "Report recorded successfully!"), "info");
       setBugSubmitted(true);
     } finally {
       setIsSubmittingBug(false);
@@ -318,10 +338,10 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
                 <MapPin className="w-5 h-5" />
               </div>
               <h4 className="text-xs font-bold text-neutral-900 dark:text-white">
-                Secretaria do Campus
+                {L("Secretaria do Campus", "Campus Secretariat")}
               </h4>
               <p className="text-xs text-neutral-500 leading-relaxed">
-                Bloco Administrativo, IFPR Campus Ivaiporã - Rodovia PR-466.
+                {L("Bloco Administrativo, IFPR Campus Ivaiporã - Rodovia PR-466.", "Administrative Block, IFPR Ivaiporã Campus - PR-466 Highway.")}
               </p>
             </div>
 
@@ -330,10 +350,10 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
                 <Clock className="w-5 h-5" />
               </div>
               <h4 className="text-xs font-bold text-neutral-900 dark:text-white">
-                Horário de Atendimento
+                {L("Horário de Atendimento", "Office Hours")}
               </h4>
               <p className="text-xs text-neutral-500 leading-relaxed">
-                Segunda a Sexta-feira, das 07:30 às 22:30 (Dias letivos).
+                {L("Segunda a Sexta-feira, das 07:30 às 22:30 (Dias letivos).", "Monday to Friday, 07:30 to 22:30 (School days).")}
               </p>
             </div>
 
@@ -342,7 +362,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
                 <Mail className="w-5 h-5" />
               </div>
               <h4 className="text-xs font-bold text-neutral-900 dark:text-white">
-                Contato por E-mail
+                {L("Contato por E-mail", "Email Contact")}
               </h4>
               <p className="text-xs text-neutral-500 leading-relaxed font-mono">
                 achados.ivaipora@ifpr.edu.br
@@ -354,13 +374,16 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
           <div className="bg-gradient-to-r from-indigo-900/40 via-purple-900/30 to-neutral-900/80 p-6 rounded-3xl border border-indigo-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="space-y-1">
               <span className="px-2.5 py-0.5 rounded-md bg-indigo-500/30 text-indigo-300 text-[10px] font-black uppercase tracking-wider">
-                Comunidade IFPR
+                {L("Comunidade IFPR", "IFPR Community")}
               </span>
               <h3 className="text-base font-black text-white">
-                Servidor Oficial Discord do Campus Ivaiporã
+                {L("Servidor Oficial Discord do Campus Ivaiporã", "Official IFPR Ivaiporã Campus Discord Server")}
               </h3>
               <p className="text-xs text-neutral-300 max-w-lg">
-                Participe do canal de achados e perdidos em tempo real para avisos imediatos e integração comunitária.
+                {L(
+                  "Participe do canal de achados e perdidos em tempo real para avisos imediatos e integração comunitária.",
+                  "Join the real-time lost and found channel for immediate alerts and campus community updates."
+                )}
               </p>
             </div>
 
@@ -370,7 +393,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
               rel="noopener noreferrer"
               className="px-5 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-lg shadow-indigo-600/30 transition-all flex items-center space-x-2 whitespace-nowrap shrink-0"
             >
-              <span>Acessar Discord</span>
+              <span>{L("Acessar Discord", "Open Discord")}</span>
               <ExternalLink className="w-4 h-4" />
             </a>
           </div>
@@ -379,7 +402,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
           <div className="bg-white dark:bg-[#1E1E1E] p-6 sm:p-8 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-4">
             <h3 className="text-base font-bold text-neutral-900 dark:text-white flex items-center gap-2">
               <HelpCircle className="w-5 h-5 text-[#00843D]" />
-              <span>Perguntas Frequentes (FAQ)</span>
+              <span>{L("Perguntas Frequentes", "Frequently Asked Questions (FAQ)")}</span>
             </h3>
 
             <div className="space-y-3 pt-2">
@@ -418,10 +441,13 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
           <div className="space-y-1">
             <h3 className="text-lg font-black text-neutral-900 dark:text-white flex items-center gap-2">
               <MessageSquare className="w-5 h-5 text-purple-600" />
-              <span>Enviar Sugestão ou Feedback</span>
+              <span>{L("Enviar Sugestão ou Avaliação", "Send Suggestion or Feedback")}</span>
             </h3>
             <p className="text-xs text-neutral-500">
-              Sua opinião ajuda a aprimorar o sistema de achados e perdidos do IFPR.
+              {L(
+                "Sua opinião ajuda a aprimorar o sistema de achados e perdidos do IFPR.",
+                "Your feedback helps improve the IFPR Lost & Found system."
+              )}
             </p>
           </div>
 
@@ -429,10 +455,13 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
             <div className="p-8 rounded-2xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 text-center space-y-3">
               <CheckCircle2 className="w-12 h-12 text-purple-600 mx-auto" />
               <h4 className="text-base font-bold text-neutral-900 dark:text-white">
-                Feedback Recebido com Sucesso!
+                {L("Sugestão Recebida com Sucesso!", "Feedback Received Successfully!")}
               </h4>
               <p className="text-xs text-neutral-600 dark:text-neutral-300 max-w-md mx-auto">
-                Muito obrigado por contribuir com a evolução contínua do Localiza+ no Campus Ivaiporã.
+                {L(
+                  "Muito obrigado por contribuir com a evolução contínua do Localiza+ no Campus Ivaiporã.",
+                  "Thank you for helping us continuously improve Localiza+ at Ivaiporã Campus."
+                )}
               </p>
               <button
                 onClick={() => {
@@ -441,7 +470,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
                 }}
                 className="mt-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs"
               >
-                Enviar Outro Feedback
+                {L("Enviar Outra Sugestão", "Send More Feedback")}
               </button>
             </div>
           ) : (
@@ -449,7 +478,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
               {/* Rating 1-5 Stars */}
               <div>
                 <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-2">
-                  Como você avalia sua experiência geral no sistema?
+                  {L("Como você avalia sua experiência geral no sistema?", "How would you rate your overall experience?")}
                 </label>
                 <div className="flex items-center space-x-2">
                   {[1, 2, 3, 4, 5].map((star) => (
@@ -468,12 +497,12 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
                   ))}
                   <span className="text-xs font-bold text-neutral-500 ml-2">
                     {feedbackRating === 5
-                      ? "Excelente (5/5)"
+                      ? L("Excelente (5/5)", "Excellent (5/5)")
                       : feedbackRating === 4
-                      ? "Muito Bom (4/5)"
+                      ? L("Muito Bom (4/5)", "Very Good (4/5)")
                       : feedbackRating === 3
-                      ? "Razoável (3/5)"
-                      : "Precisa Melhorar"}
+                      ? L("Razoável (3/5)", "Average (3/5)")
+                      : L("Precisa Melhorar", "Needs Improvement")}
                   </span>
                 </div>
               </div>
@@ -481,31 +510,34 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
               {/* Category */}
               <div>
                 <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                  Categoria da Sugestão
+                  {L("Categoria da Sugestão", "Feedback Category")}
                 </label>
                 <select
                   value={feedbackCategory}
                   onChange={(e) => setFeedbackCategory(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-white"
                 >
-                  <option value="USABILIDADE">Facilidade de Uso / Interface</option>
-                  <option value="NOVA_FUNCIONALIDADE">Sugestão de Nova Funcionalidade</option>
-                  <option value="NOTIFICACOES">Notificações e Alertas</option>
-                  <option value="OUTRO">Outro Assunto</option>
+                  <option value="USABILIDADE">{L("Facilidade de Uso / Interface", "Usability / Interface")}</option>
+                  <option value="NOVA_FUNCIONALIDADE">{L("Sugestão de Nova Funcionalidade", "New Feature Suggestion")}</option>
+                  <option value="NOTIFICACOES">{L("Notificações e Alertas", "Notifications & Alerts")}</option>
+                  <option value="OUTRO">{L("Outro Assunto", "Other Topic")}</option>
                 </select>
               </div>
 
               {/* Message */}
               <div>
                 <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                  Sua Mensagem / Sugestão *
+                  {L("Sua Mensagem / Sugestão *", "Your Message / Suggestion *")}
                 </label>
                 <textarea
                   rows={4}
                   required
                   value={feedbackMessage}
                   onChange={(e) => setFeedbackMessage(e.target.value)}
-                  placeholder="Conte-nos o que você achou, o que funcionou bem ou o que poderíamos melhorar..."
+                  placeholder={L(
+                    "Conte-nos o que você achou, o que funcionou bem ou o que poderíamos melhorar...",
+                    "Tell us what you think, what worked well, or what we could improve..."
+                  )}
                   className="w-full p-3.5 rounded-xl text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:border-purple-500 focus:outline-none text-neutral-900 dark:text-white"
                 />
               </div>
@@ -513,25 +545,25 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Seu Nome (Opcional)
+                    {L("Seu Nome (Opcional)", "Your Name (Optional)")}
                   </label>
                   <input
                     type="text"
                     value={feedbackSenderName}
                     onChange={(e) => setFeedbackSenderName(e.target.value)}
-                    placeholder="Seu nome"
+                    placeholder={L("Seu nome", "Your name")}
                     className="w-full px-3.5 py-2 rounded-xl text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-white"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Seu E-mail (Opcional)
+                    {L("Seu E-mail (Opcional)", "Your Email (Optional)")}
                   </label>
                   <input
                     type="email"
                     value={feedbackSenderEmail}
                     onChange={(e) => setFeedbackSenderEmail(e.target.value)}
-                    placeholder="seu.email@ifpr.edu.br"
+                    placeholder={L("seu.email@ifpr.edu.br", "your.email@ifpr.edu.br")}
                     className="w-full px-3.5 py-2 rounded-xl text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-white"
                   />
                 </div>
@@ -543,7 +575,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
                 className="w-full py-3.5 rounded-2xl bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-black text-xs shadow-md transition-all flex items-center justify-center space-x-2"
               >
                 <Send className="w-4 h-4" />
-                <span>{isSubmittingFeedback ? "Enviando..." : "Enviar Sugestão"}</span>
+                <span>{isSubmittingFeedback ? L("Enviando...", "Sending...") : t("sendFeedback")}</span>
               </button>
             </form>
           )}
@@ -556,10 +588,13 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
           <div className="space-y-1">
             <h3 className="text-lg font-black text-neutral-900 dark:text-white flex items-center gap-2">
               <Bug className="w-5 h-5 text-red-600" />
-              <span>Relatar Erro ou Falha Técnica</span>
+              <span>{L("Relatar Erro ou Falha Técnica", "Report Error or Technical Issue")}</span>
             </h3>
             <p className="text-xs text-neutral-500">
-              Encontrou algum comportamento inesperado? Descreva o problema para que a equipe de TI possa corrigir rapidamente.
+              {L(
+                "Encontrou algum comportamento inesperado? Descreva o problema para que a equipe de TI possa corrigir rapidamente.",
+                "Found an unexpected behavior? Describe the issue so our IT team can fix it quickly."
+              )}
             </p>
           </div>
 
@@ -567,10 +602,13 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
             <div className="p-8 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-center space-y-3">
               <CheckCircle2 className="w-12 h-12 text-red-600 mx-auto" />
               <h4 className="text-base font-bold text-neutral-900 dark:text-white">
-                Relato de Erro Registrado!
+                {L("Relato de Erro Registrado!", "Issue Report Submitted!")}
               </h4>
               <p className="text-xs text-neutral-600 dark:text-neutral-300 max-w-md mx-auto">
-                Nosso time de tecnologia foi notificado e analisará os logs para a correção do bug.
+                {L(
+                  "Nossa equipe de tecnologia foi notificada e analisará os registros para a correção do problema.",
+                  "Our technology team has been notified and will review the logs to fix the issue."
+                )}
               </p>
               <button
                 onClick={() => {
@@ -583,7 +621,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
                 }}
                 className="mt-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs"
               >
-                Relatar Outro Problema
+                {L("Relatar Outro Problema", "Report Another Issue")}
               </button>
             </div>
           ) : (
@@ -591,45 +629,51 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Título do Erro *
+                    {L("Título do Erro *", "Issue Title *")}
                   </label>
                   <input
                     type="text"
                     required
                     value={bugTitle}
                     onChange={(e) => setBugTitle(e.target.value)}
-                    placeholder="Ex: Botão de gerar etiqueta QR não respondeu"
+                    placeholder={L(
+                      "Ex: Botão de gerar etiqueta QR não respondeu",
+                      "E.g., Generate QR label button did not respond"
+                    )}
                     className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:border-red-500 focus:outline-none text-neutral-900 dark:text-white"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Severidade
+                    {L("Gravidade", "Severity")}
                   </label>
                   <select
                     value={bugSeverity}
                     onChange={(e) => setBugSeverity(e.target.value as any)}
                     className="w-full px-3.5 py-2.5 rounded-xl text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-white"
                   >
-                    <option value="BAIXA">Baixa (Visual / Texto)</option>
-                    <option value="MEDIA">Média (Ação secundária)</option>
-                    <option value="ALTA">Alta (Função principal com erro)</option>
-                    <option value="CRITICA">Crítica (Impedimento total)</option>
+                    <option value="BAIXA">{L("Baixa (Visual / Texto)", "Low (Visual / Text)")}</option>
+                    <option value="MEDIA">{L("Média (Ação secundária)", "Medium (Secondary action)")}</option>
+                    <option value="ALTA">{L("Alta (Função principal com erro)", "High (Core feature broken)")}</option>
+                    <option value="CRITICA">{L("Crítica (Impedimento total)", "Critical (Complete blocker)")}</option>
                   </select>
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                  Passos para Reproduzir o Erro *
+                  {L("Passos para Reproduzir o Erro *", "Steps to Reproduce *")}
                 </label>
                 <textarea
                   rows={3}
                   required
                   value={bugSteps}
                   onChange={(e) => setBugSteps(e.target.value)}
-                  placeholder="1. Acessei a tela de cadastro&#10;2. Preenchi os dados do objeto&#10;3. Ao clicar em Salvar, a tela ficou em branco..."
+                  placeholder={L(
+                    "1. Acessei a tela de cadastro\n2. Preenchi os dados do objeto\n3. Ao clicar em Salvar, a tela ficou em branco...",
+                    "1. Opened the registration page\n2. Filled out the item details\n3. Clicked Save and the screen went blank..."
+                  )}
                   className="w-full p-3.5 rounded-xl text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 focus:border-red-500 focus:outline-none text-neutral-900 dark:text-white"
                 />
               </div>
@@ -637,26 +681,26 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Comportamento Esperado (Opcional)
+                    {L("Comportamento Esperado (Opcional)", "Expected Behavior (Optional)")}
                   </label>
                   <input
                     type="text"
                     value={bugExpected}
                     onChange={(e) => setBugExpected(e.target.value)}
-                    placeholder="O que deveria ter acontecido?"
+                    placeholder={L("O que deveria ter acontecido?", "What should have happened?")}
                     className="w-full px-3.5 py-2 rounded-xl text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-white"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Comportamento Ocorrido (Opcional)
+                    {L("Comportamento Ocorrido (Opcional)", "Actual Behavior (Optional)")}
                   </label>
                   <input
                     type="text"
                     value={bugActual}
                     onChange={(e) => setBugActual(e.target.value)}
-                    placeholder="O que de fato aconteceu?"
+                    placeholder={L("O que de fato aconteceu?", "What actually happened?")}
                     className="w-full px-3.5 py-2 rounded-xl text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-900 dark:text-white"
                   />
                 </div>
@@ -664,7 +708,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
 
               <div>
                 <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                  Link ou URL da Captura de Tela (Print do Erro - Opcional)
+                  {L("Link ou URL da Captura de Tela (Opcional)", "Screenshot Link / URL (Optional)")}
                 </label>
                 <input
                   type="url"
@@ -681,7 +725,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
                 className="w-full py-3.5 rounded-2xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-black text-xs shadow-md transition-all flex items-center justify-center space-x-2"
               >
                 <AlertTriangle className="w-4 h-4" />
-                <span>{isSubmittingBug ? "Enviando..." : "Registrar Relato de Erro"}</span>
+                <span>{isSubmittingBug ? L("Enviando...", "Sending...") : L("Registrar Relato de Erro", "Submit Issue Report")}</span>
               </button>
             </form>
           )}

@@ -1,5 +1,7 @@
 import React from "react";
 import { LostFoundItem, NotificationItem } from "../types";
+import { useApp } from "../context/AppContext";
+import { localize, translateCampusLocation, translateUserRole } from "../lib/i18n";
 import { isItemNew, safeParseDate, formatDate } from "../lib/utils";
 import { SurfaceCard, UIBadge, EmptyState } from "./ui";
 import {
@@ -22,6 +24,9 @@ export const RecentActivityWidget: React.FC<RecentActivityWidgetProps> = ({
   items,
   onSelectItem,
 }) => {
+  const { language } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
+
   const recentFeed = (items || [])
     .slice()
     .sort(
@@ -39,14 +44,14 @@ export const RecentActivityWidget: React.FC<RecentActivityWidgetProps> = ({
         item,
         type: isDevolvido ? "DEVOLVIDO" : isPerdido ? "PERDIDO" : "ENCONTRADO",
         title: isDevolvido
-          ? `Objeto Devolvido: ${item.title}`
+          ? `${L("Objeto Devolvido", "Item Returned")}: ${item.title}`
           : isPerdido
-          ? `Perda Registrada: ${item.title}`
-          : `Novo Achado: ${item.title}`,
-        location: item.location,
+          ? `${L("Perda Registrada", "Lost Report")}: ${item.title}`
+          : `${L("Novo Achado", "New Found Item")}: ${item.title}`,
+        location: translateCampusLocation(item.location, language),
         time: item.date || item.createdAt,
-        userName: item.registeredByName || "Usuário do IFPR",
-        userRole: item.registeredByRole || "ALUNO",
+        userName: item.registeredByName || L("Usuário do IFPR", "IFPR User"),
+        userRole: translateUserRole(item.registeredByRole || "ALUNO", language),
       };
     });
 
@@ -59,25 +64,31 @@ export const RecentActivityWidget: React.FC<RecentActivityWidgetProps> = ({
           </div>
           <div>
             <h3 className="font-bold text-sm sm:text-base text-[#172B2A] dark:text-white tracking-tight">
-              Atividade Recente no Campus
+              {L("Atividade Recente no Campus", "Recent Campus Activity")}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 hidden xs:block">
-              Últimos registros e restituições sincronizados em tempo real
+              {L(
+                "Últimos registros e restituições sincronizados em tempo real",
+                "Latest reports and returns synced in real time"
+              )}
             </p>
           </div>
         </div>
 
         <UIBadge tone="emerald">
           <span className="w-1.5 h-1.5 rounded-full bg-[#16845B] dark:bg-emerald-400 animate-pulse" />
-          <span>Tempo Real</span>
+          <span>{L("Tempo Real", "Real-Time")}</span>
         </UIBadge>
       </div>
 
       {recentFeed.length === 0 ? (
         <EmptyState
           icon={<Inbox className="w-6 h-6" />}
-          title="Nenhuma atividade recente registrada"
-          description="Assim que objetos forem cadastrados ou restituídos no IFPR Campus Ivaiporã, eles aparecerão automaticamente neste histórico."
+          title={L("Nenhuma atividade recente registrada", "No recent activity recorded")}
+          description={L(
+            "Assim que objetos forem cadastrados ou restituídos no IFPR Campus Ivaiporã, eles aparecerão automaticamente neste histórico.",
+            "As soon as items are registered or returned at IFPR Campus Ivaiporã, they will automatically appear here."
+          )}
           className="border-0 shadow-none p-6 sm:p-8"
         />
       ) : (
@@ -114,16 +125,17 @@ export const RecentActivityWidget: React.FC<RecentActivityWidgetProps> = ({
                     <h4 className="font-semibold text-xs sm:text-sm text-[#172B2A] dark:text-white truncate group-hover:text-[#16845B] dark:group-hover:text-emerald-400 transition-colors">
                       {activity.title}
                     </h4>
-                    {isItemNew(activity.item) && <UIBadge tone="emerald">Novo</UIBadge>}
+                    {isItemNew(activity.item) && <UIBadge tone="emerald">{L("Novo", "New")}</UIBadge>}
                   </div>
                   <span className="text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-1 shrink-0 font-medium tabular-nums">
-                    <Clock className="w-3 h-3" /> {formatDate(activity.time)}
+                    <Clock className="w-3 h-3" /> {formatDate(activity.time, undefined, language)}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                   <span className="truncate">
-                    Local: <strong className="font-medium text-slate-700 dark:text-slate-300">{activity.location}</strong>
+                    {L("Local:", "Location:")}{" "}
+                    <strong className="font-medium text-slate-700 dark:text-slate-300">{activity.location}</strong>
                   </span>
                   <span aria-hidden="true">·</span>
                   <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">

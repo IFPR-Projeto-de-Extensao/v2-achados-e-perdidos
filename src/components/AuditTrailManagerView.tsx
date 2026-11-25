@@ -33,6 +33,7 @@ import { SystemAuditLog, AuditObjectType, UserRole, ActivityLog } from "../types
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { vibrateClick, vibrateSuccess } from "../lib/utils";
+import { localize, getLocaleForLanguage, translateUserRole } from "../lib/i18n";
 
 interface AuditTrailManagerViewProps {
   darkMode?: boolean;
@@ -134,7 +135,9 @@ export function buildUnifiedAuditLogs(
 }
 
 export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ darkMode }) => {
-  const { systemAuditLogs, activityLogs, currentUser, addToast } = useApp();
+  const { systemAuditLogs, activityLogs, currentUser, addToast, language } = useApp();
+  const locale = getLocaleForLanguage(language);
+  const tr = (pt: string, en: string) => localize(language, pt, en);
 
   // Search & Filters State
   const [searchTerm, setSearchTerm] = useState("");
@@ -238,7 +241,10 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
     if (navigator.clipboard) {
       navigator.clipboard.writeText(txId);
       setCopiedTxId(txId);
-      addToast(`ID de Transação ${txId} copiado com sucesso!`, "info");
+      addToast(
+        tr(`ID de Transação ${txId} copiado com sucesso!`, `Transaction ID ${txId} copied successfully!`),
+        "info"
+      );
       setTimeout(() => setCopiedTxId(null), 2500);
     }
   };
@@ -249,8 +255,8 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
       vibrateClick();
       const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
       const now = new Date();
-      const reportDate = now.toLocaleDateString("pt-BR");
-      const reportTime = now.toLocaleTimeString("pt-BR");
+      const reportDate = now.toLocaleDateString(locale);
+      const reportTime = now.toLocaleTimeString(locale);
       const reportProtocol = `AUD-IFPR-${now.getFullYear()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 
       // Header Banner
@@ -264,22 +270,40 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
       
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
-      doc.text("SISTEMA LOCALIZA+ • RELATÓRIO OFICIAL DE AUDITORIA E RASTREABILIDADE FORENSE", 14, 17);
+      doc.text(
+        tr(
+          "SISTEMA LOCALIZA+ • RELATÓRIO OFICIAL DE AUDITORIA E RASTREABILIDADE FORENSE",
+          "LOCALIZA+ SYSTEM • OFFICIAL AUDIT & FORENSIC TRACEABILITY REPORT"
+        ),
+        14,
+        17
+      );
 
       doc.setFontSize(9);
-      doc.text(`Protocolo: ${reportProtocol}`, 215, 10);
-      doc.text(`Emissão: ${reportDate} às ${reportTime}`, 215, 17);
+      doc.text(`${tr("Protocolo", "Protocol")}: ${reportProtocol}`, 215, 10);
+      doc.text(`${tr("Emissão", "Issued")}: ${reportDate} ${tr("às", "at")} ${reportTime}`, 215, 17);
 
       // Institutional Meta Block
       doc.setTextColor(33, 33, 33);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
-      doc.text("SUMÁRIO EXECUTIVO DA AUDITORIA DO SISTEMA", 14, 32);
+      doc.text(tr("SUMÁRIO EXECUTIVO DA AUDITORIA DO SISTEMA", "SYSTEM AUDIT EXECUTIVE SUMMARY"), 14, 32);
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
-      doc.text(`Responsável pela Emissão: ${currentUser?.name || "Administrador do Sistema"} (${currentUser?.role || "ADMIN"}) - ${currentUser?.email || "localizamais0@gmail.com"}`, 14, 38);
-      doc.text(`Escopo do Relatório: Total de ${filteredLogs.length} eventos auditados com garantia de imutabilidade no banco de dados Firestore.`, 14, 43);
+      doc.text(
+        `${tr("Responsável pela Emissão", "Issued By")}: ${currentUser?.name || tr("Administrador do Sistema", "System Administrator")} (${translateUserRole(currentUser?.role || "ADMIN", language)}) - ${currentUser?.email || "localizamais0@gmail.com"}`,
+        14,
+        38
+      );
+      doc.text(
+        tr(
+          `Escopo do Relatório: Total de ${filteredLogs.length} eventos auditados com garantia de imutabilidade no banco de dados Firestore.`,
+          `Report Scope: Total of ${filteredLogs.length} audited events with immutability guarantee in Firestore.`
+        ),
+        14,
+        43
+      );
 
       // Metrics Cards in PDF
       doc.setFillColor(245, 247, 250);
@@ -290,23 +314,23 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
 
       doc.setFontSize(8);
       doc.setTextColor(100, 116, 139);
-      doc.text("TOTAL DE EVENTOS", 18, 52);
-      doc.text("TRANSAÇÕES ÚNICAS", 86, 52);
-      doc.text("MODIFICAÇÕES CRÍTICAS", 154, 52);
-      doc.text("INTEGRIDADE DOS DADOS", 222, 52);
+      doc.text(tr("TOTAL DE EVENTOS", "TOTAL EVENTS"), 18, 52);
+      doc.text(tr("TRANSAÇÕES ÚNICAS", "UNIQUE TRANSACTIONS"), 86, 52);
+      doc.text(tr("MODIFICAÇÕES CRÍTICAS", "CRITICAL MODIFICATIONS"), 154, 52);
+      doc.text(tr("INTEGRIDADE DOS DADOS", "DATA INTEGRITY"), 222, 52);
 
       doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(15, 23, 42);
-      doc.text(`${filteredLogs.length} Registros`, 18, 58);
-      doc.text(`${stats.uniqueTransactions} Transações`, 86, 58);
-      doc.text(`${stats.criticalModifications} Alterações`, 154, 58);
+      doc.text(`${filteredLogs.length} ${tr("Registros", "Records")}`, 18, 58);
+      doc.text(`${stats.uniqueTransactions} ${tr("Transações", "Transactions")}`, 86, 58);
+      doc.text(`${stats.criticalModifications} ${tr("Alterações", "Changes")}`, 154, 58);
       doc.setTextColor(27, 94, 32);
-      doc.text("100% Imutável (Ativo)", 222, 58);
+      doc.text(tr("100% Imutável (Ativo)", "100% Immutable (Active)"), 222, 58);
 
       // AutoTable Data Generation
       const tableData = filteredLogs.map((log, idx) => {
-        const dateStr = new Date(log.timestamp).toLocaleString("pt-BR", {
+        const dateStr = new Date(log.timestamp).toLocaleString(locale, {
           day: "2-digit",
           month: "2-digit",
           year: "numeric",
@@ -315,16 +339,17 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
           second: "2-digit",
         });
 
+        const emptyLbl = tr("Nenhum", "None");
         const diffStr = log.fieldChanged && (log.oldValue || log.newValue)
-          ? `[${log.fieldChanged}]: "${log.oldValue || 'Nenhum'}" -> "${log.newValue || 'Nenhum'}"`
+          ? `[${log.fieldChanged}]: "${log.oldValue || emptyLbl}" -> "${log.newValue || emptyLbl}"`
           : log.details;
 
         return [
           String(idx + 1),
           log.transactionId,
           dateStr,
-          `${log.actorName} (${log.actorRole})`,
-          log.objectType,
+          `${log.actorName} (${translateUserRole(log.actorRole, language)})`,
+          getObjectTypeBadge(log.objectType).label,
           log.objectId,
           log.action,
           diffStr,
@@ -333,7 +358,16 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
 
       autoTable(doc, {
         startY: 66,
-        head: [["#", "ID Transação", "Data / Hora", "Responsável (Papel)", "Módulo", "ID Objeto", "Ação", "Diferencial Auditado"]],
+        head: [[
+          "#",
+          tr("ID Transação", "Transaction ID"),
+          tr("Data / Hora", "Date / Time"),
+          tr("Responsável (Função)", "Actor (Role)"),
+          tr("Módulo", "Module"),
+          tr("ID Objeto", "Object ID"),
+          tr("Ação", "Action"),
+          tr("Diferencial Auditado", "Audited Change"),
+        ]],
         body: tableData,
         theme: "striped",
         headStyles: {
@@ -369,7 +403,7 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
           doc.setFontSize(7.5);
           doc.setTextColor(148, 163, 184);
           doc.text(
-            `Localiza+ • Instituto Federal do Paraná (IFPR Campus Ivaiporã) — Página ${pageCurrent} de ${pageCount} — Protocolo: ${reportProtocol}`,
+            `Localiza+ • Instituto Federal do Paraná (IFPR Campus Ivaiporã) — ${tr("Página", "Page")} ${pageCurrent} ${tr("de", "of")} ${pageCount} — ${tr("Protocolo", "Protocol")}: ${reportProtocol}`,
             14,
             205
           );
@@ -378,20 +412,29 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
 
       doc.save(`Relatorio_Auditoria_IFPR_${now.toISOString().split("T")[0]}_${reportProtocol}.pdf`);
       vibrateSuccess();
-      addToast(`Laudo Oficial de Auditoria baixado com sucesso! Protocolo: ${reportProtocol}`, "success");
+      addToast(
+        tr(
+          `Laudo Oficial de Auditoria baixado com sucesso! Protocolo: ${reportProtocol}`,
+          `Official Audit Report downloaded successfully! Protocol: ${reportProtocol}`
+        ),
+        "success"
+      );
     } catch (err) {
       console.error("Erro ao gerar PDF de auditoria:", err);
-      addToast("Erro ao processar relatório PDF. Tente novamente.", "error");
+      addToast(
+        tr("Erro ao processar relatório PDF. Tente novamente.", "Error generating PDF report. Please try again."),
+        "error"
+      );
     }
   };
 
-  // Export JSON Dump
+  // Export JSON
   const handleExportJson = () => {
     try {
       vibrateClick();
       const exportData = {
         system: "Localiza+ IFPR Campus Ivaiporã",
-        module: "Sistema Oficial de Auditoria e Rastreabilidade",
+        module: tr("Sistema Oficial de Auditoria e Rastreabilidade", "Official Audit & Traceability System"),
         generatedAt: new Date().toISOString(),
         exportedBy: {
           name: currentUser?.name,
@@ -413,10 +456,13 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       vibrateSuccess();
-      addToast("Dump completo em JSON exportado com sucesso!", "success");
+      addToast(
+        tr("Exportação completa em JSON baixada com sucesso!", "Complete JSON export downloaded successfully!"),
+        "success"
+      );
     } catch (err) {
       console.error("Erro ao exportar JSON:", err);
-      addToast("Erro ao exportar arquivo JSON.", "error");
+      addToast(tr("Erro ao exportar arquivo JSON.", "Error exporting JSON file."), "error");
     }
   };
 
@@ -424,21 +470,37 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
   const handleExportCsv = () => {
     try {
       vibrateClick();
-      const headers = [
-        "ID_TRANSACAO",
-        "DATA_HORA",
-        "RESPONSAVEL_NOME",
-        "RESPONSAVEL_EMAIL",
-        "RESPONSAVEL_PAPEL",
-        "MODULO_OBJETO",
-        "ID_OBJETO",
-        "TITULO_OBJETO",
-        "ACAO_EXECUTADA",
-        "CAMPO_ALTERADO",
-        "VALOR_ANTERIOR",
-        "VALOR_POSTERIOR",
-        "DESCRICAO_COMPLETA",
-      ];
+      const headers = language === "en"
+        ? [
+            "TRANSACTION_ID",
+            "DATE_TIME",
+            "ACTOR_NAME",
+            "ACTOR_EMAIL",
+            "ACTOR_ROLE",
+            "OBJECT_MODULE",
+            "OBJECT_ID",
+            "OBJECT_TITLE",
+            "EXECUTED_ACTION",
+            "FIELD_CHANGED",
+            "OLD_VALUE",
+            "NEW_VALUE",
+            "FULL_DESCRIPTION",
+          ]
+        : [
+            "ID_TRANSACAO",
+            "DATA_HORA",
+            "RESPONSAVEL_NOME",
+            "RESPONSAVEL_EMAIL",
+            "RESPONSAVEL_FUNCAO",
+            "MODULO_OBJETO",
+            "ID_OBJETO",
+            "TITULO_OBJETO",
+            "ACAO_EXECUTADA",
+            "CAMPO_ALTERADO",
+            "VALOR_ANTERIOR",
+            "VALOR_POSTERIOR",
+            "DESCRICAO_COMPLETA",
+          ];
 
       const csvRows = [
         headers.join(";"),
@@ -446,10 +508,10 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
           const sanitize = (str?: string | null) => `"${(str || "").replace(/"/g, '""')}"`;
           return [
             sanitize(log.transactionId),
-            sanitize(new Date(log.timestamp).toLocaleString("pt-BR")),
+            sanitize(new Date(log.timestamp).toLocaleString(locale)),
             sanitize(log.actorName),
             sanitize(log.actorEmail),
-            sanitize(log.actorRole),
+            sanitize(translateUserRole(log.actorRole, language)),
             sanitize(log.objectType),
             sanitize(log.objectId),
             sanitize(log.objectTitle),
@@ -462,7 +524,7 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
         }),
       ];
 
-      // Add UTF-8 BOM so Excel opens PT-BR characters properly
+      // Add UTF-8 BOM so Excel opens accented characters properly
       const blob = new Blob(["\uFEFF" + csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -473,31 +535,34 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       vibrateSuccess();
-      addToast("Planilha CSV de auditoria exportada com sucesso!", "success");
+      addToast(
+        tr("Planilha CSV de auditoria exportada com sucesso!", "Audit CSV spreadsheet exported successfully!"),
+        "success"
+      );
     } catch (err) {
       console.error("Erro ao exportar CSV:", err);
-      addToast("Erro ao exportar planilha CSV.", "error");
+      addToast(tr("Erro ao exportar planilha CSV.", "Error exporting CSV spreadsheet."), "error");
     }
   };
 
   const getObjectTypeBadge = (type: AuditObjectType) => {
     switch (type) {
       case "ITEM":
-        return { label: "Achados e Perdidos", bg: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800" };
+        return { label: tr("Achados e Perdidos", "Lost & Found"), bg: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800" };
       case "RETURN":
-        return { label: "Devolução", bg: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-800" };
+        return { label: tr("Devolução", "Return"), bg: "bg-teal-100 text-teal-800 border-teal-300 dark:bg-teal-950/60 dark:text-teal-300 dark:border-teal-800" };
       case "TEST_CASE":
-        return { label: "Caso de Teste", bg: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800" };
+        return { label: tr("Caso de Teste", "Test Case"), bg: "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800" };
       case "TEST_BATTERY":
-        return { label: "Bateria de Testes", bg: "bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800" };
+        return { label: tr("Bateria de Testes", "Test Battery"), bg: "bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800" };
       case "USER":
-        return { label: "Usuário / Permissão", bg: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800" };
+        return { label: tr("Usuário / Permissão", "User / Permission"), bg: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800" };
       case "CLAIM":
-        return { label: "Reivindicação", bg: "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800" };
+        return { label: tr("Reivindicação", "Claim"), bg: "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800" };
       case "DOCUMENT":
-        return { label: "Documento Oficial", bg: "bg-cyan-100 text-cyan-800 border-cyan-300 dark:bg-cyan-950/60 dark:text-cyan-300 dark:border-cyan-800" };
+        return { label: tr("Documento Oficial", "Official Document"), bg: "bg-cyan-100 text-cyan-800 border-cyan-300 dark:bg-cyan-950/60 dark:text-cyan-300 dark:border-cyan-800" };
       case "PROJECT_SETTINGS":
-        return { label: "Configuração InovaIF", bg: "bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700" };
+        return { label: tr("Configuração InovaIF", "InovaIF Settings"), bg: "bg-slate-100 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700" };
       default:
         return { label: type, bg: "bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700" };
     }
@@ -529,20 +594,22 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold uppercase tracking-wider bg-emerald-900/60 text-emerald-200 px-2.5 py-0.5 rounded-full border border-emerald-400/30">
-                    Governança Institucional IFPR
+                    {tr("Governança Institucional IFPR", "IFPR Institutional Governance")}
                   </span>
                   <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-100 bg-black/20 px-2 py-0.5 rounded-full">
-                    <Lock className="w-3 h-3 text-emerald-300" /> Imutabilidade Ativa
+                    <Lock className="w-3 h-3 text-emerald-300" /> {tr("Imutabilidade Ativa", "Active Immutability")}
                   </span>
                 </div>
                 <h1 className="text-2xl font-bold tracking-tight text-white mt-1">
-                  Auditoria e Rastreabilidade de Transações
+                  {tr("Auditoria e Rastreabilidade de Transações", "Transaction Audit & Traceability")}
                 </h1>
               </div>
             </div>
             <p className="text-sm text-emerald-100/90 max-w-3xl">
-              Registro forense e histórico imutável de todas as modificações críticas, alterações de cadastros,
-              devoluções de pertences, execução de baterias de testes e controle de acessos no Localiza+.
+              {tr(
+                "Registro forense e histórico imutável de todas as modificações críticas, alterações de cadastros, devoluções de pertences, execução de baterias de testes e controle de acessos no Localiza+.",
+                "Forensic record and immutable history of all critical modifications, registration updates, item returns, test battery executions, and access controls in Localiza+."
+              )}
             </p>
           </div>
 
@@ -554,13 +621,13 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
               className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-emerald-900 hover:bg-emerald-50 rounded-xl text-sm font-semibold shadow-sm transition-all duration-200 cursor-pointer"
             >
               <FileText className="w-4 h-4 text-emerald-700" />
-              Laudo Oficial PDF
+              {tr("Laudo Oficial PDF", "Official Audit PDF")}
             </button>
             <button
               id="btn-export-audit-csv"
               onClick={handleExportCsv}
               className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 bg-emerald-900/70 hover:bg-emerald-900 text-white rounded-xl text-sm font-medium border border-emerald-500/30 transition-colors cursor-pointer"
-              title="Exportar CSV para Excel"
+              title={tr("Exportar CSV para Excel", "Export CSV for Excel")}
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-300" />
               CSV
@@ -569,7 +636,7 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
               id="btn-export-audit-json"
               onClick={handleExportJson}
               className="inline-flex items-center justify-center gap-2 px-3.5 py-2.5 bg-emerald-900/70 hover:bg-emerald-900 text-white rounded-xl text-sm font-medium border border-emerald-500/30 transition-colors cursor-pointer"
-              title="Exportar Dump JSON Estruturado"
+              title={tr("Exportar Dados em JSON Estruturado", "Export Structured JSON Data")}
             >
               <FileCode className="w-4 h-4 text-emerald-300" />
               JSON
@@ -580,27 +647,27 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
         {/* Real-time KPI Metric Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-6 border-t border-emerald-600/40">
           <div className="bg-black/20 backdrop-blur-sm rounded-xl p-3 border border-white/10">
-            <div className="text-xs text-emerald-200/80 font-medium">Eventos Auditados</div>
+            <div className="text-xs text-emerald-200/80 font-medium">{tr("Eventos Auditados", "Audited Events")}</div>
             <div className="text-xl font-bold text-white mt-1">{stats.total}</div>
           </div>
           <div className="bg-black/20 backdrop-blur-sm rounded-xl p-3 border border-white/10">
-            <div className="text-xs text-emerald-200/80 font-medium">Transações Únicas</div>
+            <div className="text-xs text-emerald-200/80 font-medium">{tr("Transações Únicas", "Unique Transactions")}</div>
             <div className="text-xl font-bold text-white mt-1">{stats.uniqueTransactions}</div>
           </div>
           <div className="bg-black/20 backdrop-blur-sm rounded-xl p-3 border border-white/10">
-            <div className="text-xs text-emerald-200/80 font-medium">Achados / Devoluções</div>
+            <div className="text-xs text-emerald-200/80 font-medium">{tr("Achados / Devoluções", "Lost / Returns")}</div>
             <div className="text-xl font-bold text-white mt-1">{stats.itemsCount}</div>
           </div>
           <div className="bg-black/20 backdrop-blur-sm rounded-xl p-3 border border-white/10">
-            <div className="text-xs text-emerald-200/80 font-medium">Baterias de Testes</div>
+            <div className="text-xs text-emerald-200/80 font-medium">{tr("Baterias de Testes", "Test Batteries")}</div>
             <div className="text-xl font-bold text-white mt-1">{stats.testsCount}</div>
           </div>
           <div className="bg-black/20 backdrop-blur-sm rounded-xl p-3 border border-white/10">
-            <div className="text-xs text-emerald-200/80 font-medium">Usuários & Papéis</div>
+            <div className="text-xs text-emerald-200/80 font-medium">{tr("Usuários e Funções", "Users & Roles")}</div>
             <div className="text-xl font-bold text-white mt-1">{stats.usersCount}</div>
           </div>
           <div className="bg-black/20 backdrop-blur-sm rounded-xl p-3 border border-white/10">
-            <div className="text-xs text-emerald-200/80 font-medium">Histórico Imutável</div>
+            <div className="text-xs text-emerald-200/80 font-medium">{tr("Histórico Imutável", "Immutable History")}</div>
             <div className="text-xl font-bold text-emerald-300 mt-1 flex items-center gap-1">
               <Shield className="w-4 h-4" /> 100%
             </div>
@@ -619,12 +686,16 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por ID de transação, objeto, responsável, e-mail ou campo modificado..."
+              placeholder={tr(
+                "Buscar por ID de transação, objeto, responsável, e-mail ou campo modificado...",
+                "Search by transaction ID, item, actor, email, or modified field..."
+              )}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
             />
             {searchTerm && (
               <button
                 onClick={() => setSearchTerm("")}
+                aria-label={tr("Limpar busca", "Clear search")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
               >
                 <X className="w-3.5 h-3.5" />
@@ -640,15 +711,15 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
               onChange={(e) => setSelectedObjectType(e.target.value)}
               className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
             >
-              <option value="TODOS">Todos os Módulos</option>
-              <option value="ITEM">Achados e Perdidos</option>
-              <option value="RETURN">Devoluções de Pertences</option>
-              <option value="TEST_CASE">Casos de Testes</option>
-              <option value="TEST_BATTERY">Baterias de Testes</option>
-              <option value="USER">Usuários e Permissões</option>
-              <option value="CLAIM">Reivindicações</option>
-              <option value="DOCUMENT">Documentos Oficiais</option>
-              <option value="PROJECT_SETTINGS">Configurações InovaIF</option>
+              <option value="TODOS">{tr("Todos os Módulos", "All Modules")}</option>
+              <option value="ITEM">{tr("Achados e Perdidos", "Lost & Found")}</option>
+              <option value="RETURN">{tr("Devoluções de Pertences", "Item Returns")}</option>
+              <option value="TEST_CASE">{tr("Casos de Testes", "Test Cases")}</option>
+              <option value="TEST_BATTERY">{tr("Baterias de Testes", "Test Batteries")}</option>
+              <option value="USER">{tr("Usuários e Permissões", "Users & Permissions")}</option>
+              <option value="CLAIM">{tr("Reivindicações", "Claims")}</option>
+              <option value="DOCUMENT">{tr("Documentos Oficiais", "Official Documents")}</option>
+              <option value="PROJECT_SETTINGS">{tr("Configurações InovaIF", "InovaIF Settings")}</option>
             </select>
           </div>
 
@@ -660,11 +731,11 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
               onChange={(e) => setSelectedTimeRange(e.target.value)}
               className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
             >
-              <option value="ALL">Todo o Período</option>
-              <option value="24H">Últimas 24 Horas</option>
-              <option value="7D">Últimos 7 Dias</option>
-              <option value="30D">Últimos 30 Dias</option>
-              <option value="CUSTOM">Data Personalizada</option>
+              <option value="ALL">{tr("Todo o Período", "All Time")}</option>
+              <option value="24H">{tr("Últimas 24 Horas", "Last 24 Hours")}</option>
+              <option value="7D">{tr("Últimos 7 Dias", "Last 7 Days")}</option>
+              <option value="30D">{tr("Últimos 30 Dias", "Last 30 Days")}</option>
+              <option value="CUSTOM">{tr("Data Personalizada", "Custom Date Range")}</option>
             </select>
           </div>
         </div>
@@ -673,7 +744,7 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
         {selectedTimeRange === "CUSTOM" && (
           <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">De:</span>
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{tr("De:", "From:")}</span>
               <input
                 type="date"
                 value={startDate}
@@ -682,7 +753,7 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
               />
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Até:</span>
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{tr("Até:", "To:")}</span>
               <input
                 type="date"
                 value={endDate}
@@ -695,7 +766,7 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
                 onClick={() => { setStartDate(""); setEndDate(""); }}
                 className="text-xs text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
               >
-                Limpar datas
+                {tr("Limpar datas", "Clear dates")}
               </button>
             )}
           </div>
@@ -708,16 +779,18 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
           <div>
             <h2 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-              Trilha de Auditoria Transacional
+              {tr("Trilha de Auditoria Transacional", "Transactional Audit Trail")}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Exibindo <span className="font-semibold text-emerald-600 dark:text-emerald-400">{filteredLogs.length}</span> registros de {unifiedLogs.length} eventos totais.
+              {tr("Exibindo", "Showing")}{" "}
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400">{filteredLogs.length}</span>{" "}
+              {tr(`registros de ${unifiedLogs.length} eventos totais.`, `records out of ${unifiedLogs.length} total events.`)}
             </p>
           </div>
 
           <div className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
             <Lock className="w-3.5 h-3.5 text-emerald-500" />
-            Garantia de Não Repúdio e Imutabilidade
+            {tr("Garantia de Não Repúdio e Imutabilidade", "Non-Repudiation & Immutability Guarantee")}
           </div>
         </div>
 
@@ -727,10 +800,13 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
               <Search className="w-6 h-6" />
             </div>
             <h3 className="text-base font-semibold text-slate-700 dark:text-slate-300">
-              Nenhum registro de auditoria encontrado
+              {tr("Nenhum registro de auditoria encontrado", "No audit records found")}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-              Nenhum evento corresponde aos filtros selecionados. Tente ajustar o termo de busca ou selecionar "Todos os Módulos".
+              {tr(
+                "Nenhum evento corresponde aos filtros selecionados. Tente ajustar o termo de busca ou selecionar \"Todos os Módulos\".",
+                "No events match the selected filters. Try adjusting the search term or selecting \"All Modules\"."
+              )}
             </p>
           </div>
         ) : (
@@ -738,12 +814,12 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
             <table className="w-full text-left border-collapse text-xs" id="table-audit-logs">
               <thead>
                 <tr className="bg-slate-100/75 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700">
-                  <th className="py-3 px-4 w-44">Transação</th>
-                  <th className="py-3 px-4 w-36">Módulo / Objeto</th>
-                  <th className="py-3 px-4 w-44">Responsável</th>
-                  <th className="py-3 px-4 w-36">Data / Hora</th>
-                  <th className="py-3 px-4">Modificação Auditada (Anterior ➔ Posterior)</th>
-                  <th className="py-3 px-4 text-center w-24">Ações</th>
+                  <th className="py-3 px-4 w-44">{tr("Transação", "Transaction")}</th>
+                  <th className="py-3 px-4 w-36">{tr("Módulo / Objeto", "Module / Object")}</th>
+                  <th className="py-3 px-4 w-44">{tr("Responsável", "Actor")}</th>
+                  <th className="py-3 px-4 w-36">{tr("Data / Hora", "Date / Time")}</th>
+                  <th className="py-3 px-4">{tr("Modificação Auditada (Anterior ➔ Posterior)", "Audited Change (Before ➔ After)")}</th>
+                  <th className="py-3 px-4 text-center w-24">{tr("Ações", "Actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -751,8 +827,8 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
                   const badge = getObjectTypeBadge(log.objectType);
                   const isCopied = copiedTxId === log.transactionId;
                   const dateObj = new Date(log.timestamp);
-                  const formattedDate = dateObj.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
-                  const formattedTime = dateObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                  const formattedDate = dateObj.toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric" });
+                  const formattedTime = dateObj.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
                   return (
                     <tr
@@ -769,7 +845,7 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
                           <button
                             onClick={(e) => handleCopyTxId(log.transactionId, e)}
                             className="p-1 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors rounded hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
-                            title="Copiar ID da Transação"
+                            title={tr("Copiar ID da Transação", "Copy Transaction ID")}
                           >
                             {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                           </button>
@@ -794,7 +870,7 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
                           <div className="font-medium text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                             <span className="truncate max-w-[120px]">{log.actorName}</span>
                             <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${getRoleBadge(log.actorRole)}`}>
-                              {log.actorRole}
+                              {translateUserRole(log.actorRole, language)}
                             </span>
                           </div>
                           <div className="text-[10px] text-slate-400 truncate max-w-[130px]">
@@ -824,11 +900,11 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
                                 {log.fieldChanged}:
                               </span>
                               <span className="px-1.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800 line-through">
-                                {log.oldValue || "Vazio"}
+                                {log.oldValue || tr("Vazio", "Empty")}
                               </span>
                               <ArrowRight className="w-3 h-3 text-slate-400" />
                               <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded dark:bg-emerald-950/50 dark:text-emerald-300 font-semibold">
-                                {log.newValue || "Vazio"}
+                                {log.newValue || tr("Vazio", "Empty")}
                               </span>
                             </div>
                           )}
@@ -843,7 +919,7 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
                             setSelectedAuditLog(log);
                           }}
                           className="p-1.5 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                          title="Inspecionar Detalhes Forenses"
+                          title={tr("Inspecionar Detalhes Forenses", "Inspect Forensic Details")}
                         >
                           <Eye className="w-4 h-4" />
                         </button>
@@ -868,14 +944,17 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
                   <ShieldCheck className="w-6 h-6 text-emerald-200" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Inspeção de Auditoria Forense</h3>
+                  <h3 className="text-base font-bold text-white">
+                    {tr("Inspeção de Auditoria Forense", "Forensic Audit Inspection")}
+                  </h3>
                   <p className="text-xs text-emerald-100 font-mono mt-0.5">
-                    Transação: {selectedAuditLog.transactionId}
+                    {tr("Transação:", "Transaction:")} {selectedAuditLog.transactionId}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setSelectedAuditLog(null)}
+                aria-label={tr("Fechar modal", "Close modal")}
                 className="p-1 text-white/80 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -889,10 +968,13 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
                 <Lock className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <div>
                   <div className="font-bold text-emerald-900 dark:text-emerald-200 text-xs">
-                    Registro Certificado e Imutável
+                    {tr("Registro Certificado e Imutável", "Certified & Immutable Record")}
                   </div>
                   <div className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5">
-                    Este registro possui integridade garantida por regras estritas do Firestore e não pode ser editado ou excluído.
+                    {tr(
+                      "Este registro possui integridade garantida por regras estritas do Firestore e não pode ser editado ou excluído.",
+                      "This record has integrity guaranteed by strict Firestore rules and cannot be edited or deleted."
+                    )}
                   </div>
                 </div>
               </div>
@@ -900,31 +982,31 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
               {/* Transaction Metadata Grid */}
               <div className="grid grid-cols-2 gap-3.5 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700/80">
                 <div>
-                  <span className="text-slate-400 font-semibold text-[10px] uppercase">ID do Registro:</span>
+                  <span className="text-slate-400 font-semibold text-[10px] uppercase">{tr("ID do Registro:", "Record ID:")}</span>
                   <div className="font-mono text-slate-800 dark:text-slate-200 mt-0.5">{selectedAuditLog.id}</div>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-semibold text-[10px] uppercase">Timestamp ISO:</span>
+                  <span className="text-slate-400 font-semibold text-[10px] uppercase">{tr("Data/Hora ISO:", "ISO Timestamp:")}</span>
                   <div className="font-mono text-slate-800 dark:text-slate-200 mt-0.5">{selectedAuditLog.timestamp}</div>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-semibold text-[10px] uppercase">Módulo / Objeto:</span>
+                  <span className="text-slate-400 font-semibold text-[10px] uppercase">{tr("Módulo / Objeto:", "Module / Object:")}</span>
                   <div className="font-medium text-slate-800 dark:text-slate-200 mt-0.5">
-                    {selectedAuditLog.objectType} (#{selectedAuditLog.objectId})
+                    {getObjectTypeBadge(selectedAuditLog.objectType).label} (#{selectedAuditLog.objectId})
                   </div>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-semibold text-[10px] uppercase">Ação do Sistema:</span>
+                  <span className="text-slate-400 font-semibold text-[10px] uppercase">{tr("Ação do Sistema:", "System Action:")}</span>
                   <div className="font-medium text-emerald-600 dark:text-emerald-400 mt-0.5">{selectedAuditLog.action}</div>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-semibold text-[10px] uppercase">Responsável (Ator):</span>
+                  <span className="text-slate-400 font-semibold text-[10px] uppercase">{tr("Responsável (Ator):", "Actor:")}</span>
                   <div className="font-medium text-slate-800 dark:text-slate-200 mt-0.5">
-                    {selectedAuditLog.actorName} ({selectedAuditLog.actorRole})
+                    {selectedAuditLog.actorName} ({translateUserRole(selectedAuditLog.actorRole, language)})
                   </div>
                 </div>
                 <div>
-                  <span className="text-slate-400 font-semibold text-[10px] uppercase">E-mail do Ator:</span>
+                  <span className="text-slate-400 font-semibold text-[10px] uppercase">{tr("E-mail do Ator:", "Actor Email:")}</span>
                   <div className="font-medium text-slate-800 dark:text-slate-200 mt-0.5">{selectedAuditLog.actorEmail}</div>
                 </div>
               </div>
@@ -933,19 +1015,19 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
               {selectedAuditLog.fieldChanged && (
                 <div className="space-y-2">
                   <span className="text-slate-600 dark:text-slate-300 font-bold text-xs">
-                    Comparação Diferencial de Valores:
+                    {tr("Comparação Diferencial de Valores:", "Value Diff Comparison:")}
                   </span>
                   <div className="grid grid-cols-2 gap-3 p-3.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-rose-600 uppercase">Valor Anterior</span>
+                      <span className="text-[10px] font-bold text-rose-600 uppercase">{tr("Valor Anterior", "Previous Value")}</span>
                       <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-lg text-rose-900 dark:text-rose-200 font-mono text-[11px] break-all">
-                        {selectedAuditLog.oldValue || "Nenhum valor anterior"}
+                        {selectedAuditLog.oldValue || tr("Nenhum valor anterior", "No previous value")}
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-emerald-600 uppercase">Valor Posterior (Gravado)</span>
+                      <span className="text-[10px] font-bold text-emerald-600 uppercase">{tr("Valor Posterior (Gravado)", "New Value (Saved)")}</span>
                       <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 rounded-lg text-emerald-900 dark:text-emerald-200 font-mono text-[11px] break-all">
-                        {selectedAuditLog.newValue || "Nenhum valor novo"}
+                        {selectedAuditLog.newValue || tr("Nenhum valor novo", "No new value")}
                       </div>
                     </div>
                   </div>
@@ -954,7 +1036,9 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
 
               {/* Full Description */}
               <div className="space-y-1">
-                <span className="text-slate-600 dark:text-slate-300 font-bold text-xs">Descrição Completa da Operação:</span>
+                <span className="text-slate-600 dark:text-slate-300 font-bold text-xs">
+                  {tr("Descrição Completa da Operação:", "Full Operation Description:")}
+                </span>
                 <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 leading-relaxed">
                   {selectedAuditLog.details}
                 </div>
@@ -968,14 +1052,14 @@ export const AuditTrailManagerView: React.FC<AuditTrailManagerViewProps> = ({ da
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-xs text-slate-700 dark:text-slate-200 font-medium hover:bg-slate-100 transition-colors"
               >
                 <Copy className="w-3.5 h-3.5" />
-                Copiar ID da Transação
+                {tr("Copiar ID da Transação", "Copy Transaction ID")}
               </button>
 
               <button
                 onClick={() => setSelectedAuditLog(null)}
                 className="px-4 py-1.5 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
               >
-                Fechar
+                {tr("Fechar", "Close")}
               </button>
             </div>
           </div>

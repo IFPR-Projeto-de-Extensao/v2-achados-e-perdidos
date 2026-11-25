@@ -5,6 +5,7 @@ import { resolveAccountStatus, formatAccountStatusDetails, sortUsersByCreationDe
 import { ManageUserStatusModal } from "./ManageUserStatusModal";
 import { getSafeAvatarUrl, handleAvatarError } from "../lib/avatarUtils";
 import { vibrateClick, vibrateSuccess, safeIncludes, sanitizeQuery, safeParseDate } from "../lib/utils";
+import { localize, translateUserRole, getLocaleForLanguage } from "../lib/i18n";
 import {
   Users,
   Search,
@@ -23,7 +24,9 @@ import {
 } from "lucide-react";
 
 export const AccountManagementView: React.FC = () => {
-  const { allUsers, currentUser, updateUserStatus, updateUserRole, deleteUser, addToast } = useApp();
+  const { allUsers, currentUser, updateUserStatus, updateUserRole, deleteUser, addToast, language, t } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
+  const locale = getLocaleForLanguage(language);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | AccountStatus>("ALL");
@@ -62,7 +65,11 @@ export const AccountManagementView: React.FC = () => {
     try {
       setIsReactivatingId(targetUser.id);
       vibrateClick();
-      await updateUserStatus(targetUser.id, "active", "Reativação de conta executada pelo administrador");
+      await updateUserStatus(
+        targetUser.id,
+        "active",
+        L("Reativação de conta executada pelo administrador", "Account reactivated by administrator")
+      );
       vibrateSuccess();
     } catch (err) {
       console.error("Erro ao reativar conta:", err);
@@ -97,10 +104,10 @@ export const AccountManagementView: React.FC = () => {
           </div>
           <div>
             <h2 className="text-lg font-bold text-[#172B2A] dark:text-white tracking-tight">
-              Gerenciamento de Contas e Usuários
+              {t("userManagementTitle")}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Controle de acesso, suspensão temporária e banimento de contas da comunidade acadêmica
+              {t("userManagementSubtitle")}
             </p>
           </div>
         </div>
@@ -109,15 +116,15 @@ export const AccountManagementView: React.FC = () => {
         <div className="flex items-center gap-2 flex-wrap tabular-nums">
           <span className="px-3 py-1.5 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 border border-[#16845B]/20 text-[#16845B] dark:text-emerald-300 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0">
             <span className="w-2 h-2 rounded-full bg-[#16845B]" />
-            Ativos: {activeCount}
+            {L("Ativos:", "Active:")} {activeCount}
           </span>
           <span className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-amber-700 dark:text-amber-300 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0">
             <span className="w-2 h-2 rounded-full bg-amber-500" />
-            Suspensos: {suspendedCount}
+            {L("Suspensos:", "Suspended:")} {suspendedCount}
           </span>
           <span className="px-3 py-1.5 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 text-red-700 dark:text-red-300 text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0">
             <span className="w-2 h-2 rounded-full bg-red-500" />
-            Banidos: {bannedCount}
+            {L("Banidos:", "Banned:")} {bannedCount}
           </span>
         </div>
       </div>
@@ -139,7 +146,7 @@ export const AccountManagementView: React.FC = () => {
                   : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
-              Todos ({(allUsers || []).length})
+              {t("all")} ({(allUsers || []).length})
             </button>
             <button
               type="button"
@@ -153,7 +160,7 @@ export const AccountManagementView: React.FC = () => {
                   : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
-              Ativos ({activeCount})
+              {L("Ativos", "Active")} ({activeCount})
             </button>
             <button
               type="button"
@@ -167,7 +174,7 @@ export const AccountManagementView: React.FC = () => {
                   : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
-              Suspensos ({suspendedCount})
+              {L("Suspensos", "Suspended")} ({suspendedCount})
             </button>
             <button
               type="button"
@@ -181,7 +188,7 @@ export const AccountManagementView: React.FC = () => {
                   : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
-              Banidos ({bannedCount})
+              {L("Banidos", "Banned")} ({bannedCount})
             </button>
           </div>
 
@@ -192,7 +199,7 @@ export const AccountManagementView: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar por nome, e-mail, curso..."
+              placeholder={L("Buscar por nome, e-mail, curso...", "Search by name, email, department...")}
               className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-[#172B2A] dark:text-white outline-none focus:ring-2 focus:ring-[#16845B]"
             />
           </div>
@@ -203,29 +210,29 @@ export const AccountManagementView: React.FC = () => {
           <table className="w-full text-left text-xs">
             <thead className="bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 uppercase font-bold tracking-wider text-[10px] border-b border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="p-3.5">Nome / Usuário</th>
-                <th className="p-3.5">E-mail</th>
-                <th className="p-3.5">Função (Role)</th>
-                <th className="p-3.5">Status</th>
-                <th className="p-3.5 text-right">Ações</th>
+                <th className="p-3.5">{L("Nome / Usuário", "Name / User")}</th>
+                <th className="p-3.5">{t("emailLabel")}</th>
+                <th className="p-3.5">{t("roleColumnLabel")}</th>
+                <th className="p-3.5">{t("statusColumnLabel")}</th>
+                <th className="p-3.5 text-right">{t("actionsColumnLabel")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-[#111827]">
               {filteredUsers.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-slate-500">
-                    <p className="text-sm font-semibold">Nenhum usuário encontrado</p>
+                    <p className="text-sm font-semibold">{L("Nenhum usuário encontrado", "No users found")}</p>
                     <p className="text-xs text-slate-400 mt-1">
                       {searchQuery
-                        ? "Tente ajustar os termos da busca."
-                        : "Nenhum registro com o filtro de status selecionado."}
+                        ? L("Tente ajustar os termos da busca.", "Try adjusting your search terms.")
+                        : L("Nenhum registro com o filtro de situação selecionado.", "No accounts match the selected status filter.")}
                     </p>
                   </td>
                 </tr>
               ) : (
                 filteredUsers.map((u) => {
                   const resolved = resolveAccountStatus(u);
-                  const statusDetails = formatAccountStatusDetails(u);
+                  const statusDetails = formatAccountStatusDetails(u, language);
                   const isSelf = u.id === currentUser.id;
                   const isBusy = isReactivatingId === u.id;
 
@@ -249,19 +256,19 @@ export const AccountManagementView: React.FC = () => {
                               <span>{u.name}</span>
                               {isSelf && (
                                 <span className="px-1.5 py-0.5 rounded-md bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400 text-[9px] font-bold">
-                                  (Você)
+                                  {L("(Você)", "(You)")}
                                 </span>
                               )}
                               {u.createdAt && (Date.now() - new Date(u.createdAt).getTime() < 48 * 3600 * 1000) && (
                                 <span className="px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 text-[9px] font-bold uppercase tracking-wider">
-                                  Novo
+                                  {t("newBadge")}
                                 </span>
                               )}
                             </p>
                             <p className="text-[10px] text-slate-400 tabular-nums">
-                              {u.courseOrDept || "IFPR Campus Ivaiporã"}
-                              {u.registrationNumber ? ` • Matrícula: ${u.registrationNumber}` : ""}
-                              {u.createdAt ? ` • Cadastro: ${new Date(u.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""}
+                              {u.courseOrDept || t("campusName")}
+                              {u.registrationNumber ? ` • ${L("Matrícula:", "ID:")} ${u.registrationNumber}` : ""}
+                              {u.createdAt ? ` • ${L("Cadastro:", "Joined:")} ${new Date(u.createdAt).toLocaleDateString(locale, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}` : ""}
                             </p>
                           </div>
                         </div>
@@ -286,7 +293,14 @@ export const AccountManagementView: React.FC = () => {
                                   vibrateClick();
                                   await updateUserRole(u.id, newRole);
                                   vibrateSuccess();
-                                  addToast(`Função de ${u.name} atualizada para ${newRole === "INTRUSO" ? "Usuário externo" : newRole}.`, "success");
+                                  const roleText = translateUserRole(newRole, language);
+                                  addToast(
+                                    L(
+                                      `Função de ${u.name} atualizada para ${roleText}.`,
+                                      `${u.name}'s role updated to ${roleText}.`
+                                    ),
+                                    "success"
+                                  );
                                 } catch (err) {
                                   console.error("Erro ao alterar função:", err);
                                 } finally {
@@ -302,22 +316,22 @@ export const AccountManagementView: React.FC = () => {
                                   ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 hover:bg-amber-500/20"
                                   : "bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/50 dark:text-emerald-400 border-[#16845B]/30 hover:bg-[#16845B]/15"
                               } ${isUpdatingRoleId === u.id ? "opacity-50 pointer-events-none" : ""}`}
-                              title="Clique para alterar a função institucional deste usuário"
+                              title={L("Clique para alterar a função institucional deste usuário", "Click to change this user's institutional role")}
                             >
-                              <option value="ALUNO" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">ALUNO</option>
-                              <option value="SERVIDOR" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">SERVIDOR</option>
+                              <option value="ALUNO" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{translateUserRole("ALUNO", language).toUpperCase()}</option>
+                              <option value="SERVIDOR" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{translateUserRole("SERVIDOR", language).toUpperCase()}</option>
                               <option
                                 value="ADMIN"
                                 disabled={currentUser.email?.toLowerCase() !== "paulocauan39@gmail.com"}
                                 className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
                               >
-                                ADMIN {currentUser.email?.toLowerCase() !== "paulocauan39@gmail.com" ? "(Exclusivo Root Admin)" : ""}
+                                {translateUserRole("ADMIN", language).toUpperCase()} {currentUser.email?.toLowerCase() !== "paulocauan39@gmail.com" ? `(${t("rootAdminOnlyLabel")})` : ""}
                               </option>
-                              <option value="INTRUSO" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">USUÁRIO EXTERNO</option>
+                              <option value="INTRUSO" className="bg-white dark:bg-slate-800 text-slate-900 dark:text-white">{translateUserRole("INTRUSO", language).toUpperCase()}</option>
                             </select>
                             {u.roleAssignedBy && (
-                              <div className="text-[9px] text-slate-400 mt-0.5" title={`Atribuído por: ${u.roleAssignedByName || u.roleAssignedBy}`}>
-                                Designado
+                              <div className="text-[9px] text-slate-400 mt-0.5" title={L(`Atribuído por: ${u.roleAssignedByName || u.roleAssignedBy}`, `Assigned by: ${u.roleAssignedByName || u.roleAssignedBy}`)}>
+                                {L("Designado", "Assigned")}
                               </div>
                             )}
                           </div>
@@ -334,11 +348,11 @@ export const AccountManagementView: React.FC = () => {
                                   : "bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/50 dark:text-emerald-400 border-[#16845B]/20"
                               }`}
                             >
-                              {u.role === "INTRUSO" ? "USUÁRIO EXTERNO" : u.role || "ALUNO"}
+                              {translateUserRole(u.role || "ALUNO", language)}
                             </span>
                             {u.roleAssignedBy && (
-                              <span className="text-[9px] text-slate-400 font-mono" title={`Designado administrativamente por ${u.roleAssignedByName || u.roleAssignedBy}`}>
-                                Designado
+                              <span className="text-[9px] text-slate-400 font-mono" title={L(`Designado administrativamente por ${u.roleAssignedByName || u.roleAssignedBy}`, `Administratively assigned by ${u.roleAssignedByName || u.roleAssignedBy}`)}>
+                                {L("Designado", "Assigned")}
                               </span>
                             )}
                           </div>
@@ -365,7 +379,7 @@ export const AccountManagementView: React.FC = () => {
                               </span>
                               {resolved.status === "suspended" && activeDeadlineDate && (
                                 <span className="text-[9px] text-slate-400 font-mono">
-                                  Até {activeDeadlineDate.toLocaleDateString("pt-BR")}
+                                  {L("Até", "Until")} {activeDeadlineDate.toLocaleDateString(locale)}
                                 </span>
                               )}
                               {resolved.hasLegacyInconsistency && (
@@ -373,7 +387,7 @@ export const AccountManagementView: React.FC = () => {
                                   title={statusDetails.inconsistencyAlert}
                                   className="text-[9px] text-amber-600 dark:text-amber-400 font-medium"
                                 >
-                                  {resolved.isDeactivated ? "active: false" : "Registro legado/incompatível"}
+                                  {resolved.isDeactivated ? L("Conta desativada", "Deactivated account") : L("Registro legado/incompatível", "Legacy/inconsistent record")}
                                 </span>
                               )}
                             </div>
@@ -385,7 +399,7 @@ export const AccountManagementView: React.FC = () => {
                       <td className="p-3.5 text-right whitespace-nowrap">
                         {isSelf ? (
                           <span className="text-[11px] text-slate-400 italic">
-                            Conta protegida
+                            {L("Conta protegida", "Protected account")}
                           </span>
                         ) : (
                           <div className="flex items-center justify-end space-x-1.5">
@@ -401,7 +415,7 @@ export const AccountManagementView: React.FC = () => {
                                   className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer"
                                 >
                                   <Clock className="w-3 h-3" />
-                                  <span>Suspender</span>
+                                  <span>{L("Suspender", "Suspend")}</span>
                                 </button>
                                 <button
                                   type="button"
@@ -412,7 +426,7 @@ export const AccountManagementView: React.FC = () => {
                                   className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30 text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer"
                                 >
                                   <UserX className="w-3 h-3" />
-                                  <span>Banir</span>
+                                  <span>{L("Banir", "Ban")}</span>
                                 </button>
                               </>
                             )}
@@ -427,7 +441,7 @@ export const AccountManagementView: React.FC = () => {
                                   className="px-2.5 py-1 rounded-lg bg-[#EBF5F0] hover:bg-[#16845B]/20 text-[#16845B] dark:bg-emerald-950/50 dark:text-emerald-400 border border-[#16845B]/30 text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer disabled:opacity-50"
                                 >
                                   <RotateCcw className={`w-3 h-3 ${isBusy ? "animate-spin" : ""}`} />
-                                  <span>Reativar</span>
+                                  <span>{L("Reativar", "Reactivate")}</span>
                                 </button>
                                 <button
                                   type="button"
@@ -438,7 +452,7 @@ export const AccountManagementView: React.FC = () => {
                                   className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30 text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer"
                                 >
                                   <UserX className="w-3 h-3" />
-                                  <span>Banir</span>
+                                  <span>{L("Banir", "Ban")}</span>
                                 </button>
                               </>
                             )}
@@ -452,11 +466,11 @@ export const AccountManagementView: React.FC = () => {
                                 className="px-3 py-1 rounded-lg bg-[#16845B] hover:bg-[#064E3B] text-white text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer shadow-xs disabled:opacity-50"
                               >
                                 <RotateCcw className={`w-3 h-3 ${isBusy ? "animate-spin" : ""}`} />
-                                <span>Reativar Conta</span>
+                                <span>{L("Reativar Conta", "Reactivate Account")}</span>
                               </button>
                             )}
 
-                            {/* Explicit Action: Excluir Conta (Distinct from Suspender, Banir, Reativar) */}
+                            {/* Explicit Action: Excluir Conta */}
                             <button
                               type="button"
                               onClick={() => {
@@ -465,10 +479,10 @@ export const AccountManagementView: React.FC = () => {
                                 setDeleteConfirmationChecked(false);
                               }}
                               className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 dark:bg-slate-800 dark:hover:bg-rose-950/40 dark:text-slate-300 dark:hover:text-rose-300 border border-slate-200 dark:border-slate-700 hover:border-rose-400 text-[11px] font-bold transition-all flex items-center space-x-1 cursor-pointer"
-                              title="Excluir conta definitivamente do Firebase Authentication e do Firestore"
+                              title={L("Excluir conta definitivamente do Firebase Authentication e do Firestore", "Permanently delete account from Firebase Authentication and Firestore")}
                             >
                               <Trash2 className="w-3 h-3 text-rose-500" />
-                              <span>Excluir</span>
+                              <span>{t("delete")}</span>
                             </button>
                           </div>
                         )}
@@ -505,10 +519,10 @@ export const AccountManagementView: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-red-900 dark:text-red-200">
-                    Excluir Conta Permanentemente
+                    {t("confirmPermanentDeleteTitle")}
                   </h3>
                   <p className="text-xs text-red-700 dark:text-red-300/80">
-                    Ação administrativa irreversível e definitiva
+                    {L("Ação administrativa irreversível e definitiva", "Irreversible and permanent administrative action")}
                   </p>
                 </div>
               </div>
@@ -519,6 +533,7 @@ export const AccountManagementView: React.FC = () => {
                   setUserToDelete(null);
                   setDeleteConfirmationChecked(false);
                 }}
+                aria-label={t("close")}
                 className="p-1.5 rounded-xl hover:bg-red-200/50 dark:hover:bg-red-900/40 text-red-700 dark:text-red-300 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -529,19 +544,19 @@ export const AccountManagementView: React.FC = () => {
             <div className="p-6 space-y-4">
               <div className="p-4 rounded-xl bg-[#F8FAFC] dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-2">
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-500 font-medium">Nome:</span>
+                  <span className="text-slate-500 font-medium">{L("Nome:", "Name:")}</span>
                   <span className="font-semibold text-[#172B2A] dark:text-white">{userToDelete.name}</span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-500 font-medium">E-mail:</span>
+                  <span className="text-slate-500 font-medium">{t("emailLabel")}:</span>
                   <span className="font-mono text-slate-800 dark:text-slate-200">{userToDelete.email}</span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-500 font-medium">Perfil / Papel:</span>
-                  <span className="font-semibold text-slate-800 dark:text-slate-200">{userToDelete.role}</span>
+                  <span className="text-slate-500 font-medium">{t("roleColumnLabel")}:</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">{translateUserRole(userToDelete.role, language)}</span>
                 </div>
                 <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-500 font-medium">Matrícula:</span>
+                  <span className="text-slate-500 font-medium">{t("matriculaLabel")}:</span>
                   <span className="font-mono tabular-nums text-slate-800 dark:text-slate-200">{userToDelete.registrationNumber || "N/A"}</span>
                 </div>
               </div>
@@ -549,13 +564,31 @@ export const AccountManagementView: React.FC = () => {
               <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-300 text-xs leading-relaxed space-y-2">
                 <div className="font-bold flex items-center space-x-1.5">
                   <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <span>Impacto da Exclusão:</span>
+                  <span>{L("Impacto da Exclusão:", "Deletion Impact:")}</span>
                 </div>
                 <ul className="list-disc list-inside space-y-1 text-[11px]">
-                  <li>A conta será <strong>excluída permanentemente</strong> do Firebase Authentication.</li>
-                  <li>O documento do usuário será <strong>removido</strong> do Firestore (<span className="font-mono">/users/{userToDelete.id}</span>).</li>
-                  <li>Notificações privadas vinculadas ao usuário serão limpas.</li>
-                  <li><strong>Histórico de auditoria é preservado:</strong> Registros anteriores de rastreabilidade são mantidos intactos.</li>
+                  <li>
+                    {language === "en" ? (
+                      <>The account will be <strong>permanently deleted</strong> from Firebase Authentication.</>
+                    ) : (
+                      <>A conta será <strong>excluída permanentemente</strong> do Firebase Authentication.</>
+                    )}
+                  </li>
+                  <li>
+                    {language === "en" ? (
+                      <>The user document will be <strong>removed</strong> from Firestore (<span className="font-mono">/users/{userToDelete.id}</span>).</>
+                    ) : (
+                      <>O documento do usuário será <strong>removido</strong> do Firestore (<span className="font-mono">/users/{userToDelete.id}</span>).</>
+                    )}
+                  </li>
+                  <li>{L("Notificações privadas vinculadas ao usuário serão limpas.", "Private notifications linked to this user will be cleared.")}</li>
+                  <li>
+                    {language === "en" ? (
+                      <><strong>Audit trail is preserved:</strong> Previous traceability records remain intact.</>
+                    ) : (
+                      <><strong>Histórico de auditoria é preservado:</strong> Registros anteriores de rastreabilidade são mantidos intactos.</>
+                    )}
+                  </li>
                 </ul>
               </div>
 
@@ -569,7 +602,10 @@ export const AccountManagementView: React.FC = () => {
                   className="mt-0.5 rounded text-red-600 focus:ring-red-500 w-4 h-4 cursor-pointer"
                 />
                 <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                  Estou ciente de que esta ação é permanente, irreversível e remove o acesso do usuário ao sistema.
+                  {L(
+                    "Estou ciente de que esta ação é permanente, irreversível e remove o acesso do usuário ao sistema.",
+                    "I understand this action is permanent, irreversible, and removes the user's access to the system."
+                  )}
                 </span>
               </label>
             </div>
@@ -585,7 +621,7 @@ export const AccountManagementView: React.FC = () => {
                 }}
                 className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
               >
-                Cancelar
+                {t("cancel")}
               </button>
               <button
                 type="button"
@@ -596,12 +632,12 @@ export const AccountManagementView: React.FC = () => {
                 {isDeleting ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Excluindo permanentemente...</span>
+                    <span>{L("Excluindo permanentemente...", "Deleting permanently...")}</span>
                   </>
                 ) : (
                   <>
                     <Trash2 className="w-4 h-4" />
-                    <span>Excluir Definitivamente</span>
+                    <span>{L("Excluir Definitivamente", "Delete Permanently")}</span>
                   </>
                 )}
               </button>

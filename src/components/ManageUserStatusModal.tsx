@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { User, AccountStatus } from "../types";
+import { useApp } from "../context/AppContext";
+import { localize, translateUserRole, getLocaleForLanguage } from "../lib/i18n";
 import {
   resolveAccountStatus,
-  SUSPENSION_PRESET_OPTIONS,
+  getSuspensionPresetOptions,
   calculateSuspensionDeadline,
   formatAccountStatusDetails,
   formatLocalDateTimeInput,
@@ -56,6 +58,10 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
   onUpdateStatus,
   currentAdminId,
 }) => {
+  const { language, t } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
+  const locale = getLocaleForLanguage(language);
+  const suspensionPresetOptions = getSuspensionPresetOptions(language);
   const initialResolved = user ? resolveAccountStatus(user) : null;
 
   const [selectedStatus, setSelectedStatus] = useState<AccountStatus>(
@@ -92,7 +98,7 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
 
   const isSelf = user.id === currentAdminId;
   const currentResolved = resolveAccountStatus(user);
-  const currentStatusDisplay = formatAccountStatusDetails(user);
+  const currentStatusDisplay = formatAccountStatusDetails(user, language);
   const minLocalDateTime = formatLocalDateTimeInput(new Date());
   const parsedCustomPreview =
     suspensionPreset === "custom" ? parseLocalDateTimeInput(customUntilDate) : null;
@@ -103,19 +109,34 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
 
     if (isSelf) {
       vibrateWarning();
-      setErrorMessage("Você não pode suspender, banir ou alterar o status da sua própria conta de administrador ativa.");
+      setErrorMessage(
+        L(
+          "Você não pode suspender, banir ou alterar a situação da sua própria conta de administrador ativa.",
+          "You cannot suspend, ban, or alter the status of your own active administrator account."
+        )
+      );
       return;
     }
 
     if (selectedStatus === "banned" && !reason.trim()) {
       vibrateWarning();
-      setErrorMessage("O motivo é obrigatório para aplicar um banimento permanente.");
+      setErrorMessage(
+        L(
+          "O motivo é obrigatório para aplicar um banimento permanente.",
+          "A reason is required to apply a permanent ban."
+        )
+      );
       return;
     }
 
     if (selectedStatus === "suspended" && !reason.trim()) {
       vibrateWarning();
-      setErrorMessage("O motivo é obrigatório para aplicar uma suspensão de conta.");
+      setErrorMessage(
+        L(
+          "O motivo é obrigatório para aplicar uma suspensão de conta.",
+          "A reason is required to apply an account suspension."
+        )
+      );
       return;
     }
 
@@ -124,22 +145,32 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
       if (suspensionPreset === "custom") {
         if (!customUntilDate || !customUntilDate.trim()) {
           vibrateWarning();
-          setErrorMessage("Selecione a data e horário limite da suspensão.");
+          setErrorMessage(
+            L(
+              "Selecione a data e horário limite da suspensão.",
+              "Select the end date and time for the suspension."
+            )
+          );
           return;
         }
         const customDateObj = parseLocalDateTimeInput(customUntilDate);
         if (!customDateObj || customDateObj.getTime() <= Date.now()) {
           vibrateWarning();
-          setErrorMessage("A data e hora personalizadas da suspensão devem ser válidas e estar no futuro.");
+          setErrorMessage(
+            L(
+              "A data e hora personalizadas da suspensão devem ser válidas e estar no futuro.",
+              "The custom suspension date and time must be valid and in the future."
+            )
+          );
           return;
         }
         calculatedUntil = customDateObj.toISOString();
       } else {
         try {
-          calculatedUntil = calculateSuspensionDeadline(suspensionPreset);
+          calculatedUntil = calculateSuspensionDeadline(suspensionPreset, undefined, language);
         } catch (calcErr: any) {
           vibrateWarning();
-          setErrorMessage(calcErr?.message || "Prazo de suspensão inválido.");
+          setErrorMessage(calcErr?.message || L("Prazo de suspensão inválido.", "Invalid suspension duration."));
           return;
         }
       }
@@ -151,7 +182,7 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
       vibrateSuccess();
       onClose();
     } catch (err: any) {
-      setErrorMessage(err?.message || "Erro ao salvar alteração de status do usuário.");
+      setErrorMessage(err?.message || L("Erro ao salvar alteração de situação do usuário.", "Error saving user status update."));
     } finally {
       setIsSubmitting(false);
     }
@@ -176,10 +207,10 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
             </div>
             <div>
               <h3 id="manage-status-modal-title" className="text-base font-bold text-[#172B2A] dark:text-white">
-                Gerenciar Status da Conta
+                {L("Gerenciar Situação da Conta", "Manage Account Status")}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Controle de acesso, suspensão temporária e banimento
+                {L("Controle de acesso, suspensão temporária e banimento", "Access control, temporary suspension, and banning")}
               </p>
             </div>
           </div>
@@ -190,7 +221,7 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
               onClose();
             }}
             className="p-2 rounded-xl text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-            aria-label="Fechar modal"
+            aria-label={t("close")}
           >
             <X className="w-5 h-5" />
           </button>
@@ -216,7 +247,7 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
                   {user.email}
                 </p>
                 <p className="text-[10px] text-slate-400 tabular-nums">
-                  {user.courseOrDept} • Matrícula: {user.registrationNumber || "N/A"}
+                  {user.courseOrDept} • {L("Matrícula:", "ID:")} {user.registrationNumber || "N/A"}
                 </p>
               </div>
             </div>
@@ -230,7 +261,7 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
               </span>
               {user.role && (
                 <p className="text-[9px] text-slate-400 font-semibold uppercase mt-1">
-                  Função: {user.role}
+                  {L("Função:", "Role:")} {translateUserRole(user.role, language)}
                 </p>
               )}
             </div>
@@ -241,9 +272,12 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
             <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-300 text-xs flex items-start space-x-2.5">
               <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <p className="font-bold">Ação Bloqueada</p>
+                <p className="font-bold">{L("Ação Bloqueada", "Action Blocked")}</p>
                 <p className="text-[11px] mt-0.5">
-                  Você está autenticado nesta conta de administrador. Por segurança do sistema, não é permitido suspender ou banir a sua própria conta ativa.
+                  {L(
+                    "Você está autenticado nesta conta de administrador. Por segurança do sistema, não é permitido suspender ou banir a sua própria conta ativa.",
+                    "You are signed in with this administrator account. For system security, you cannot suspend or ban your own active account."
+                  )}
                 </p>
               </div>
             </div>
@@ -254,7 +288,7 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
             <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300/70 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-xs space-y-1.5">
               <p className="font-bold flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                <span>Inconsistência Cadastral / Legado Detectada</span>
+                <span>{L("Inconsistência Cadastral / Legado Detectada", "Legacy / Record Inconsistency Detected")}</span>
               </p>
               <ul className="list-disc list-inside space-y-0.5 text-[11px] opacity-90">
                 {currentResolved.inconsistencyReasons.map((item, idx) => (
@@ -262,7 +296,11 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
                 ))}
               </ul>
               <p className="text-[10px] text-amber-800/80 dark:text-amber-300/80">
-                Ao confirmar um novo status (como <strong>Ativo</strong>), os campos residuais ou incompatíveis serão normalizados e limpos no Firestore.
+                {language === "en" ? (
+                  <>Confirming a new status (such as <strong>Active</strong>) will normalize and clean up residual or incompatible fields in Firestore.</>
+                ) : (
+                  <>Ao confirmar uma nova situação (como <strong>Ativo</strong>), os campos residuais ou incompatíveis serão normalizados e limpos no Firestore.</>
+                )}
               </p>
             </div>
           )}
@@ -272,14 +310,14 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
             <div className="p-3.5 rounded-2xl bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 text-xs space-y-1">
               <p className="font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
                 <Info className="w-3.5 h-3.5 text-neutral-500" />
-                <span>Situação Atual da Conta:</span>
+                <span>{L("Situação Atual da Conta:", "Current Account Status:")}</span>
               </p>
               <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
                 {currentStatusDisplay.description}
               </p>
               {currentResolved.statusUpdatedAt && (
                 <p className="text-[10px] text-neutral-400 font-mono">
-                  Última atualização: {formatDate(currentResolved.statusUpdatedAt)} por {currentResolved.statusUpdatedBy || "Administrador"}
+                  {L("Última atualização:", "Last updated:")} {formatDate(currentResolved.statusUpdatedAt, undefined, language)} {L("por", "by")} {currentResolved.statusUpdatedBy || translateUserRole("ADMIN", language)}
                 </p>
               )}
             </div>
@@ -288,7 +326,7 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
           {/* Status Selection Buttons */}
           <div className="space-y-2">
             <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
-              Definir Novo Status
+              {L("Definir Nova Situação", "Set New Status")}
             </label>
             <div className="grid grid-cols-3 gap-2">
               {/* Option 1: Ativo */}
@@ -306,8 +344,8 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
                 } ${isSelf ? "opacity-40 cursor-not-allowed" : ""}`}
               >
                 <ShieldCheck className="w-5 h-5 text-emerald-600" />
-                <span className="text-xs font-bold">Ativo</span>
-                <span className="text-[10px] text-neutral-400 font-normal">Acesso liberado</span>
+                <span className="text-xs font-bold">{L("Ativo", "Active")}</span>
+                <span className="text-[10px] text-neutral-400 font-normal">{L("Acesso liberado", "Full access")}</span>
               </button>
 
               {/* Option 2: Suspenso */}
@@ -325,8 +363,8 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
                 } ${isSelf ? "opacity-40 cursor-not-allowed" : ""}`}
               >
                 <Clock className="w-5 h-5 text-amber-600" />
-                <span className="text-xs font-bold">Suspender</span>
-                <span className="text-[10px] text-neutral-400 font-normal">Temporário / Indef.</span>
+                <span className="text-xs font-bold">{L("Suspender", "Suspend")}</span>
+                <span className="text-[10px] text-neutral-400 font-normal">{L("Temporário / Indef.", "Temporary / Indef.")}</span>
               </button>
 
               {/* Option 3: Banido */}
@@ -344,8 +382,8 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
                 } ${isSelf ? "opacity-40 cursor-not-allowed" : ""}`}
               >
                 <UserX className="w-5 h-5 text-red-600" />
-                <span className="text-xs font-bold">Banir</span>
-                <span className="text-[10px] text-neutral-400 font-normal">Permanente</span>
+                <span className="text-xs font-bold">{L("Banir", "Ban")}</span>
+                <span className="text-[10px] text-neutral-400 font-normal">{L("Permanente", "Permanent")}</span>
               </button>
             </div>
           </div>
@@ -354,14 +392,14 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
           {selectedStatus === "suspended" && (
             <div className="space-y-3 p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20 animate-in fade-in duration-150">
               <label className="block text-xs font-bold text-amber-900 dark:text-amber-300">
-                Prazo da Suspensão
+                {L("Prazo da Suspensão", "Suspension Duration")}
               </label>
               <select
                 value={suspensionPreset}
                 onChange={(e) => setSuspensionPreset(e.target.value)}
                 className="w-full px-3.5 py-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 text-xs font-medium text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500"
               >
-                {SUSPENSION_PRESET_OPTIONS.map((opt) => (
+                {suspensionPresetOptions.map((opt) => (
                   <option key={opt.id} value={opt.id}>
                     {opt.label}
                   </option>
@@ -371,7 +409,7 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
               {suspensionPreset === "custom" && (
                 <div className="space-y-1 pt-1">
                   <label className="block text-[11px] font-semibold text-neutral-600 dark:text-neutral-400">
-                    Data e Hora do Término da Suspensão (horário local):
+                    {L("Data e Hora do Término da Suspensão (horário local):", "Suspension End Date & Time (local time):")}
                   </label>
                   <div className="relative">
                     <Calendar className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -385,8 +423,8 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
                   </div>
                   {parsedCustomPreview && parsedCustomPreview.getTime() > Date.now() && (
                     <p className="text-[10px] text-amber-800 dark:text-amber-300 font-medium">
-                      Término previsto: {parsedCustomPreview.toLocaleDateString("pt-BR")} às{" "}
-                      {parsedCustomPreview.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      {L("Término previsto:", "Scheduled end:")} {parsedCustomPreview.toLocaleDateString(locale)} {L("às", "at")}{" "}
+                      {parsedCustomPreview.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}
                     </p>
                   )}
                 </div>
@@ -394,11 +432,19 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
 
               {suspensionPreset === "indefinite" ? (
                 <p className="text-[10px] text-amber-800 dark:text-amber-300 font-medium leading-relaxed">
-                  <strong>Suspensão por tempo indeterminado:</strong> esta conta NÃO expira automaticamente e permanecerá bloqueada até que um administrador execute a reativação manual. Prazos temporais residuais serão removidos.
+                  {language === "en" ? (
+                    <><strong>Indefinite suspension:</strong> this account will NOT expire automatically and will remain blocked until an administrator manually reactivates it. Residual deadline fields will be removed.</>
+                  ) : (
+                    <><strong>Suspensão por tempo indeterminado:</strong> esta conta NÃO expira automaticamente e permanecerá bloqueada até que um administrador execute a reativação manual. Prazos temporais residuais serão removidos.</>
+                  )}
                 </p>
               ) : (
                 <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80">
-                  Após expirar o prazo em Timestamp nativo do Firestore, o status é automaticamente recalculado para <strong>Ativo</strong> pelo sistema sem necessidade de intervenção manual.
+                  {language === "en" ? (
+                    <>Once the Firestore Timestamp deadline expires, the status is automatically restored to <strong>Active</strong> by the system without manual intervention.</>
+                  ) : (
+                    <>Após expirar o prazo registrado no banco de dados, a situação é automaticamente recalculada para <strong>Ativo</strong> pelo sistema sem necessidade de intervenção manual.</>
+                  )}
                 </p>
               )}
             </div>
@@ -408,7 +454,7 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
           {(selectedStatus === "suspended" || selectedStatus === "banned") && (
             <div className="space-y-1.5 animate-in fade-in duration-150">
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Motivo / Justificativa Institucional <span className="text-red-500">*</span>
+                {L("Motivo / Justificativa Institucional", "Institutional Reason / Justification")} <span className="text-red-500">*</span>
               </label>
               <textarea
                 value={reason}
@@ -416,14 +462,17 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
                 rows={3}
                 placeholder={
                   selectedStatus === "banned"
-                    ? "Descreva a justificativa para o banimento permanente desta conta..."
-                    : "Descreva a justificativa para a suspensão temporária do usuário..."
+                    ? L("Descreva a justificativa para o banimento permanente desta conta...", "Describe the reason for permanently banning this account...")
+                    : L("Descreva a justificativa para a suspensão temporária do usuário...", "Describe the reason for temporarily suspending this user...")
                 }
                 className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-[#172B2A] dark:text-white outline-none focus:ring-2 focus:ring-[#16845B] placeholder-slate-400 resize-none"
                 required
               />
               <p className="text-[10px] text-slate-400">
-                Este motivo ficará registrado permanentemente na auditoria do sistema e será comunicado ao usuário.
+                {L(
+                  "Este motivo ficará registrado permanentemente na auditoria do sistema e será comunicado ao usuário.",
+                  "This reason will be permanently recorded in the system audit trail and communicated to the user."
+                )}
               </p>
             </div>
           )}
@@ -447,7 +496,7 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
               disabled={isSubmitting}
               className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-semibold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
             >
-              Cancelar
+              {t("cancel")}
             </button>
             <button
               type="submit"
@@ -463,12 +512,12 @@ export const ManageUserStatusModal: React.FC<ManageUserStatusModalProps> = ({
               {isSubmitting ? (
                 <>
                   <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-1" />
-                  <span>Salvando no Firestore...</span>
+                  <span>{t("saving")}</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Confirmar Alteração</span>
+                  <span>{L("Confirmar Alteração", "Confirm Change")}</span>
                 </>
               )}
             </button>

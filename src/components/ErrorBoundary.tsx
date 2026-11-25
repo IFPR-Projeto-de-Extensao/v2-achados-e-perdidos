@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { logErrorToFirestore } from "../lib/errorLogger";
+import { getStoredLanguage, localize } from "../lib/i18n";
 import { ShieldAlert, RefreshCw, Smartphone, AlertTriangle, Terminal, FileCode2 } from "lucide-react";
 
 interface Props {
@@ -185,6 +186,8 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
+      const lang = getStoredLanguage();
+      const l = (pt: string, en: string) => localize(lang, pt, en);
       const isMobile =
         typeof navigator !== "undefined" &&
         /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -197,11 +200,11 @@ export class ErrorBoundary extends React.Component<Props, State> {
               <div className="flex items-center space-x-2 text-red-400">
                 <ShieldAlert className="w-5 h-5" />
                 <span className="text-xs font-black uppercase tracking-wider">
-                  Error Boundary Global • IFPR Campus Ivaiporã
+                  {l("Barreira Global de Erros • IFPR Campus Ivaiporã", "Global Error Boundary • IFPR Ivaiporã Campus")}
                 </span>
               </div>
               <span className="text-[10px] px-2.5 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 font-mono">
-                {isMobile ? "Mobile PWA" : "Desktop / Tablet"}
+                {isMobile ? l("Aplicativo Móvel", "Mobile PWA") : l("Computador / Tablet", "Desktop / Tablet")}
               </span>
             </div>
 
@@ -211,13 +214,19 @@ export class ErrorBoundary extends React.Component<Props, State> {
               </div>
               <h1 className="text-xl font-black text-white">
                 {this.state.isInitializationError
-                  ? "Exceção no Ciclo de Inicialização de Módulos"
-                  : "Ocorreu uma exceção inesperada"}
+                  ? l("Exceção no Ciclo de Inicialização de Módulos", "Module Initialization Lifecycle Exception")
+                  : l("Ocorreu uma exceção inesperada", "An unexpected exception occurred")}
               </h1>
               <p className="text-xs text-neutral-400 leading-relaxed">
                 {this.state.isInitializationError
-                  ? "O diagnóstico capturou uma referência a variável/módulo antes de sua declaração (TDZ). O caminho do módulo foi registrado no console e no Firestore."
-                  : "O sistema capturou automaticamente o erro e registrou o log no Firestore do IFPR para análise técnica imediata."}
+                  ? l(
+                      "O diagnóstico capturou uma referência a variável/módulo antes de sua declaração (TDZ). O caminho do módulo foi registrado no console e no Firestore.",
+                      "Diagnostics caught a reference to a variable/module before its declaration (TDZ). The module path has been logged to the console and Firestore."
+                    )
+                  : l(
+                      "O sistema capturou automaticamente o erro e registrou o histórico técnico no Firestore do IFPR para análise imediata.",
+                      "The system automatically caught the error and recorded the technical log in IFPR Firestore for immediate analysis."
+                    )}
               </p>
             </div>
 
@@ -226,7 +235,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
               <div className="p-3 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs space-y-1">
                 <div className="flex items-center space-x-1.5 font-bold text-amber-300">
                   <FileCode2 className="w-4 h-4" />
-                  <span>Módulo / Arquivo Identificado:</span>
+                  <span>{l("Módulo / Arquivo Identificado:", "Identified Module / File:")}</span>
                 </div>
                 <p className="font-mono text-[11px] break-all bg-black/40 p-2 rounded-lg text-amber-100">
                   {this.state.failedModulePath}
@@ -237,14 +246,14 @@ export class ErrorBoundary extends React.Component<Props, State> {
             {/* Error Message Box */}
             <div className="p-3.5 rounded-2xl bg-neutral-900 border border-neutral-800 space-y-1 text-left font-mono text-[11px] text-red-300 overflow-x-auto max-h-40">
               <div className="flex items-center justify-between text-[10px] text-neutral-500 font-bold uppercase font-sans">
-                <span>Mensagem da Exceção:</span>
+                <span>{l("Mensagem da Exceção:", "Exception Message:")}</span>
                 <span className="flex items-center space-x-1 text-neutral-400">
                   <Terminal className="w-3 h-3" />
-                  <span>Console Aberto</span>
+                  <span>{l("Console Aberto", "Console Open")}</span>
                 </span>
               </div>
               <p className="font-semibold break-words">
-                {this.state.error?.message || "Exceção de renderização no componente"}
+                {this.state.error?.message || l("Exceção de renderização no componente", "Component rendering exception")}
               </p>
               {this.state.error?.stack && (
                 <pre className="text-[10px] text-neutral-400 mt-2 font-mono whitespace-pre-wrap max-h-24 overflow-y-auto">
@@ -257,7 +266,12 @@ export class ErrorBoundary extends React.Component<Props, State> {
             {isMobile && (
               <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-300 text-[11px] flex items-center space-x-2">
                 <Smartphone className="w-4 h-4 shrink-0" />
-                <span>Otimização para Mobile: O estado local do seu navegador foi preservado.</span>
+                <span>
+                  {l(
+                    "Otimização para Celular: O estado local do seu navegador foi preservado.",
+                    "Mobile Optimization: Your browser's local state has been preserved."
+                  )}
+                </span>
               </div>
             )}
 
@@ -267,7 +281,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
                 className="w-full py-3 px-4 rounded-2xl bg-[#00843D] hover:bg-[#006b31] text-white font-extrabold text-xs transition-all flex items-center justify-center space-x-2 shadow-lg shadow-green-950/40"
               >
                 <RefreshCw className="w-4 h-4 animate-spin-hover" />
-                <span>Recarregar Sistema & Sincronizar</span>
+                <span>{l("Recarregar Sistema e Sincronizar", "Reload System & Sync")}</span>
               </button>
             </div>
           </div>

@@ -74,7 +74,7 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
   }[] = [
     {
       id: "BUG_REPORT",
-      labelPt: "Relatar Bug / Erro no Sistema",
+      labelPt: "Relatar Erro no Sistema",
       labelEn: "Bug Report / System Issue",
       icon: <Bug className="w-4 h-4" />,
       color: "text-red-600 dark:text-red-400 bg-red-500/10 border-red-500/20",
@@ -141,7 +141,12 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
       });
 
       if (!result.success) {
-        throw new Error(result.error || "Erro ao processar envio no servidor.");
+        throw new Error(
+          result.error ||
+            (language === "en"
+              ? "Failed to process submission on the server."
+              : "Erro ao processar envio no servidor.")
+        );
       }
 
       vibrateSuccess();
@@ -168,22 +173,42 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
 
   const generateMailtoUrl = () => {
     const dest = "localizamais0@gmail.com";
-    const sub = `[IFPR Suporte - ${category}] ${subject || "Contato de Usuário"}`;
-    const bodyLines = [
-      `Olá Equipe de Atendimento do IFPR Campus Ivaiporã,`,
-      ``,
-      `Nome: ${name || "Não informado"}`,
-      `E-mail: ${email || "Não informado"}`,
-      `Categoria: ${category}`,
-      `Prioridade: ${priority}`,
-      ``,
-      `Mensagem:`,
-      `${message || "(Sem conteúdo digitado)"}`,
-      ``,
-      `---`,
-      `Enviado via Plataforma IFPR Achados & Perdidos`,
-      `Data: ${new Date().toLocaleString("pt-BR")}`,
-    ];
+    const sub =
+      language === "en"
+        ? `[IFPR Support - ${category}] ${subject || "User Inquiry"}`
+        : `[IFPR Suporte - ${category}] ${subject || "Contato de Usuário"}`;
+    const bodyLines =
+      language === "en"
+        ? [
+            `Hello IFPR Campus Ivaiporã Support Team,`,
+            ``,
+            `Name: ${name || "Not provided"}`,
+            `Email: ${email || "Not provided"}`,
+            `Category: ${category}`,
+            `Priority: ${priority}`,
+            ``,
+            `Message:`,
+            `${message || "(No message entered)"}`,
+            ``,
+            `---`,
+            `Sent via IFPR Localiza+ Lost & Found Platform`,
+            `Date: ${new Date().toLocaleString("en-US")}`,
+          ]
+        : [
+            `Olá Equipe de Atendimento do IFPR Campus Ivaiporã,`,
+            ``,
+            `Nome: ${name || "Não informado"}`,
+            `E-mail: ${email || "Não informado"}`,
+            `Categoria: ${category}`,
+            `Prioridade: ${priority}`,
+            ``,
+            `Mensagem:`,
+            `${message || "(Sem conteúdo digitado)"}`,
+            ``,
+            `---`,
+            `Enviado via Plataforma IFPR Achados & Perdidos`,
+            `Data: ${new Date().toLocaleString("pt-BR")}`,
+          ];
     return `mailto:${dest}?subject=${encodeURIComponent(sub)}&body=${encodeURIComponent(bodyLines.join("\n"))}`;
   };
 
@@ -226,12 +251,12 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
               </div>
               <h2 id="contact-modal-title" className="text-lg font-black text-neutral-900 dark:text-white mt-0.5">
                 {category === "BUG_REPORT"
-                  ? (language === "pt" ? "Relatar Bug / Erro no Sistema" : "Report a System Bug")
+                  ? (language === "pt" ? "Relatar Erro no Sistema" : "Report a System Bug")
                   : category === "FEEDBACK"
-                  ? (language === "pt" ? "Enviar Sugestão ou Feedback" : "Send Feedback or Suggestion")
+                  ? (language === "pt" ? "Enviar Sugestão ou Avaliação" : "Send Feedback or Suggestion")
                   : category === "SUPPORT"
                   ? (language === "pt" ? "Suporte Técnico & Atendimento" : "Technical Support & Help")
-                  : t("contactModalTitle", "Suporte & Feedback Institucional")}
+                  : t("contactModalTitle", "Suporte e Avaliações Institucionais")}
               </h2>
             </div>
           </div>
@@ -404,7 +429,7 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Ex: João da Silva"
+                    placeholder={language === "en" ? "e.g., Jane Doe" : "Ex: João da Silva"}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-[#00843D]/30 focus:border-[#00843D] transition-all"
                   />
                 </div>
@@ -419,7 +444,7 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="usuario@ifpr.edu.br"
+                    placeholder={language === "en" ? "user@ifpr.edu.br" : "usuario@ifpr.edu.br"}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-[#00843D]/30 focus:border-[#00843D] transition-all"
                   />
                 </div>
@@ -438,7 +463,15 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
                     placeholder={
-                      category === "BUG_REPORT"
+                      language === "en"
+                        ? category === "BUG_REPORT"
+                          ? "e.g., Error scanning QR tag on mobile"
+                          : category === "FEEDBACK"
+                          ? "e.g., Suggestion for a new drop-off point at the gym"
+                          : category === "SUPPORT"
+                          ? "e.g., Question about item pickup or registration"
+                          : "e.g., General inquiry to the team"
+                        : category === "BUG_REPORT"
                         ? "Ex: Erro ao escanear etiqueta QR no celular"
                         : category === "FEEDBACK"
                         ? "Ex: Sugestão de novo ponto de entrega no ginásio"
@@ -479,11 +512,13 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder={
-                    category === "BUG_REPORT"
+                    language === "en"
+                      ? category === "BUG_REPORT"
+                        ? "Describe the steps to reproduce the error, the screen where it happened, and what you expected..."
+                        : "Provide as much detail as possible (suggestions, questions about belongings, or institutional support)..."
+                      : category === "BUG_REPORT"
                       ? "Descreva os passos para reproduzir o erro, tela onde ocorreu e o que era esperado..."
-                      : language === "pt"
-                      ? "Descreva seu relato com detalhes (sugestões, dúvidas sobre pertences ou suporte institucional)..."
-                      : "Provide as much detail as possible (steps to reproduce for bugs, or suggestion notes)..."
+                      : "Descreva seu relato com detalhes (sugestões, dúvidas sobre pertences ou suporte institucional)..."
                   }
                   className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-hidden focus:ring-2 focus:ring-[#00843D]/30 focus:border-[#00843D] transition-all resize-none"
                 />

@@ -15,7 +15,7 @@ import { useRouter } from "../context/RouterContext";
 import { vibrateClick, vibrateSuccess } from "../lib/utils";
 import { triggerSpotlightTour } from "../lib/spotlightTourUtils";
 import {
-  USER_MANUAL_SECTIONS,
+  getUserManualSections,
   USER_MANUAL_VERSION,
   downloadUserManualPdf,
 } from "../lib/userManualPdfGenerator";
@@ -24,12 +24,13 @@ export const UserManualView: React.FC = () => {
   const { addToast, language, t } = useApp();
   const { navigate } = useRouter();
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const manualSections = getUserManualSections(language);
 
   const handleDownloadPdf = () => {
     vibrateClick();
     setIsDownloadingPdf(true);
     try {
-      const filename = downloadUserManualPdf();
+      const filename = downloadUserManualPdf(language);
       vibrateSuccess();
       addToast(
         language === "en"
@@ -61,7 +62,7 @@ export const UserManualView: React.FC = () => {
               <span>{t("helpButton", "Ajuda")} • {USER_MANUAL_VERSION}</span>
             </span>
             <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-              IFPR Campus Ivaiporã
+              {t("campusName")}
             </span>
           </div>
 
@@ -140,14 +141,14 @@ export const UserManualView: React.FC = () => {
 
       {/* Quick Index / Table of Contents */}
       <nav
-        aria-label="Sumário do Manual"
+        aria-label={language === "en" ? "Manual Table of Contents" : "Sumário do Manual"}
         className="rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 p-4 sm:p-5"
       >
         <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
           {language === "en" ? "Quick Index" : "Índice Rápido"}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-          {USER_MANUAL_SECTIONS.map((sec) => (
+          {manualSections.map((sec) => (
             <a
               key={sec.id}
               href={`#manual-${sec.id}`}
@@ -164,7 +165,7 @@ export const UserManualView: React.FC = () => {
 
       {/* Full Manual Sections */}
       <div className="space-y-4">
-        {USER_MANUAL_SECTIONS.map((sec) => (
+        {manualSections.map((sec) => (
           <article
             key={sec.id}
             id={`manual-${sec.id}`}
@@ -235,7 +236,7 @@ export const UserManualView: React.FC = () => {
             className="min-h-[40px] px-4 py-2 rounded-xl bg-white dark:bg-slate-900 text-[#172B2A] dark:text-white border border-slate-200 dark:border-slate-700 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors"
           >
             <Printer className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
-            <span>HTML / Imprimir</span>
+            <span>{language === "en" ? "HTML / Print" : "HTML / Imprimir"}</span>
           </a>
         </div>
       </div>

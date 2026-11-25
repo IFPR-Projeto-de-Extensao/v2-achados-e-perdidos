@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from "react";
 import { DocumentTemplate, DocumentField } from "../../types";
 import { useApp } from "../../context/AppContext";
+import { localize } from "../../lib/i18n";
 import {
   generateDocumentPdf,
   replaceDynamicTags,
@@ -41,7 +42,8 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
   initialDocumentNumber,
   onBack,
 }) => {
-  const { logGeneratedDocument, addToast, projectSettings } = useApp();
+  const { logGeneratedDocument, addToast, projectSettings, language } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
   const livePreviewRef = useRef<HTMLDivElement>(null);
 
   // Extrair automaticamente todos os campos dinâmicos do modelo com defaults do projeto
@@ -80,14 +82,14 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
   const groupedFields = useMemo(() => {
     const groups: Record<string, DocumentField[]> = {};
     consolidatedFields.forEach((field) => {
-      const sectionName = field.section || "Campos Gerais do Documento";
+      const sectionName = field.section || localize(language, "Campos Gerais do Documento", "General Document Fields");
       if (!groups[sectionName]) {
         groups[sectionName] = [];
       }
       groups[sectionName].push(field);
     });
     return groups;
-  }, [consolidatedFields]);
+  }, [consolidatedFields, language]);
 
   const handleInputChange = (name: string, value: string) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -99,7 +101,13 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
       reset[field.name] = field.defaultValue || "";
     });
     setFormData(reset);
-    addToast("Valores restaurados para o padrão do modelo e dados do projeto.", "info");
+    addToast(
+      L(
+        "Valores restaurados para o padrão do modelo e dados do projeto.",
+        "Values restored to the template and project defaults."
+      ),
+      "info"
+    );
   };
 
   const handleGeneratePdf = async () => {
@@ -112,7 +120,10 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
 
       if (missingRequired.length > 0) {
         addToast(
-          `Preencha o campo obrigatório: ${missingRequired[0].label}`,
+          L(
+            `Preencha o campo obrigatório: ${missingRequired[0].label}`,
+            `Please fill in the required field: ${missingRequired[0].label}`
+          ),
           "error"
         );
         setIsGenerating(false);
@@ -134,7 +145,7 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
         formData["entidade_donataria"] ||
         formData["responsavel"] ||
         formData["nome_interessado"] ||
-        "Geral / Institucional";
+        L("Geral / Institucional", "General / Institutional");
 
       await logGeneratedDocument({
         templateId: template.id,
@@ -144,10 +155,22 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
         fieldsData: formData,
       });
 
-      addToast(`Documento PDF '${filename}' gerado com sucesso!`, "success");
+      addToast(
+        L(
+          `Documento PDF '${filename}' gerado com sucesso!`,
+          `PDF document '${filename}' generated successfully!`
+        ),
+        "success"
+      );
     } catch (error) {
       console.error("Erro ao gerar PDF:", error);
-      addToast("Erro ao processar o PDF. Verifique os dados informados.", "error");
+      addToast(
+        L(
+          "Erro ao processar o PDF. Verifique os dados informados.",
+          "Error processing the PDF. Please check the entered data."
+        ),
+        "error"
+      );
     } finally {
       setIsGenerating(false);
     }
@@ -172,7 +195,7 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
         formData["entidade_donataria"] ||
         formData["responsavel"] ||
         formData["nome_interessado"] ||
-        "Geral / Institucional";
+        L("Geral / Institucional", "General / Institutional");
 
       await logGeneratedDocument({
         templateId: template.id,
@@ -182,7 +205,13 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
         fieldsData: formData,
       });
 
-      addToast("PDF gerado via captura de alta resolução!", "success");
+      addToast(
+        L(
+          "PDF gerado via captura de alta resolução!",
+          "PDF generated via high-resolution capture!"
+        ),
+        "success"
+      );
     } catch (err) {
       console.error("Erro no download html2canvas:", err);
       // Fallback para geração vetorial
@@ -202,7 +231,7 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
             size="sm"
             onClick={onBack}
             className="!p-2.5"
-            title="Voltar para lista de modelos"
+            title={L("Voltar para a lista de modelos", "Back to template list")}
           >
             <ArrowLeft className="w-5 h-5" />
           </UIButton>
@@ -214,7 +243,7 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
               </h2>
               <UIBadge tone="blue" className="hidden sm:inline-flex">
                 <Sparkles className="w-3 h-3" />
-                {detectedTags.length} campos detectados
+                {L(`${detectedTags.length} campos detectados`, `${detectedTags.length} fields detected`)}
               </UIBadge>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{template.description}</p>
@@ -227,10 +256,10 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
             variant="secondary"
             size="sm"
             onClick={handleResetDefaults}
-            title="Restaurar valores padrão"
+            title={L("Restaurar valores padrão", "Restore default values")}
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Padrões</span>
+            <span className="hidden sm:inline">{L("Padrões", "Defaults")}</span>
           </UIButton>
 
           <UIButton
@@ -239,7 +268,7 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
             onClick={() => setIsPreviewModalOpen(true)}
           >
             <Eye className="w-4 h-4" />
-            <span>Ver Prévia A4</span>
+            <span>{L("Ver Prévia A4", "View A4 Preview")}</span>
           </UIButton>
 
           <UIButton
@@ -249,7 +278,7 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
             disabled={isGenerating || isGeneratingCanvas}
           >
             <Download className="w-4 h-4" />
-            <span>{isGenerating ? "Gerando..." : "Gerar e Baixar PDF"}</span>
+            <span>{isGenerating ? L("Gerando...", "Generating...") : L("Gerar e Baixar PDF", "Generate & Download PDF")}</span>
           </UIButton>
         </div>
       </SurfaceCard>
@@ -263,19 +292,21 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <div className="flex items-center space-x-2 text-[#16845B] dark:text-emerald-400 font-semibold text-sm">
                 <Hash className="w-4 h-4" />
-                <span>Identificação do Documento</span>
+                <span>{L("Identificação do Documento", "Document Identification")}</span>
               </div>
-              <span className="text-[11px] text-slate-500 dark:text-slate-400">Versão {template.version}.0</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                {L(`Versão ${template.version}.0`, `Version ${template.version}.0`)}
+              </span>
             </div>
 
-            <UIFieldGroup label="Número de Registro / Protocolo" htmlFor="doc-protocol-number">
+            <UIFieldGroup label={L("Número de Registro / Protocolo", "Registration / Protocol Number")} htmlFor="doc-protocol-number">
               <UIInput
                 id="doc-protocol-number"
                 type="text"
                 value={documentNumber}
                 onChange={(e) => setDocumentNumber(e.target.value)}
                 className="font-mono"
-                placeholder="Ex: DOC-EXT-2026/0042"
+                placeholder={L("Ex.: DOC-EXT-2026/0042", "e.g., DOC-EXT-2026/0042")}
               />
             </UIFieldGroup>
           </SurfaceCard>
@@ -330,7 +361,7 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
           {/* Bottom Action Footer */}
           <SurfaceCard padding="sm" className="flex items-center justify-between">
             <UIButton variant="ghost" size="sm" onClick={onBack}>
-              Cancelar
+              {L("Cancelar", "Cancel")}
             </UIButton>
             <UIButton
               variant="primary"
@@ -339,7 +370,7 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
               disabled={isGenerating}
             >
               <Download className="w-4 h-4" />
-              <span>{isGenerating ? "Processando..." : "Gerar e Baixar Documento PDF"}</span>
+              <span>{isGenerating ? L("Processando...", "Processing...") : L("Gerar e Baixar Documento PDF", "Generate & Download PDF Document")}</span>
             </UIButton>
           </SurfaceCard>
         </div>
@@ -350,14 +381,14 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
               <div className="flex items-center space-x-2 text-[#172B2A] dark:text-slate-200 font-semibold text-xs">
                 <Eye className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
-                <span>Prévia em Tempo Real</span>
+                <span>{L("Prévia em Tempo Real", "Live Preview")}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setIsPreviewModalOpen(true)}
                 className="text-[11px] text-[#16845B] dark:text-emerald-400 hover:text-[#064E3B] dark:hover:text-emerald-300 font-semibold cursor-pointer"
               >
-                Expandir A4
+                {L("Expandir A4", "Expand A4")}
               </button>
             </div>
 
@@ -415,7 +446,10 @@ export const DocumentFillForm: React.FC<DocumentFillFormProps> = ({
             </div>
 
             <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">
-              As alterações preenchidas à esquerda atualizam a visualização instantaneamente.
+              {L(
+                "As alterações preenchidas à esquerda atualizam a visualização instantaneamente.",
+                "Changes filled on the left update the preview instantly."
+              )}
             </p>
           </SurfaceCard>
         </div>

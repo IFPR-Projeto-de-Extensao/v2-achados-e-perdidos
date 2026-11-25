@@ -1,6 +1,7 @@
 import React, { useState, useRef } from "react";
 import { DocumentTemplate, ProjectSettings } from "../../types";
 import { useApp } from "../../context/AppContext";
+import { localize } from "../../lib/i18n";
 import {
   replaceDynamicTags,
   downloadDocumentPdf,
@@ -40,7 +41,8 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   onClose,
   onProceedToFill,
 }) => {
-  const { projectSettings: contextProjectSettings } = useApp();
+  const { projectSettings: contextProjectSettings, language } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
   const projectSettings = propProjectSettings || contextProjectSettings;
 
   const [zoomLevel, setZoomLevel] = useState<number>(100);
@@ -107,7 +109,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 <UIBadge tone="emerald">{template.code}</UIBadge>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Prévia em folha A4 oficial institucional IFPR
+                {L("Prévia em folha A4 oficial institucional IFPR", "Official IFPR institutional A4 sheet preview")}
               </p>
             </div>
           </div>
@@ -120,7 +122,8 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 type="button"
                 onClick={() => setZoomLevel((z) => Math.max(75, z - 10))}
                 className="p-1.5 text-slate-500 dark:text-slate-300 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
-                title="Diminuir Zoom"
+                title={L("Diminuir ampliação", "Zoom out")}
+                aria-label={L("Diminuir ampliação", "Zoom out")}
               >
                 <ZoomOut className="w-4 h-4" />
               </button>
@@ -131,7 +134,8 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 type="button"
                 onClick={() => setZoomLevel((z) => Math.min(130, z + 10))}
                 className="p-1.5 text-slate-500 dark:text-slate-300 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
-                title="Aumentar Zoom"
+                title={L("Aumentar ampliação", "Zoom in")}
+                aria-label={L("Aumentar ampliação", "Zoom in")}
               >
                 <ZoomIn className="w-4 h-4" />
               </button>
@@ -139,7 +143,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
 
             {onProceedToFill && (
               <UIButton variant="primary" size="sm" onClick={onProceedToFill}>
-                <span>Preencher Dados</span>
+                <span>{L("Preencher Dados", "Fill Data")}</span>
               </UIButton>
             )}
 
@@ -147,10 +151,10 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
               variant="outline"
               size="sm"
               onClick={handleDownload}
-              title="Baixar PDF Vetorial Oficial"
+              title={L("Baixar PDF Vetorial Oficial", "Download Official Vector PDF")}
             >
               <Download className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Baixar PDF</span>
+              <span className="hidden sm:inline">{L("Baixar PDF", "Download PDF")}</span>
             </UIButton>
 
             <UIButton
@@ -159,17 +163,18 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
               onClick={handleDownloadVisualPdf}
               disabled={isExportingCanvas}
               className="hidden md:inline-flex"
-              title="Exportar via Renderização HTML Canvas (html2canvas)"
+              title={L("Exportar via renderização de imagem de alta resolução", "Export via high-resolution visual image rendering")}
             >
               <Sparkles className="w-3.5 h-3.5 text-[#16845B]" />
-              <span>{isExportingCanvas ? "Renderizando..." : "Exportar Imagem/Canvas"}</span>
+              <span>{isExportingCanvas ? L("Renderizando...", "Rendering...") : L("Exportar Imagem", "Export Image")}</span>
             </UIButton>
 
             <button
               type="button"
               onClick={handlePrint}
               className="p-2 text-slate-500 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-              title="Imprimir"
+              title={L("Imprimir", "Print")}
+              aria-label={L("Imprimir", "Print")}
             >
               <Printer className="w-4 h-4" />
             </button>
@@ -178,7 +183,8 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
               type="button"
               onClick={onClose}
               className="p-2 text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-slate-800 rounded-xl transition-colors ml-0.5 cursor-pointer"
-              title="Fechar"
+              title={L("Fechar", "Close")}
+              aria-label={L("Fechar", "Close")}
             >
               <X className="w-5 h-5" />
             </button>
@@ -311,7 +317,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             {template.includeFooter && (
               <div className="absolute bottom-6 left-8 right-8 pt-2 border-t border-slate-200 flex justify-between items-center text-[9px] text-slate-400">
                 <span>{template.footerText || "Instituto Federal do Paraná — Campus Ivaiporã"}</span>
-                <span>Página 1 de 1</span>
+                <span>{L("Página 1 de 1", "Page 1 of 1")}</span>
               </div>
             )}
           </div>

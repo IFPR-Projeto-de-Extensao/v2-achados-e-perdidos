@@ -1,6 +1,8 @@
 import React, { useState } from "react";
-import { X, History, Search, Shield, ArrowRight, User, Clock, FileText, CheckCircle2, Filter } from "lucide-react";
+import { X, History, Search, Shield, ArrowRight, User, Clock } from "lucide-react";
 import { TestBatteryExecution, TestExecutionAuditEntry } from "../../types";
+import { useApp } from "../../context/AppContext";
+import { getLocaleForLanguage, localize } from "../../lib/i18n";
 
 interface TestAuditTrailDrawerProps {
   isOpen: boolean;
@@ -15,12 +17,35 @@ export const TestAuditTrailDrawer: React.FC<TestAuditTrailDrawerProps> = ({
   battery,
   darkMode,
 }) => {
+  const { language } = useApp();
+  const l = (pt: string, en: string) => localize(language, pt, en);
+  const locale = getLocaleForLanguage(language);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFilter, setSelectedFilter] = useState<string>("ALL");
 
   if (!isOpen) return null;
 
   const auditTrail: TestExecutionAuditEntry[] = battery.auditTrail || [];
+
+  const translateChangeType = (type: string) => {
+    switch (type) {
+      case "UPDATE_STATUS":
+        return l("Alteração de Situação", "Status Update");
+      case "UPDATE_DETAILS":
+        return l("Atualização de Evidências", "Evidence Update");
+      case "ASSIGN_TESTER":
+        return l("Atribuição de Testador", "Tester Assignment");
+      case "ADD_PARTICIPANT":
+        return l("Inclusão de Participante", "Participant Added");
+      case "REMOVE_PARTICIPANT":
+        return l("Remoção de Participante", "Participant Removed");
+      case "AUTO_DISTRIBUTE":
+        return l("Distribuição Automática", "Auto Distribution");
+      default:
+        return type;
+    }
+  };
 
   const filteredLogs = auditTrail.filter((log) => {
     if (selectedFilter !== "ALL" && log.changeType !== selectedFilter) {
@@ -56,14 +81,20 @@ export const TestAuditTrailDrawer: React.FC<TestAuditTrailDrawerProps> = ({
               <History className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-black tracking-tight">Trilha de Auditoria & Rastreabilidade Imutável</h2>
+              <h2 className="text-base font-black tracking-tight">
+                {l("Trilha de Auditoria e Rastreabilidade Imutável", "Audit Trail & Immutable Traceability")}
+              </h2>
               <p className="text-xs text-neutral-500">
-                Bateria {battery.id} • {auditTrail.length} Registros Auditados
+                {l(
+                  `Bateria ${battery.id} • ${auditTrail.length} Registros Auditados`,
+                  `Battery ${battery.id} • ${auditTrail.length} Audited Records`
+                )}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
+            aria-label={l("Fechar painel de auditoria", "Close audit drawer")}
             className="p-2 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
           >
             <X className="w-5 h-5" />
@@ -78,7 +109,10 @@ export const TestAuditTrailDrawer: React.FC<TestAuditTrailDrawerProps> = ({
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por ID do teste, responsável, transação ou descrição..."
+              placeholder={l(
+                "Buscar por ID do teste, responsável, transação ou descrição...",
+                "Search by test ID, assignee, transaction, or description..."
+              )}
               className={`w-full text-xs pl-9 pr-3 py-2 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
                 darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-white border-neutral-300 text-neutral-900"
               }`}
@@ -98,16 +132,16 @@ export const TestAuditTrailDrawer: React.FC<TestAuditTrailDrawerProps> = ({
                   }`}
                 >
                   {type === "ALL"
-                    ? "Todos"
+                    ? l("Todos", "All")
                     : type === "UPDATE_STATUS"
-                    ? "Status"
+                    ? l("Situação", "Status")
                     : type === "UPDATE_DETAILS"
-                    ? "Evidências"
+                    ? l("Evidências", "Evidence")
                     : type === "ASSIGN_TESTER"
-                    ? "Atribuição"
+                    ? l("Atribuição", "Assignment")
                     : type === "ADD_PARTICIPANT"
-                    ? "Participantes"
-                    : "Distribuição"}
+                    ? l("Participantes", "Participants")
+                    : l("Distribuição", "Distribution")}
                 </button>
               )
             )}
@@ -119,7 +153,12 @@ export const TestAuditTrailDrawer: React.FC<TestAuditTrailDrawerProps> = ({
           {filteredLogs.length === 0 ? (
             <div className="text-center py-12 text-neutral-400">
               <Shield className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p>Nenhum registro de auditoria localizado com os filtros atuais.</p>
+              <p>
+                {l(
+                  "Nenhum registro de auditoria localizado com os filtros atuais.",
+                  "No audit records found matching the current filters."
+                )}
+              </p>
             </div>
           ) : (
             filteredLogs.map((log) => (
@@ -132,7 +171,7 @@ export const TestAuditTrailDrawer: React.FC<TestAuditTrailDrawerProps> = ({
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-[10px] uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                      {log.changeType}
+                      {translateChangeType(log.changeType)}
                     </span>
                     {log.testId && (
                       <span className="font-mono font-bold text-neutral-700 dark:text-neutral-300 text-[11px]">
@@ -142,7 +181,7 @@ export const TestAuditTrailDrawer: React.FC<TestAuditTrailDrawerProps> = ({
                   </div>
                   <span className="text-[10px] text-neutral-500 font-mono flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    {new Date(log.changedAt).toLocaleString("pt-BR")}
+                    {new Date(log.changedAt).toLocaleString(locale)}
                   </span>
                 </div>
 
@@ -151,9 +190,9 @@ export const TestAuditTrailDrawer: React.FC<TestAuditTrailDrawerProps> = ({
                 {/* De-Para Diff Badge */}
                 {(log.oldValue || log.newValue) && (
                   <div className="p-2 rounded-lg bg-neutral-200/60 dark:bg-neutral-700/60 flex items-center gap-2 text-[11px] font-mono">
-                    <span className="text-neutral-500 line-through">{log.oldValue || "Vazio"}</span>
+                    <span className="text-neutral-500 line-through">{log.oldValue || l("Vazio", "Empty")}</span>
                     <ArrowRight className="w-3 h-3 text-neutral-400 shrink-0" />
-                    <span className="font-bold text-emerald-600 dark:text-emerald-400">{log.newValue || "Atual"}</span>
+                    <span className="font-bold text-emerald-600 dark:text-emerald-400">{log.newValue || l("Atual", "Current")}</span>
                   </div>
                 )}
 

@@ -3,7 +3,17 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { useApp } from "../context/AppContext";
 import { useRouter } from "../context/RouterContext";
-import { getLocaleForLanguage, translateUserRole } from "../lib/i18n";
+import {
+  getLocaleForLanguage,
+  localize,
+  translateUserRole,
+  translateCategory,
+  translateColor,
+  translateItemStatus,
+  translateCampusLocation,
+  translateClaimStatus,
+  translateActivityAction,
+} from "../lib/i18n";
 import { formatDate, formatDateTime, safeParseDate, triggerVibration, vibrateClick, vibrateSuccess, vibrateWarning, vibrateCritical, safeToLower, safeIncludes, sanitizeQuery } from "../lib/utils";
 import { UserRole, User, AccountStatus, ActivityLog, BackupScheduleConfig, ItemClaim } from "../types";
 import { AppUptimeMonitor } from "./AppUptimeMonitor";
@@ -152,6 +162,8 @@ export const DashboardView: React.FC = () => {
   } = useApp();
 
   const { navigate } = useRouter();
+  const l = (pt: string, en: string) => localize(language, pt, en);
+  const locale = getLocaleForLanguage(language);
 
   // Notification Modal State (Admin to Student)
   const [notifyModalUser, setNotifyModalUser] = useState<any | null>(null);
@@ -288,9 +300,14 @@ export const DashboardView: React.FC = () => {
     setNotifyModalUser(targetUser);
     setIsBroadcastNotification(false);
     setNotifyRelatedItemId(it.id);
-    setNotifyTitle(`Atualização sobre seu item: ${it.title}`);
+    setNotifyTitle(
+      l(`Atualização sobre seu item: ${it.title}`, `Update about your item: ${it.title}`)
+    );
     setNotifyMessage(
-      `Olá, ${targetUser.name}! Há uma atualização referente ao seu objeto "${it.title}" registrado no Achados e Perdidos do IFPR Campus Ivaiporã.`
+      l(
+        `Olá, ${targetUser.name}! Há uma atualização referente ao seu objeto "${it.title}" registrado no Achados e Perdidos do IFPR Campus Ivaiporã.`,
+        `Hello, ${targetUser.name}! There is an update regarding your item "${it.title}" registered in IFPR Ivaiporã Campus Lost & Found.`
+      )
     );
   };
 
@@ -397,7 +414,10 @@ export const DashboardView: React.FC = () => {
 
   const handleSaveCustomMsg = async () => {
     if (!customMsgInput.trim()) {
-      addToast("Digite uma mensagem válida para o modo de manutenção.", "error");
+      addToast(
+        l("Digite uma mensagem válida para o modo de manutenção.", "Enter a valid message for maintenance mode."),
+        "error"
+      );
       return;
     }
     await updateMaintenanceCustomMessage(customMsgInput);
@@ -480,7 +500,7 @@ export const DashboardView: React.FC = () => {
     try {
       await executeFirestoreBackupNow("MANUAL");
     } catch (e) {
-      addToast("Erro ao executar backup do Firestore.", "error");
+      addToast(l("Erro ao executar cópia de segurança do Firestore.", "Error executing Firestore backup."), "error");
     } finally {
       setIsExecutingBackup(false);
     }
@@ -512,7 +532,7 @@ export const DashboardView: React.FC = () => {
   const handleAddUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUserName.trim() || !newUserEmail.trim()) {
-      addToast("Preencha o nome e o e-mail do novo usuário.", "error");
+      addToast(l("Preencha o nome e o e-mail do novo usuário.", "Fill in the new user's name and email."), "error");
       return;
     }
 
@@ -576,7 +596,10 @@ export const DashboardView: React.FC = () => {
   const handleSendAdminNotification = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!notifyTitle.trim() || !notifyMessage.trim()) {
-      addToast("Preencha o título e o conteúdo da notificação.", "error");
+      addToast(
+        l("Preencha o título e o conteúdo da notificação.", "Fill in the notification title and message."),
+        "error"
+      );
       return;
     }
     setIsSendingNotif(true);
@@ -592,7 +615,13 @@ export const DashboardView: React.FC = () => {
           );
         }
         vibrateSuccess();
-        addToast(`Notificação enviada em massa para ${studentUsers.length} alunos!`, "success");
+        addToast(
+          l(
+            `Notificação enviada em massa para ${studentUsers.length} alunos!`,
+            `Notification broadcast to ${studentUsers.length} students!`
+          ),
+          "success"
+        );
       } else if (notifyModalUser) {
         await sendNotificationToUser(
           notifyModalUser.id,
@@ -601,7 +630,10 @@ export const DashboardView: React.FC = () => {
           notifyRelatedItemId || undefined
         );
         vibrateSuccess();
-        addToast(`Notificação enviada para ${notifyModalUser.name}!`, "success");
+        addToast(
+          l(`Notificação enviada para ${notifyModalUser.name}!`, `Notification sent to ${notifyModalUser.name}!`),
+          "success"
+        );
       }
       setNotifyModalUser(null);
       setIsBroadcastNotification(false);
@@ -610,7 +642,7 @@ export const DashboardView: React.FC = () => {
       setNotifyRelatedItemId("");
     } catch (err: any) {
       vibrateCritical();
-      addToast("Erro ao enviar notificação para o aluno.", "error");
+      addToast(l("Erro ao enviar notificação para o aluno.", "Error sending notification to the student."), "error");
     } finally {
       setIsSendingNotif(false);
     }
@@ -626,7 +658,10 @@ export const DashboardView: React.FC = () => {
   const pendingClaimsCount = claims.filter((c) => c.status === "PENDENTE").length;
 
   // Dynamic Chart 1 Data: Monthly Lost vs Found vs Concluded Returned Trend (Fetched from Firestore)
-  const monthNames = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  const monthNames =
+    language === "en"
+      ? ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+      : ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
   const now = new Date();
   const last6Months = [];
 
@@ -712,10 +747,13 @@ export const DashboardView: React.FC = () => {
       pendingByCat[it.category] = (pendingByCat[it.category] || 0) + 1;
     });
 
-  const barPendingData = Object.keys(pendingByCat).map((cat) => ({
-    category: cat.length > 15 ? cat.substring(0, 15) + "..." : cat,
-    pendentes: pendingByCat[cat],
-  }));
+  const barPendingData = Object.keys(pendingByCat).map((cat) => {
+    const label = translateCategory(cat, language);
+    return {
+      category: label.length > 15 ? label.substring(0, 15) + "..." : label,
+      pendentes: pendingByCat[cat],
+    };
+  });
 
   // Filtered & Priority-Sorted Items for Admin Management Table
   const filteredTableItems = useMemo(
@@ -734,11 +772,14 @@ export const DashboardView: React.FC = () => {
 
   // Export CSV Helper
   const handleExportCSV = () => {
-    const headers = "ID,Titulo,Categoria,Tipo,Status,Local,Data,CadastradoPor,Contato\n";
+    const headers = l(
+      "ID,Titulo,Categoria,Tipo,Situacao,Local,Data,CadastradoPor,Contato\n",
+      "ID,Title,Category,Type,Status,Location,Date,RegisteredBy,Contact\n"
+    );
     const rows = items
       .map(
         (i) =>
-          `"${i.id}","${i.title}","${i.category}","${i.type}","${i.status}","${i.location}","${i.date}","${i.registeredByName}","${i.contactInfo}"`
+          `"${i.id}","${i.title}","${translateCategory(i.category, language)}","${translateItemStatus(i.type, language)}","${translateItemStatus(i.status, language)}","${translateCampusLocation(i.location, language)}","${i.date}","${i.registeredByName}","${i.contactInfo}"`
       )
       .join("\n");
 
@@ -746,11 +787,17 @@ export const DashboardView: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", `relatorio_achados_perdidos_ifpr_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.setAttribute(
+      "download",
+      `${l("relatorio_achados_perdidos_ifpr", "ifpr_lost_and_found_report")}_${new Date().toISOString().slice(0, 10)}.csv`
+    );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    addToast("Relatório CSV gerado e baixado com sucesso!", "success");
+    addToast(
+      l("Relatório CSV gerado e baixado com sucesso!", "CSV report generated and downloaded successfully!"),
+      "success"
+    );
   };
 
   // Export PDF with Pending Items (jsPDF & autoTable)
@@ -773,23 +820,37 @@ export const DashboardView: React.FC = () => {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(13);
     doc.setFont("helvetica", "bold");
-    doc.text("INSTITUTO FEDERAL DO PARANÁ - CAMPUS IVAIPORÃ", 14, 12);
+    doc.text(l("INSTITUTO FEDERAL DO PARANÁ - CAMPUS IVAIPORÃ", "FEDERAL INSTITUTE OF PARANÁ - IVAIPORÃ CAMPUS"), 14, 12);
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.text("Sistema Achados e Perdidos • Relatório Oficial de Objetos Pendentes", 14, 19);
+    doc.text(
+      l(
+        "Sistema Achados e Perdidos • Relatório Oficial de Objetos Pendentes",
+        "Lost & Found System • Official Pending Items Report"
+      ),
+      14,
+      19
+    );
 
     // Document Metadata
     doc.setTextColor(30, 30, 30);
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text("LISTAGEM OFICIAL DE OBJETOS PENDENTES NO ACERVO", 14, 38);
+    doc.text(l("LISTAGEM OFICIAL DE OBJETOS PENDENTES NO ACERVO", "OFFICIAL LIST OF PENDING CATALOG ITEMS"), 14, 38);
 
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.text(`Data de Emissão: ${new Date().toLocaleString("pt-BR")}`, 14, 44);
-    doc.text(`Emitido por: ${currentUser.name} (${currentUser.role} • ${currentUser.email})`, 14, 49);
+    doc.text(`${l("Data de Emissão:", "Issue Date:")} ${new Date().toLocaleString(locale)}`, 14, 44);
     doc.text(
-      `Total de Itens Pendentes: ${pendingItems.length} | Perdidos: ${pendingItems.filter((i) => i.type === "PERDIDO").length} | Encontrados: ${pendingItems.filter((i) => i.type === "ENCONTRADO").length} | Em Análise: ${pendingItems.filter((i) => i.status === "EM_ANALISE").length}`,
+      `${l("Emitido por:", "Issued by:")} ${currentUser.name} (${translateUserRole(currentUser.role, language)} • ${currentUser.email})`,
+      14,
+      49
+    );
+    doc.text(
+      l(
+        `Total de Itens Pendentes: ${pendingItems.length} | Perdidos: ${pendingItems.filter((i) => i.type === "PERDIDO").length} | Encontrados: ${pendingItems.filter((i) => i.type === "ENCONTRADO").length} | Em Análise: ${pendingItems.filter((i) => i.status === "EM_ANALISE").length}`,
+        `Total Pending Items: ${pendingItems.length} | Lost: ${pendingItems.filter((i) => i.type === "PERDIDO").length} | Found: ${pendingItems.filter((i) => i.type === "ENCONTRADO").length} | Under Review: ${pendingItems.filter((i) => i.status === "EM_ANALISE").length}`
+      ),
       14,
       54
     );
@@ -797,17 +858,28 @@ export const DashboardView: React.FC = () => {
     const tableRows = pendingItems.map((item) => [
       item.id,
       item.title,
-      item.category,
-      item.type,
-      item.location,
+      translateCategory(item.category, language),
+      translateItemStatus(item.type, language),
+      translateCampusLocation(item.location, language),
       formatDate(item.date),
-      item.status,
-      item.registeredByName || "Não informado",
+      translateItemStatus(item.status, language),
+      item.registeredByName || l("Não informado", "Not informed"),
     ]);
 
     autoTable(doc, {
       startY: 59,
-      head: [["ID / QR", "Título do Objeto", "Categoria", "Tipo", "Local Encontrado/Perdido", "Data Registro", "Status", "Registrado Por"]],
+      head: [
+        [
+          "ID / QR",
+          l("Título do Objeto", "Item Title"),
+          l("Categoria", "Category"),
+          l("Tipo", "Type"),
+          l("Local Encontrado/Perdido", "Location Found/Lost"),
+          l("Data Registro", "Reg. Date"),
+          l("Situação", "Status"),
+          l("Registrado Por", "Registered By"),
+        ],
+      ],
       body: tableRows,
       headStyles: { fillColor: [22, 132, 91], textColor: [255, 255, 255], fontStyle: "bold" },
       styles: { fontSize: 7.5, cellPadding: 2 },
@@ -829,15 +901,21 @@ export const DashboardView: React.FC = () => {
       doc.setFontSize(7);
       doc.setTextColor(130, 130, 130);
       doc.text(
-        `IFPR Campus Ivaiporã • Achados & Perdidos Oficial • Página ${i} de ${totalPages} • Documento gerado em ${new Date().toLocaleDateString("pt-BR")}`,
+        l(
+          `IFPR Campus Ivaiporã • Achados e Perdidos Oficial • Página ${i} de ${totalPages} • Documento gerado em ${new Date().toLocaleDateString(locale)}`,
+          `IFPR Ivaiporã Campus • Official Lost & Found • Page ${i} of ${totalPages} • Generated on ${new Date().toLocaleDateString(locale)}`
+        ),
         14,
         287
       );
     }
 
-    doc.save(`Relatorio_Objetos_Pendentes_IFPR_${new Date().toISOString().slice(0, 10)}.pdf`);
+    doc.save(`${l("Relatorio_Objetos_Pendentes_IFPR", "IFPR_Pending_Items_Report")}_${new Date().toISOString().slice(0, 10)}.pdf`);
     vibrateSuccess();
-    addToast("Relatório de Objetos Pendentes exportado em PDF com sucesso!", "success");
+    addToast(
+      l("Relatório de Objetos Pendentes exportado em PDF com sucesso!", "Pending Items PDF report exported successfully!"),
+      "success"
+    );
   };
 
   // Export PDF Audit Helper (jsPDF & autoTable)
@@ -874,32 +952,46 @@ export const DashboardView: React.FC = () => {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(13);
     doc.setFont("helvetica", "bold");
-    doc.text("INSTITUTO FEDERAL DO PARANÁ - CAMPUS IVAIPORÃ", 14, 12);
+    doc.text(l("INSTITUTO FEDERAL DO PARANÁ - CAMPUS IVAIPORÃ", "FEDERAL INSTITUTE OF PARANÁ - IVAIPORÃ CAMPUS"), 14, 12);
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.text("Sistema Achados e Perdidos • Relatório Oficial de Auditoria do Sistema", 14, 18);
+    doc.text(
+      l(
+        "Sistema Achados e Perdidos • Relatório Oficial de Auditoria do Sistema",
+        "Lost & Found System • Official System Audit Report"
+      ),
+      14,
+      18
+    );
 
     doc.setTextColor(30, 30, 30);
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text("RELATÓRIO DE AUDITORIA E LOGS DE ATIVIDADE", 14, 34);
+    doc.text(l("RELATÓRIO DE AUDITORIA E REGISTROS DE ATIVIDADE", "AUDIT REPORT & ACTIVITY LOGS"), 14, 34);
 
     doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    doc.text(`Data de Emissão: ${new Date().toLocaleString("pt-BR")}`, 14, 40);
-    doc.text(`Administrador Responsável: ${currentUser.name} (${currentUser.email})`, 14, 45);
-    doc.text(`Filtro Ação: ${logFilterAction} | Data Início: ${logStartDate || "Livre"} | Data Fim: ${logEndDate || "Livre"} | Total Registros: ${filteredLogs.length}`, 14, 50);
+    doc.text(`${l("Data de Emissão:", "Issue Date:")} ${new Date().toLocaleString(locale)}`, 14, 40);
+    doc.text(`${l("Administrador Responsável:", "Responsible Admin:")} ${currentUser.name} (${currentUser.email})`, 14, 45);
+    doc.text(
+      l(
+        `Filtro Ação: ${logFilterAction} | Data Início: ${logStartDate || "Livre"} | Data Fim: ${logEndDate || "Livre"} | Total Registros: ${filteredLogs.length}`,
+        `Action Filter: ${logFilterAction} | Start Date: ${logStartDate || "Any"} | End Date: ${logEndDate || "Any"} | Total Records: ${filteredLogs.length}`
+      ),
+      14,
+      50
+    );
 
     const tableRows = filteredLogs.map((log) => [
       formatDate(log.timestamp),
       log.adminName,
-      log.action,
+      translateActivityAction(log.action, language),
       log.details,
     ]);
 
     autoTable(doc, {
       startY: 55,
-      head: [["Data e Hora", "Responsável", "Operação", "Detalhes da Operação"]],
+      head: [[l("Data e Hora", "Date & Time"), l("Responsável", "Responsible"), l("Operação", "Operation"), l("Detalhes da Operação", "Operation Details")]],
       body: tableRows,
       headStyles: { fillColor: [22, 132, 91], textColor: [255, 255, 255], fontStyle: "bold" },
       styles: { fontSize: 8, cellPadding: 2.5 },
@@ -916,11 +1008,18 @@ export const DashboardView: React.FC = () => {
       doc.setPage(i);
       doc.setFontSize(7);
       doc.setTextColor(130, 130, 130);
-      doc.text(`IFPR Achados e Perdidos • Documento para fins de auditoria e transparência pública • Página ${i} de ${totalPages}`, 14, 287);
+      doc.text(
+        l(
+          `IFPR Achados e Perdidos • Documento para fins de auditoria e transparência pública • Página ${i} de ${totalPages}`,
+          `IFPR Lost & Found • Public transparency and audit document • Page ${i} of ${totalPages}`
+        ),
+        14,
+        287
+      );
     }
 
-    doc.save(`Auditoria_IFPR_${new Date().toISOString().slice(0, 10)}.pdf`);
-    addToast("Relatório de Auditoria exportado em PDF!", "success");
+    doc.save(`${l("Auditoria_IFPR", "IFPR_Audit")}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    addToast(l("Relatório de Auditoria exportado em PDF!", "Audit Report exported to PDF!"), "success");
   };
 
   // Export JSON Monitoring and Error Logs Helper (API: /api/monitoring/export-logs)
@@ -950,16 +1049,25 @@ export const DashboardView: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `relatorio_monitoramento_ifpr_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `${l("relatorio_monitoramento_ifpr", "ifpr_monitoring_report")}_${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       vibrateSuccess();
-      addToast("Relatório JSON com logs de desempenho e erros baixado com sucesso!", "success");
+      addToast(
+        l(
+          "Relatório JSON com registros de desempenho e erros baixado com sucesso!",
+          "JSON report with performance and error logs downloaded successfully!"
+        ),
+        "success"
+      );
     } catch (err: any) {
       vibrateCritical();
-      addToast("Erro ao baixar relatório de logs de monitoramento.", "error");
+      addToast(
+        l("Erro ao baixar relatório de registros de monitoramento.", "Error downloading monitoring logs report."),
+        "error"
+      );
     } finally {
       setIsExportingMonitoringJSON(false);
     }
@@ -970,32 +1078,55 @@ export const DashboardView: React.FC = () => {
     vibrateClick();
     try {
       if (items.length === 0) {
-        addToast("Nenhum item disponível para exportação em CSV.", "info");
+        addToast(l("Nenhum item disponível para exportação em CSV.", "No items available for CSV export."), "info");
         return;
       }
 
-      const headers = [
-        "ID_Sistema",
-        "Codigo_QR",
-        "Titulo",
-        "Categoria",
-        "Tipo",
-        "Status",
-        "Local_Campus",
-        "Cor",
-        "Marca",
-        "Data_Ocorrencia",
-        "Data_Cadastro",
-        "Cadastrado_Por",
-        "Papel_Cadastrador",
-        "Devolvido_Para",
-        "Email_Destinatario",
-        "Vinculo_Destinatario",
-        "Data_Devolucao",
-        "Responsavel_Devolucao",
-        "Descricao",
-        "Observacoes_Devolucao"
-      ];
+      const headers = language === "en"
+        ? [
+            "System_ID",
+            "QR_Code",
+            "Title",
+            "Category",
+            "Type",
+            "Status",
+            "Campus_Location",
+            "Color",
+            "Brand",
+            "Incident_Date",
+            "Registration_Date",
+            "Registered_By",
+            "Registrant_Role",
+            "Returned_To",
+            "Recipient_Email",
+            "Recipient_Affiliation",
+            "Return_Date",
+            "Returned_By",
+            "Description",
+            "Return_Observations",
+          ]
+        : [
+            "ID_Sistema",
+            "Codigo_QR",
+            "Titulo",
+            "Categoria",
+            "Tipo",
+            "Situacao",
+            "Local_Campus",
+            "Cor",
+            "Marca",
+            "Data_Ocorrencia",
+            "Data_Cadastro",
+            "Cadastrado_Por",
+            "Funcao_Cadastrador",
+            "Devolvido_Para",
+            "Email_Destinatario",
+            "Vinculo_Destinatario",
+            "Data_Devolucao",
+            "Responsavel_Devolucao",
+            "Descricao",
+            "Observacoes_Devolucao",
+          ];
 
       const escapeCSV = (str: string | undefined | null) => {
         if (!str) return '""';
@@ -1007,16 +1138,16 @@ export const DashboardView: React.FC = () => {
         escapeCSV(item.id),
         escapeCSV(item.qrCodeId),
         escapeCSV(item.title),
-        escapeCSV(item.category),
-        escapeCSV(item.type),
-        escapeCSV(item.status),
-        escapeCSV(item.location),
-        escapeCSV(item.color),
+        escapeCSV(translateCategory(item.category, language)),
+        escapeCSV(translateItemStatus(item.type, language)),
+        escapeCSV(translateItemStatus(item.status, language)),
+        escapeCSV(translateCampusLocation(item.location, language)),
+        escapeCSV(item.color ? translateColor(item.color, language) : ""),
         escapeCSV(item.brand),
         escapeCSV(item.date),
         escapeCSV(item.createdAt),
         escapeCSV(item.registeredByName),
-        escapeCSV(item.registeredByRole),
+        escapeCSV(translateUserRole(item.registeredByRole, language)),
         escapeCSV(item.recipientName || ""),
         escapeCSV(item.recipientEmail || ""),
         escapeCSV(item.recipientBond || ""),
@@ -1032,16 +1163,19 @@ export const DashboardView: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `relatorio_secretaria_itens_ifpr_${new Date().toISOString().slice(0, 10)}.csv`;
+      link.download = `${l("relatorio_secretaria_itens_ifpr", "ifpr_secretariat_items_report")}_${new Date().toISOString().slice(0, 10)}.csv`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       vibrateSuccess();
-      addToast("Listagem completa exportada em formato CSV com sucesso!", "success");
+      addToast(
+        l("Listagem completa exportada em formato CSV com sucesso!", "Complete listing exported to CSV successfully!"),
+        "success"
+      );
     } catch (err: any) {
       vibrateCritical();
-      addToast("Erro ao exportar arquivo CSV.", "error");
+      addToast(l("Erro ao exportar arquivo CSV.", "Error exporting CSV file."), "error");
     }
   };
 
@@ -1145,8 +1279,8 @@ export const DashboardView: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleExportItemsCSV}
-                  aria-label="Exportar relatório completo de itens em CSV"
-                  title="Download do Relatório Completo de Achados & Perdidos (CSV)"
+                  aria-label={l("Exportar relatório completo de itens em CSV", "Export complete items report in CSV")}
+                  title={l("Baixar Relatório Completo de Achados e Perdidos (CSV)", "Download Complete Lost & Found Report (CSV)")}
                   className="min-h-[36px] px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5 text-[#16845B]" />
@@ -1162,49 +1296,49 @@ export const DashboardView: React.FC = () => {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 pt-3 border-t border-slate-100 dark:border-slate-800/80">
             <div className="space-y-0.5">
               <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-                Objetos no Acervo
+                {l("Objetos no Acervo", "Catalog Items")}
               </span>
               <p className="text-xl sm:text-2xl font-bold text-[#0F172A] dark:text-white tracking-tight tabular-nums">
                 {totalItems}
               </p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
-                {foundCount} encontrados · {lostCount} perdidos
+                {foundCount} {l("encontrados", "found")} · {lostCount} {l("perdidos", "lost")}
               </p>
             </div>
 
             <div className="space-y-0.5">
               <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-                Em Custódia / Análise
+                {l("Em Custódia / Análise", "In Custody / Review")}
               </span>
               <p className="text-xl sm:text-2xl font-bold text-amber-600 dark:text-amber-400 tracking-tight tabular-nums">
                 {inAnalysisCount}
               </p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
-                {pendingClaimsCount} solicitações pendentes
+                {pendingClaimsCount} {l("solicitações pendentes", "pending claims")}
               </p>
             </div>
 
             <div className="space-y-0.5">
               <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-                Devoluções Concluídas
+                {l("Devoluções Concluídas", "Completed Returns")}
               </span>
               <p className="text-xl sm:text-2xl font-bold text-sky-600 dark:text-sky-400 tracking-tight tabular-nums">
                 {returnedCount}
               </p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
-                {registeredReturnsCount} reg. · {pendingRemoteSignaturesCount} pend. remota · {dualSignedReturnsCount} dupla
+                {registeredReturnsCount} {l("reg.", "rec.")} · {pendingRemoteSignaturesCount} {l("pend. remota", "pend. remote")} · {dualSignedReturnsCount} {l("dupla", "dual")}
               </p>
             </div>
 
             <div className="space-y-0.5">
               <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">
-                Taxa de Restituição
+                {l("Taxa de Restituição", "Return Rate")}
               </span>
               <p className="text-xl sm:text-2xl font-bold text-[#16845B] dark:text-emerald-400 tracking-tight tabular-nums">
                 {successRate}%
               </p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 tabular-nums">
-                {pendingStaffAttestationCount} aguardando servidor
+                {pendingStaffAttestationCount} {l("aguardando servidor", "awaiting staff")}
               </p>
             </div>
           </div>
@@ -1221,28 +1355,28 @@ export const DashboardView: React.FC = () => {
               <p className="text-xl sm:text-2xl font-bold text-[#0F172A] dark:text-white tabular-nums">
                 {items.filter((i) => i.registeredByUserId === currentUser.id).length}
               </p>
-              <p className="text-[11px] text-slate-500">Minhas ocorrências</p>
+              <p className="text-[11px] text-slate-500">{l("Minhas ocorrências", "My records")}</p>
             </div>
 
             <div>
               <p className="text-xl sm:text-2xl font-bold text-[#0F172A] dark:text-white tabular-nums">
                 {claims.filter((c) => c.claimerId === currentUser.id).length}
               </p>
-              <p className="text-[11px] text-slate-500">Solicitações</p>
+              <p className="text-[11px] text-slate-500">{l("Solicitações", "Claims")}</p>
             </div>
 
             <div>
               <p className="text-xl sm:text-2xl font-bold text-[#16845B] tabular-nums">
                 {currentUser.reputationScore || 10} pts
               </p>
-              <p className="text-[11px] text-slate-500">Cidadania</p>
+              <p className="text-[11px] text-slate-500">{l("Cidadania", "Citizenship")}</p>
             </div>
           </div>
 
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <h2 className="text-sm font-bold text-[#0F172A] dark:text-white">
-                Seus Objetos e Ocorrências Vinculadas
+                {l("Seus Objetos e Ocorrências Vinculadas", "Your Linked Items & Records")}
               </h2>
               {((currentUser.role === "SERVIDOR" && currentUser.approvalStatus === "APROVADO") ||
                 currentUser.role === "ADMIN") && (
@@ -1256,7 +1390,7 @@ export const DashboardView: React.FC = () => {
                   }}
                   className="min-h-[38px] px-3.5 py-1.5 rounded-lg bg-[#16845B] text-white text-xs font-semibold hover:bg-[#126B49] transition-colors cursor-pointer"
                 >
-                  + Registrar Objeto
+                  + {l("Registrar Objeto", "Register Item")}
                 </button>
               )}
             </div>
@@ -1265,7 +1399,7 @@ export const DashboardView: React.FC = () => {
             <div className="md:hidden divide-y divide-slate-200/80 dark:divide-slate-800 border-y border-slate-200/80 dark:border-slate-800">
               {items.filter((i) => i.registeredByUserId === currentUser.id).length === 0 ? (
                 <p className="py-8 text-center text-xs text-slate-500">
-                  Você ainda não cadastrou nenhum objeto.
+                  {l("Você ainda não cadastrou nenhum objeto.", "You have not registered any items yet.")}
                 </p>
               ) : (
                 items
@@ -1277,14 +1411,14 @@ export const DashboardView: React.FC = () => {
                           {item.title}
                         </p>
                         <p className="text-[11px] text-slate-500">
-                          {item.type} · {item.status} · {formatDate(item.date)}
+                          {translateItemStatus(item.type, language)} · {translateItemStatus(item.status, language)} · {formatDate(item.date)}
                         </p>
                       </div>
                       <button
                         onClick={() => setSelectedItemForDetail(item)}
                         className="min-h-[36px] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 shrink-0 cursor-pointer"
                       >
-                        Detalhes
+                        {l("Detalhes", "Details")}
                       </button>
                     </div>
                   ))
@@ -1296,19 +1430,19 @@ export const DashboardView: React.FC = () => {
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#F8FAFC] dark:bg-slate-800 text-slate-500 uppercase font-bold text-[10px] border-b border-slate-200 dark:border-slate-800">
                   <tr>
-                    <th className="p-3.5">Objeto</th>
-                    <th className="p-3.5">Categoria</th>
-                    <th className="p-3.5">Tipo</th>
-                    <th className="p-3.5">Status</th>
-                    <th className="p-3.5">Data</th>
-                    <th className="p-3.5 text-right">Ação</th>
+                    <th className="p-3.5">{l("Objeto", "Item")}</th>
+                    <th className="p-3.5">{l("Categoria", "Category")}</th>
+                    <th className="p-3.5">{l("Tipo", "Type")}</th>
+                    <th className="p-3.5">{l("Situação", "Status")}</th>
+                    <th className="p-3.5">{l("Data", "Date")}</th>
+                    <th className="p-3.5 text-right">{l("Ação", "Action")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {items.filter((i) => i.registeredByUserId === currentUser.id).length === 0 ? (
                     <tr>
                       <td colSpan={6} className="text-center py-8 text-slate-400">
-                        Você ainda não cadastrou nenhum objeto.
+                        {l("Você ainda não cadastrou nenhum objeto.", "You have not registered any items yet.")}
                       </td>
                     </tr>
                   ) : (
@@ -1317,20 +1451,20 @@ export const DashboardView: React.FC = () => {
                       .map((item) => (
                         <tr key={item.id} className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/50">
                           <td className="p-3.5 font-bold text-[#172B2A] dark:text-white">{item.title}</td>
-                          <td className="p-3.5">{item.category}</td>
+                          <td className="p-3.5">{translateCategory(item.category, language)}</td>
                           <td className="p-3.5">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap shrink-0 ${item.type === "PERDIDO" ? "bg-rose-500/10 text-rose-600" : "bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#16845B] dark:text-emerald-400"}`}>
-                              {item.type}
+                              {translateItemStatus(item.type, language)}
                             </span>
                           </td>
-                          <td className="p-3.5 font-bold">{item.status}</td>
+                          <td className="p-3.5 font-bold">{translateItemStatus(item.status, language)}</td>
                           <td className="p-3.5 text-slate-500 tabular-nums">{formatDate(item.date)}</td>
                           <td className="p-3.5 text-right">
                             <button
                               onClick={() => setSelectedItemForDetail(item)}
                               className="px-3 py-1.5 rounded-lg bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-[#16845B] hover:text-white hover:border-[#16845B] text-[11px] font-bold transition-colors cursor-pointer"
                             >
-                              Ver Detalhes
+                              {l("Ver Detalhes", "View Details")}
                             </button>
                           </td>
                         </tr>
@@ -1354,10 +1488,18 @@ export const DashboardView: React.FC = () => {
               <Lock className="w-5 h-5 text-rose-500 mx-auto" />
               <div className="space-y-1">
                 <h3 className="text-sm font-bold text-[#0F172A] dark:text-white">
-                  Acesso Restrito
+                  {l("Acesso Restrito", "Restricted Access")}
                 </h3>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  Sua conta atual ({currentUser.email}) possui permissão de <strong>{currentUser.role}</strong>. Apenas servidores e administradores autenticados podem acessar o módulo de custódia e assinaturas.
+                  {l(
+                    `Sua conta atual (${currentUser.email}) possui permissão de `,
+                    `Your current account (${currentUser.email}) has the `
+                  )}
+                  <strong>{translateUserRole(currentUser.role, language)}</strong>
+                  {l(
+                    ". Apenas servidores e administradores autenticados podem acessar o módulo de custódia e assinaturas.",
+                    " role. Only authenticated staff and administrators can access the custody and signatures module."
+                  )}
                 </p>
               </div>
             </div>
@@ -1367,8 +1509,8 @@ export const DashboardView: React.FC = () => {
               <aside
                 aria-label={
                   activeDashboardRole === "SERVIDOR"
-                    ? "Navegação do Painel do Servidor"
-                    : "Navegação do Painel Administrativo"
+                    ? l("Navegação do Painel do Servidor", "Staff Panel Navigation")
+                    : l("Navegação do Painel Administrativo", "Administrative Panel Navigation")
                 }
                 className="w-full lg:w-56 shrink-0 lg:sticky lg:top-18 lg:pr-4 lg:border-r border-slate-200/80 dark:border-slate-800"
               >
@@ -1446,27 +1588,27 @@ export const DashboardView: React.FC = () => {
                     {/* Mobile Single Horizontal Strip for Admin Tabs */}
                     <nav className="flex lg:hidden gap-1 overflow-x-auto no-scrollbar pb-2 border-b border-slate-200/80 dark:border-slate-800">
                       {[
-                        { id: "users", label: "Usuários & Objetos", badge: allUsers.length },
-                        { id: "accounts", label: "Contas", badge: 0 },
+                        { id: "users", label: l("Usuários & Objetos", "Users & Items"), badge: allUsers.length },
+                        { id: "accounts", label: l("Contas", "Accounts"), badge: 0 },
                         {
                           id: "approvals",
-                          label: "Aprovações",
+                          label: l("Aprovações", "Approvals"),
                           badge: (allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length,
                         },
-                        { id: "claims", label: "Solicitações", badge: pendingClaimsCount },
-                        { id: "pending_signatures", label: "Assinaturas", badge: pendingSignaturesCount },
-                        { id: "custody_reminders", label: "Prazos +90d", badge: itemsOver90DaysCount },
-                        { id: "digital_returns", label: "Devoluções D3", badge: digitalReturnedItemsCount },
-                        { id: "server_overview", label: "Guarita", badge: inAnalysisCount },
-                        { id: "audit", label: "Auditoria", badge: 0 },
-                        { id: "health", label: "Saúde", badge: 0 },
-                        { id: "backups", label: "Backups", badge: 0 },
-                        { id: "server_analytics", label: "Relatórios", badge: 0 },
-                        { id: "documents", label: "PDFs", badge: 0 },
-                        { id: "project_settings", label: "Configurações", badge: 0 },
-                        { id: "test_batteries", label: "QA", badge: 0 },
-                        { id: "test_distribution", label: "Distribuição QA", badge: 0 },
-                        { id: "versions", label: "Versões", badge: 0 },
+                        { id: "claims", label: l("Solicitações", "Claims"), badge: pendingClaimsCount },
+                        { id: "pending_signatures", label: l("Assinaturas", "Signatures"), badge: pendingSignaturesCount },
+                        { id: "custody_reminders", label: l("Prazos +90d", "Deadlines +90d"), badge: itemsOver90DaysCount },
+                        { id: "digital_returns", label: l("Devoluções D3", "Digital Returns"), badge: digitalReturnedItemsCount },
+                        { id: "server_overview", label: l("Guarita", "Front Desk"), badge: inAnalysisCount },
+                        { id: "audit", label: l("Auditoria", "Audit"), badge: 0 },
+                        { id: "health", label: l("Saúde", "Health"), badge: 0 },
+                        { id: "backups", label: l("Cópias", "Backups"), badge: 0 },
+                        { id: "server_analytics", label: l("Relatórios", "Reports"), badge: 0 },
+                        { id: "documents", label: l("PDFs", "PDFs"), badge: 0 },
+                        { id: "project_settings", label: l("Configurações", "Settings"), badge: 0 },
+                        { id: "test_batteries", label: l("Testes", "QA"), badge: 0 },
+                        { id: "test_distribution", label: l("Distribuição", "QA Allocation"), badge: 0 },
+                        { id: "versions", label: l("Versões", "Versions"), badge: 0 },
                       ].map((navItem) => {
                         const isActive = adminSubTab === navItem.id;
                         return (
@@ -1504,44 +1646,44 @@ export const DashboardView: React.FC = () => {
                     <div className="hidden lg:block space-y-3">
                       {[
                         {
-                          groupTitle: "Acesso",
+                          groupTitle: l("Acesso", "Access"),
                           items: [
-                            { id: "users", label: "Usuários & Objetos", badge: allUsers.length },
-                            { id: "accounts", label: "Status de Contas", badge: 0 },
+                            { id: "users", label: l("Usuários & Objetos", "Users & Items"), badge: allUsers.length },
+                            { id: "accounts", label: l("Situação das Contas", "Account Status"), badge: 0 },
                             {
                               id: "approvals",
-                              label: "Aprovações (@ifpr)",
+                              label: l("Aprovações (@ifpr)", "Approvals (@ifpr)"),
                               badge: (allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length,
                             },
                           ],
                         },
                         {
-                          groupTitle: "Custódia",
+                          groupTitle: l("Custódia", "Custody"),
                           items: [
-                            { id: "claims", label: "Solicitações", badge: pendingClaimsCount },
-                            { id: "pending_signatures", label: "Assinaturas Pendentes", badge: pendingSignaturesCount },
-                            { id: "custody_reminders", label: "Prazos (+90 Dias)", badge: itemsOver90DaysCount },
-                            { id: "digital_returns", label: "Devoluções Digitais", badge: digitalReturnedItemsCount },
-                            { id: "server_overview", label: "Recepção & Guarita", badge: inAnalysisCount },
+                            { id: "claims", label: l("Solicitações", "Claims"), badge: pendingClaimsCount },
+                            { id: "pending_signatures", label: l("Assinaturas Pendentes", "Pending Signatures"), badge: pendingSignaturesCount },
+                            { id: "custody_reminders", label: l("Prazos (+90 Dias)", "Deadlines (+90 Days)"), badge: itemsOver90DaysCount },
+                            { id: "digital_returns", label: l("Devoluções Digitais", "Digital Returns"), badge: digitalReturnedItemsCount },
+                            { id: "server_overview", label: l("Recepção & Guarita", "Reception & Front Desk"), badge: inAnalysisCount },
                           ],
                         },
                         {
-                          groupTitle: "Sistema",
+                          groupTitle: l("Sistema", "System"),
                           items: [
-                            { id: "audit", label: "Logs de Auditoria", badge: 0 },
-                            { id: "health", label: "Saúde do Sistema", badge: 0 },
-                            { id: "backups", label: "Backups & Segurança", badge: 0 },
-                            { id: "server_analytics", label: "Relatórios", badge: 0 },
-                            { id: "documents", label: "Documentos PDF", badge: 0 },
-                            { id: "project_settings", label: "Configurações", badge: 0 },
-                            { id: "test_batteries", label: "Bateria de Testes QA", badge: 0 },
+                            { id: "audit", label: l("Registros de Auditoria", "Audit Logs"), badge: 0 },
+                            { id: "health", label: l("Saúde do Sistema", "System Health"), badge: 0 },
+                            { id: "backups", label: l("Cópias & Segurança", "Backups & Security"), badge: 0 },
+                            { id: "server_analytics", label: l("Relatórios", "Reports"), badge: 0 },
+                            { id: "documents", label: l("Documentos PDF", "PDF Documents"), badge: 0 },
+                            { id: "project_settings", label: l("Configurações", "Settings"), badge: 0 },
+                            { id: "test_batteries", label: l("Bateria de Testes", "QA Test Suite"), badge: 0 },
                             {
                               id: "test_distribution",
                               domId: "btn-tab-test-distribution",
-                              label: "Distribuição de Testes",
+                              label: l("Distribuição de Testes", "Test Distribution"),
                               badge: 0,
                             },
-                            { id: "versions", label: "Versões & Changelog", badge: 0 },
+                            { id: "versions", label: l("Histórico de Versões", "Version History"), badge: 0 },
                           ],
                         },
                       ].map((group) => (
@@ -1598,7 +1740,7 @@ export const DashboardView: React.FC = () => {
                           }}
                           className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#16845B] hover:bg-[#126B49] text-white text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
                         >
-                          <span>+ Cadastrar Usuário</span>
+                          <span>+ {l("Cadastrar Usuário", "Register User")}</span>
                         </button>
 
                         <button
@@ -1610,15 +1752,18 @@ export const DashboardView: React.FC = () => {
                               allUsers[0];
                             setNotifyModalUser(firstStudent || null);
                             setIsBroadcastNotification(false);
-                            setNotifyTitle("Aviso Institucional - Achados e Perdidos");
+                            setNotifyTitle(l("Aviso Institucional - Achados e Perdidos", "Institutional Notice - Lost & Found"));
                             setNotifyMessage(
-                              "Olá! Informamos que há uma atualização referente aos seus registros no sistema do IFPR."
+                              l(
+                                "Olá! Informamos que há uma atualização referente aos seus registros no sistema do IFPR.",
+                                "Hello! There is an update regarding your records in the IFPR Lost & Found system."
+                              )
                             );
                             setNotifyRelatedItemId("");
                           }}
                           className="min-h-[36px] px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
                         >
-                          <span>Notificar Alunos</span>
+                          <span>{l("Notificar Alunos", "Notify Students")}</span>
                         </button>
 
                         <button
@@ -1631,7 +1776,9 @@ export const DashboardView: React.FC = () => {
                           }`}
                         >
                           <span>
-                            {maintenanceMode ? "Manutenção Ativa" : "Modo Manutenção"}
+                            {maintenanceMode
+                              ? l("Manutenção Ativa", "Maintenance Active")
+                              : l("Modo Manutenção", "Maintenance Mode")}
                           </span>
                         </button>
                       </div>
@@ -1651,10 +1798,10 @@ export const DashboardView: React.FC = () => {
                       <div className="xl:col-span-7 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 bg-white dark:bg-slate-900 space-y-3">
                         <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
                           <h2 className="text-sm font-bold text-[#0F172A] dark:text-white">
-                            Pendências do Atendimento
+                            {l("Pendências do Atendimento", "Pending Desk Actions")}
                           </h2>
                           <span className="text-[11px] font-medium text-[#16845B] dark:text-emerald-400">
-                            Tempo Real
+                            {l("Tempo Real", "Real-Time")}
                           </span>
                         </div>
 
@@ -1662,10 +1809,10 @@ export const DashboardView: React.FC = () => {
                           <div className="py-2.5 flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <p className="font-semibold text-[#0F172A] dark:text-white">
-                                Solicitações de Recuperação ({pendingClaimsCount})
+                                {l("Solicitações de Recuperação", "Recovery Claims")} ({pendingClaimsCount})
                               </p>
                               <p className="text-[11px] text-slate-500">
-                                Aguardando análise documental de titularidade
+                                {l("Aguardando análise documental de titularidade", "Awaiting ownership document review")}
                               </p>
                             </div>
                             <button
@@ -1673,17 +1820,17 @@ export const DashboardView: React.FC = () => {
                               onClick={() => setAdminSubTab("claims")}
                               className="min-h-[36px] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0 cursor-pointer"
                             >
-                              Analisar
+                              {l("Analisar", "Review")}
                             </button>
                           </div>
 
                           <div className="py-2.5 flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <p className="font-semibold text-[#0F172A] dark:text-white">
-                                Confirmações de Entrega ({pendingSignaturesCount})
+                                {l("Confirmações de Entrega", "Delivery Confirmations")} ({pendingSignaturesCount})
                               </p>
                               <p className="text-[11px] text-slate-500">
-                                Termos que aguardam atestação do servidor
+                                {l("Termos que aguardam atestação do servidor", "Receipts awaiting staff attestation")}
                               </p>
                             </div>
                             <button
@@ -1691,17 +1838,17 @@ export const DashboardView: React.FC = () => {
                               onClick={() => setAdminSubTab("pending_signatures")}
                               className="min-h-[36px] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0 cursor-pointer"
                             >
-                              Atestar
+                              {l("Atestar", "Attest")}
                             </button>
                           </div>
 
                           <div className="py-2.5 flex items-center justify-between gap-3">
                             <div className="min-w-0">
                               <p className="font-semibold text-[#0F172A] dark:text-white">
-                                Prazos de Guarda +90d ({deadlineAlertItems.length})
+                                {l("Prazos de Guarda +90d", "90-Day Storage Deadlines")} ({deadlineAlertItems.length})
                               </p>
                               <p className="text-[11px] text-slate-500">
-                                {expiredItems.length} vencidos · {nearExpirationItems.length} próximos
+                                {expiredItems.length} {l("vencidos", "expired")} · {nearExpirationItems.length} {l("próximos", "nearing expiration")}
                               </p>
                             </div>
                             <button
@@ -1709,7 +1856,7 @@ export const DashboardView: React.FC = () => {
                               onClick={() => setAdminSubTab("custody_reminders")}
                               className="min-h-[36px] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 shrink-0 cursor-pointer"
                             >
-                              Ver Prazos
+                              {l("Ver Prazos", "View Deadlines")}
                             </button>
                           </div>
                         </div>
@@ -1719,7 +1866,7 @@ export const DashboardView: React.FC = () => {
                       <div className="xl:col-span-5 border border-slate-200/80 dark:border-slate-800 rounded-xl p-4 bg-white dark:bg-slate-900 space-y-3">
                         <div className="border-b border-slate-100 dark:border-slate-800 pb-2.5">
                           <h2 className="text-sm font-bold text-[#0F172A] dark:text-white">
-                            Ações Rápidas de Balcão
+                            {l("Ações Rápidas de Balcão", "Quick Front-Desk Actions")}
                           </h2>
                         </div>
 
@@ -1730,7 +1877,7 @@ export const DashboardView: React.FC = () => {
                             className="min-h-[42px] px-3 py-2 rounded-lg bg-[#16845B] hover:bg-[#126B49] text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                           >
                             <QrCode className="w-4 h-4 shrink-0" />
-                            <span>Ler QR Code</span>
+                            <span>{l("Ler Código QR", "Scan QR Code")}</span>
                           </button>
 
                           <button
@@ -1743,7 +1890,7 @@ export const DashboardView: React.FC = () => {
                             }}
                             className="min-h-[42px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-semibold inline-flex items-center justify-center gap-1.5 cursor-pointer"
                           >
-                            <span>+ Registrar Objeto</span>
+                            <span>+ {l("Registrar Objeto", "Register Item")}</span>
                           </button>
 
                           <button
@@ -1752,28 +1899,28 @@ export const DashboardView: React.FC = () => {
                               vibrateClick();
                               setIsExportFoundModalOpen(true);
                             }}
-                            aria-label="Abrir modal para emitir Relatório de Prestação de Contas de Itens Encontrados em PDF"
+                            aria-label={l("Abrir janela para emitir Relatório de Prestação de Contas de Itens Encontrados em PDF", "Open modal to issue Found Items Accountability Report PDF")}
                             className="min-h-[40px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium inline-flex items-center justify-center gap-1.5 cursor-pointer"
                           >
-                            <span>Relatório SEBAC (PDF)</span>
+                            <span>{l("Relatório SEBAC (PDF)", "SEBAC Report (PDF)")}</span>
                           </button>
 
                           <button
                             type="button"
                             onClick={handleExportPendingItemsPDF}
-                            aria-label="Exportar Relatório em PDF contendo a listagem de objetos pendentes"
+                            aria-label={l("Exportar Relatório em PDF contendo a listagem de objetos pendentes", "Export PDF report containing pending items list")}
                             className="min-h-[40px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium inline-flex items-center justify-center gap-1.5 cursor-pointer"
                           >
-                            <span>Pendentes (PDF)</span>
+                            <span>{l("Pendentes (PDF)", "Pending (PDF)")}</span>
                           </button>
 
                           <button
                             type="button"
                             onClick={handleExportItemsCSV}
-                            aria-label="Exportar todos os dados em formato CSV para a Secretaria"
+                            aria-label={l("Exportar todos os dados em formato CSV para a Secretaria", "Export all data in CSV format for the Secretariat")}
                             className="col-span-2 min-h-[40px] px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-medium inline-flex items-center justify-center gap-1.5 cursor-pointer"
                           >
-                            <span>Exportar Base Completa (CSV)</span>
+                            <span>{l("Exportar Base Completa (CSV)", "Export Complete Database (CSV)")}</span>
                           </button>
                         </div>
                       </div>
@@ -1784,11 +1931,14 @@ export const DashboardView: React.FC = () => {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 dark:border-slate-800 pb-3">
                         <div>
                           <h3 className="text-sm sm:text-base font-bold text-[#0F172A] dark:text-white">
-                            Objetos sob Custódia ({serverCustodyFilteredItems.length}
-                            {serverCustodyFilteredItems.length !== items.length ? ` de ${items.length}` : ""})
+                            {l("Objetos sob Custódia", "Items in Custody")} ({serverCustodyFilteredItems.length}
+                            {serverCustodyFilteredItems.length !== items.length ? ` ${l("de", "of")} ${items.length}` : ""})
                           </h3>
                           <p className="text-xs text-slate-500">
-                            Confirmação presencial de chegada, guarda física e formalização de devoluções.
+                            {l(
+                              "Confirmação presencial de chegada, guarda física e formalização de devoluções.",
+                              "In-person arrival confirmation, physical safekeeping, and return formalization."
+                            )}
                           </p>
                         </div>
                       </div>
@@ -1808,10 +1958,10 @@ export const DashboardView: React.FC = () => {
                               }`}
                             >
                               {st === "TODOS"
-                                ? "Todos"
+                                ? l("Todos", "All")
                                 : st === "EM_ANALISE"
-                                ? "Em Custódia"
-                                : st}
+                                ? l("Em Custódia", "In Custody")
+                                : translateItemStatus(st, language)}
                             </button>
                           ))}
                         </div>
@@ -1822,7 +1972,7 @@ export const DashboardView: React.FC = () => {
                             type="text"
                             value={tableSearch}
                             onChange={(e) => setTableSearch(e.target.value)}
-                            placeholder="Buscar objeto, ID, QR ou local..."
+                            placeholder={l("Buscar objeto, ID, QR ou local...", "Search item, ID, QR, or location...")}
                             className="w-full h-9 pl-9 pr-3 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-[#0F172A] dark:text-white outline-none focus:border-[#16845B]"
                           />
                         </div>
@@ -1832,7 +1982,7 @@ export const DashboardView: React.FC = () => {
                       <div className="md:hidden divide-y divide-slate-200/80 dark:divide-slate-800 border-y border-slate-200/80 dark:border-slate-800">
                         {serverCustodyFilteredItems.length === 0 ? (
                           <p className="py-8 text-center text-xs text-slate-500">
-                            Nenhum objeto encontrado para os filtros aplicados.
+                            {l("Nenhum objeto encontrado para os filtros aplicados.", "No items found for the applied filters.")}
                           </p>
                         ) : (
                           serverCustodyFilteredItems
@@ -1845,7 +1995,7 @@ export const DashboardView: React.FC = () => {
                                       {it.title}
                                     </p>
                                     <p className="text-[11px] text-slate-500 truncate">
-                                      {it.status} · {it.location || "Campus IFPR"} · {formatDate(it.createdAt || it.date)}
+                                      {translateItemStatus(it.status, language)} · {translateCampusLocation(it.location || "Campus IFPR", language)} · {formatDate(it.createdAt || it.date)}
                                     </p>
                                   </div>
                                   <span className="text-[10px] font-mono text-slate-400 shrink-0">
@@ -1860,7 +2010,7 @@ export const DashboardView: React.FC = () => {
                                       onClick={() => handleConfirmArrival(it)}
                                       className="flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 text-xs font-semibold cursor-pointer disabled:opacity-50"
                                     >
-                                      {confirmingArrivalId === it.id ? "Confirmando..." : "Confirmar Chegada"}
+                                      {confirmingArrivalId === it.id ? l("Confirmando...", "Confirming...") : l("Confirmar Chegada", "Confirm Arrival")}
                                     </button>
                                   )}
                                   <button
@@ -1868,7 +2018,7 @@ export const DashboardView: React.FC = () => {
                                     onClick={() => setSelectedItemForDetail(it)}
                                     className="flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-[#16845B] text-white text-xs font-semibold cursor-pointer"
                                   >
-                                    Ver / Devolver
+                                    {l("Ver / Devolver", "View / Return")}
                                   </button>
                                 </div>
                               </div>
@@ -1881,19 +2031,19 @@ export const DashboardView: React.FC = () => {
                         <table className="w-full text-left text-xs">
                           <thead className="bg-[#F8FAFC] dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 uppercase text-[10px] font-bold">
                             <tr>
-                              <th className="py-3 px-4">Objeto</th>
-                              <th className="py-3 px-4">Tipo</th>
-                              <th className="py-3 px-4">Localização</th>
-                              <th className="py-3 px-4 text-center">Situação</th>
-                              <th className="py-3 px-4">Data</th>
-                              <th className="py-3 px-4 text-right">Ações Operacionais</th>
+                              <th className="py-3 px-4">{l("Objeto", "Item")}</th>
+                              <th className="py-3 px-4">{l("Tipo", "Type")}</th>
+                              <th className="py-3 px-4">{l("Localização", "Location")}</th>
+                              <th className="py-3 px-4 text-center">{l("Situação", "Status")}</th>
+                              <th className="py-3 px-4">{l("Data", "Date")}</th>
+                              <th className="py-3 px-4 text-right">{l("Ações Operacionais", "Operational Actions")}</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                             {serverCustodyFilteredItems.length === 0 ? (
                               <tr>
                                 <td colSpan={6} className="py-8 text-center text-slate-400">
-                                  Nenhum objeto encontrado para os filtros aplicados.
+                                  {l("Nenhum objeto encontrado para os filtros aplicados.", "No items found for the applied filters.")}
                                 </td>
                               </tr>
                             ) : (
@@ -1919,18 +2069,18 @@ export const DashboardView: React.FC = () => {
                                             {it.title}
                                           </span>
                                           <span className="text-[11px] text-slate-400 font-mono">
-                                            #{it.id} • {it.category} {it.color ? `• ${it.color}` : ""}
+                                            #{it.id} • {translateCategory(it.category, language)} {it.color ? `• ${translateColor(it.color, language)}` : ""}
                                           </span>
                                         </div>
                                       </div>
                                     </td>
                                     <td className="py-3 px-4">
                                       <UIBadge tone={it.type === "ENCONTRADO" ? "emerald" : "rose"}>
-                                        {it.type}
+                                        {translateItemStatus(it.type, language)}
                                       </UIBadge>
                                     </td>
                                     <td className="py-3 px-4 text-slate-600 dark:text-slate-300 font-medium">
-                                      {it.location || "Campus IFPR"}
+                                      {translateCampusLocation(it.location || "Campus IFPR", language)}
                                     </td>
                                     <td className="py-3 px-4 text-center">
                                       <UIBadge
@@ -1944,7 +2094,7 @@ export const DashboardView: React.FC = () => {
                                             : "rose"
                                         }
                                       >
-                                        {it.status}
+                                        {translateItemStatus(it.status, language)}
                                       </UIBadge>
                                     </td>
                                     <td className="py-3 px-4 text-slate-500 font-mono text-[11px] tabular-nums">
@@ -1958,9 +2108,9 @@ export const DashboardView: React.FC = () => {
                                             disabled={confirmingArrivalId === it.id}
                                             onClick={() => handleConfirmArrival(it)}
                                             className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-600 text-amber-800 hover:text-white dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
-                                            title="Confirmar que o objeto foi recebido fisicamente na guarita / secretaria"
+                                            title={l("Confirmar que o objeto foi recebido fisicamente na guarita / secretaria", "Confirm that the item was physically received at the front desk / secretariat")}
                                           >
-                                            {confirmingArrivalId === it.id ? "Confirmando..." : "Confirmar Chegada"}
+                                            {confirmingArrivalId === it.id ? l("Confirmando...", "Confirming...") : l("Confirmar Chegada", "Confirm Arrival")}
                                           </button>
                                         )}
                                         <button
@@ -1968,7 +2118,7 @@ export const DashboardView: React.FC = () => {
                                           onClick={() => setSelectedItemForDetail(it)}
                                           className="px-3 py-1.5 rounded-lg bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-semibold transition-all cursor-pointer whitespace-nowrap"
                                         >
-                                          Ver / Devolver
+                                          {l("Ver / Devolver", "View / Return")}
                                         </button>
                                       </div>
                                     </td>
@@ -1982,7 +2132,10 @@ export const DashboardView: React.FC = () => {
                       {serverCustodyFilteredItems.length > serverOverviewLimit && (
                         <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-1">
                           <span className="text-[11px] text-slate-500 tabular-nums">
-                            Exibindo {Math.min(serverOverviewLimit, serverCustodyFilteredItems.length)} de {serverCustodyFilteredItems.length} objetos
+                            {l(
+                              `Exibindo ${Math.min(serverOverviewLimit, serverCustodyFilteredItems.length)} de ${serverCustodyFilteredItems.length} objetos`,
+                              `Showing ${Math.min(serverOverviewLimit, serverCustodyFilteredItems.length)} of ${serverCustodyFilteredItems.length} items`
+                            )}
                           </span>
                           <button
                             type="button"
@@ -1992,7 +2145,7 @@ export const DashboardView: React.FC = () => {
                             }}
                             className="min-h-[36px] px-4 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
                           >
-                            Mostrar mais objetos (restam {serverCustodyFilteredItems.length - serverOverviewLimit})
+                            {l("Mostrar mais objetos", "Show more items")} ({l("restam", "remaining")} {serverCustodyFilteredItems.length - serverOverviewLimit})
                           </button>
                         </div>
                       )}
@@ -2007,19 +2160,22 @@ export const DashboardView: React.FC = () => {
                           </div>
                           <div>
                             <h3 className="text-base font-bold text-[#172B2A] dark:text-white flex items-center gap-2">
-                              <span>Controle de Prazo de Armazenamento</span>
-                              <UIBadge tone="amber">Portaria IFPR 90 Dias</UIBadge>
+                              <span>{l("Controle de Prazo de Armazenamento", "Storage Deadline Control")}</span>
+                              <UIBadge tone="amber">{l("Portaria IFPR 90 Dias", "IFPR 90-Day Policy")}</UIBadge>
                             </h3>
                             <p className="text-xs text-slate-500">
-                              Monitoramento preventivo de objetos guardados no acervo próximos ou acima do prazo regulamentar.
+                              {l(
+                                "Monitoramento preventivo de objetos guardados no acervo próximos ou acima do prazo regulamentar.",
+                                "Preventive monitoring of stored items approaching or exceeding the regulatory deadline."
+                              )}
                             </p>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-2">
-                          <UIBadge tone="rose">{expiredItems.length} Expirados</UIBadge>
+                          <UIBadge tone="rose">{expiredItems.length} {l("Expirados", "Expired")}</UIBadge>
                           <UIBadge tone="amber">
-                            {nearExpirationItems.length} Próximos do Vencimento
+                            {nearExpirationItems.length} {l("Próximos do Vencimento", "Nearing Expiration")}
                           </UIBadge>
                         </div>
                       </div>
@@ -2028,7 +2184,10 @@ export const DashboardView: React.FC = () => {
                         <div className="p-4 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/30 border border-[#16845B]/20 text-[#064E3B] dark:text-emerald-300 text-xs flex items-center gap-2">
                           <CheckCircle2 className="w-4 h-4 text-[#16845B] shrink-0" />
                           <span>
-                            Todos os objetos guardados no acervo do IFPR estão dentro do prazo de guarda de 90 dias. Nenhuma destinação necessária no momento.
+                            {l(
+                              "Todos os objetos guardados no acervo do IFPR estão dentro do prazo de guarda de 90 dias. Nenhuma destinação necessária no momento.",
+                              "All items stored in IFPR custody are within the 90-day safekeeping period. No disposal action required at this time."
+                            )}
                           </span>
                         </div>
                       ) : (
@@ -2036,12 +2195,12 @@ export const DashboardView: React.FC = () => {
                           <table className="w-full text-left text-xs">
                             <thead className="bg-[#F8FAFC] dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 uppercase text-[10px] font-bold">
                               <tr>
-                                <th className="py-3 px-4">Objeto</th>
-                                <th className="py-3 px-4">Categoria</th>
-                                <th className="py-3 px-4">Data Cadastro</th>
-                                <th className="py-3 px-4">Data Limite</th>
-                                <th className="py-3 px-4 text-center">Status do Prazo</th>
-                                <th className="py-3 px-4 text-right">Ação</th>
+                                <th className="py-3 px-4">{l("Objeto", "Item")}</th>
+                                <th className="py-3 px-4">{l("Categoria", "Category")}</th>
+                                <th className="py-3 px-4">{l("Data Cadastro", "Registered On")}</th>
+                                <th className="py-3 px-4">{l("Data Limite", "Deadline")}</th>
+                                <th className="py-3 px-4 text-center">{l("Situação do Prazo", "Deadline Status")}</th>
+                                <th className="py-3 px-4 text-right">{l("Ação", "Action")}</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -2051,7 +2210,7 @@ export const DashboardView: React.FC = () => {
                                     {item.title}
                                   </td>
                                   <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
-                                    {item.category}
+                                    {translateCategory(item.category, language)}
                                   </td>
                                   <td className="py-3 px-4 text-slate-500 font-mono text-[11px] tabular-nums">
                                     {formatDate(item.createdAt)}
@@ -2066,11 +2225,11 @@ export const DashboardView: React.FC = () => {
                                   <td className="py-3 px-4 text-center">
                                     {item.isExpired ? (
                                       <UIBadge tone="rose">
-                                        Prazo Vencido ({Math.abs(item.daysRemaining)}d atrás)
+                                        {l(`Prazo Vencido (${Math.abs(item.daysRemaining)}d atrás)`, `Expired (${Math.abs(item.daysRemaining)}d ago)`)}
                                       </UIBadge>
                                     ) : (
                                       <UIBadge tone="amber">
-                                        Vence em {item.daysRemaining} dias
+                                        {l(`Vence em ${item.daysRemaining} dias`, `Expires in ${item.daysRemaining} days`)}
                                       </UIBadge>
                                     )}
                                   </td>
@@ -2081,7 +2240,7 @@ export const DashboardView: React.FC = () => {
                                       size="sm"
                                       onClick={() => setSelectedItemForDetail(item)}
                                     >
-                                      <span>Destinar / Gerenciar</span>
+                                      <span>{l("Destinar / Gerenciar", "Manage / Dispose")}</span>
                                     </UIButton>
                                   </td>
                                 </tr>
@@ -2103,11 +2262,14 @@ export const DashboardView: React.FC = () => {
                           <div className="flex items-center gap-2">
                             <TrendingUp className="w-5 h-5 text-[#16845B]" />
                             <h2 className="text-lg font-bold text-[#172B2A] dark:text-white tracking-tight">
-                              Relatórios Analíticos & Histórico Temporal
+                              {l("Relatórios Analíticos & Histórico Temporal", "Analytical Reports & Timeline")}
                             </h2>
                           </div>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                            Análise temporal, estatísticas por categoria e exportações oficiais do IFPR Campus Ivaiporã.
+                            {l(
+                              "Análise temporal, estatísticas por categoria e exportações oficiais do IFPR Campus Ivaiporã.",
+                              "Timeline analysis, category statistics, and official exports for IFPR Campus Ivaiporã."
+                            )}
                           </p>
                         </div>
 
@@ -2122,7 +2284,7 @@ export const DashboardView: React.FC = () => {
                             }}
                           >
                             <FileText className="w-3.5 h-3.5" />
-                            <span>Prestação de Contas SEBAC (PDF)</span>
+                            <span>{l("Prestação de Contas SEBAC (PDF)", "SEBAC Accountability Report (PDF)")}</span>
                           </UIButton>
 
                           <UIButton
@@ -2132,7 +2294,7 @@ export const DashboardView: React.FC = () => {
                             onClick={handleExportPendingItemsPDF}
                           >
                             <FileText className="w-3.5 h-3.5 text-[#16845B]" />
-                            <span>Exportar Pendentes (PDF)</span>
+                            <span>{l("Exportar Pendentes (PDF)", "Export Pending (PDF)")}</span>
                           </UIButton>
 
                           <UIButton
@@ -2142,7 +2304,7 @@ export const DashboardView: React.FC = () => {
                             onClick={handleExportItemsCSV}
                           >
                             <FileSpreadsheet className="w-3.5 h-3.5 text-[#16845B]" />
-                            <span>Base Completa (CSV)</span>
+                            <span>{l("Base Completa (CSV)", "Full Database (CSV)")}</span>
                           </UIButton>
                         </div>
                       </div>
@@ -2152,10 +2314,16 @@ export const DashboardView: React.FC = () => {
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <div>
                             <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
-                              Tendência Mensal: Itens Perdidos vs. Recuperados (Campus Ivaiporã)
+                              {l(
+                                "Tendência Mensal: Itens Perdidos vs. Recuperados (Campus Ivaiporã)",
+                                "Monthly Trend: Lost vs. Recovered Items (Campus Ivaiporã)"
+                              )}
                             </h3>
                             <p className="text-[11px] text-slate-500">
-                              Evolução temporal entre perdas registradas, itens encontrados e devoluções concluídas
+                              {l(
+                                "Evolução temporal entre perdas registradas, itens encontrados e devoluções concluídas",
+                                "Timeline progression of registered losses, found items, and completed returns"
+                              )}
                             </p>
                           </div>
                         </div>
@@ -2179,7 +2347,7 @@ export const DashboardView: React.FC = () => {
                               <Line
                                 type="monotone"
                                 dataKey="perdidos"
-                                name="Itens Perdidos"
+                                name={l("Itens Perdidos", "Lost Items")}
                                 stroke="#DC2626"
                                 strokeWidth={3}
                                 dot={{ r: 4, stroke: "#DC2626", fill: "#fff", strokeWidth: 2 }}
@@ -2188,7 +2356,7 @@ export const DashboardView: React.FC = () => {
                               <Line
                                 type="monotone"
                                 dataKey="devolvidos"
-                                name="Itens Recuperados / Devolvidos"
+                                name={l("Itens Recuperados / Devolvidos", "Recovered / Returned Items")}
                                 stroke="#16845B"
                                 strokeWidth={3}
                                 dot={{ r: 4, stroke: "#16845B", fill: "#fff", strokeWidth: 2 }}
@@ -2197,7 +2365,7 @@ export const DashboardView: React.FC = () => {
                               <Line
                                 type="monotone"
                                 dataKey="encontrados"
-                                name="Itens Encontrados"
+                                name={l("Itens Encontrados", "Found Items")}
                                 stroke="#3B82F6"
                                 strokeWidth={2}
                                 strokeDasharray="4 4"
@@ -2215,20 +2383,26 @@ export const DashboardView: React.FC = () => {
                         <div className="bg-[#F8FAFC] dark:bg-slate-900/50 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-3">
                           <div className="flex items-center justify-between">
                             <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
-                              Categorias de Objetos
+                              {l("Categorias de Objetos", "Item Categories")}
                             </h3>
                             <span className="text-[11px] text-slate-400 font-mono tabular-nums">
-                              {pieCategoryData.length} categorias
+                              {pieCategoryData.length} {l("categorias", "categories")}
                             </span>
                           </div>
                           {pieCategoryData.length === 0 ? (
                             <div className="h-44 flex flex-col items-center justify-center text-center px-4 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
                               <PackageSearch className="w-7 h-7 text-slate-400 mb-2" />
                               <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                                Nenhum objeto cadastrado para exibir distribuição por categoria.
+                                {l(
+                                  "Nenhum objeto cadastrado para exibir distribuição por categoria.",
+                                  "No registered items to display category distribution."
+                                )}
                               </p>
                               <p className="text-[11px] text-slate-400 mt-0.5">
-                                Os gráficos refletem exclusivamente os registros reais armazenados no banco.
+                                {l(
+                                  "Os gráficos refletem exclusivamente os registros reais armazenados no banco.",
+                                  "Charts strictly reflect real records stored in the database."
+                                )}
                               </p>
                             </div>
                           ) : (
@@ -2248,7 +2422,7 @@ export const DashboardView: React.FC = () => {
                                           style={{ backgroundColor: COLORS[idx % COLORS.length] }}
                                         />
                                         <span className="text-slate-700 dark:text-slate-300 text-[11px] font-medium truncate">
-                                          {cat.name}
+                                          {translateCategory(cat.name, language)}
                                         </span>
                                       </div>
                                       <div className="flex items-center gap-2 shrink-0 tabular-nums">
@@ -2267,7 +2441,7 @@ export const DashboardView: React.FC = () => {
                                 <ResponsiveContainer width="100%" height="100%">
                                   <PieChart>
                                     <Pie
-                                      data={pieCategoryData}
+                                      data={pieCategoryData.map((c) => ({ ...c, name: translateCategory(c.name, language) }))}
                                       cx="50%"
                                       cy="50%"
                                       innerRadius={40}
@@ -2290,17 +2464,20 @@ export const DashboardView: React.FC = () => {
                         <div className="bg-[#F8FAFC] dark:bg-slate-900/50 p-5 rounded-xl border border-slate-200/80 dark:border-slate-800 space-y-3">
                           <div className="flex items-center justify-between">
                             <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
-                              Revisões Pendentes por Categoria
+                              {l("Revisões Pendentes por Categoria", "Pending Reviews by Category")}
                             </h3>
                             <UIBadge tone="amber">
-                              {inAnalysisCount + pendingClaimsCount} Pendentes
+                              {inAnalysisCount + pendingClaimsCount} {l("Pendentes", "Pending")}
                             </UIBadge>
                           </div>
                           {barPendingData.length === 0 ? (
                             <div className="h-44 flex flex-col items-center justify-center text-center px-4 rounded-lg border border-dashed border-slate-200 dark:border-slate-700">
                               <CheckCircle2 className="w-7 h-7 text-[#16845B] mb-2" />
                               <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                                Nenhuma revisão pendente por categoria no momento.
+                                {l(
+                                  "Nenhuma revisão pendente por categoria no momento.",
+                                  "No pending reviews by category at the moment."
+                                )}
                               </p>
                             </div>
                           ) : (
@@ -2315,7 +2492,7 @@ export const DashboardView: React.FC = () => {
                                     dataKey="pendentes"
                                     fill="#F59E0B"
                                     radius={[6, 6, 0, 0]}
-                                    name="Aguardando Revisão"
+                                    name={l("Aguardando Revisão", "Awaiting Review")}
                                   />
                                 </BarChart>
                               </ResponsiveContainer>
@@ -2342,10 +2519,10 @@ export const DashboardView: React.FC = () => {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <span className="text-xs font-bold uppercase text-[#172B2A] dark:text-slate-200 flex items-center gap-2">
                         <SlidersHorizontal className="w-4 h-4 text-[#16845B]" />
-                        <span>Mensagem do Banner de Manutenção Global (Tempo Real)</span>
+                        <span>{l("Mensagem do Banner de Manutenção Global (Tempo Real)", "Global Maintenance Banner Message (Real-Time)")}</span>
                       </span>
                       <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                        Sincronização instantânea no Firestore para todos os usuários
+                        {l("Sincronização instantânea no Firestore para todos os usuários", "Instant Firestore synchronization for all users")}
                       </span>
                     </div>
                     <div className="flex flex-col sm:flex-row items-center gap-2">
@@ -2353,7 +2530,7 @@ export const DashboardView: React.FC = () => {
                         type="text"
                         value={customMsgInput}
                         onChange={(e) => setCustomMsgInput(e.target.value)}
-                        placeholder="Escreva a mensagem personalizada que aparecerá no banner de manutenção global..."
+                        placeholder={l("Escreva a mensagem personalizada que aparecerá no banner de manutenção global...", "Write the custom message to display in the global maintenance banner...")}
                         className="flex-1 w-full px-4 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-medium outline-none focus:border-[#16845B] text-[#172B2A] dark:text-slate-100"
                       />
                       <UIButton
@@ -2364,7 +2541,7 @@ export const DashboardView: React.FC = () => {
                         className="w-full sm:w-auto shrink-0"
                       >
                         <CheckCircle2 className="w-4 h-4" />
-                        <span>Salvar Mensagem</span>
+                        <span>{l("Salvar Mensagem", "Save Message")}</span>
                       </UIButton>
                     </div>
                   </SurfaceCard>
@@ -2376,7 +2553,7 @@ export const DashboardView: React.FC = () => {
                         <Users className="w-5 h-5" />
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-slate-500">Total de Usuários Cadastrados</p>
+                        <p className="text-xs font-semibold text-slate-500">{l("Total de Usuários Cadastrados", "Total Registered Users")}</p>
                         <p className="text-2xl font-bold text-[#172B2A] dark:text-white tabular-nums">{allUsers.length}</p>
                       </div>
                     </SurfaceCard>
@@ -2386,7 +2563,7 @@ export const DashboardView: React.FC = () => {
                         <GraduationCap className="w-5 h-5" />
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-slate-500">Aprovações Institucionais Pendentes</p>
+                        <p className="text-xs font-semibold text-slate-500">{l("Aprovações Institucionais Pendentes", "Pending Institutional Approvals")}</p>
                         <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 tabular-nums">
                           {allUsers.filter((u) => u.approvalStatus === "PENDENTE").length}
                         </p>
@@ -2398,8 +2575,8 @@ export const DashboardView: React.FC = () => {
                         <Activity className="w-5 h-5" />
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-slate-500">Status do Servidor e Firestore</p>
-                        <p className="text-lg font-bold text-[#16845B] dark:text-emerald-400">100% Operacional</p>
+                        <p className="text-xs font-semibold text-slate-500">{l("Situação do Servidor e Firestore", "Server & Firestore Status")}</p>
+                        <p className="text-lg font-bold text-[#16845B] dark:text-emerald-400">{l("100% Operacional", "100% Operational")}</p>
                       </div>
                     </SurfaceCard>
                   </div>
@@ -2411,15 +2588,15 @@ export const DashboardView: React.FC = () => {
                         <div className="flex items-center space-x-2">
                           <Users className="w-5 h-5 text-[#16845B]" />
                           <h2 className="text-lg font-bold text-[#172B2A] dark:text-white tracking-tight">
-                            Gerenciamento de Usuários e Permissões
+                            {l("Gerenciamento de Usuários e Permissões", "User & Permission Management")}
                           </h2>
                         </div>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                          Alteração de perfis (Aluno, Servidor, Admin) e remoção de usuários no IFPR.
+                          {l("Alteração de perfis (Aluno, Servidor, Administrador) e remoção de usuários no IFPR.", "Change user roles (Student, Staff, Administrator) and remove users at IFPR.")}
                         </p>
                       </div>
                       <span className="self-start sm:self-auto px-3 py-1 rounded-full bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#064E3B] dark:text-emerald-400 text-xs font-bold border border-[#16845B]/20 tabular-nums whitespace-nowrap shrink-0">
-                        {allUsers.length} Usuários Cadastrados
+                        {allUsers.length} {l("Usuários Cadastrados", "Registered Users")}
                       </span>
                     </div>
 
@@ -2435,13 +2612,22 @@ export const DashboardView: React.FC = () => {
                           <div className="space-y-1">
                             <p className="font-bold">
                               {firstAccessFeedback.emailSent
-                                ? `Link de primeiro acesso enviado para ${firstAccessFeedback.email} (${firstAccessFeedback.deliveryMethod === "SMTP" ? "SMTP Institucional" : "Firebase Auth"})`
-                                : `Atenção no envio de e-mail para ${firstAccessFeedback.email}`}
+                                ? l(
+                                    `Link de primeiro acesso enviado para ${firstAccessFeedback.email} (${firstAccessFeedback.deliveryMethod === "SMTP" ? "SMTP Institucional" : "Firebase Auth"})`,
+                                    `First-access link sent to ${firstAccessFeedback.email} (${firstAccessFeedback.deliveryMethod === "SMTP" ? "Institutional SMTP" : "Firebase Auth"})`
+                                  )
+                                : l(
+                                    `Atenção no envio de e-mail para ${firstAccessFeedback.email}`,
+                                    `Email delivery notice for ${firstAccessFeedback.email}`
+                                  )}
                             </p>
                             {!firstAccessFeedback.emailSent && (
                               <p className="opacity-90">
                                 {firstAccessFeedback.deliveryError ||
-                                  "O envio automático não pôde ser concluído. Copie o link único abaixo e entregue com segurança ao usuário."}
+                                  l(
+                                    "O envio automático não pôde ser concluído. Copie o link único abaixo e entregue com segurança ao usuário.",
+                                    "Automatic delivery could not be completed. Copy the one-time link below and deliver it securely to the user."
+                                  )}
                               </p>
                             )}
                           </div>
@@ -2449,7 +2635,7 @@ export const DashboardView: React.FC = () => {
                             type="button"
                             onClick={() => setFirstAccessFeedback(null)}
                             className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer"
-                            aria-label="Fechar aviso"
+                            aria-label={l("Fechar aviso", "Close notice")}
                           >
                             <X className="w-4 h-4" />
                           </button>
@@ -2471,12 +2657,12 @@ export const DashboardView: React.FC = () => {
                                 }
                                 setCopiedSetupLink(true);
                                 setTimeout(() => setCopiedSetupLink(false), 2500);
-                                addToast("Link de primeiro acesso copiado!", "success");
+                                addToast(l("Link de primeiro acesso copiado!", "First-access link copied!"), "success");
                               }}
                               className="px-3 py-1.5 rounded-lg bg-[#16845B] text-white font-bold inline-flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
                             >
                               {copiedSetupLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                              <span>{copiedSetupLink ? "Copiado" : "Copiar Link de Primeiro Acesso"}</span>
+                              <span>{copiedSetupLink ? l("Copiado", "Copied") : l("Copiar Link de Primeiro Acesso", "Copy First-Access Link")}</span>
                             </button>
                           </div>
                         )}
@@ -2491,7 +2677,7 @@ export const DashboardView: React.FC = () => {
                             userRoleFilter === "ALL" ? "bg-[#16845B] text-white shadow-xs" : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
                           }`}
                         >
-                          Todos ({allUsers.length})
+                          {l("Todos", "All")} ({allUsers.length})
                         </button>
                         <button
                           onClick={() => setUserRoleFilter("ALUNO")}
@@ -2499,7 +2685,7 @@ export const DashboardView: React.FC = () => {
                             userRoleFilter === "ALUNO" ? "bg-[#16845B] text-white shadow-xs" : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
                           }`}
                         >
-                          Alunos ({(allUsers || []).filter((u) => u && u.role === "ALUNO").length})
+                          {l("Alunos", "Students")} ({(allUsers || []).filter((u) => u && u.role === "ALUNO").length})
                         </button>
                         <button
                           onClick={() => setUserRoleFilter("SERVIDOR")}
@@ -2507,7 +2693,7 @@ export const DashboardView: React.FC = () => {
                             userRoleFilter === "SERVIDOR" ? "bg-blue-600 text-white shadow-xs" : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
                           }`}
                         >
-                          Servidores ({(allUsers || []).filter((u) => u && u.role === "SERVIDOR").length})
+                          {l("Servidores", "Staff")} ({(allUsers || []).filter((u) => u && u.role === "SERVIDOR").length})
                         </button>
                         <button
                           onClick={() => setUserRoleFilter("ADMIN")}
@@ -2515,7 +2701,7 @@ export const DashboardView: React.FC = () => {
                             userRoleFilter === "ADMIN" ? "bg-purple-600 text-white shadow-xs" : "bg-[#F8FAFC] dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700"
                           }`}
                         >
-                          Admins ({(allUsers || []).filter((u) => u && u.role === "ADMIN").length})
+                          {l("Administradores", "Admins")} ({(allUsers || []).filter((u) => u && u.role === "ADMIN").length})
                         </button>
 
                         <div className="h-4 w-px bg-slate-300 dark:bg-slate-700 hidden sm:block mx-1" />
@@ -2530,7 +2716,7 @@ export const DashboardView: React.FC = () => {
                           }`}
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block mr-1" />
-                          <span>Ativos ({(allUsers || []).filter((u) => resolveAccountStatus(u).status === "active").length})</span>
+                          <span>{l("Ativos", "Active")} ({(allUsers || []).filter((u) => resolveAccountStatus(u).status === "active").length})</span>
                         </button>
 
                         <button
@@ -2542,7 +2728,7 @@ export const DashboardView: React.FC = () => {
                           }`}
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block mr-1" />
-                          <span>Suspensos ({(allUsers || []).filter((u) => resolveAccountStatus(u).status === "suspended").length})</span>
+                          <span>{l("Suspensos", "Suspended")} ({(allUsers || []).filter((u) => resolveAccountStatus(u).status === "suspended").length})</span>
                         </button>
 
                         <button
@@ -2554,7 +2740,7 @@ export const DashboardView: React.FC = () => {
                           }`}
                         >
                           <span className="w-1.5 h-1.5 rounded-full bg-red-400 inline-block mr-1" />
-                          <span>Banidos ({(allUsers || []).filter((u) => resolveAccountStatus(u).status === "banned").length})</span>
+                          <span>{l("Banidos", "Banned")} ({(allUsers || []).filter((u) => resolveAccountStatus(u).status === "banned").length})</span>
                         </button>
                       </div>
 
@@ -2564,7 +2750,7 @@ export const DashboardView: React.FC = () => {
                           type="text"
                           value={userSearchText}
                           onChange={(e) => setUserSearchText(e?.target?.value ?? "")}
-                          placeholder="Buscar por nome, e-mail, matrícula..."
+                          placeholder={l("Buscar por nome, e-mail, matrícula...", "Search by name, email, ID...")}
                           className="pl-8 pr-3 py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs outline-none w-full md:w-64"
                         />
                       </div>
@@ -2574,13 +2760,13 @@ export const DashboardView: React.FC = () => {
                       <table className="w-full text-left text-xs">
                         <thead className="bg-[#F8FAFC] dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase font-bold tracking-wider text-[10px]">
                           <tr>
-                            <th className="p-3.5 rounded-l-xl">Usuário</th>
-                            <th className="p-3.5">E-mail</th>
-                            <th className="p-3.5">Curso / Setor</th>
-                            <th className="p-3.5">Matrícula</th>
-                            <th className="p-3.5">Permissão (Função)</th>
-                            <th className="p-3.5">Status da Conta</th>
-                            <th className="p-3.5 rounded-r-xl text-right">Ação</th>
+                            <th className="p-3.5 rounded-l-xl">{l("Usuário", "User")}</th>
+                            <th className="p-3.5">{l("E-mail", "Email")}</th>
+                            <th className="p-3.5">{l("Curso / Setor", "Course / Dept")}</th>
+                            <th className="p-3.5">{l("Matrícula", "ID")}</th>
+                            <th className="p-3.5">{l("Permissão (Função)", "Permission (Role)")}</th>
+                            <th className="p-3.5">{l("Situação da Conta", "Account Status")}</th>
+                            <th className="p-3.5 rounded-r-xl text-right">{l("Ação", "Action")}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -2601,7 +2787,7 @@ export const DashboardView: React.FC = () => {
                               return matchRole && matchStatus && matchQuery;
                             })
                             .map((u, index) => {
-                              const statusDetails = formatAccountStatusDetails(u);
+                              const statusDetails = formatAccountStatusDetails(u, language);
                               return (
                                 <tr key={u.id || `user-${u.email}-${index}`} className="hover:bg-[#F8FAFC] dark:hover:bg-slate-800/40 transition-colors">
                                   <td className="p-3.5 font-bold text-[#172B2A] dark:text-white">
@@ -2616,7 +2802,7 @@ export const DashboardView: React.FC = () => {
                                       <div className="flex flex-col">
                                         <span className="font-bold">{u.name}</span>
                                         {u.id === currentUser.id && (
-                                          <span className="text-[9px] text-[#16845B] dark:text-emerald-400 font-bold">(Sua Conta)</span>
+                                          <span className="text-[9px] text-[#16845B] dark:text-emerald-400 font-bold">({l("Sua Conta", "Your Account")})</span>
                                         )}
                                       </div>
                                     </div>
@@ -2653,12 +2839,12 @@ export const DashboardView: React.FC = () => {
                                           : "bg-green-500/10 text-green-700 dark:text-green-300 border-green-500/30"
                                       }`}
                                     >
-                                      <option value="ALUNO">ALUNO (Discente)</option>
-                                      <option value="SERVIDOR">SERVIDOR (Docente/TAE)</option>
+                                      <option value="ALUNO">{l("ALUNO (Discente)", "STUDENT")}</option>
+                                      <option value="SERVIDOR">{l("SERVIDOR (Docente/TAE)", "STAFF (Faculty/Admin)")}</option>
                                       {(isRootAdminUser || u.role === "ADMIN") && (
-                                        <option value="ADMIN">ADMIN (TI)</option>
+                                        <option value="ADMIN">{l("ADMINISTRADOR (TI)", "ADMIN (IT)")}</option>
                                       )}
-                                      <option value="INTRUSO">USUÁRIO EXTERNO (Intruso)</option>
+                                      <option value="INTRUSO">{l("USUÁRIO EXTERNO", "EXTERNAL USER")}</option>
                                     </select>
                                   </td>
                                   <td className="p-3.5">
@@ -2679,7 +2865,7 @@ export const DashboardView: React.FC = () => {
                                           }}
                                           title={
                                             statusDetails.inconsistencyAlert ||
-                                            "Clique para gerenciar o status desta conta (Suspender/Banir/Reativar)"
+                                            l("Clique para gerenciar a situação desta conta (Suspender/Banir/Reativar)", "Click to manage this account's status (Suspend/Ban/Reactivate)")
                                           }
                                           className={`inline-flex flex-col items-start gap-0.5 px-2.5 py-1 rounded-xl border text-[11px] font-extrabold cursor-pointer transition-all hover:scale-105 ${statusDetails.badgeClass}`}
                                         >
@@ -2689,12 +2875,12 @@ export const DashboardView: React.FC = () => {
                                           </span>
                                           {resolvedRowStatus.status === "suspended" && activeDeadlineDate && (
                                             <span className="text-[9px] font-normal opacity-80">
-                                              {language === "en" ? "Until" : "Até"} {activeDeadlineDate.toLocaleDateString(getLocaleForLanguage(language))}
+                                              {l("Até", "Until")} {activeDeadlineDate.toLocaleDateString(getLocaleForLanguage(language))}
                                             </span>
                                           )}
                                           {resolvedRowStatus.hasLegacyInconsistency && (
                                             <span className="text-[9px] font-semibold text-amber-700 dark:text-amber-300 opacity-90">
-                                              {resolvedRowStatus.isDeactivated ? "active: false" : "Revisar registro"}
+                                              {resolvedRowStatus.isDeactivated ? l("Conta desativada", "Deactivated") : l("Revisar registro", "Review record")}
                                             </span>
                                           )}
                                         </button>
@@ -2705,7 +2891,7 @@ export const DashboardView: React.FC = () => {
                                     <button
                                       type="button"
                                       disabled={sendingFirstAccessUserId === u.id}
-                                      title={`Enviar / reenviar link de primeiro acesso para ${u.email}`}
+                                      title={l(`Enviar / reenviar link de primeiro acesso para ${u.email}`, `Send / resend first-access link to ${u.email}`)}
                                       onClick={() => handleSendFirstAccessForUser(u)}
                                       className="p-2 rounded-xl bg-emerald-500/10 text-[#16845B] hover:bg-[#16845B] hover:text-white border border-emerald-500/20 transition-all mr-1.5 inline-flex items-center justify-center cursor-pointer disabled:opacity-50"
                                     >
@@ -2717,7 +2903,7 @@ export const DashboardView: React.FC = () => {
                                     </button>
                                     <button
                                       type="button"
-                                      title={`Gerenciar Status da Conta de ${u.name}`}
+                                      title={l(`Gerenciar situação da conta de ${u.name}`, `Manage account status for ${u.name}`)}
                                       onClick={() => {
                                         vibrateClick();
                                         setUserForStatusModal(u);
@@ -2728,13 +2914,13 @@ export const DashboardView: React.FC = () => {
                                     </button>
                                     <button
                                       type="button"
-                                      title={`Enviar notificação direta para ${u.name}`}
+                                      title={l(`Enviar notificação direta para ${u.name}`, `Send direct notification to ${u.name}`)}
                                       onClick={() => {
                                         vibrateClick();
                                         setNotifyModalUser(u);
                                         setIsBroadcastNotification(false);
-                                        setNotifyTitle("Aviso Institucional - Achados e Perdidos");
-                                        setNotifyMessage(`Olá, ${u.name}. Informamos que há uma atualização sobre o Achados & Perdidos para você.`);
+                                        setNotifyTitle(l("Aviso Institucional - Achados e Perdidos", "Institutional Notice - Lost & Found"));
+                                        setNotifyMessage(l(`Olá, ${u.name}. Informamos que há uma atualização sobre o Achados & Perdidos para você.`, `Hello, ${u.name}. There is an update on Lost & Found for you.`));
                                         setNotifyRelatedItemId("");
                                       }}
                                       className="p-2 rounded-xl bg-purple-500/10 text-purple-600 hover:bg-purple-600 hover:text-white border border-purple-500/20 transition-all mr-1.5 inline-flex items-center justify-center cursor-pointer"
@@ -2744,6 +2930,7 @@ export const DashboardView: React.FC = () => {
                                     <button
                                       disabled={u.id === currentUser.id}
                                       onClick={() => setUserToDelete({ id: u.id, name: u.name })}
+                                      title={l(`Remover usuário ${u.name}`, `Remove user ${u.name}`)}
                                       className={`p-2 rounded-xl border transition-all inline-flex items-center justify-center ${
                                         u.id === currentUser.id
                                           ? "opacity-30 cursor-not-allowed bg-slate-100 text-slate-400 border-slate-200"
@@ -2766,10 +2953,13 @@ export const DashboardView: React.FC = () => {
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div>
                         <h2 className="text-lg font-bold text-[#172B2A] dark:text-white">
-                          Controle de Objetos e Override de Status
+                          {l("Controle de Objetos e Alteração Manual de Situação", "Item Control & Manual Status Change")}
                         </h2>
                         <p className="text-xs text-slate-500">
-                          Alteração direta do status das ocorrências registradas no campus (prioridade para itens ativos).
+                          {l(
+                            "Alteração direta da situação das ocorrências registradas no campus (prioridade para itens ativos).",
+                            "Direct status update for records registered on campus (active items prioritized)."
+                          )}
                         </p>
                       </div>
 
@@ -2778,7 +2968,7 @@ export const DashboardView: React.FC = () => {
                           type="text"
                           value={tableSearch}
                           onChange={(e) => setTableSearch(e.target.value)}
-                          placeholder="Buscar por objeto, ID ou QR..."
+                          placeholder={l("Buscar por objeto, ID ou QR...", "Search by item, ID, or QR...")}
                           className="px-3.5 py-2 sm:py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs outline-none w-full sm:w-52 focus:border-[#16845B]"
                         />
                         <select
@@ -2786,10 +2976,10 @@ export const DashboardView: React.FC = () => {
                           onChange={(e) => setTableCategory(e.target.value)}
                           className="px-3 py-2 sm:py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs font-semibold outline-none focus:border-[#16845B] w-full sm:w-auto"
                         >
-                          <option value="TODAS">Todas as Categorias</option>
+                          <option value="TODAS">{l("Todas as Categorias", "All Categories")}</option>
                           {CANONICAL_ITEM_CATEGORIES.map((cat) => (
                             <option key={cat} value={cat}>
-                              {cat}
+                              {translateCategory(cat, language)}
                             </option>
                           ))}
                         </select>
@@ -2800,10 +2990,13 @@ export const DashboardView: React.FC = () => {
                       <div className="py-10 px-4 text-center rounded-xl border border-dashed border-slate-200 dark:border-slate-800 space-y-2.5">
                         <PackageSearch className="w-8 h-8 text-slate-400 mx-auto" />
                         <p className="text-sm font-bold text-[#172B2A] dark:text-white">
-                          Nenhum objeto encontrado neste filtro
+                          {l("Nenhum objeto encontrado neste filtro", "No items found for this filter")}
                         </p>
                         <p className="text-xs text-slate-500 max-w-md mx-auto">
-                          Não há ocorrências correspondentes aos critérios atuais de busca ou categoria.
+                          {l(
+                            "Não há ocorrências correspondentes aos critérios atuais de busca ou categoria.",
+                            "There are no records matching your current search or category criteria."
+                          )}
                         </p>
                         {(tableSearch.trim() !== "" || tableCategory !== "TODAS") && (
                           <button
@@ -2814,7 +3007,7 @@ export const DashboardView: React.FC = () => {
                             }}
                             className="inline-flex items-center px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-semibold text-[#172B2A] dark:text-slate-200 cursor-pointer"
                           >
-                            Limpar filtros
+                            {l("Limpar filtros", "Clear filters")}
                           </button>
                         )}
                       </div>
@@ -2843,10 +3036,10 @@ export const DashboardView: React.FC = () => {
 
                               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 dark:text-slate-300">
                                 <span className="font-semibold text-[#16845B] dark:text-emerald-400">
-                                  {item.category}
+                                  {translateCategory(item.category, language)}
                                 </span>
                                 <span className="text-slate-300 dark:text-slate-700">•</span>
-                                <span className="truncate max-w-[200px]">{item.location}</span>
+                                <span className="truncate max-w-[200px]">{translateCampusLocation(item.location, language)}</span>
                               </div>
 
                               <div className="space-y-2 pt-1">
@@ -2857,14 +3050,14 @@ export const DashboardView: React.FC = () => {
                                         ? "bg-sky-500/10 text-sky-600 border-sky-500/30"
                                         : "bg-slate-500/10 text-slate-600 border-slate-500/30"
                                     }`}
-                                    title="Status final gerenciado pelo fluxo formal (abra os detalhes para consultar ou reabrir)"
+                                    title={l("Situação final gerenciada pelo fluxo formal (abra os detalhes para consultar ou reabrir)", "Final status managed by the formal workflow (open details to view or reopen)")}
                                   >
-                                    {item.status} (Formal)
+                                    {translateItemStatus(item.status, language)} ({l("Formal", "Formal")})
                                   </span>
                                 ) : (
                                   <div className="flex flex-wrap items-center gap-2">
                                     <select
-                                      aria-label={`Alterar status de ${item.title}`}
+                                      aria-label={l(`Alterar situação de ${item.title}`, `Change status of ${item.title}`)}
                                       value={item.status}
                                       onChange={(e) =>
                                         handleAdminStatusOverride(
@@ -2880,9 +3073,9 @@ export const DashboardView: React.FC = () => {
                                           : "bg-amber-500/10 text-amber-600 border-amber-500/30"
                                       }`}
                                     >
-                                      <option value="PERDIDO">PERDIDO</option>
-                                      <option value="ENCONTRADO">ENCONTRADO</option>
-                                      <option value="EM_ANALISE">EM ANÁLISE</option>
+                                      <option value="PERDIDO">{l("PERDIDO", "LOST")}</option>
+                                      <option value="ENCONTRADO">{l("ENCONTRADO", "FOUND")}</option>
+                                      <option value="EM_ANALISE">{l("EM ANÁLISE", "IN REVIEW")}</option>
                                     </select>
                                     {item.status !== "EM_ANALISE" && (
                                       <button
@@ -2890,11 +3083,11 @@ export const DashboardView: React.FC = () => {
                                         disabled={confirmingArrivalId === item.id}
                                         onClick={() => handleConfirmArrival(item)}
                                         className="min-h-[40px] px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-600 text-amber-800 hover:text-white dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
-                                        title="Confirmar chegada física na guarita / secretaria (EM ANÁLISE)"
+                                        title={l("Confirmar chegada física na guarita / secretaria (EM ANÁLISE)", "Confirm physical arrival at front desk / secretariat (IN REVIEW)")}
                                       >
                                         {confirmingArrivalId === item.id
-                                          ? "Confirmando..."
-                                          : "Confirmar Chegada"}
+                                          ? l("Confirmando...", "Confirming...")
+                                          : l("Confirmar Chegada", "Confirm Arrival")}
                                       </button>
                                     )}
                                   </div>
@@ -2903,19 +3096,19 @@ export const DashboardView: React.FC = () => {
                                 <div className="grid grid-cols-2 gap-2 pt-1">
                                   <button
                                     type="button"
-                                    title={`Enviar notificação para o aluno que cadastrou "${item.title}"`}
+                                    title={l(`Enviar notificação para o aluno que cadastrou "${item.title}"`, `Send notification to the student who registered "${item.title}"`)}
                                     onClick={() => handleOpenNotifyModalForItem(item)}
                                     className="min-h-[40px] px-3 py-2 rounded-xl bg-[#EBF5F0] hover:bg-[#16845B] text-[#16845B] hover:text-white dark:bg-emerald-950/50 dark:text-emerald-400 dark:hover:bg-[#16845B] dark:hover:text-white font-semibold text-xs transition-colors border border-[#16845B]/20 inline-flex items-center justify-center gap-1.5 cursor-pointer"
                                   >
                                     <Bell className="w-3.5 h-3.5" />
-                                    <span>Notificar</span>
+                                    <span>{l("Notificar", "Notify")}</span>
                                   </button>
                                   <button
                                     type="button"
                                     onClick={() => setSelectedItemForDetail(item)}
                                     className="min-h-[40px] px-3 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-[#16845B] hover:text-white font-semibold text-xs border border-slate-200 dark:border-slate-700 transition-colors inline-flex items-center justify-center cursor-pointer"
                                   >
-                                    Detalhes
+                                    {l("Detalhes", "Details")}
                                   </button>
                                 </div>
                               </div>
@@ -2928,12 +3121,12 @@ export const DashboardView: React.FC = () => {
                           <table className="w-full text-left text-xs">
                             <thead className="bg-[#F8FAFC] dark:bg-slate-800/60 text-slate-600 dark:text-slate-400 uppercase font-bold text-[10px]">
                               <tr>
-                                <th className="p-3.5 rounded-l-xl">Título / Código</th>
-                                <th className="p-3.5">Categoria</th>
-                                <th className="p-3.5">Localização</th>
-                                <th className="p-3.5">Data</th>
-                                <th className="p-3.5">Status (Override)</th>
-                                <th className="p-3.5 rounded-r-xl text-right">Ação</th>
+                                <th className="p-3.5 rounded-l-xl">{l("Título / Código", "Title / Code")}</th>
+                                <th className="p-3.5">{l("Categoria", "Category")}</th>
+                                <th className="p-3.5">{l("Localização", "Location")}</th>
+                                <th className="p-3.5">{l("Data", "Date")}</th>
+                                <th className="p-3.5">{l("Situação (Manual)", "Status (Manual)")}</th>
+                                <th className="p-3.5 rounded-r-xl text-right">{l("Ação", "Action")}</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -2943,8 +3136,8 @@ export const DashboardView: React.FC = () => {
                                     <div>{item.title}</div>
                                     <div className="text-[10px] font-mono text-slate-400">{item.id}</div>
                                   </td>
-                                  <td className="p-3.5">{item.category}</td>
-                                  <td className="p-3.5 truncate max-w-[140px]">{item.location}</td>
+                                  <td className="p-3.5">{translateCategory(item.category, language)}</td>
+                                  <td className="p-3.5 truncate max-w-[140px]">{translateCampusLocation(item.location, language)}</td>
                                   <td className="p-3.5 text-slate-500">{formatDate(item.date)}</td>
                                   <td className="p-3.5">
                                     {item.status === "DEVOLVIDO" || item.status === "ENCERRADO" ? (
@@ -2954,9 +3147,9 @@ export const DashboardView: React.FC = () => {
                                             ? "bg-sky-500/10 text-sky-600 border-sky-500/30"
                                             : "bg-slate-500/10 text-slate-600 border-slate-500/30"
                                         }`}
-                                        title="Status final gerenciado pelo fluxo formal (abra os detalhes para consultar ou reabrir)"
+                                        title={l("Situação final gerenciada pelo fluxo formal (abra os detalhes para consultar ou reabrir)", "Final status managed by the formal workflow (open details to view or reopen)")}
                                       >
-                                        {item.status} (Formal)
+                                        {translateItemStatus(item.status, language)} ({l("Formal", "Formal")})
                                       </span>
                                     ) : (
                                       <div className="flex items-center gap-1.5">
@@ -2976,9 +3169,9 @@ export const DashboardView: React.FC = () => {
                                               : "bg-amber-500/10 text-amber-600 border-amber-500/30"
                                           }`}
                                         >
-                                          <option value="PERDIDO">PERDIDO</option>
-                                          <option value="ENCONTRADO">ENCONTRADO</option>
-                                          <option value="EM_ANALISE">EM ANÁLISE</option>
+                                          <option value="PERDIDO">{l("PERDIDO", "LOST")}</option>
+                                          <option value="ENCONTRADO">{l("ENCONTRADO", "FOUND")}</option>
+                                          <option value="EM_ANALISE">{l("EM ANÁLISE", "IN REVIEW")}</option>
                                         </select>
                                         {item.status !== "EM_ANALISE" && (
                                           <button
@@ -2986,9 +3179,9 @@ export const DashboardView: React.FC = () => {
                                             disabled={confirmingArrivalId === item.id}
                                             onClick={() => handleConfirmArrival(item)}
                                             className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-600 text-amber-800 hover:text-white dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50 text-[11px] font-semibold transition-all cursor-pointer whitespace-nowrap disabled:opacity-50"
-                                            title="Confirmar chegada física na guarita / secretaria (EM ANÁLISE)"
+                                            title={l("Confirmar chegada física na guarita / secretaria (EM ANÁLISE)", "Confirm physical arrival at front desk / secretariat (IN REVIEW)")}
                                           >
-                                            {confirmingArrivalId === item.id ? "Confirmando..." : "Confirmar Chegada"}
+                                            {confirmingArrivalId === item.id ? l("Confirmando...", "Confirming...") : l("Confirmar Chegada", "Confirm Arrival")}
                                           </button>
                                         )}
                                       </div>
@@ -2997,19 +3190,19 @@ export const DashboardView: React.FC = () => {
                                   <td className="p-3.5 text-right whitespace-nowrap">
                                     <button
                                       type="button"
-                                      title={`Enviar notificação para o aluno que cadastrou "${item.title}"`}
+                                      title={l(`Enviar notificação para o aluno que cadastrou "${item.title}"`, `Send notification to the student who registered "${item.title}"`)}
                                       onClick={() => handleOpenNotifyModalForItem(item)}
                                       className="p-1.5 rounded-lg bg-[#EBF5F0] hover:bg-[#16845B] text-[#16845B] hover:text-white dark:bg-emerald-950/50 dark:text-emerald-400 dark:hover:bg-[#16845B] dark:hover:text-white font-semibold text-[11px] transition-colors border border-[#16845B]/20 mr-1.5 inline-flex items-center gap-1 cursor-pointer"
                                     >
                                       <Bell className="w-3.5 h-3.5" />
-                                      <span>Notificar</span>
+                                      <span>{l("Notificar", "Notify")}</span>
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => setSelectedItemForDetail(item)}
                                       className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-[#16845B] hover:text-white font-semibold text-[11px] transition-colors inline-flex items-center cursor-pointer"
                                     >
-                                      Detalhes
+                                      {l("Detalhes", "Details")}
                                     </button>
                                   </td>
                                 </tr>
@@ -3021,8 +3214,8 @@ export const DashboardView: React.FC = () => {
                         {/* Progressive Pagination Controls */}
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
                           <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-                            Exibindo <strong>{visibleAdminTableItems.length}</strong> de{" "}
-                            <strong>{filteredTableItems.length}</strong> objetos
+                            {l("Exibindo", "Showing")} <strong>{visibleAdminTableItems.length}</strong> {l("de", "of")}{" "}
+                            <strong>{filteredTableItems.length}</strong> {l("objetos", "items")}
                           </span>
                           {filteredTableItems.length > adminTableLimit && (
                             <button
@@ -3030,7 +3223,7 @@ export const DashboardView: React.FC = () => {
                               onClick={() => setAdminTableLimit((prev) => prev + 15)}
                               className="min-h-[40px] px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-[#16845B] hover:text-white text-xs font-bold text-[#172B2A] dark:text-slate-200 transition-colors cursor-pointer"
                             >
-                              Mostrar mais objetos ({filteredTableItems.length - adminTableLimit} restantes)
+                              {l("Mostrar mais objetos", "Show more items")} ({filteredTableItems.length - adminTableLimit} {l("restantes", "remaining")})
                             </button>
                           )}
                         </div>
@@ -3061,7 +3254,7 @@ export const DashboardView: React.FC = () => {
                         </div>
                         <div>
                           <h2 className="text-lg font-bold text-[#172B2A] dark:text-white flex items-center flex-wrap gap-2">
-                            <span>Métricas da Saúde do Sistema (Firebase Performance)</span>
+                            <span>{l("Métricas da Saúde do Sistema (Desempenho Firebase)", "System Health Metrics (Firebase Performance)")}</span>
                             <span
                               className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
                                 !isOnline
@@ -3074,16 +3267,19 @@ export const DashboardView: React.FC = () => {
                               }`}
                             >
                               {!isOnline
-                                ? "🔴 Offline"
+                                ? l("🔴 Sem conexão", "🔴 Offline")
                                 : pingLatencyMs === null && dbLatencyMs === null
-                                ? "⚪ Aguardando medição"
+                                ? l("⚪ Aguardando medição", "⚪ Awaiting measurement")
                                 : (pingLatencyMs ?? 0) > 800 || (dbLatencyMs ?? 0) > 800
-                                ? "🟡 Oscilando"
-                                : "🟢 Estável"}
+                                ? l("🟡 Oscilando", "🟡 Fluctuating")
+                                : l("🟢 Estável", "🟢 Stable")}
                             </span>
                           </h2>
                           <p className="text-xs text-slate-500 dark:text-slate-400">
-                            Monitoramento em tempo real da latência de rede, tempo de resposta do banco de dados e alocação de memória
+                            {l(
+                              "Monitoramento em tempo real da latência de rede, tempo de resposta do banco de dados e alocação de memória",
+                              "Real-time monitoring of network latency, database response time, and memory allocation"
+                            )}
                           </p>
                         </div>
                       </div>
@@ -3095,7 +3291,7 @@ export const DashboardView: React.FC = () => {
                           className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#172B2A] dark:text-slate-200 text-xs font-bold transition-all flex items-center space-x-2 shadow-xs border border-slate-200 dark:border-slate-700 cursor-pointer"
                         >
                           <Download className={`w-4 h-4 text-[#16845B] ${isExportingMonitoringJSON ? "animate-bounce" : ""}`} />
-                          <span>{isExportingMonitoringJSON ? "Baixando..." : "Baixar Relatório JSON"}</span>
+                          <span>{isExportingMonitoringJSON ? l("Baixando...", "Downloading...") : l("Baixar Relatório JSON", "Download JSON Report")}</span>
                         </button>
 
                         <button
@@ -3104,7 +3300,7 @@ export const DashboardView: React.FC = () => {
                           className="px-4 py-2.5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-bold transition-all flex items-center space-x-2 shadow-sm cursor-pointer"
                         >
                           <RefreshCw className={`w-4 h-4 ${isPinging ? "animate-spin" : ""}`} />
-                          <span>Medir Desempenho Agora</span>
+                          <span>{l("Medir Desempenho Agora", "Measure Performance Now")}</span>
                         </button>
                       </div>
                     </div>
@@ -3115,7 +3311,7 @@ export const DashboardView: React.FC = () => {
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold text-slate-500 uppercase flex items-center space-x-1.5">
                             <Wifi className="w-4 h-4 text-sky-500" />
-                            <span>Latência de Rede Ping</span>
+                            <span>{l("Latência de Rede", "Network Latency")}</span>
                           </span>
                           <span
                             className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
@@ -3127,22 +3323,22 @@ export const DashboardView: React.FC = () => {
                             }`}
                           >
                             {!isOnline
-                              ? "Offline 🔴"
+                              ? l("Sem conexão 🔴", "Offline 🔴")
                               : pingLatencyMs === null
-                              ? "Indisponível"
-                              : "Conectado 🟢"}
+                              ? l("Indisponível", "Unavailable")
+                              : l("Conectado 🟢", "Connected 🟢")}
                           </span>
                         </div>
                         <div className="flex items-baseline space-x-2">
                           <span className="text-3xl font-bold text-[#172B2A] dark:text-white tabular-nums">
-                            {pingLatencyMs !== null ? `${pingLatencyMs} ms` : "Indisponível"}
+                            {pingLatencyMs !== null ? `${pingLatencyMs} ms` : l("Indisponível", "Unavailable")}
                           </span>
-                          <span className="text-xs text-slate-400">API Gateway</span>
+                          <span className="text-xs text-slate-400">{l("Servidor API", "API Gateway")}</span>
                         </div>
                         <p className="text-[11px] text-slate-500">
                           {pingLatencyMs !== null
-                            ? "Medição real obtida do endpoint de métricas."
-                            : "Aguardando resposta válida da API para exibir latência real."}
+                            ? l("Medição real obtida do servidor de métricas.", "Real measurement obtained from the metrics endpoint.")
+                            : l("Aguardando resposta válida da API para exibir latência real.", "Awaiting valid API response to display real latency.")}
                         </p>
                       </div>
 
@@ -3151,7 +3347,7 @@ export const DashboardView: React.FC = () => {
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold text-slate-500 uppercase flex items-center space-x-1.5">
                             <Database className="w-4 h-4 text-[#16845B]" />
-                            <span>Resposta Banco Firestore</span>
+                            <span>{l("Resposta Banco Firestore", "Firestore DB Response")}</span>
                           </span>
                           <span
                             className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
@@ -3163,22 +3359,22 @@ export const DashboardView: React.FC = () => {
                             }`}
                           >
                             {dbLatencyMs === null
-                              ? "Indisponível"
+                              ? l("Indisponível", "Unavailable")
                               : dbLatencyMs < 300
-                              ? "Rápido"
-                              : "Moderado"}
+                              ? l("Rápido", "Fast")
+                              : l("Moderado", "Moderate")}
                           </span>
                         </div>
                         <div className="flex items-baseline space-x-2">
                           <span className="text-3xl font-bold text-[#16845B] dark:text-emerald-400 tabular-nums">
-                            {dbLatencyMs !== null ? `${dbLatencyMs} ms` : "Indisponível"}
+                            {dbLatencyMs !== null ? `${dbLatencyMs} ms` : l("Indisponível", "Unavailable")}
                           </span>
-                          <span className="text-xs text-slate-400">leitura/escrita</span>
+                          <span className="text-xs text-slate-400">{l("leitura/escrita", "read/write")}</span>
                         </div>
                         <p className="text-[11px] text-slate-500">
                           {dbLatencyMs !== null
-                            ? "Medido via consulta real e Firebase Performance Trace (firestore_db_latency)."
-                            : "Não foi possível obter tempo de resposta real do Firestore neste momento."}
+                            ? l("Medido via consulta real e rastreamento de desempenho do Firestore.", "Measured via real query and Firebase Performance Trace (firestore_db_latency).")
+                            : l("Não foi possível obter tempo de resposta real do Firestore neste momento.", "Could not obtain real Firestore response time right now.")}
                         </p>
                       </div>
 
@@ -3187,7 +3383,7 @@ export const DashboardView: React.FC = () => {
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold text-slate-500 uppercase flex items-center space-x-1.5">
                             <Cpu className="w-4 h-4 text-purple-500" />
-                            <span>Uso de Memória RAM</span>
+                            <span>{l("Uso de Memória RAM", "RAM Memory Usage")}</span>
                           </span>
                           <span
                             className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
@@ -3197,18 +3393,18 @@ export const DashboardView: React.FC = () => {
                             }`}
                           >
                             {memoryUsageMB === null
-                              ? "Indisponível"
+                              ? l("Indisponível", "Unavailable")
                               : memoryUsageMB < 100
-                              ? "Baixo"
-                              : "Médio"}
+                              ? l("Baixo", "Low")
+                              : l("Médio", "Medium")}
                           </span>
                         </div>
                         <div className="flex items-baseline space-x-2">
                           <span className="text-3xl font-bold text-[#172B2A] dark:text-white tabular-nums">
-                            {memoryUsageMB !== null ? `${memoryUsageMB} MB` : "Indisponível"}
+                            {memoryUsageMB !== null ? `${memoryUsageMB} MB` : l("Indisponível", "Unavailable")}
                           </span>
                           <span className="text-xs text-slate-400">
-                            {memoryUsageMB !== null ? "/ 512 MB JS Heap" : "Métrica não exposta pelo navegador"}
+                            {memoryUsageMB !== null ? "/ 512 MB JS Heap" : l("Métrica não exposta pelo navegador", "Metric not exposed by browser")}
                           </span>
                         </div>
                         {memoryUsageMB !== null ? (
@@ -3220,7 +3416,9 @@ export const DashboardView: React.FC = () => {
                           </div>
                         ) : (
                           <p className="text-[11px] text-slate-500">
-                            Disponível apenas em navegadores que expõem a API <code>performance.memory</code>.
+                            {l("Disponível apenas em navegadores que expõem a API ", "Only available in browsers that expose the ")}
+                            <code>performance.memory</code>
+                            {l(".", " API.")}
                           </p>
                         )}
                       </div>
@@ -3230,16 +3428,16 @@ export const DashboardView: React.FC = () => {
                     <div className="bg-[#F8FAFC] dark:bg-slate-900/40 p-5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
                       <div className="flex items-center justify-between flex-wrap gap-2">
                         <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300">
-                          Gráfico de Latência em Tempo Real (ms)
+                          {l("Gráfico de Latência em Tempo Real (ms)", "Real-Time Latency Chart (ms)")}
                         </h3>
                         <div className="flex items-center space-x-4 text-[10px] font-bold">
                           <span className="flex items-center space-x-1 text-sky-600">
                             <span className="w-2.5 h-2.5 rounded-full bg-sky-500 inline-block" />
-                            <span>Latência de Rede</span>
+                            <span>{l("Latência de Rede", "Network Latency")}</span>
                           </span>
                           <span className="flex items-center space-x-1 text-[#16845B]">
                             <span className="w-2.5 h-2.5 rounded-full bg-[#16845B] inline-block" />
-                            <span>Firestore BD</span>
+                            <span>{l("Firestore BD", "Firestore DB")}</span>
                           </span>
                         </div>
                       </div>
@@ -3248,10 +3446,16 @@ export const DashboardView: React.FC = () => {
                         <div className="h-56 w-full flex flex-col items-center justify-center text-center px-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
                           <Activity className="w-7 h-7 text-slate-400 mb-2" />
                           <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                            Nenhuma amostra real de latência coletada nesta sessão.
+                            {l(
+                              "Nenhuma amostra real de latência coletada nesta sessão.",
+                              "No real latency samples collected in this session."
+                            )}
                           </p>
                           <p className="text-[11px] text-slate-400 mt-0.5">
-                            Clique em &quot;Medir Desempenho Agora&quot; ou aguarde a coleta em tempo real.
+                            {l(
+                              'Clique em "Medir Desempenho Agora" ou aguarde a coleta em tempo real.',
+                              'Click "Measure Performance Now" or wait for real-time collection.'
+                            )}
                           </p>
                         </div>
                       ) : (
@@ -3262,7 +3466,7 @@ export const DashboardView: React.FC = () => {
                               <XAxis dataKey="time" tick={{ fontSize: 10 }} />
                               <YAxis tick={{ fontSize: 10 }} unit="ms" />
                               <Tooltip contentStyle={{ borderRadius: "12px", fontSize: "11px" }} />
-                              <Area type="monotone" dataKey="network" name="Rede (ms)" stroke="#0284c7" fill="#0284c7" fillOpacity={0.15} connectNulls={false} />
+                              <Area type="monotone" dataKey="network" name={l("Rede (ms)", "Network (ms)")} stroke="#0284c7" fill="#0284c7" fillOpacity={0.15} connectNulls={false} />
                               <Area type="monotone" dataKey="db" name="Firestore (ms)" stroke="#16845B" fill="#16845B" fillOpacity={0.15} connectNulls={false} />
                             </AreaChart>
                           </ResponsiveContainer>
@@ -3275,10 +3479,10 @@ export const DashboardView: React.FC = () => {
                       <div className="flex items-center justify-between">
                         <h3 className="text-xs font-bold uppercase text-rose-600 dark:text-rose-400 flex items-center space-x-2">
                           <ShieldAlert className="w-4 h-4" />
-                          <span>Capturas do Error Boundary Global (Exceções em Dispositivos Móveis - RNF02)</span>
+                          <span>{l("Capturas da Barreira Global de Erros (Exceções em Dispositivos Móveis - RNF02)", "Global Error Boundary Captures (Mobile Exceptions - RNF02)")}</span>
                         </h3>
                         <span className="px-2.5 py-0.5 rounded-lg bg-rose-500/10 text-rose-600 text-[10px] font-bold">
-                          {errorLogsList.length} Registros
+                          {errorLogsList.length} {l("Registros", "Records")}
                         </span>
                       </div>
 
@@ -3286,10 +3490,13 @@ export const DashboardView: React.FC = () => {
                         <div className="bg-[#F8FAFC] dark:bg-slate-900/50 rounded-xl p-6 text-center space-y-2 border border-dashed border-slate-200 dark:border-slate-800">
                           <CheckCircle2 className="w-8 h-8 text-[#16845B] mx-auto" />
                           <p className="text-xs font-bold text-[#172B2A] dark:text-slate-200">
-                            Sem exceções ou erros não tratados recentes!
+                            {l("Sem exceções ou erros não tratados recentes!", "No recent unhandled exceptions or errors!")}
                           </p>
                           <p className="text-[11px] text-slate-500">
-                            Nenhum travamento detectado em dispositivos móveis no IFPR Campus Ivaiporã.
+                            {l(
+                              "Nenhum travamento detectado em dispositivos móveis no IFPR Campus Ivaiporã.",
+                              "No crashes detected on mobile devices at IFPR Campus Ivaiporã."
+                            )}
                           </p>
                         </div>
                       ) : (
@@ -3297,11 +3504,11 @@ export const DashboardView: React.FC = () => {
                           <table className="w-full text-left text-xs">
                             <thead className="bg-[#F8FAFC] dark:bg-slate-800 text-slate-500 uppercase font-bold text-[10px]">
                               <tr>
-                                <th className="p-3">Exceção / Mensagem</th>
-                                <th className="p-3">Dispositivo</th>
-                                <th className="p-3">Usuário</th>
-                                <th className="p-3">Resolução Tela</th>
-                                <th className="p-3">Data e Hora</th>
+                                <th className="p-3">{l("Exceção / Mensagem", "Exception / Message")}</th>
+                                <th className="p-3">{l("Dispositivo", "Device")}</th>
+                                <th className="p-3">{l("Usuário", "User")}</th>
+                                <th className="p-3">{l("Resolução Tela", "Screen Resolution")}</th>
+                                <th className="p-3">{l("Data e Hora", "Date & Time")}</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[11px]">
@@ -3312,12 +3519,12 @@ export const DashboardView: React.FC = () => {
                                   </td>
                                   <td className="p-3 text-slate-600 dark:text-slate-300">
                                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${log.isMobile ? "bg-purple-500/10 text-purple-600" : "bg-sky-500/10 text-sky-600"}`}>
-                                      {log.isMobile ? "📱 Mobile" : "💻 Desktop"}
+                                      {log.isMobile ? l("📱 Celular", "📱 Mobile") : l("💻 Computador", "💻 Desktop")}
                                     </span>
                                   </td>
-                                  <td className="p-3 text-slate-500">{log.userEmail || "Anônimo"}</td>
+                                  <td className="p-3 text-slate-500">{log.userEmail || l("Anônimo", "Anonymous")}</td>
                                   <td className="p-3 text-slate-400">{log.screenWidth}x{log.screenHeight}</td>
-                                  <td className="p-3 text-slate-400">{new Date(log.timestamp).toLocaleString()}</td>
+                                  <td className="p-3 text-slate-400">{new Date(log.timestamp).toLocaleString(locale)}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -3339,15 +3546,18 @@ export const DashboardView: React.FC = () => {
                       </div>
                       <div>
                         <h2 className="text-lg font-bold text-[#172B2A] dark:text-white flex items-center space-x-2">
-                          <span>Workflow de Aprovação de Contas (@ifpr.edu.br)</span>
+                          <span>{l("Fluxo de Aprovação de Contas (@ifpr.edu.br)", "Account Approval Workflow (@ifpr.edu.br)")}</span>
                           {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length > 0 && (
                             <span className="px-2.5 py-0.5 rounded-lg bg-amber-500 text-black text-[10px] font-bold uppercase">
-                              {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length} Em Espera
+                              {(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length} {l("Em Espera", "Waiting")}
                             </span>
                           )}
                         </h2>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Validação das solicitações de cadastro com e-mails @estudantes.ifpr.edu.br e @ifpr.edu.br antes da liberação do sistema
+                          {l(
+                            "Validação das solicitações de cadastro com e-mails @estudantes.ifpr.edu.br e @ifpr.edu.br antes da liberação do sistema",
+                            "Validation of registration requests with @estudantes.ifpr.edu.br and @ifpr.edu.br emails before granting access"
+                          )}
                         </p>
                       </div>
                     </div>
@@ -3356,10 +3566,10 @@ export const DashboardView: React.FC = () => {
                       <button
                         onClick={approveAllPendingUsers}
                         className="py-2.5 px-4 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold text-xs transition-all shadow-sm flex items-center justify-center space-x-2 shrink-0 cursor-pointer"
-                        title="Aprovar todas as solicitações pendentes de uma só vez"
+                        title={l("Aprovar todas as solicitações pendentes de uma só vez", "Approve all pending requests at once")}
                       >
                         <CheckCircle2 className="w-4 h-4" />
-                        <span>Aprovar Todos os Pendentes ({(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length})</span>
+                        <span>{l("Aprovar Todos os Pendentes", "Approve All Pending")} ({(allUsers || []).filter((u) => u && u.approvalStatus === "PENDENTE").length})</span>
                       </button>
                     )}
                   </div>
@@ -3368,16 +3578,19 @@ export const DashboardView: React.FC = () => {
                     <div className="bg-[#F8FAFC] dark:bg-slate-900/50 rounded-xl p-6 text-center space-y-2 border border-dashed border-slate-200 dark:border-slate-800">
                       <UserCheck className="w-8 h-8 text-[#16845B] mx-auto" />
                       <p className="text-xs font-bold text-[#172B2A] dark:text-slate-200">
-                        Nenhuma conta pendente de aprovação no momento!
+                        {l("Nenhuma conta pendente de aprovação no momento!", "No accounts pending approval at the moment!")}
                       </p>
                       <p className="text-[11px] text-slate-500">
-                        Todas as solicitações de alunos e servidores do IFPR Campus Ivaiporã foram validadas.
+                        {l(
+                          "Todas as solicitações de alunos e servidores do IFPR Campus Ivaiporã foram validadas.",
+                          "All student and staff requests for IFPR Campus Ivaiporã have been validated."
+                        )}
                       </p>
                     </div>
                   ) : (
                     <div className="space-y-4">
                       <h3 className="text-xs font-bold uppercase text-slate-500 tracking-wider">
-                        Solicitações em Espera para Análise de Identidade:
+                        {l("Solicitações em Espera para Análise de Identidade:", "Pending Requests for Identity Review:")}
                       </h3>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -3422,19 +3635,24 @@ export const DashboardView: React.FC = () => {
                                         : "bg-[#EBF5F0] text-[#16845B] border-[#16845B]/20"
                                     }`}
                                   >
-                                    {isPending ? "⏳ Em Espera" : "✅ Aprovado"}
+                                    {isPending ? l("⏳ Em Espera", "⏳ Waiting") : l("✅ Aprovado", "✅ Approved")}
                                   </span>
                                 </div>
 
                                 <div className="bg-white dark:bg-slate-900/90 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px] space-y-1">
                                   <p className="text-slate-600 dark:text-slate-400">
-                                    <strong>Tipo de Vínculo:</strong> {isStudent ? "🎓 Estudante IFPR" : isStaff ? "🏫 Servidor / Docente IFPR" : "Usuário"}
+                                    <strong>{l("Tipo de Vínculo:", "Affiliation:")}</strong>{" "}
+                                    {isStudent
+                                      ? l("🎓 Estudante IFPR", "🎓 IFPR Student")
+                                      : isStaff
+                                      ? l("🏫 Servidor / Docente IFPR", "🏫 IFPR Staff / Faculty")
+                                      : l("Usuário", "User")}
                                   </p>
                                   <p className="text-slate-600 dark:text-slate-400">
-                                    <strong>Curso / Departamento:</strong> {pendingUser.courseOrDept}
+                                    <strong>{l("Curso / Departamento:", "Course / Department:")}</strong> {pendingUser.courseOrDept}
                                   </p>
                                   <p className="text-slate-600 dark:text-slate-400">
-                                    <strong>Matrícula IFPR:</strong> {pendingUser.registrationNumber}
+                                    <strong>{l("Matrícula IFPR:", "IFPR ID:")}</strong> {pendingUser.registrationNumber}
                                   </p>
                                 </div>
 
@@ -3445,14 +3663,14 @@ export const DashboardView: React.FC = () => {
                                       className="flex-1 py-2.5 px-3 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold text-xs transition-all shadow-sm flex items-center justify-center space-x-1.5 cursor-pointer"
                                     >
                                       <CheckCircle2 className="w-4 h-4" />
-                                      <span>Aprovar Acesso</span>
+                                      <span>{l("Aprovar Acesso", "Approve Access")}</span>
                                     </button>
                                     <button
                                       onClick={() => approveUser(pendingUser.id, false)}
                                       className="py-2.5 px-4 rounded-xl bg-rose-600/10 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-500/20 font-bold text-xs transition-all flex items-center justify-center space-x-1.5 cursor-pointer"
                                     >
                                       <XCircle className="w-4 h-4" />
-                                      <span>Recusar</span>
+                                      <span>{l("Recusar", "Reject")}</span>
                                     </button>
                                   </div>
                                 )}
@@ -3477,10 +3695,13 @@ export const DashboardView: React.FC = () => {
                         </div>
                         <div>
                           <h2 className="text-lg font-bold text-[#172B2A] dark:text-white">
-                            Backups Automáticos & Snapshots do Firestore
+                            {l("Cópias de Segurança Automáticas do Firestore", "Automated Firestore Backups & Snapshots")}
                           </h2>
                           <p className="text-xs text-slate-500 dark:text-slate-400">
-                            Exportação periódica e agendamento de segurança do banco de dados do Campus Ivaiporã
+                            {l(
+                              "Exportação periódica e agendamento de segurança do banco de dados do Campus Ivaiporã",
+                              "Periodic export and security scheduling for the Campus Ivaiporã database"
+                            )}
                           </p>
                         </div>
                       </div>
@@ -3490,24 +3711,24 @@ export const DashboardView: React.FC = () => {
                         onClick={handleManualBackup}
                         disabled={isExecutingBackup}
                         className="px-5 py-2.5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] active:scale-95 text-white font-bold text-xs transition-all shadow-sm flex items-center space-x-2 self-start sm:self-auto cursor-pointer"
-                        title="Exportar snapshot JSON com todas as coleções do Firestore do IFPR"
+                        title={l("Exportar cópia JSON com todas as coleções do Firestore do IFPR", "Export JSON snapshot with all IFPR Firestore collections")}
                       >
                         <Download className={`w-4 h-4 ${isExecutingBackup ? "animate-bounce" : ""}`} />
-                        <span>{isExecutingBackup ? "Gerando Backup..." : "Baixar Backup Completo"}</span>
+                        <span>{isExecutingBackup ? l("Gerando Cópia...", "Generating Backup...") : l("Baixar Cópia Completa", "Download Full Backup")}</span>
                       </button>
                     </div>
 
                     {/* Configuration Controls */}
                     <div className="bg-[#F8FAFC] dark:bg-slate-900/60 p-5 rounded-xl border border-slate-200 dark:border-slate-800/80 space-y-4">
                       <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
-                        Agendamento & Frequência do Backup
+                        {l("Agendamento & Frequência das Cópias", "Backup Schedule & Frequency")}
                       </h3>
 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {/* Toggle */}
                         <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
                           <span className="text-xs font-bold text-[#172B2A] dark:text-slate-200">
-                            Backup Automático
+                            {l("Cópia Automática", "Automated Backup")}
                           </span>
                           <input
                             type="checkbox"
@@ -3520,7 +3741,7 @@ export const DashboardView: React.FC = () => {
                         {/* Frequency */}
                         <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
                           <span className="text-xs font-bold text-[#172B2A] dark:text-slate-200">
-                            Frequência:
+                            {l("Frequência:", "Frequency:")}
                           </span>
                           <select
                             value={backupScheduleConfig.frequency}
@@ -3529,16 +3750,16 @@ export const DashboardView: React.FC = () => {
                             }
                             className="bg-transparent text-xs font-bold text-[#16845B] dark:text-emerald-400 outline-none cursor-pointer"
                           >
-                            <option value="A_CADA_12H">A cada 12 Horas</option>
-                            <option value="DIARIO_0200">Diário às 02:00h</option>
-                            <option value="SEMANAL_DOMINGO">Semanal (Domingos)</option>
+                            <option value="A_CADA_12H">{l("A cada 12 Horas", "Every 12 Hours")}</option>
+                            <option value="DIARIO_0200">{l("Diário às 02:00h", "Daily at 02:00")}</option>
+                            <option value="SEMANAL_DOMINGO">{l("Semanal (Domingos)", "Weekly (Sundays)")}</option>
                           </select>
                         </div>
 
                         {/* Auto download */}
                         <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800">
                           <span className="text-xs font-bold text-[#172B2A] dark:text-slate-200">
-                            Baixar JSON Automático
+                            {l("Baixar JSON Automático", "Auto-Download JSON")}
                           </span>
                           <input
                             type="checkbox"
@@ -3553,19 +3774,19 @@ export const DashboardView: React.FC = () => {
                     {/* Backup History Logs Table */}
                 <div className="space-y-3">
                   <h3 className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300 tracking-wider">
-                    Histórico de Backups Realizados ({backupLogs.length})
+                    {l("Histórico de Cópias Realizadas", "Completed Backups History")} ({backupLogs.length})
                   </h3>
 
                   <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
                     <table className="w-full text-left border-collapse text-xs">
                       <thead>
                         <tr className="bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-800">
-                          <th className="p-3">Data / Hora</th>
-                          <th className="p-3">Nome do Arquivo</th>
-                          <th className="p-3">Tamanho</th>
-                          <th className="p-3">Gatilho</th>
-                          <th className="p-3">Status</th>
-                          <th className="p-3 text-right">Ação</th>
+                          <th className="p-3">{l("Data / Hora", "Date / Time")}</th>
+                          <th className="p-3">{l("Nome do Arquivo", "File Name")}</th>
+                          <th className="p-3">{l("Tamanho", "Size")}</th>
+                          <th className="p-3">{l("Gatilho", "Trigger")}</th>
+                          <th className="p-3">{l("Situação", "Status")}</th>
+                          <th className="p-3 text-right">{l("Ação", "Action")}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -3588,19 +3809,19 @@ export const DashboardView: React.FC = () => {
                                     : "bg-sky-500/10 text-sky-600"
                                 }`}
                               >
-                                {log.triggerType}
+                                {log.triggerType === "MANUAL" ? l("MANUAL", "MANUAL") : l("AGENDADO", "SCHEDULED")}
                               </span>
                             </td>
                             <td className="p-3 whitespace-nowrap">
                               <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#EBF5F0] text-[#16845B] dark:bg-emerald-950/60 dark:text-emerald-400">
-                                SUCESSO
+                                {l("SUCESSO", "SUCCESS")}
                               </span>
                             </td>
                             <td className="p-3 text-right whitespace-nowrap">
                               <button
                                 onClick={() => handleManualBackup()}
                                 className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-[#16845B] hover:text-white text-slate-700 dark:text-slate-300 font-bold transition-all text-[11px] cursor-pointer"
-                                title="Baixar Cópia Snapshot JSON"
+                                title={l("Baixar Cópia JSON", "Download JSON Snapshot")}
                               >
                                 <Download className="w-3.5 h-3.5" />
                               </button>
@@ -3622,10 +3843,13 @@ export const DashboardView: React.FC = () => {
                     </div>
                     <div>
                       <h2 className="text-lg font-bold text-[#172B2A] dark:text-white">
-                        Log de Atividades do Administrador (Audit Trail)
+                        {l("Registro de Atividades do Administrador (Trilha de Auditoria)", "Administrator Activity Log (Audit Trail)")}
                       </h2>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Registro transparente de exclusões, alterações de permissão, manutenção e overrides de status.
+                        {l(
+                          "Registro transparente de exclusões, alterações de permissão, manutenção e alterações manuais de situação.",
+                          "Transparent record of deletions, permission changes, maintenance, and manual status updates."
+                        )}
                       </p>
                     </div>
                   </div>
@@ -3638,7 +3862,7 @@ export const DashboardView: React.FC = () => {
                         type="text"
                         value={logSearchQuery}
                         onChange={(e) => setLogSearchQuery(e?.target?.value ?? "")}
-                        placeholder="Buscar nos logs..."
+                        placeholder={l("Buscar nos registros...", "Search logs...")}
                         className="pl-8 pr-3 py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs outline-none w-44 focus:border-[#16845B]"
                       />
                     </div>
@@ -3648,13 +3872,13 @@ export const DashboardView: React.FC = () => {
                       onChange={(e) => setLogFilterAction(e?.target?.value ?? "TODOS")}
                       className="py-1.5 px-3 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs font-bold outline-none focus:border-[#16845B]"
                     >
-                      <option value="TODOS">Todas as Ações</option>
-                      <option value="EXCLUSAO_USUARIO">Exclusão de Usuário</option>
-                      <option value="MODO_MANUTENCAO">Modo Manutenção</option>
-                      <option value="ALTERACAO_PERMISSAO">Alteração Permissão</option>
-                      <option value="STATUS_OVERRIDE">Status Override</option>
-                      <option value="NOVO_USUARIO">Novo Usuário</option>
-                      <option value="RESET_SISTEMA">Reset de Sistema</option>
+                      <option value="TODOS">{l("Todas as Ações", "All Actions")}</option>
+                      <option value="EXCLUSAO_USUARIO">{l("Exclusão de Usuário", "User Deletion")}</option>
+                      <option value="MODO_MANUTENCAO">{l("Modo Manutenção", "Maintenance Mode")}</option>
+                      <option value="ALTERACAO_PERMISSAO">{l("Alteração de Permissão", "Permission Change")}</option>
+                      <option value="STATUS_OVERRIDE">{l("Alteração Manual de Situação", "Manual Status Change")}</option>
+                      <option value="NOVO_USUARIO">{l("Novo Usuário", "New User")}</option>
+                      <option value="RESET_SISTEMA">{l("Redefinição do Sistema", "System Reset")}</option>
                     </select>
                   </div>
                 </div>
@@ -3663,10 +3887,10 @@ export const DashboardView: React.FC = () => {
                   <table className="w-full text-left text-xs">
                     <thead className="bg-[#F8FAFC] dark:bg-slate-800 text-slate-500 uppercase font-bold text-[10px]">
                       <tr>
-                        <th className="p-3.5 rounded-l-xl">Data / Hora</th>
-                        <th className="p-3.5">Administrador</th>
-                        <th className="p-3.5">Ação Executada</th>
-                        <th className="p-3.5 rounded-r-xl">Detalhes da Operação</th>
+                        <th className="p-3.5 rounded-l-xl">{l("Data / Hora", "Date / Time")}</th>
+                        <th className="p-3.5">{l("Administrador", "Administrator")}</th>
+                        <th className="p-3.5">{l("Ação Executada", "Action Executed")}</th>
+                        <th className="p-3.5 rounded-r-xl">{l("Detalhes da Operação", "Operation Details")}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-sans">
@@ -3702,7 +3926,7 @@ export const DashboardView: React.FC = () => {
                                     : "bg-sky-500/10 text-sky-600 border-sky-500/30"
                                 }`}
                               >
-                                {String(log?.action || "LOG").replace("_", " ")}
+                                {translateActivityAction(String(log?.action || "LOG"), language)}
                               </span>
                             </td>
                             <td className="p-3.5 text-slate-700 dark:text-slate-300">
@@ -3724,10 +3948,13 @@ export const DashboardView: React.FC = () => {
                     </div>
                     <div>
                       <h2 className="text-lg font-bold text-[#172B2A] dark:text-white flex items-center space-x-2">
-                        <span>Gestão de Banco de Dados & Reset para Próxima Fase</span>
+                        <span>{l("Gestão de Banco de Dados & Redefinição para Próxima Fase", "Database Management & Next-Phase Reset")}</span>
                       </h2>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Ferramentas avançadas para backup local em JSON, limpeza de logs/métricas e script de Master Wipe do Firestore
+                        {l(
+                          "Ferramentas avançadas para cópia local em JSON, limpeza de registros/métricas e limpeza total do Firestore",
+                          "Advanced tools for local JSON backup, log/metric clearing, and full Firestore wipe"
+                        )}
                       </p>
                     </div>
                   </div>
@@ -3739,10 +3966,15 @@ export const DashboardView: React.FC = () => {
                     <div className="space-y-1.5">
                       <div className="flex items-center space-x-2 text-[#16845B] dark:text-emerald-400 font-bold text-xs">
                         <Download className="w-4 h-4" />
-                        <span>Backup Completo em JSON</span>
+                        <span>{l("Cópia Completa em JSON", "Full JSON Backup")}</span>
                       </div>
                       <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                        Exporta um arquivo <code>.json</code> local contendo uma cópia snapshot de todas as coleções do Firestore (objetos, usuários, reivindicações, comentários e logs).
+                        {l("Exporta um arquivo ", "Exports a local ")}
+                        <code>.json</code>
+                        {l(
+                          " local contendo uma cópia de todas as coleções do Firestore (objetos, usuários, reivindicações, comentários e registros).",
+                          " file containing a snapshot of all Firestore collections (items, users, claims, comments, and logs)."
+                        )}
                       </p>
                     </div>
 
@@ -3758,7 +3990,7 @@ export const DashboardView: React.FC = () => {
                       className="w-full py-2.5 px-3 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold text-xs transition-all shadow-sm flex items-center justify-center space-x-2 cursor-pointer"
                     >
                       <Download className={`w-4 h-4 ${isExportingBackup ? "animate-bounce" : ""}`} />
-                      <span>{isExportingBackup ? "Gerando JSON..." : "Exportar JSON Local"}</span>
+                      <span>{isExportingBackup ? l("Gerando JSON...", "Generating JSON...") : l("Exportar JSON Local", "Export Local JSON")}</span>
                     </button>
                   </div>
 
@@ -3767,10 +3999,13 @@ export const DashboardView: React.FC = () => {
                     <div className="space-y-1.5">
                       <div className="flex items-center space-x-2 text-slate-700 dark:text-slate-300 font-bold text-xs">
                         <BarChart3 className="w-4 h-4" />
-                        <span>Limpar Logs & Métricas</span>
+                        <span>{l("Limpar Registros & Métricas", "Clear Logs & Metrics")}</span>
                       </div>
                       <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                        Exclui todo o histórico de logs de atividades (audit trail), logs de backup e métricas de desempenho no Firestore para reiniciar as estatísticas do zero.
+                        {l(
+                          "Exclui todo o histórico de registros de atividades (trilha de auditoria), histórico de cópias e métricas de desempenho no Firestore para reiniciar as estatísticas do zero.",
+                          "Deletes all activity log history (audit trail), backup logs, and performance metrics in Firestore to restart statistics from zero."
+                        )}
                       </p>
                     </div>
 
@@ -3780,7 +4015,7 @@ export const DashboardView: React.FC = () => {
                       className="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white font-bold text-xs transition-all shadow-sm flex items-center justify-center space-x-2 cursor-pointer"
                     >
                       <BarChart3 className="w-4 h-4" />
-                      <span>Limpar Logs e Métricas</span>
+                      <span>{l("Limpar Registros e Métricas", "Clear Logs & Metrics")}</span>
                     </button>
                   </div>
 
@@ -3789,10 +4024,13 @@ export const DashboardView: React.FC = () => {
                     <div className="space-y-1.5">
                       <div className="flex items-center space-x-2 text-rose-600 dark:text-rose-400 font-bold text-xs">
                         <ShieldAlert className="w-4 h-4" />
-                        <span>Master Wipe (Zerar Banco)</span>
+                        <span>{l("Limpeza Total (Zerar Banco)", "Master Wipe (Reset Database)")}</span>
                       </div>
                       <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                        Script administrativo que deleta todos os objetos, usuários fictícios e logs do Firestore com um único comando, mantendo apenas sua conta ativa de administrador.
+                        {l(
+                          "Operação administrativa que remove todos os objetos, contas de teste e registros do Firestore com um único comando, mantendo apenas sua conta ativa de administrador.",
+                          "Administrative operation that deletes all items, test accounts, and logs from Firestore in one command, keeping only your active administrator account."
+                        )}
                       </p>
                     </div>
 
@@ -3802,7 +4040,7 @@ export const DashboardView: React.FC = () => {
                       className="w-full py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-all shadow-sm flex items-center justify-center space-x-2 cursor-pointer"
                     >
                       <Trash2 className="w-4 h-4" />
-                      <span>Zerar Banco de Dados</span>
+                      <span>{l("Zerar Banco de Dados", "Wipe Database")}</span>
                     </button>
                   </div>
                 </div>
@@ -3857,20 +4095,23 @@ export const DashboardView: React.FC = () => {
                     </div>
                     <div>
                       <h2 className="text-lg font-bold text-[#172B2A] dark:text-white flex items-center space-x-2">
-                        <span>Solicitações de Devolução de Objetos</span>
+                        <span>{l("Solicitações de Devolução de Objetos", "Item Return Claims")}</span>
                         {pendingClaimsCount > 0 && (
                           <span className="px-2.5 py-0.5 rounded-lg bg-amber-500 text-black text-[10px] font-bold uppercase">
-                            {pendingClaimsCount} Pendentes
+                            {pendingClaimsCount} {l("Pendentes", "Pending")}
                           </span>
                         )}
                       </h2>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Análise de posse, aprovação de pedidos e triagem da Secretaria / SEBAC (IFPR Campus Ivaiporã)
+                        {l(
+                          "Análise de posse, aprovação de pedidos e triagem da Secretaria / SEBAC (IFPR Campus Ivaiporã)",
+                          "Ownership review, claim approval, and triage by Secretariat / SEBAC (IFPR Campus Ivaiporã)"
+                        )}
                       </p>
                     </div>
                   </div>
                   <span className="self-start sm:self-auto px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold border border-slate-200 dark:border-slate-700">
-                    {(claims || []).length} Registros no Total
+                    {(claims || []).length} {l("Registros no Total", "Total Records")}
                   </span>
                 </div>
 
@@ -3896,7 +4137,18 @@ export const DashboardView: React.FC = () => {
                               : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
                           }`}
                         >
-                          {st === "TODAS" ? "Todas" : st === "PENDENTE" ? "Pendentes" : st === "APROVADO" ? "Aprovadas" : st === "REJEITADO" ? "Rejeitadas" : st === "CONCLUIDO" ? "Concluídas" : "Canceladas"} ({count})
+                          {st === "TODAS"
+                            ? l("Todas", "All")
+                            : st === "PENDENTE"
+                            ? l("Pendentes", "Pending")
+                            : st === "APROVADO"
+                            ? l("Aprovadas", "Approved")
+                            : st === "REJEITADO"
+                            ? l("Rejeitadas", "Rejected")
+                            : st === "CONCLUIDO"
+                            ? l("Concluídas", "Completed")
+                            : l("Canceladas", "Cancelled")}{" "}
+                          ({count})
                         </button>
                       );
                     })}
@@ -3908,7 +4160,7 @@ export const DashboardView: React.FC = () => {
                       type="text"
                       value={claimSearchText}
                       onChange={(e) => setClaimSearchText(e.target.value)}
-                      placeholder="Buscar por objeto, solicitante, matrícula..."
+                      placeholder={l("Buscar por objeto, solicitante, matrícula...", "Search by item, claimant, ID...")}
                       className="pl-8 pr-3 py-1.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs outline-none w-full md:w-64 focus:border-[#16845B]"
                     />
                   </div>
@@ -3937,10 +4189,13 @@ export const DashboardView: React.FC = () => {
                       <div className="bg-[#F8FAFC] dark:bg-slate-900/50 rounded-xl p-8 text-center space-y-2 border border-dashed border-slate-200 dark:border-slate-800">
                         <CheckCircle2 className="w-10 h-10 text-slate-400 mx-auto" />
                         <p className="text-sm font-bold text-[#172B2A] dark:text-slate-200">
-                          Nenhuma solicitação encontrada
+                          {l("Nenhuma solicitação encontrada", "No claims found")}
                         </p>
                         <p className="text-xs text-slate-500 max-w-md mx-auto">
-                          Não foram localizadas solicitações de devolução para o filtro selecionado.
+                          {l(
+                            "Não foram localizadas solicitações de devolução para o filtro selecionado.",
+                            "No return claims were found for the selected filter."
+                          )}
                         </p>
                       </div>
                     );
@@ -3951,11 +4206,11 @@ export const DashboardView: React.FC = () => {
                       <table className="w-full text-left text-xs">
                         <thead className="bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 uppercase font-bold text-[10px]">
                           <tr>
-                            <th className="p-3.5">Objeto / Categoria</th>
-                            <th className="p-3.5">Solicitante</th>
-                            <th className="p-3.5">Características Declaradas (RNF04)</th>
-                            <th className="p-3.5">Data / Status</th>
-                            <th className="p-3.5 text-right">Ações</th>
+                            <th className="p-3.5">{l("Objeto / Categoria", "Item / Category")}</th>
+                            <th className="p-3.5">{l("Solicitante", "Claimant")}</th>
+                            <th className="p-3.5">{l("Características Declaradas (RNF04)", "Declared Characteristics (RNF04)")}</th>
+                            <th className="p-3.5">{l("Data / Situação", "Date / Status")}</th>
+                            <th className="p-3.5 text-right">{l("Ações", "Actions")}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -3965,12 +4220,12 @@ export const DashboardView: React.FC = () => {
                               <tr key={claim.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                                 <td className="p-3.5">
                                   <div className="font-bold text-[#172B2A] dark:text-white">
-                                    {claim.itemTitle || relatedItem?.title || "Objeto"}
+                                    {claim.itemTitle || relatedItem?.title || l("Objeto", "Item")}
                                   </div>
                                   <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
                                     <span>#{claim.itemId}</span>
                                     <span>•</span>
-                                    <span>{claim.itemCategory || relatedItem?.category || "Categoria"}</span>
+                                    <span>{translateCategory(claim.itemCategory || relatedItem?.category || "", language) || l("Categoria", "Category")}</span>
                                   </div>
                                   {relatedItem && (
                                     <button
@@ -3981,7 +4236,7 @@ export const DashboardView: React.FC = () => {
                                       }}
                                       className="text-[10px] text-[#16845B] hover:underline font-bold mt-1 inline-flex items-center gap-1 cursor-pointer"
                                     >
-                                      <span>Ver ficha completa do item</span>
+                                      <span>{l("Ver ficha completa do item", "View full item record")}</span>
                                     </button>
                                   )}
                                 </td>
@@ -3994,22 +4249,22 @@ export const DashboardView: React.FC = () => {
                                     {claim.claimerEmail}
                                   </div>
                                   <div className="text-[10px] text-slate-400 mt-0.5">
-                                    {claim.claimerRole || "Aluno"} {claim.claimerRegistration ? `• Matrícula: ${claim.claimerRegistration}` : ""}
+                                    {claim.claimerRole ? translateUserRole(claim.claimerRole, language) : l("Aluno", "Student")} {claim.claimerRegistration ? `• ${l("Matrícula", "ID")}: ${claim.claimerRegistration}` : ""}
                                   </div>
                                 </td>
 
                                 <td className="p-3.5 max-w-xs">
                                   <div className="text-[#172B2A] dark:text-slate-200 text-xs bg-[#F8FAFC] dark:bg-slate-800/70 p-2 rounded-xl border border-slate-200 dark:border-slate-700/60 leading-relaxed whitespace-pre-wrap">
-                                    {claim.distinctiveFeatures || "Sem características registradas."}
+                                    {claim.distinctiveFeatures || l("Sem características registradas.", "No characteristics recorded.")}
                                   </div>
                                   {claim.additionalInfo && (
                                     <div className="text-[10px] text-slate-500 mt-1 italic">
-                                      Info adicional: {claim.additionalInfo}
+                                      {l("Info adicional:", "Additional info:")} {claim.additionalInfo}
                                     </div>
                                   )}
                                   {claim.rejectionReason && (
                                     <div className="text-[10px] text-rose-600 dark:text-rose-400 font-bold mt-1 bg-rose-500/10 p-1.5 rounded-lg border border-rose-500/20">
-                                      Motivo da Rejeição: {claim.rejectionReason}
+                                      {l("Motivo da Rejeição:", "Rejection Reason:")} {claim.rejectionReason}
                                     </div>
                                   )}
                                 </td>
@@ -4032,18 +4287,18 @@ export const DashboardView: React.FC = () => {
                                     }`}
                                   >
                                     {claim.status === "PENDENTE"
-                                      ? "Em Análise"
+                                      ? l("Em Análise", "Under Review")
                                       : claim.status === "APROVADO"
-                                      ? "Aprovado (Aguardando Retirada)"
+                                      ? l("Aprovado (Aguardando Retirada)", "Approved (Awaiting Pickup)")
                                       : claim.status === "REJEITADO"
-                                      ? "Rejeitado"
+                                      ? l("Rejeitado", "Rejected")
                                       : claim.status === "CONCLUIDO"
-                                      ? "Devolvido ao Dono"
-                                      : "Cancelado"}
+                                      ? l("Devolvido ao Dono", "Returned to Owner")
+                                      : l("Cancelado", "Cancelled")}
                                   </span>
                                   {claim.reviewedByName && (
                                     <div className="text-[9px] text-slate-400 mt-1">
-                                      Por: {claim.reviewedByName}
+                                      {l("Por:", "By:")} {claim.reviewedByName}
                                     </div>
                                   )}
                                 </td>
@@ -4059,20 +4314,29 @@ export const DashboardView: React.FC = () => {
                                           try {
                                             setIsProcessingClaimAction(true);
                                             await updateClaimStatus(claim.id, "APROVADO", {
-                                              decisionNotes: "Solicitação deferida após conferência das características particulares.",
+                                              decisionNotes: l(
+                                                "Solicitação deferida após conferência das características particulares.",
+                                                "Claim approved after verifying distinctive characteristics."
+                                              ),
                                             });
                                             vibrateSuccess();
-                                            addToast(`Solicitação de ${claim.claimerName} APROVADA com sucesso!`, "success");
+                                            addToast(
+                                              l(
+                                                `Solicitação de ${claim.claimerName} APROVADA com sucesso!`,
+                                                `Claim from ${claim.claimerName} APPROVED successfully!`
+                                              ),
+                                              "success"
+                                            );
                                           } catch (e: any) {
-                                            addToast(e?.message || "Erro ao aprovar solicitação.", "error");
+                                            addToast(e?.message || l("Erro ao aprovar solicitação.", "Error approving claim."), "error");
                                           } finally {
                                             setIsProcessingClaimAction(false);
                                           }
                                         }}
                                         className="px-3 py-1.5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white font-bold text-xs transition-all shadow-xs cursor-pointer disabled:opacity-50"
-                                        title="Aprovar posse e autorizar retirada no balcão"
+                                        title={l("Aprovar posse e autorizar retirada no balcão", "Approve ownership and authorize front-desk pickup")}
                                       >
-                                        Aprovar
+                                        {l("Aprovar", "Approve")}
                                       </button>
                                       <button
                                         type="button"
@@ -4083,9 +4347,9 @@ export const DashboardView: React.FC = () => {
                                           setRejectionReasonInput("");
                                         }}
                                         className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition-all shadow-xs cursor-pointer disabled:opacity-50"
-                                        title="Rejeitar solicitação com justificativa"
+                                        title={l("Rejeitar solicitação com justificativa", "Reject claim with justification")}
                                       >
-                                        Rejeitar
+                                        {l("Rejeitar", "Reject")}
                                       </button>
                                     </div>
                                   )}
@@ -4100,10 +4364,10 @@ export const DashboardView: React.FC = () => {
                                             setSelectedItemForDetail(relatedItem);
                                           }}
                                           className="px-3 py-1.5 rounded-xl bg-[#064E3B] hover:bg-[#16845B] text-white font-bold text-xs transition-all shadow-xs cursor-pointer inline-flex items-center gap-1"
-                                          title="Abrir o modal do objeto para registrar entrega formal com assinatura"
+                                          title={l("Abrir os detalhes do objeto para registrar entrega formal com assinatura", "Open item details to record formal return with signature")}
                                         >
                                           <FileSignature className="w-3.5 h-3.5" />
-                                          <span>Devolução Formal</span>
+                                          <span>{l("Devolução Formal", "Formal Return")}</span>
                                         </button>
                                       )}
                                       <button
@@ -4115,16 +4379,16 @@ export const DashboardView: React.FC = () => {
                                           setRejectionReasonInput("");
                                         }}
                                         className="px-2.5 py-1.5 rounded-xl border border-rose-500/40 text-rose-600 hover:bg-rose-500/10 font-bold text-xs transition-all cursor-pointer"
-                                        title="Revogar aprovação e rejeitar"
+                                        title={l("Revogar aprovação e rejeitar", "Revoke approval and reject")}
                                       >
-                                        Revogar
+                                        {l("Revogar", "Revoke")}
                                       </button>
                                     </div>
                                   )}
 
                                   {(claim.status === "REJEITADO" || claim.status === "CONCLUIDO" || claim.status === "CANCELADO") && (
                                     <span className="text-[11px] text-slate-400 italic">
-                                      Encerrada
+                                      {l("Encerrada", "Closed")}
                                     </span>
                                   )}
                                 </td>
@@ -4149,15 +4413,16 @@ export const DashboardView: React.FC = () => {
                     <AlertTriangle className="w-5 h-5 text-rose-600" />
                     <div>
                       <h3 className="font-bold text-base text-[#172B2A] dark:text-white">
-                        Rejeitar Solicitação de Devolução
+                        {l("Rejeitar Solicitação de Devolução", "Reject Return Claim")}
                       </h3>
                       <p className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">
-                        Secretaria IFPR • Decisão Administrativa
+                        {l("Secretaria IFPR • Decisão Administrativa", "IFPR Secretariat • Administrative Decision")}
                       </p>
                     </div>
                   </div>
                   <button
                     onClick={() => setClaimToReject(null)}
+                    aria-label={l("Fechar", "Close")}
                     className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 cursor-pointer"
                   >
                     <X className="w-4 h-4" />
@@ -4166,10 +4431,10 @@ export const DashboardView: React.FC = () => {
 
                 <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs space-y-1">
                   <p className="text-rose-900 dark:text-rose-300">
-                    Solicitante: <strong>{claimToReject.claimerName}</strong> ({claimToReject.claimerEmail})
+                    {l("Solicitante:", "Claimant:")} <strong>{claimToReject.claimerName}</strong> ({claimToReject.claimerEmail})
                   </p>
                   <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                    Objeto: {claimToReject.itemTitle} (#{claimToReject.itemId})
+                    {l("Objeto:", "Item:")} {claimToReject.itemTitle} (#{claimToReject.itemId})
                   </p>
                 </div>
 
@@ -4177,21 +4442,24 @@ export const DashboardView: React.FC = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
                     if (!rejectionReasonInput.trim()) {
-                      addToast("Informe o motivo da rejeição para registrar a decisão.", "error");
+                      addToast(l("Informe o motivo da rejeição para registrar a decisão.", "Provide the rejection reason to record the decision."), "error");
                       return;
                     }
                     try {
                       setIsProcessingClaimAction(true);
                       await updateClaimStatus(claimToReject.id, "REJEITADO", {
                         rejectionReason: rejectionReasonInput.trim(),
-                        decisionNotes: `Rejeitado por ${currentUser.name} (${currentUser.role}).`,
+                        decisionNotes: l(
+                          `Rejeitado por ${currentUser.name} (${currentUser.role}).`,
+                          `Rejected by ${currentUser.name} (${currentUser.role}).`
+                        ),
                       });
                       vibrateSuccess();
-                      addToast("Solicitação rejeitada e requerente notificado.", "info");
+                      addToast(l("Solicitação rejeitada e requerente notificado.", "Claim rejected and claimant notified."), "info");
                       setClaimToReject(null);
                       setRejectionReasonInput("");
                     } catch (err: any) {
-                      addToast(err?.message || "Erro ao rejeitar solicitação.", "error");
+                      addToast(err?.message || l("Erro ao rejeitar solicitação.", "Error rejecting claim."), "error");
                     } finally {
                       setIsProcessingClaimAction(false);
                     }
@@ -4200,14 +4468,14 @@ export const DashboardView: React.FC = () => {
                 >
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">
-                      Justificativa da Rejeição * (Será exibida ao solicitante)
+                      {l("Justificativa da Rejeição * (Será exibida ao solicitante)", "Rejection Reason * (Visible to claimant)")}
                     </label>
                     <textarea
                       required
                       rows={3}
                       value={rejectionReasonInput}
                       onChange={(e) => setRejectionReasonInput(e.target.value)}
-                      placeholder="Ex: Características informadas não coincidem com o objeto arquivado na guarita..."
+                      placeholder={l("Ex: Características informadas não coincidem com o objeto arquivado na guarita...", "E.g.: Provided characteristics do not match the item kept at the front desk...")}
                       className="w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-[#F8FAFC] dark:bg-[#0B0F17] text-[#172B2A] dark:text-white text-xs outline-none focus:border-rose-500"
                     />
                   </div>
@@ -4218,14 +4486,14 @@ export const DashboardView: React.FC = () => {
                       onClick={() => setClaimToReject(null)}
                       className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                     >
-                      Cancelar
+                      {l("Cancelar", "Cancel")}
                     </button>
                     <button
                       type="submit"
                       disabled={isProcessingClaimAction || !rejectionReasonInput.trim()}
                       className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm cursor-pointer disabled:opacity-50"
                     >
-                      <span>{isProcessingClaimAction ? "Processando..." : "Confirmar Rejeição"}</span>
+                      <span>{isProcessingClaimAction ? l("Processando...", "Processing...") : l("Confirmar Rejeição", "Confirm Rejection")}</span>
                     </button>
                   </div>
                 </form>
@@ -4244,13 +4512,16 @@ export const DashboardView: React.FC = () => {
                     </div>
                     <div>
                       <h2 className="text-lg font-bold text-[#172B2A] dark:text-white flex flex-wrap items-center gap-2">
-                        <span>Fila de Assinaturas Institucionais Pendentes</span>
+                        <span>{l("Fila de Assinaturas Institucionais Pendentes", "Pending Institutional Signatures Queue")}</span>
                         {pendingSignaturesCount > 0 && (
-                          <UIBadge tone="amber">{pendingSignaturesCount} Pendentes</UIBadge>
+                          <UIBadge tone="amber">{pendingSignaturesCount} {l("Pendentes", "Pending")}</UIBadge>
                         )}
                       </h2>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        Devoluções com termo assinado pelo receptor que aguardam atestação e assinatura institucional do servidor atendente
+                        {l(
+                          "Devoluções com termo assinado pelo receptor que aguardam atestação e assinatura institucional do servidor atendente",
+                          "Returns signed by the recipient that await institutional attestation and signature by the attending staff member"
+                        )}
                       </p>
                     </div>
                   </div>
@@ -4259,19 +4530,22 @@ export const DashboardView: React.FC = () => {
                 {pendingSignaturesItems.length === 0 ? (
                   <EmptyState
                     icon={<CheckCircle2 className="w-7 h-7" />}
-                    title="Nenhuma assinatura institucional pendente para suas devoluções!"
-                    description="Todas as devoluções emitidas por você que necessitam de atestação possuem a assinatura dupla concluída ou nenhuma pendência foi registrada para seu usuário."
+                    title={l("Nenhuma assinatura institucional pendente para suas devoluções!", "No pending institutional signatures for your returns!")}
+                    description={l(
+                      "Todas as devoluções emitidas por você que necessitam de atestação possuem a assinatura dupla concluída ou nenhuma pendência foi registrada para seu usuário.",
+                      "All returns issued by you that require attestation already have dual signatures completed or have no pending items for your user."
+                    )}
                   />
                 ) : (
                   <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 uppercase font-bold text-[10px]">
                         <tr>
-                          <th className="p-3.5">Objeto / Identificador</th>
-                          <th className="p-3.5">Receptor / Proprietário</th>
-                          <th className="p-3.5">Assinatura do Receptor</th>
-                          <th className="p-3.5">Data / Código Recibo</th>
-                          <th className="p-3.5 text-right">Ação</th>
+                          <th className="p-3.5">{l("Objeto / Identificador", "Item / Identifier")}</th>
+                          <th className="p-3.5">{l("Receptor / Proprietário", "Recipient / Owner")}</th>
+                          <th className="p-3.5">{l("Assinatura do Receptor", "Recipient Signature")}</th>
+                          <th className="p-3.5">{l("Data / Código Recibo", "Date / Receipt Code")}</th>
+                          <th className="p-3.5 text-right">{l("Ação", "Action")}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -4279,25 +4553,25 @@ export const DashboardView: React.FC = () => {
                           <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                             <td className="p-3.5 font-bold text-[#172B2A] dark:text-white">
                               <div>{item.title}</div>
-                              <div className="text-[10px] font-mono text-slate-400">#{item.id} • {item.category}</div>
+                              <div className="text-[10px] font-mono text-slate-400">#{item.id} • {translateCategory(item.category, language)}</div>
                             </td>
                             <td className="p-3.5">
                               <div className="font-bold text-[#172B2A] dark:text-slate-200">
-                                {item.recipientName || item.recipientSignatureName || "Receptor"}
+                                {item.recipientName || item.recipientSignatureName || l("Receptor", "Recipient")}
                               </div>
                               <div className="text-[10px] text-slate-500">
-                                {item.recipientBond || "Aluno(a)"} • {item.recipientEmail || "Sem e-mail"}
+                                {item.recipientBond || l("Aluno(a)", "Student")} • {item.recipientEmail || l("Sem e-mail", "No email")}
                               </div>
                             </td>
                             <td className="p-3.5">
                               <UIBadge tone="emerald">
                                 <CheckCircle2 className="w-3 h-3" />
-                                <span>Receptor Assinou</span>
+                                <span>{l("Receptor Assinou", "Recipient Signed")}</span>
                               </UIBadge>
                             </td>
                             <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400">
                               <div>{formatDate(item.signedAt || item.resolutionDate || item.date)}</div>
-                              <div className="text-[10px] text-slate-400">{item.receiptValidationCode || "CÓDIGO PENDENTE"}</div>
+                              <div className="text-[10px] text-slate-400">{item.receiptValidationCode || l("CÓDIGO PENDENTE", "CODE PENDING")}</div>
                             </td>
                             <td className="p-3.5 text-right whitespace-nowrap">
                               <UIButton
@@ -4310,7 +4584,7 @@ export const DashboardView: React.FC = () => {
                                 }}
                               >
                                 <PenTool className="w-3.5 h-3.5" />
-                                <span>Atestar e Assinar</span>
+                                <span>{l("Atestar e Assinar", "Attest & Sign")}</span>
                               </UIButton>
                             </td>
                           </tr>
@@ -4327,10 +4601,13 @@ export const DashboardView: React.FC = () => {
                       <AlertTriangle className="w-5 h-5 shrink-0" />
                       <div>
                         <h3 className="text-sm font-bold uppercase tracking-wide">
-                          Devoluções Pendentes Sem Emissor Identificado ({unassignedPendingSignaturesCount})
+                          {l("Devoluções Pendentes Sem Emissor Identificado", "Pending Returns Without Identified Issuer")} ({unassignedPendingSignaturesCount})
                         </h3>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Devoluções com assinatura do receptor que não possuem servidor emissor registrado. A atestação está bloqueada até a verificação da autoria original.
+                          {l(
+                            "Devoluções com assinatura do receptor que não possuem servidor emissor registrado. A atestação está bloqueada até a verificação da autoria original.",
+                            "Returns signed by the recipient without a registered issuing staff member. Attestation is blocked until original authorship is verified."
+                          )}
                         </p>
                       </div>
                     </div>
@@ -4339,11 +4616,11 @@ export const DashboardView: React.FC = () => {
                       <table className="w-full text-left text-xs">
                         <thead className="bg-amber-500/10 text-amber-900 dark:text-amber-200 uppercase font-bold text-[10px]">
                           <tr>
-                            <th className="p-3.5">Objeto / Identificador</th>
-                            <th className="p-3.5">Receptor</th>
-                            <th className="p-3.5">Status Autoria</th>
-                            <th className="p-3.5">Data Recibo</th>
-                            <th className="p-3.5 text-right">Ação</th>
+                            <th className="p-3.5">{l("Objeto / Identificador", "Item / Identifier")}</th>
+                            <th className="p-3.5">{l("Receptor", "Recipient")}</th>
+                            <th className="p-3.5">{l("Situação da Autoria", "Authorship Status")}</th>
+                            <th className="p-3.5">{l("Data Recibo", "Receipt Date")}</th>
+                            <th className="p-3.5 text-right">{l("Ação", "Action")}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-amber-200/40 dark:divide-amber-800/30">
@@ -4351,20 +4628,20 @@ export const DashboardView: React.FC = () => {
                             <tr key={item.id} className="hover:bg-amber-500/10 transition-colors">
                               <td className="p-3.5 font-bold text-[#172B2A] dark:text-white">
                                 <div>{item.title}</div>
-                                <div className="text-[10px] font-mono text-slate-400">#{item.id} • {item.category}</div>
+                                <div className="text-[10px] font-mono text-slate-400">#{item.id} • {translateCategory(item.category, language)}</div>
                               </td>
                               <td className="p-3.5">
                                 <div className="font-bold text-[#172B2A] dark:text-slate-200">
-                                  {item.recipientName || item.recipientSignatureName || "Receptor"}
+                                  {item.recipientName || item.recipientSignatureName || l("Receptor", "Recipient")}
                                 </div>
                                 <div className="text-[10px] text-slate-500">
-                                  {item.recipientBond || "Aluno(a)"}
+                                  {item.recipientBond || l("Aluno(a)", "Student")}
                                 </div>
                               </td>
                               <td className="p-3.5">
                                 <UIBadge tone="amber">
                                   <AlertTriangle className="w-3 h-3" />
-                                  <span>Emissor Não Identificado</span>
+                                  <span>{l("Emissor Não Identificado", "Issuer Not Identified")}</span>
                                 </UIBadge>
                               </td>
                               <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400">
@@ -4380,7 +4657,7 @@ export const DashboardView: React.FC = () => {
                                     setSelectedItemForDetail(item);
                                   }}
                                 >
-                                  <span>Verificar Detalhes</span>
+                                  <span>{l("Verificar Detalhes", "Check Details")}</span>
                                 </UIButton>
                               </td>
                             </tr>
@@ -4429,15 +4706,16 @@ export const DashboardView: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
-                    Cadastrar Novo Usuário no IFPR
+                    {l("Cadastrar Novo Usuário no IFPR", "Register New IFPR User")}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Administrador TI • Adicionar aluno ou servidor
+                    {l("Administrador TI • Adicionar aluno ou servidor", "IT Administrator • Add student or staff member")}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
+                aria-label={l("Fechar janela", "Close modal")}
                 onClick={() => setIsAddingUserOpen(false)}
                 className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
               >
@@ -4448,28 +4726,28 @@ export const DashboardView: React.FC = () => {
             <form onSubmit={handleAddUserSubmit} className="space-y-4 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Nome Completo <span className="text-rose-500">*</span>
+                  {l("Nome Completo", "Full Name")} <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={newUserName}
                   onChange={(e) => setNewUserName(e.target.value)}
-                  placeholder="Ex: Carlos Eduardo da Silva"
+                  placeholder={l("Ex: Carlos Eduardo da Silva", "e.g. Carlos Eduardo da Silva")}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                 />
               </div>
 
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  E-mail Institucional <span className="text-rose-500">*</span>
+                  {l("E-mail Institucional", "Institutional E-mail")} <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="email"
                   required
                   value={newUserEmail}
                   onChange={(e) => setNewUserEmail(e.target.value)}
-                  placeholder="Ex: carlos.silva@estudante.ifpr.edu.br"
+                  placeholder={l("Ex: carlos.silva@estudante.ifpr.edu.br", "e.g. carlos.silva@estudante.ifpr.edu.br")}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                 />
               </div>
@@ -4477,7 +4755,7 @@ export const DashboardView: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Perfil / Função
+                    {l("Perfil / Função", "Profile / Role")}
                   </label>
                   <select
                     value={!isRootAdminUser && newUserRole === "ADMIN" ? "ALUNO" : newUserRole}
@@ -4491,21 +4769,21 @@ export const DashboardView: React.FC = () => {
                     }}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                   >
-                    <option value="ALUNO">ALUNO (Discente)</option>
-                    <option value="SERVIDOR">SERVIDOR (Docente / TAE)</option>
-                    {isRootAdminUser && <option value="ADMIN">ADMINISTRADOR (TI)</option>}
+                    <option value="ALUNO">{l("ALUNO (Discente)", "STUDENT")}</option>
+                    <option value="SERVIDOR">{l("SERVIDOR (Docente / TAE)", "STAFF (Faculty / Admin)")}</option>
+                    {isRootAdminUser && <option value="ADMIN">{l("ADMINISTRADOR (TI)", "ADMINISTRATOR (IT)")}</option>}
                   </select>
                 </div>
 
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Matrícula / Prontuário
+                    {l("Matrícula / Prontuário", "Registration / ID Number")}
                   </label>
                   <input
                     type="text"
                     value={newUserRegNumber}
                     onChange={(e) => setNewUserRegNumber(e.target.value)}
-                    placeholder="Ex: 2026100987"
+                    placeholder={l("Ex: 2026100987", "e.g. 2026100987")}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                   />
                 </div>
@@ -4513,19 +4791,23 @@ export const DashboardView: React.FC = () => {
 
               <div>
                 <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Curso ou Setor no IFPR Campus Ivaiporã
+                  {l("Curso ou Setor no IFPR Campus Ivaiporã", "Course or Department at IFPR Campus Ivaiporã")}
                 </label>
                 <input
                   type="text"
                   value={newUserDept}
                   onChange={(e) => setNewUserDept(e.target.value)}
-                  placeholder="Ex: Técnico em Informática"
+                  placeholder={l("Ex: Técnico em Informática", "e.g. Computer Science Program")}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                 />
               </div>
 
               <div className="p-3 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/30 border border-[#16845B]/20 text-[11px] text-[#064E3B] dark:text-emerald-200 leading-relaxed">
-                <strong>Primeiro Acesso Seguro:</strong> Nenhuma senha padrão será criada. A conta será provisionada no Firebase Authentication + Firestore e o usuário receberá um link pessoal para definir sua própria senha.
+                <strong>{l("Primeiro Acesso Seguro:", "Secure First Access:")}</strong>{" "}
+                {l(
+                  "Nenhuma senha padrão será criada. A conta será provisionada no Firebase Authentication + Firestore e o usuário receberá um link pessoal para definir sua própria senha.",
+                  "No default password will be created. The account will be provisioned in Firebase Authentication + Firestore and the user will receive a personal link to set their own password."
+                )}
               </div>
 
               <div className="pt-4 flex justify-end space-x-3 border-t border-slate-100 dark:border-slate-800">
@@ -4535,7 +4817,7 @@ export const DashboardView: React.FC = () => {
                   onClick={() => setIsAddingUserOpen(false)}
                   className="px-4 py-2.5 rounded-xl text-slate-600 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  Cancelar
+                  {l("Cancelar", "Cancel")}
                 </button>
                 <button
                   type="submit"
@@ -4547,7 +4829,11 @@ export const DashboardView: React.FC = () => {
                   ) : (
                     <UserCheck className="w-4 h-4" />
                   )}
-                  <span>{isSubmittingNewUser ? "Provisionando..." : "Cadastrar Usuário"}</span>
+                  <span>
+                    {isSubmittingNewUser
+                      ? l("Provisionando...", "Provisioning...")
+                      : l("Cadastrar Usuário", "Register User")}
+                  </span>
                 </button>
               </div>
             </form>
@@ -4565,16 +4851,19 @@ export const DashboardView: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
-                  Resetar Banco de Dados do Sistema
+                  {l("Redefinir Banco de Dados do Sistema", "Reset System Database")}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Exclusivo para Fases de Testes do IFPR
+                  {l("Exclusivo para Fases de Testes do IFPR", "Exclusive to IFPR Testing Phases")}
                 </p>
               </div>
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              Esta ação redefinirá todas as ocorrências, notificações e usuários para os valores padrão de fábrica (Mock Baseline do IFPR Campus Ivaiporã).
+              {l(
+                "Esta ação redefinirá todas as ocorrências, notificações e usuários para o padrão inicial de configuração do IFPR Campus Ivaiporã.",
+                "This action will reset all reports, notifications, and users to the initial baseline configuration for IFPR Campus Ivaiporã."
+              )}
             </p>
 
             <div className="flex items-center justify-end space-x-3 pt-2">
@@ -4583,7 +4872,7 @@ export const DashboardView: React.FC = () => {
                 onClick={() => setIsResetConfirmOpen(false)}
                 className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold cursor-pointer"
               >
-                Cancelar
+                {l("Cancelar", "Cancel")}
               </button>
               <button
                 type="button"
@@ -4598,7 +4887,7 @@ export const DashboardView: React.FC = () => {
                 }}
                 className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm cursor-pointer"
               >
-                Sim, Resetar Sistema
+                {l("Sim, Redefinir Sistema", "Yes, Reset System")}
               </button>
             </div>
           </div>
@@ -4615,16 +4904,19 @@ export const DashboardView: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
-                  Limpar Logs e Métricas de Desempenho
+                  {l("Limpar Registros e Métricas de Desempenho", "Clear Logs & Performance Metrics")}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Reiniciar histórico de estatísticas do Firestore
+                  {l("Reiniciar histórico de estatísticas do Firestore", "Reset Firestore statistics history")}
                 </p>
               </div>
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              Esta ação apagará permanentemente todo o histórico de logs de atividades (audit trail), registros de backup, logs de erro e métricas de desempenho no Firestore. As estatísticas e o monitor de uptime serão iniciados do zero para a próxima fase de testes.
+              {l(
+                "Esta ação apagará permanentemente todo o histórico de registros de atividades (trilha de auditoria), cópias de segurança, registros de erro e métricas de desempenho no Firestore. As estatísticas e o monitor de disponibilidade serão iniciados do zero para a próxima fase de testes.",
+                "This action will permanently erase all activity logs (audit trail), backup records, error logs, and performance metrics in Firestore. Statistics and the uptime monitor will start from scratch for the next testing phase."
+              )}
             </p>
 
             <div className="flex items-center justify-end space-x-3 pt-2">
@@ -4633,7 +4925,7 @@ export const DashboardView: React.FC = () => {
                 onClick={() => setIsClearLogsConfirmOpen(false)}
                 className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold cursor-pointer"
               >
-                Cancelar
+                {l("Cancelar", "Cancel")}
               </button>
               <button
                 type="button"
@@ -4644,7 +4936,7 @@ export const DashboardView: React.FC = () => {
                 }}
                 className="px-4 py-2 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-bold shadow-sm cursor-pointer"
               >
-                Sim, Limpar Logs e Métricas
+                {l("Sim, Limpar Registros e Métricas", "Yes, Clear Logs & Metrics")}
               </button>
             </div>
           </div>
@@ -4661,18 +4953,28 @@ export const DashboardView: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
-                  🔥 Master Wipe - Limpeza Completa
+                  {l("🔥 Limpeza Total - Zerar Banco de Dados", "🔥 Master Wipe - Full Cleanup")}
                 </h3>
                 <p className="text-xs text-rose-500 font-bold">
-                  Ação Irreversível no Firestore
+                  {l("Ação Irreversível no Firestore", "Irreversible Action in Firestore")}
                 </p>
               </div>
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              <strong>ATENÇÃO:</strong> Esta ação executará o script de limpeza total no Firestore. Todos os objetos achados/perdidos, reivindicações, comentários, notificações e usuários (exceto sua conta atual de administrador) serão <strong>DELETADOS PERMANENTEMENTE</strong>.
+              <strong>{l("ATENÇÃO:", "WARNING:")}</strong>{" "}
+              {l(
+                "Esta ação executará a rotina de limpeza total no Firestore. Todos os objetos achados/perdidos, reivindicações, comentários, notificações e usuários (exceto sua conta atual de administrador) serão ",
+                "This action will run the full cleanup routine in Firestore. All lost/found items, claims, comments, notifications, and users (except your current administrator account) will be "
+              )}
+              <strong>{l("EXCLUÍDOS PERMANENTEMENTE", "PERMANENTLY DELETED")}</strong>.
               <br /><br />
-              💡 <em>Recomenda-se exportar o backup em JSON antes de continuar.</em>
+              💡 <em>
+                {l(
+                  "Recomenda-se exportar a cópia de segurança em JSON antes de continuar.",
+                  "It is recommended to export a JSON backup before proceeding."
+                )}
+              </em>
             </p>
 
             <div className="flex items-center justify-end space-x-3 pt-2">
@@ -4681,7 +4983,7 @@ export const DashboardView: React.FC = () => {
                 onClick={() => setIsMasterWipeConfirmOpen(false)}
                 className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold cursor-pointer"
               >
-                Cancelar
+                {l("Cancelar", "Cancel")}
               </button>
               <button
                 type="button"
@@ -4693,7 +4995,7 @@ export const DashboardView: React.FC = () => {
                 className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm flex items-center space-x-1.5 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
-                <span>Confirmar e Deletar Tudo</span>
+                <span>{l("Confirmar e Excluir Tudo", "Confirm and Delete All")}</span>
               </button>
             </div>
           </div>
@@ -4710,16 +5012,21 @@ export const DashboardView: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
-                  Confirmar Remoção de Usuário
+                  {l("Confirmar Remoção de Usuário", "Confirm User Removal")}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Ação exclusiva para Administradores
+                  {l("Ação exclusiva para Administradores", "Administrators-only action")}
                 </p>
               </div>
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              Tem certeza que deseja remover o usuário <strong>{userToDelete.name}</strong>? Esta ação removerá os dados de perfil do banco de dados do IFPR.
+              {l("Tem certeza que deseja remover o usuário ", "Are you sure you want to remove user ")}
+              <strong>{userToDelete.name}</strong>
+              {l(
+                "? Esta ação removerá os dados de perfil do banco de dados do IFPR.",
+                "? This action will remove their profile data from the IFPR database."
+              )}
             </p>
 
             <div className="flex items-center justify-end space-x-3 pt-2">
@@ -4729,7 +5036,7 @@ export const DashboardView: React.FC = () => {
                 onClick={() => setUserToDelete(null)}
                 className="px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
               >
-                Cancelar
+                {l("Cancelar", "Cancel")}
               </button>
               <button
                 type="button"
@@ -4751,7 +5058,11 @@ export const DashboardView: React.FC = () => {
                 className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white text-xs font-bold transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
               >
                 {isDeletingUser && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>{isDeletingUser ? "Removendo..." : "Sim, Remover Usuário"}</span>
+                <span>
+                  {isDeletingUser
+                    ? l("Removendo...", "Removing...")
+                    : l("Sim, Remover Usuário", "Yes, Remove User")}
+                </span>
               </button>
             </div>
           </div>
@@ -4769,15 +5080,16 @@ export const DashboardView: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
-                    Enviar Notificação do Sistema
+                    {l("Enviar Notificação do Sistema", "Send System Notification")}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Aviso direto ao discente no painel e sininho do app
+                    {l("Aviso direto ao discente no painel e sininho do aplicativo", "Direct alert to the student in the dashboard and notification bell")}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
+                aria-label={l("Fechar janela", "Close modal")}
                 onClick={() => {
                   setNotifyModalUser(null);
                   setIsBroadcastNotification(false);
@@ -4792,7 +5104,7 @@ export const DashboardView: React.FC = () => {
               {/* Target Selector */}
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 mb-1.5">
-                  Destinatário da Notificação
+                  {l("Destinatário da Notificação", "Notification Recipient")}
                 </label>
                 <div className="flex items-center gap-2 mb-2">
                   <button
@@ -4810,7 +5122,7 @@ export const DashboardView: React.FC = () => {
                         : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                     }`}
                   >
-                    Aluno Específico
+                    {l("Aluno Específico", "Specific Student")}
                   </button>
                   <button
                     type="button"
@@ -4824,7 +5136,10 @@ export const DashboardView: React.FC = () => {
                         : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                     }`}
                   >
-                    📢 Todos os Alunos ({allUsers.filter((u) => u && u.role === "ALUNO").length})
+                    {l(
+                      `📢 Todos os Alunos (${allUsers.filter((u) => u && u.role === "ALUNO").length})`,
+                      `📢 All Students (${allUsers.filter((u) => u && u.role === "ALUNO").length})`
+                    )}
                   </button>
                 </div>
 
@@ -4839,7 +5154,7 @@ export const DashboardView: React.FC = () => {
                   >
                     {allUsers.map((u) => (
                       <option key={u.id} value={u.id}>
-                        {u.name} — {u.email} ({u.role})
+                        {u.name} — {u.email} ({translateUserRole(u.role, language)})
                       </option>
                     ))}
                   </select>
@@ -4849,44 +5164,53 @@ export const DashboardView: React.FC = () => {
               {/* Quick Presets */}
               <div>
                 <label className="block text-[11px] font-bold text-slate-500 mb-1">
-                  Modelos Rápidos:
+                  {l("Modelos Rápidos:", "Quick Templates:")}
                 </label>
                 <div className="flex flex-wrap gap-1.5">
                   <button
                     type="button"
                     onClick={() => {
-                      setNotifyTitle("Objeto com características similares registrado!");
+                      setNotifyTitle(l("Objeto com características similares registrado!", "Item with similar characteristics registered!"));
                       setNotifyMessage(
-                        `Olá${notifyModalUser ? ` ${notifyModalUser.name}` : ""}! Um novo item similar ao seu relato foi cadastrado no sistema. Acesse a aba 'Encontrados' para conferir e solicitar a devolução.`
+                        l(
+                          `Olá${notifyModalUser ? ` ${notifyModalUser.name}` : ""}! Um novo item similar ao seu relato foi cadastrado no sistema. Acesse a aba 'Encontrados' para conferir e solicitar a devolução.`,
+                          `Hello${notifyModalUser ? ` ${notifyModalUser.name}` : ""}! A new item similar to your report has been registered in the system. Open the 'Found' tab to check it and request return.`
+                        )
                       );
                     }}
                     className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-[#EBF5F0] hover:text-[#16845B] text-[11px] font-semibold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                   >
-                    ✨ Objeto Similar
+                    {l("✨ Objeto Similar", "✨ Similar Item")}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      setNotifyTitle("Comparecer à Recepção / Seção de Achados");
+                      setNotifyTitle(l("Comparecer à Recepção / Seção de Achados", "Please visit Reception / Lost & Found Desk"));
                       setNotifyMessage(
-                        `Prezado(a)${notifyModalUser ? ` ${notifyModalUser.name}` : ""}, favor comparecer à recepção do campus IFPR Ivaiporã com documento com foto para retirada de seu item.`
+                        l(
+                          `Prezado(a)${notifyModalUser ? ` ${notifyModalUser.name}` : ""}, favor comparecer à recepção do campus IFPR Ivaiporã com documento com foto para retirada de seu item.`,
+                          `Dear${notifyModalUser ? ` ${notifyModalUser.name}` : " user"}, please come to the IFPR Campus Ivaiporã reception desk with a photo ID to collect your item.`
+                        )
                       );
                     }}
                     className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-[#EBF5F0] hover:text-[#16845B] text-[11px] font-semibold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                   >
-                    🏢 Retirada Presencial
+                    {l("🏢 Retirada Presencial", "🏢 In-Person Pickup")}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
-                      setNotifyTitle("Solicitação de Devolução Aprovada");
+                      setNotifyTitle(l("Solicitação de Devolução Aprovada", "Return Request Approved"));
                       setNotifyMessage(
-                        `Sua comprovação de propriedade foi validada pela equipe do IFPR. O item está liberado para entrega.`
+                        l(
+                          "Sua comprovação de propriedade foi validada pela equipe do IFPR. O item está liberado para entrega.",
+                          "Your proof of ownership has been verified by the IFPR team. The item is cleared for handover."
+                        )
                       );
                     }}
                     className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-[#EBF5F0] hover:text-[#16845B] text-[11px] font-semibold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                   >
-                    ✅ Devolução Aprovada
+                    {l("✅ Devolução Aprovada", "✅ Return Approved")}
                   </button>
                 </div>
               </div>
@@ -4894,14 +5218,14 @@ export const DashboardView: React.FC = () => {
               {/* Title Input */}
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 mb-1.5">
-                  Título da Notificação
+                  {l("Título da Notificação", "Notification Title")}
                 </label>
                 <input
                   type="text"
                   required
                   value={notifyTitle}
                   onChange={(e) => setNotifyTitle(e.target.value)}
-                  placeholder="Ex: Item similar encontrado na Biblioteca..."
+                  placeholder={l("Ex: Item similar encontrado na Biblioteca...", "e.g. Similar item found in the Library...")}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs text-[#172B2A] dark:text-white outline-none focus:border-[#16845B] font-bold"
                 />
               </div>
@@ -4909,17 +5233,17 @@ export const DashboardView: React.FC = () => {
               {/* Related Item (Optional) */}
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 mb-1.5">
-                  Objeto Relacionado (Opcional)
+                  {l("Objeto Relacionado (Opcional)", "Related Item (Optional)")}
                 </label>
                 <select
                   value={notifyRelatedItemId}
                   onChange={(e) => setNotifyRelatedItemId(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                 >
-                  <option value="">Nenhum objeto específico vinculado</option>
+                  <option value="">{l("Nenhum objeto específico vinculado", "No specific item linked")}</option>
                   {items.map((it) => (
                     <option key={it.id} value={it.id}>
-                      #{it.id.slice(-6)} - {it.title} ({it.type} - {it.category})
+                      #{it.id.slice(-6)} - {it.title} ({it.type === "PERDIDO" ? l("Perdido", "Lost") : l("Encontrado", "Found")} - {translateCategory(it.category, language)})
                     </option>
                   ))}
                 </select>
@@ -4928,14 +5252,14 @@ export const DashboardView: React.FC = () => {
               {/* Message Textarea */}
               <div>
                 <label className="block text-xs font-bold uppercase text-slate-600 dark:text-slate-400 mb-1.5">
-                  Mensagem Detalhada
+                  {l("Mensagem Detalhada", "Detailed Message")}
                 </label>
                 <textarea
                   required
                   rows={3}
                   value={notifyMessage}
                   onChange={(e) => setNotifyMessage(e.target.value)}
-                  placeholder="Digite as instruções e informações para o aluno..."
+                  placeholder={l("Digite as instruções e informações para o aluno...", "Enter instructions and details for the student...")}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] dark:bg-[#0B0F17] border border-slate-200 dark:border-slate-700 text-xs text-[#172B2A] dark:text-white outline-none focus:border-[#16845B]"
                 />
               </div>
@@ -4951,7 +5275,7 @@ export const DashboardView: React.FC = () => {
                   }}
                   className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer"
                 >
-                  Cancelar
+                  {l("Cancelar", "Cancel")}
                 </button>
                 <button
                   type="submit"
@@ -4961,12 +5285,12 @@ export const DashboardView: React.FC = () => {
                   {isSendingNotif ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Enviando...</span>
+                      <span>{l("Enviando...", "Sending...")}</span>
                     </>
                   ) : (
                     <>
                       <Send className="w-3.5 h-3.5" />
-                      <span>Enviar Notificação</span>
+                      <span>{l("Enviar Notificação", "Send Notification")}</span>
                     </>
                   )}
                 </button>

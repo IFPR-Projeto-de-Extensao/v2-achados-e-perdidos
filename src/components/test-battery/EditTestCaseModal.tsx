@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { X, Edit3, Save, ShieldAlert, CheckCircle2, AlertCircle } from "lucide-react";
 import { TestCaseItem, TestCategory, TestPriority, TestStatus } from "../../types";
 import { vibrateClick, vibrateSuccess, vibrateWarning } from "../../lib/utils";
+import { useApp } from "../../context/AppContext";
+import { localize, SupportedLanguage } from "../../lib/i18n";
 
 interface EditTestCaseModalProps {
   isOpen: boolean;
@@ -11,19 +13,19 @@ interface EditTestCaseModalProps {
   darkMode?: boolean;
 }
 
-const AVAILABLE_CATEGORIES: { id: TestCategory; name: string }[] = [
-  { id: "AUTENTICACAO", name: "Autenticação & Controle de Sessão" },
-  { id: "CADASTRO", name: "Cadastro & Persistência de Dados" },
-  { id: "ACHADOS_PERDIDOS", name: "Achados & Perdidos" },
-  { id: "REIVINDICACOES", name: "Reivindicações & Verificação" },
-  { id: "QR_CODE", name: "QR Code & Etiquetas Físicas" },
-  { id: "IA_GEMINI", name: "Inteligência Artificial (Gemini)" },
-  { id: "PWA_MOBILE", name: "PWA & Recursos Mobile" },
-  { id: "DOCUMENTOS", name: "Documentos Oficiais & Assinatura" },
-  { id: "NOTIFICACOES", name: "Notificações & Alertas" },
-  { id: "SEGURANCA", name: "Segurança & Trilha de Auditoria" },
-  { id: "APIS_PRODUCAO", name: "APIs & Webhooks em Produção" },
-  { id: "MONITORAMENTO", name: "Monitoramento & Uptime" },
+const getAvailableCategories = (language: SupportedLanguage): { id: TestCategory; name: string }[] => [
+  { id: "AUTENTICACAO", name: localize(language, "Autenticação e Controle de Sessão", "Authentication & Session Control") },
+  { id: "CADASTRO", name: localize(language, "Cadastro e Persistência de Dados", "Registration & Data Persistence") },
+  { id: "ACHADOS_PERDIDOS", name: localize(language, "Achados e Perdidos", "Lost & Found") },
+  { id: "REIVINDICACOES", name: localize(language, "Reivindicações e Verificação", "Claims & Verification") },
+  { id: "QR_CODE", name: localize(language, "Código QR e Etiquetas Físicas", "QR Code & Physical Labels") },
+  { id: "IA_GEMINI", name: localize(language, "Inteligência Artificial (Gemini)", "Artificial Intelligence (Gemini)") },
+  { id: "PWA_MOBILE", name: localize(language, "PWA e Recursos Móveis", "PWA & Mobile Features") },
+  { id: "DOCUMENTOS", name: localize(language, "Documentos Oficiais e Assinatura", "Official Documents & Signature") },
+  { id: "NOTIFICACOES", name: localize(language, "Notificações e Alertas", "Notifications & Alerts") },
+  { id: "SEGURANCA", name: localize(language, "Segurança e Trilha de Auditoria", "Security & Audit Trail") },
+  { id: "APIS_PRODUCAO", name: localize(language, "APIs e Webhooks em Produção", "Production APIs & Webhooks") },
+  { id: "MONITORAMENTO", name: localize(language, "Monitoramento e Disponibilidade", "Monitoring & Uptime") },
 ];
 
 export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
@@ -33,6 +35,9 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
   onSaveTest,
   darkMode,
 }) => {
+  const { language } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
+  const availableCategories = getAvailableCategories(language);
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<TestCategory>("CADASTRO");
   const [priority, setPriority] = useState<TestPriority>("MEDIA");
@@ -71,7 +76,7 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
     setIsSubmitting(true);
     vibrateClick();
 
-    const selectedCategoryObj = AVAILABLE_CATEGORIES.find((c) => c.id === category);
+    const selectedCategoryObj = availableCategories.find((c) => c.id === category);
     const steps = stepsText
       .split("\n")
       .map((s) => s.trim())
@@ -114,12 +119,13 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
               <Edit3 className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-black tracking-tight">Editar Caso de Teste</h2>
+              <h2 className="text-lg font-black tracking-tight">{L("Editar Caso de Teste", "Edit Test Case")}</h2>
               <p className="text-xs text-neutral-500 font-mono">ID: {test.id}</p>
             </div>
           </div>
           <button
             onClick={onClose}
+            aria-label={L("Fechar", "Close")}
             className="p-2 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition"
           >
             <X className="w-5 h-5" />
@@ -129,7 +135,7 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
         <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-4 flex-1">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1 sm:col-span-1">
-              <label className="text-xs font-bold text-neutral-500 uppercase">Categoria *</label>
+              <label className="text-xs font-bold text-neutral-500 uppercase">{L("Categoria *", "Category *")}</label>
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value as TestCategory)}
@@ -137,7 +143,7 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
                   darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
                 }`}
               >
-                {AVAILABLE_CATEGORIES.map((cat) => (
+                {availableCategories.map((cat) => (
                   <option key={cat.id} value={cat.id}>
                     {cat.name}
                   </option>
@@ -146,7 +152,7 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
             </div>
 
             <div className="space-y-1 sm:col-span-1">
-              <label className="text-xs font-bold text-neutral-500 uppercase">Prioridade *</label>
+              <label className="text-xs font-bold text-neutral-500 uppercase">{L("Prioridade *", "Priority *")}</label>
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as TestPriority)}
@@ -154,15 +160,15 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
                   darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
                 }`}
               >
-                <option value="BAIXA">Baixa</option>
-                <option value="MEDIA">Média</option>
-                <option value="ALTA">Alta</option>
-                <option value="CRITICA">Crítica</option>
+                <option value="BAIXA">{L("Baixa", "Low")}</option>
+                <option value="MEDIA">{L("Média", "Medium")}</option>
+                <option value="ALTA">{L("Alta", "High")}</option>
+                <option value="CRITICA">{L("Crítica", "Critical")}</option>
               </select>
             </div>
 
             <div className="space-y-1 sm:col-span-1">
-              <label className="text-xs font-bold text-neutral-500 uppercase">Status *</label>
+              <label className="text-xs font-bold text-neutral-500 uppercase">{L("Situação *", "Status *")}</label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as TestStatus)}
@@ -170,17 +176,17 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
                   darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
                 }`}
               >
-                <option value="PENDENTE">Pendente</option>
-                <option value="EM_EXECUCAO">Em execução</option>
-                <option value="CONCLUIDO">Concluído</option>
-                <option value="PROBLEMA">Problema encontrado</option>
-                <option value="NAO_SE_APLICA">Não se aplica</option>
+                <option value="PENDENTE">{L("Pendente", "Pending")}</option>
+                <option value="EM_EXECUCAO">{L("Em execução", "In progress")}</option>
+                <option value="CONCLUIDO">{L("Concluído", "Completed")}</option>
+                <option value="PROBLEMA">{L("Problema encontrado", "Issue found")}</option>
+                <option value="NAO_SE_APLICA">{L("Não se aplica", "Not applicable")}</option>
               </select>
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-neutral-500 uppercase">Título do Caso de Teste *</label>
+            <label className="text-xs font-bold text-neutral-500 uppercase">{L("Título do Caso de Teste *", "Test Case Title *")}</label>
             <input
               type="text"
               required
@@ -193,12 +199,12 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-neutral-500 uppercase">Descrição & Objetivo do Teste</label>
+            <label className="text-xs font-bold text-neutral-500 uppercase">{L("Descrição e Objetivo do Teste", "Test Description & Objective")}</label>
             <textarea
               rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Explique o que este teste visa validar..."
+              placeholder={L("Explique o que este teste visa validar...", "Explain what this test aims to validate...")}
               className={`w-full text-xs font-medium px-3 py-2 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
                 darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
               }`}
@@ -206,7 +212,7 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-neutral-500 uppercase">Resultado Esperado *</label>
+            <label className="text-xs font-bold text-neutral-500 uppercase">{L("Resultado Esperado *", "Expected Result *")}</label>
             <textarea
               required
               rows={2}
@@ -219,12 +225,12 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-neutral-500 uppercase">Passos do Procedimento (1 por linha)</label>
+            <label className="text-xs font-bold text-neutral-500 uppercase">{L("Passos do Procedimento (1 por linha)", "Procedure Steps (1 per line)")}</label>
             <textarea
               rows={3}
               value={stepsText}
               onChange={(e) => setStepsText(e.target.value)}
-              placeholder="1. Passo um&#10;2. Passo dois&#10;3. Validar resultado"
+              placeholder={L("1. Passo um\n2. Passo dois\n3. Validar resultado", "1. Step one\n2. Step two\n3. Validate result")}
               className={`w-full text-xs font-mono px-3 py-2 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
                 darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
               }`}
@@ -232,12 +238,12 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-neutral-500 uppercase">Observações Técnicas</label>
+            <label className="text-xs font-bold text-neutral-500 uppercase">{L("Observações Técnicas", "Technical Notes")}</label>
             <textarea
               rows={2}
               value={observations}
               onChange={(e) => setObservations(e.target.value)}
-              placeholder="Instruções particulares para o testador..."
+              placeholder={L("Instruções particulares para o testador...", "Specific instructions for the tester...")}
               className={`w-full text-xs font-medium px-3 py-2 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
                 darkMode ? "bg-neutral-800 border-neutral-700 text-white" : "bg-neutral-50 border-neutral-300 text-neutral-900"
               }`}
@@ -254,7 +260,7 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
             />
             <label htmlFor="edit-critical-toggle" className="text-xs font-bold flex items-center gap-1.5 cursor-pointer">
               <ShieldAlert className="w-4 h-4 text-amber-500" />
-              Marcar como teste crítico de persistência de dados (RNF-04)
+              {L("Marcar como teste crítico de persistência de dados (RNF-04)", "Mark as critical data persistence test (NFR-04)")}
             </label>
           </div>
 
@@ -264,7 +270,7 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
               onClick={onClose}
               className="px-4 py-2.5 text-xs font-semibold rounded-xl border dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
             >
-              Cancelar
+              {L("Cancelar", "Cancel")}
             </button>
             <button
               type="submit"
@@ -272,7 +278,7 @@ export const EditTestCaseModal: React.FC<EditTestCaseModalProps> = ({
               className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center gap-1.5"
             >
               <Save className="w-4 h-4" />
-              Salvar Alterações
+              {L("Salvar Alterações", "Save Changes")}
             </button>
           </div>
         </form>

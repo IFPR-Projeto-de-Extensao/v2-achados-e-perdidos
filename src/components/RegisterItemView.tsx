@@ -10,11 +10,19 @@ import { auth } from "../lib/firebase";
 import { isAccountBlocked, resolveAccountStatus } from "../lib/accountStatusUtils";
 import { evaluateRegisterViewAccess } from "../lib/itemRegistrationPipeline";
 import {
+  localize,
+  translateCategory,
+  translateLocationGroup,
+  translateCampusLocation,
+  translateItemStatus,
+} from "../lib/i18n";
+import {
   triggerVibration,
   vibrateClick,
   vibrateSuccess,
   vibrateCritical,
   getTodayDateString,
+  formatDate,
   formatPhone,
   isValidPhone,
   validateItemOccurrenceDate,
@@ -210,14 +218,17 @@ export const RegisterItemView: React.FC = () => {
   } = useApp();
 
   const { navigate, goBack, searchParams } = useRouter();
+  const L = (pt: string, en: string) => localize(language, pt, en);
 
   // Institutional Auth Guard
   const { isGuest, isAuthLoading, requireAuth } = useRequireAuth({
     redirectOnUnauth: true,
     targetTab: "register",
     registerType: registerTypeSelection,
-    customMessage:
+    customMessage: L(
       "Apenas usuários autenticados podem cadastrar novos itens no IFPR. Faça login para continuar.",
+      "Only authenticated users can register new items at IFPR. Sign in to continue."
+    ),
   });
 
   // Strict Access Guard: aligned with 8-profile permission matrix AFTER auth finishes hydrating and user is not guest
@@ -231,10 +242,16 @@ export const RegisterItemView: React.FC = () => {
 
   useEffect(() => {
     if (isUnauthorized) {
-      addToast("Apenas Servidores/TAE aprovados e Administradores podem cadastrar objetos no Localiza+.", "error");
+      addToast(
+        L(
+          "Apenas Servidores/TAE aprovados e Administradores podem cadastrar objetos no Localiza+.",
+          "Only approved Staff/TAE members and Administrators can register objects in Localiza+."
+        ),
+        "error"
+      );
       navigate("/");
     }
-  }, [isUnauthorized, navigate, addToast]);
+  }, [isUnauthorized, navigate, addToast, language]);
 
   // Step Management (1: Tipo, 2: Informações, 3: Local e Data, 4: Revisão, 5: Conclusão)
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
@@ -503,7 +520,10 @@ export const RegisterItemView: React.FC = () => {
           item: registrationFeedback.item,
           error:
             matchingTask.error ||
-            "Falha temporária ao sincronizar o cadastro com o servidor em nuvem.",
+            L(
+              "Falha temporária ao sincronizar o cadastro com o servidor em nuvem.",
+              "Temporary failure syncing registration with the cloud server."
+            ),
           taskId: canonicalTaskId,
         });
       } else if (
@@ -552,7 +572,13 @@ export const RegisterItemView: React.FC = () => {
     setCurrentStep(1);
     setHasConfirmedReview(false);
     setStepErrors({});
-    addToast("Rascunho descartado com sucesso. Formulário pronto.", "info");
+    addToast(
+      L(
+        "Rascunho descartado com sucesso. Formulário pronto.",
+        "Draft discarded successfully. Form is ready."
+      ),
+      "info"
+    );
   };
 
   // Image File Upload with Multi-Pass Compression & Defensive Payload Guard
@@ -561,13 +587,25 @@ export const RegisterItemView: React.FC = () => {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      addToast("Por favor, selecione um arquivo de imagem válido (JPG, PNG, WebP).", "error");
+      addToast(
+        L(
+          "Por favor, selecione um arquivo de imagem válido (JPG, PNG, WebP).",
+          "Please select a valid image file (JPG, PNG, WebP)."
+        ),
+        "error"
+      );
       e.target.value = "";
       return;
     }
 
     if (file.size > 15 * 1024 * 1024) {
-      addToast("A imagem selecionada é muito pesada (máximo 15MB).", "error");
+      addToast(
+        L(
+          "A imagem selecionada é muito pesada (máximo 15MB).",
+          "The selected image is too large (maximum 15MB)."
+        ),
+        "error"
+      );
       e.target.value = "";
       return;
     }
@@ -598,14 +636,23 @@ export const RegisterItemView: React.FC = () => {
 
       addToast(
         prepared.usedFallbackCompression
-          ? `Foto otimizada em formato compatível (${prepared.result.formattedCompressedSize})!`
-          : `Foto anexada e otimizada com sucesso! Redução de ${prepared.result.savingsPercentage}%.`,
+          ? L(
+              `Foto otimizada em formato compatível (${prepared.result.formattedCompressedSize})!`,
+              `Photo optimized in a compatible format (${prepared.result.formattedCompressedSize})!`
+            )
+          : L(
+              `Foto anexada e otimizada com sucesso! Redução de ${prepared.result.savingsPercentage}%.`,
+              `Photo attached and optimized successfully! Reduced by ${prepared.result.savingsPercentage}%.`
+            ),
         "success"
       );
     } catch (compErr) {
       console.error("Erro ao processar imagem selecionada:", compErr);
       vibrateCritical();
-      const errMsg = "Não foi possível processar a imagem selecionada. Tente outro arquivo JPG ou PNG.";
+      const errMsg = L(
+        "Não foi possível processar a imagem selecionada. Tente outro arquivo JPG ou PNG.",
+        "Could not process the selected image. Try another JPG or PNG file."
+      );
       setStepErrors((prev) => ({ ...prev, image: errMsg }));
       addToast(errMsg, "error");
     } finally {
@@ -630,7 +677,12 @@ export const RegisterItemView: React.FC = () => {
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Câmera não suportada neste dispositivo ou navegador.");
+        throw new Error(
+          L(
+            "Câmera não suportada neste dispositivo ou navegador.",
+            "Camera is not supported on this device or browser."
+          )
+        );
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -645,14 +697,17 @@ export const RegisterItemView: React.FC = () => {
       }
 
       setCameraStatus("granted");
-      addToast("Câmera conectada com sucesso!", "success");
+      addToast(L("Câmera conectada com sucesso!", "Camera connected successfully!"), "success");
     } catch (err: any) {
       console.error("Erro ao acessar câmera:", err);
       setCameraStatus("denied");
       setCameraError(
-        "Permissão de câmera negada. Habilite a permissão no navegador ou escolha uma foto do seu dispositivo."
+        L(
+          "Permissão de câmera negada. Habilite a permissão no navegador ou escolha uma foto do seu dispositivo.",
+          "Camera permission denied. Enable permission in your browser or choose a photo from your device."
+        )
       );
-      addToast("Não foi possível acessar a câmera.", "error");
+      addToast(L("Não foi possível acessar a câmera.", "Could not access the camera."), "error");
     }
   };
 
@@ -691,11 +746,17 @@ export const RegisterItemView: React.FC = () => {
         compressed: prepared.result.formattedCompressedSize,
         savings: prepared.result.savingsPercentage,
       });
-      addToast("Foto capturada e otimizada com sucesso!", "success");
+      addToast(
+        L("Foto capturada e otimizada com sucesso!", "Photo captured and optimized successfully!"),
+        "success"
+      );
     } catch (err) {
       console.error("Erro ao processar foto capturada:", err);
       vibrateCritical();
-      const errMsg = "Falha ao processar a foto capturada pela câmera. Tente novamente.";
+      const errMsg = L(
+        "Falha ao processar a foto capturada pela câmera. Tente novamente.",
+        "Failed to process the captured camera photo. Please try again."
+      );
       setStepErrors((prev) => ({ ...prev, image: errMsg }));
       addToast(errMsg, "error");
     } finally {
@@ -715,13 +776,19 @@ export const RegisterItemView: React.FC = () => {
       const { image: _removed, ...rest } = prev;
       return rest;
     });
-    addToast("Foto removida.", "info");
+    addToast(L("Foto removida.", "Photo removed."), "info");
   };
 
   // Step Validation Functions
   const validateStep1 = () => {
     if (type !== "PERDIDO" && type !== "ENCONTRADO") {
-      addToast("Selecione se o objeto foi perdido ou encontrado.", "error");
+      addToast(
+        L(
+          "Selecione se o objeto foi perdido ou encontrado.",
+          "Select whether the object was lost or found."
+        ),
+        "error"
+      );
       return false;
     }
     return true;
@@ -730,10 +797,13 @@ export const RegisterItemView: React.FC = () => {
   const validateStep2 = () => {
     const errors: Record<string, string> = {};
     if (!title.trim()) {
-      errors.title = "Informe o nome ou título do objeto.";
+      errors.title = L("Informe o nome ou título do objeto.", "Enter the object name or title.");
     }
     if (!description.trim()) {
-      errors.description = "Escreva uma descrição detalhada para ajudar na identificação.";
+      errors.description = L(
+        "Escreva uma descrição detalhada para ajudar na identificação.",
+        "Write a detailed description to help with identification."
+      );
     }
     const textCheck = validateItemTextFields(
       {
@@ -745,7 +815,7 @@ export const RegisterItemView: React.FC = () => {
       true
     );
     if (!textCheck.isValid) {
-      errors.general = textCheck.error || "Limite de caracteres excedido.";
+      errors.general = textCheck.error || L("Limite de caracteres excedido.", "Character limit exceeded.");
     }
 
     if (hasCustomImage && imageUrl.trim()) {
@@ -754,7 +824,8 @@ export const RegisterItemView: React.FC = () => {
         fields: { title, description, category, color, brand, type },
       });
       if (!imageSizeCheck.isValid) {
-        errors.image = imageSizeCheck.error || "A imagem excede o limite permitido.";
+        errors.image =
+          imageSizeCheck.error || L("A imagem excede o limite permitido.", "The image exceeds the allowed limit.");
       }
     }
 
@@ -766,7 +837,7 @@ export const RegisterItemView: React.FC = () => {
           errors.description ||
           errors.image ||
           errors.general ||
-          "Preencha os campos obrigatórios.",
+          L("Preencha os campos obrigatórios.", "Please fill in the required fields."),
         "error"
       );
       return false;
@@ -777,23 +848,33 @@ export const RegisterItemView: React.FC = () => {
   const validateStep3 = () => {
     const errors: Record<string, string> = {};
     if (!location.trim()) {
-      errors.location = "Selecione o local no campus.";
+      errors.location = L("Selecione o local no campus.", "Select the campus location.");
     }
     if (!date) {
-      errors.date = "Informe a data da ocorrência.";
+      errors.date = L("Informe a data da ocorrência.", "Enter the occurrence date.");
     } else {
-      const dateCheck = validateItemOccurrenceDate(date, "A data da ocorrência");
+      const dateCheck = validateItemOccurrenceDate(
+        date,
+        L("A data da ocorrência", "The occurrence date")
+      );
       if (!dateCheck.isValid) {
-        errors.date = dateCheck.error || "A data não pode ser futura.";
+        errors.date =
+          dateCheck.error || L("A data não pode ser futura.", "The date cannot be in the future.");
       }
     }
 
     if (!contactInfo.trim()) {
-      errors.contactInfo = "Informe o e-mail ou ponto de contato para devolução.";
+      errors.contactInfo = L(
+        "Informe o e-mail ou ponto de contato para devolução.",
+        "Provide the email or drop-off point for return."
+      );
     }
 
     if (contactPhone.trim() && !isValidPhone(contactPhone)) {
-      errors.contactPhone = "Telefone inválido. Utilize o formato (XX) 9XXXX-XXXX.";
+      errors.contactPhone = L(
+        "Telefone inválido. Utilize o formato (XX) 9XXXX-XXXX.",
+        "Invalid phone number. Use the format (XX) 9XXXX-XXXX."
+      );
     }
 
     const fullLocation = locationComplement.trim()
@@ -801,7 +882,10 @@ export const RegisterItemView: React.FC = () => {
       : location.trim();
 
     if (fullLocation.length > ITEM_FIELD_LIMITS.LOCATION) {
-      errors.locationComplement = `Local + complemento excedem ${ITEM_FIELD_LIMITS.LOCATION} caracteres (${fullLocation.length}/${ITEM_FIELD_LIMITS.LOCATION}). Reduza o complemento.`;
+      errors.locationComplement = L(
+        `Local + complemento excedem ${ITEM_FIELD_LIMITS.LOCATION} caracteres (${fullLocation.length}/${ITEM_FIELD_LIMITS.LOCATION}). Reduza o complemento.`,
+        `Location + details exceed ${ITEM_FIELD_LIMITS.LOCATION} characters (${fullLocation.length}/${ITEM_FIELD_LIMITS.LOCATION}). Shorten the details.`
+      );
     }
 
     const fullContact =
@@ -815,7 +899,10 @@ export const RegisterItemView: React.FC = () => {
       "Contato Institucional IFPR";
 
     if (fullContact.length > ITEM_FIELD_LIMITS.CONTACT_INFO) {
-      errors.contactInfo = `As informações de contato combinadas excedem ${ITEM_FIELD_LIMITS.CONTACT_INFO} caracteres (${fullContact.length}/${ITEM_FIELD_LIMITS.CONTACT_INFO}). Encurte o campo de contato.`;
+      errors.contactInfo = L(
+        `As informações de contato combinadas excedem ${ITEM_FIELD_LIMITS.CONTACT_INFO} caracteres (${fullContact.length}/${ITEM_FIELD_LIMITS.CONTACT_INFO}). Encurte o campo de contato.`,
+        `Combined contact information exceeds ${ITEM_FIELD_LIMITS.CONTACT_INFO} characters (${fullContact.length}/${ITEM_FIELD_LIMITS.CONTACT_INFO}). Shorten the contact field.`
+      );
     }
 
     const textCheck = validateItemTextFields(
@@ -826,7 +913,7 @@ export const RegisterItemView: React.FC = () => {
       true
     );
     if (!textCheck.isValid && !errors.locationComplement && !errors.contactInfo) {
-      errors.general = textCheck.error || "Limite de caracteres excedido.";
+      errors.general = textCheck.error || L("Limite de caracteres excedido.", "Character limit exceeded.");
     }
 
     if (hasCustomImage && imageUrl.trim()) {
@@ -845,7 +932,12 @@ export const RegisterItemView: React.FC = () => {
         },
       });
       if (!payloadCheck.isValid) {
-        errors.image = payloadCheck.error || "A imagem + dados excedem o limite do Firestore.";
+        errors.image =
+          payloadCheck.error ||
+          L(
+            "A imagem + dados excedem o limite do Firestore.",
+            "The image and form data exceed the Firestore size limit."
+          );
       }
     }
 
@@ -860,7 +952,7 @@ export const RegisterItemView: React.FC = () => {
           errors.contactPhone ||
           errors.image ||
           errors.general ||
-          "Corrija os campos indicados.",
+          L("Corrija os campos indicados.", "Please correct the highlighted fields."),
         "error"
       );
       return false;
@@ -893,7 +985,13 @@ export const RegisterItemView: React.FC = () => {
     vibrateClick();
 
     if (!hasConfirmedReview) {
-      addToast("Marque a confirmação de que revisou os dados antes de prosseguir.", "warning");
+      addToast(
+        L(
+          "Marque a confirmação de que revisou os dados antes de prosseguir.",
+          "Check the confirmation box stating you reviewed the details before proceeding."
+        ),
+        "warning"
+      );
       return;
     }
 
@@ -902,16 +1000,26 @@ export const RegisterItemView: React.FC = () => {
       const resolved = resolveAccountStatus(currentUser);
       if (resolved.status === "banned") {
         addToast(
-          `Ação Bloqueada: Sua conta institucional está banida. Motivo: ${
-            currentUser?.statusReason || "Violação das diretrizes"
-          }.`,
+          L(
+            `Ação Bloqueada: Sua conta institucional está banida. Motivo: ${
+              currentUser?.statusReason || "Violação das diretrizes"
+            }.`,
+            `Action Blocked: Your institutional account is banned. Reason: ${
+              currentUser?.statusReason || "Policy violation"
+            }.`
+          ),
           "error"
         );
       } else {
         addToast(
-          `Ação Bloqueada: Sua conta institucional está temporariamente suspensa. Motivo: ${
-            currentUser?.statusReason || "Suspensão administrativa"
-          }.`,
+          L(
+            `Ação Bloqueada: Sua conta institucional está temporariamente suspensa. Motivo: ${
+              currentUser?.statusReason || "Suspensão administrativa"
+            }.`,
+            `Action Blocked: Your institutional account is temporarily suspended. Reason: ${
+              currentUser?.statusReason || "Administrative suspension"
+            }.`
+          ),
           "warning"
         );
       }
@@ -934,7 +1042,10 @@ export const RegisterItemView: React.FC = () => {
           imageUrl,
           contactInfo,
         },
-        "Apenas usuários autenticados podem cadastrar novos itens. Faça login para continuar."
+        L(
+          "Apenas usuários autenticados podem cadastrar novos itens. Faça login para continuar.",
+          "Only authenticated users can register new items. Sign in to continue."
+        )
       );
       return;
     }
@@ -992,7 +1103,10 @@ export const RegisterItemView: React.FC = () => {
       if (res.persistenceStatus === "CONFIRMED") {
         vibrateSuccess();
         addToast(
-          `Cadastro Concluído! O objeto "${res.newItem.title}" foi gravado com sucesso no Firestore.`,
+          L(
+            `Cadastro Concluído! O objeto "${res.newItem.title}" foi gravado com sucesso no Firestore.`,
+            `Registration Complete! The object "${res.newItem.title}" was saved successfully to Firestore.`
+          ),
           "success"
         );
         setRegistrationFeedback({
@@ -1003,7 +1117,10 @@ export const RegisterItemView: React.FC = () => {
         const classifiedMsg =
           typeof res.classifiedMessage === "string" && res.classifiedMessage.trim().length > 0
             ? res.classifiedMessage
-            : `Sincronização recusada por falta de autorização/permissão no Firestore. O objeto "${res.newItem.title}" permanece preservado no dispositivo.`;
+            : L(
+                `Sincronização recusada por falta de autorização/permissão no Firestore. O objeto "${res.newItem.title}" permanece preservado no dispositivo.`,
+                `Sync rejected due to missing authorization/permission in Firestore. The object "${res.newItem.title}" remains safely stored on this device.`
+              );
 
         addToast(classifiedMsg, res.errorCategory === "AUTHORIZATION" ? "error" : "warning");
         setRegistrationFeedback({
@@ -1017,7 +1134,10 @@ export const RegisterItemView: React.FC = () => {
         const pendingMsg =
           typeof res.classifiedMessage === "string" && res.classifiedMessage.trim().length > 0
             ? res.classifiedMessage
-            : `Salvo no dispositivo: O objeto "${res.newItem.title}" será sincronizado assim que a rede voltar.`;
+            : L(
+                `Salvo no dispositivo: O objeto "${res.newItem.title}" será sincronizado assim que a rede voltar.`,
+                `Saved on device: The object "${res.newItem.title}" will sync as soon as the network returns.`
+              );
 
         addToast(pendingMsg, "info");
         setRegistrationFeedback({
@@ -1030,7 +1150,11 @@ export const RegisterItemView: React.FC = () => {
       setCurrentStep(5);
     } catch (submitErr: any) {
       console.error("Erro ao salvar objeto no banco de dados:", submitErr);
-      addToast(submitErr?.message || "Erro ao salvar item no banco de dados.", "error");
+      addToast(
+        submitErr?.message ||
+          L("Erro ao salvar item no banco de dados.", "Error saving item to the database."),
+        "error"
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -1062,7 +1186,7 @@ export const RegisterItemView: React.FC = () => {
       <div className="min-h-[60vh] flex flex-col items-center justify-center p-6 text-center space-y-3">
         <Loader2 className="w-7 h-7 animate-spin text-[#16845B]" />
         <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
-          Verificando sessão institucional...
+          {L("Verificando sessão institucional...", "Verifying institutional session...")}
         </p>
       </div>
     );
@@ -1078,25 +1202,28 @@ export const RegisterItemView: React.FC = () => {
           </div>
 
           <div className="space-y-2">
-            <UIBadge tone="amber">Autenticação Obrigatória</UIBadge>
+            <UIBadge tone="amber">{L("Autenticação Obrigatória", "Authentication Required")}</UIBadge>
             <h1 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-              Identifique-se para Cadastrar
+              {L("Identifique-se para Cadastrar", "Sign In to Register")}
             </h1>
             <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
-              Para garantir a integridade, segurança e rastreabilidade dos registros no IFPR Campus
-              Ivaiporã, apenas usuários autenticados podem cadastrar novos pertences.
+              {L(
+                "Para garantir a integridade, segurança e rastreabilidade dos registros no IFPR Campus Ivaiporã, apenas usuários autenticados podem cadastrar novos pertences.",
+                "To ensure record integrity, security, and traceability at IFPR Campus Ivaiporã, only authenticated users can register new belongings."
+              )}
             </p>
           </div>
 
           <SubtlePanel className="p-4 text-left space-y-2 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
             <div className="flex items-center gap-2 font-bold text-[#172B2A] dark:text-white">
-              <ShieldCheck className="w-4 h-4 text-[#16845B]" /> O que você pode fazer sem login:
+              <ShieldCheck className="w-4 h-4 text-[#16845B]" />{" "}
+              {L("O que você pode fazer sem login:", "What you can do without signing in:")}
             </div>
             <ul className="list-disc list-inside space-y-1 pl-1 text-slate-500 dark:text-slate-400">
-              <li>Consultar todos os itens perdidos e encontrados</li>
-              <li>Fazer buscas por local, cor e categoria</li>
-              <li>Escanear QR Codes de etiquetas físicas no campus</li>
-              <li>Ver detalhes públicos dos pertences</li>
+              <li>{L("Consultar todos os itens perdidos e encontrados", "Browse all lost and found items")}</li>
+              <li>{L("Fazer buscas por local, cor e categoria", "Search by location, color, and category")}</li>
+              <li>{L("Ler QR Codes de etiquetas físicas no campus", "Scan physical QR code tags on campus")}</li>
+              <li>{L("Ver detalhes públicos dos pertences", "View public details of belongings")}</li>
             </ul>
           </SubtlePanel>
 
@@ -1112,7 +1239,7 @@ export const RegisterItemView: React.FC = () => {
               }}
               className="flex-1"
             >
-              <LogIn className="w-5 h-5" /> Fazer Login ou Criar Conta
+              <LogIn className="w-5 h-5" /> {L("Fazer Login ou Criar Conta", "Sign In or Create Account")}
             </UIButton>
             <UIButton
               id="btn-guest-back-to-lost"
@@ -1125,7 +1252,7 @@ export const RegisterItemView: React.FC = () => {
               }}
             >
               <PackageSearch className="w-4 h-4 text-[#16845B]" />
-              <span>Explorar Itens</span>
+              <span>{L("Explorar Itens", "Explore Items")}</span>
             </UIButton>
             <UIButton
               id="btn-guest-close-to-home"
@@ -1140,10 +1267,10 @@ export const RegisterItemView: React.FC = () => {
                   navigate("/");
                 }
               }}
-              title="Fechar e retornar"
+              title={L("Fechar e retornar", "Close and go back")}
             >
               <X className="w-4 h-4" />
-              <span>Fechar</span>
+              <span>{t("close")}</span>
             </UIButton>
           </div>
         </SurfaceCard>
@@ -1160,14 +1287,20 @@ export const RegisterItemView: React.FC = () => {
             <ShieldAlert className="w-8 h-8" />
           </div>
           <div className="space-y-2">
-            <UIBadge tone="rose">Acesso Restrito</UIBadge>
+            <UIBadge tone="rose">{L("Acesso Restrito", "Restricted Access")}</UIBadge>
             <h2 className="text-xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-              Acesso Restrito ao Cadastro
+              {L("Acesso Restrito ao Cadastro", "Registration Access Restricted")}
             </h2>
             <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
               {currentUser?.role === "SERVIDOR"
-                ? "Sua conta de Servidor/TAE aguarda aprovação institucional pela Secretaria/Diretoria do Campus. O cadastro de objetos será liberado assim que o perfil for aprovado."
-                : "O cadastro de objetos perdidos e encontrados é restrito a Servidores/TAE aprovados e Administradores do IFPR."}
+                ? L(
+                    "Sua conta de Servidor/TAE aguarda aprovação institucional pela Secretaria/Diretoria do Campus. O cadastro de objetos será liberado assim que o perfil for aprovado.",
+                    "Your Staff/TAE account is awaiting institutional approval from the Campus Office/Board. Object registration will be enabled once your profile is approved."
+                  )
+                : L(
+                    "O cadastro de objetos perdidos e encontrados é restrito a Servidores/TAE aprovados e Administradores do IFPR.",
+                    "Registering lost and found objects is restricted to approved IFPR Staff/TAE members and Administrators."
+                  )}
             </p>
           </div>
           <UIButton
@@ -1176,7 +1309,7 @@ export const RegisterItemView: React.FC = () => {
             fullWidth
             onClick={() => navigate("/")}
           >
-            Voltar à Página Inicial
+            {t("backToHome")}
           </UIButton>
         </SurfaceCard>
       </div>
@@ -1323,9 +1456,12 @@ export const RegisterItemView: React.FC = () => {
               <Save className="w-4 h-4" />
             </div>
             <div>
-              <p className="font-bold">Rascunho recuperado!</p>
+              <p className="font-bold">{L("Rascunho recuperado!", "Draft restored!")}</p>
               <p className="text-[11px] text-[#064E3B] dark:text-emerald-400">
-                Seus dados salvos anteriormente foram restaurados para você continuar.
+                {L(
+                  "Seus dados salvos anteriormente foram restaurados para você continuar.",
+                  "Your previously saved details have been restored so you can continue."
+                )}
               </p>
             </div>
           </div>
@@ -1335,7 +1471,7 @@ export const RegisterItemView: React.FC = () => {
             className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-[#16845B]/25 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/40 text-xs font-bold text-slate-700 dark:text-slate-300 transition-colors shrink-0 flex items-center space-x-1 cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Descartar</span>
+            <span>{L("Descartar", "Discard")}</span>
           </button>
         </div>
       )}
@@ -1397,7 +1533,7 @@ export const RegisterItemView: React.FC = () => {
               </div>
 
               <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-[#16845B] dark:text-emerald-400">
-                <span>Selecionar esta opção</span>
+                <span>{L("Selecionar esta opção", "Select this option")}</span>
                 <ArrowRight className="w-4 h-4" />
               </div>
             </button>
@@ -1426,21 +1562,20 @@ export const RegisterItemView: React.FC = () => {
                 >
                   <PackageSearch className="w-6 h-6" />
                 </div>
-                <UIBadge tone={type === "PERDIDO" ? "rose" : "slate"}>Perdido</UIBadge>
+                <UIBadge tone={type === "PERDIDO" ? "rose" : "slate"}>{t("statusLost")}</UIBadge>
               </div>
 
               <div className="space-y-1">
                 <h3 className="text-lg font-bold text-[#172B2A] dark:text-white">
-                  Perdi um objeto
+                  {t("ctaLost")}
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  Esqueci ou perdi um pertence meu no campus e quero registrar a ocorrência para que
-                  quem encontrá-lo possa me avisar.
+                  {t("typeLostDesc")}
                 </p>
               </div>
 
               <div className="pt-2 flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400">
-                <span>Selecionar esta opção</span>
+                <span>{L("Selecionar esta opção", "Select this option")}</span>
                 <ArrowRight className="w-4 h-4" />
               </div>
             </button>
@@ -1455,7 +1590,7 @@ export const RegisterItemView: React.FC = () => {
               onClick={handleNextStep}
               className="w-full sm:w-auto px-8"
             >
-              <span>Continuar</span>
+              <span>{L("Continuar", "Continue")}</span>
               <ArrowRight className="w-4 h-4" />
             </UIButton>
           </div>
@@ -1470,19 +1605,30 @@ export const RegisterItemView: React.FC = () => {
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold uppercase text-[#16845B] dark:text-emerald-400 tracking-wider">
-                Etapa 2 de 4 • Informações do Objeto
+                {L("Etapa 2 de 4 • Informações do Objeto", "Step 2 of 4 • Object Information")}
               </span>
               <UIBadge tone={type === "ENCONTRADO" ? "emerald" : "rose"}>
-                {type === "ENCONTRADO" ? "Objeto Encontrado" : "Objeto Perdido"}
+                {type === "ENCONTRADO"
+                  ? L("Objeto Encontrado", "Found Object")
+                  : L("Objeto Perdido", "Lost Object")}
               </UIBadge>
             </div>
             <h2 className="text-xl sm:text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight">
               {type === "ENCONTRADO"
-                ? "Quais são as características do objeto encontrado?"
-                : "Como é o objeto que você perdeu?"}
+                ? L(
+                    "Quais são as características do objeto encontrado?",
+                    "What are the characteristics of the found object?"
+                  )
+                : L(
+                    "Como é o objeto que você perdeu?",
+                    "What does the object you lost look like?"
+                  )}
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-              Preencha os detalhes para facilitar a identificação visual por qualquer pessoa.
+              {L(
+                "Preencha os detalhes para facilitar a identificação visual por qualquer pessoa.",
+                "Fill in the details to make visual identification easy for anyone."
+              )}
             </p>
           </div>
 
@@ -1494,7 +1640,7 @@ export const RegisterItemView: React.FC = () => {
                   htmlFor="title-input"
                   className="block text-xs font-bold text-[#172B2A] dark:text-slate-200"
                 >
-                  Nome do Objeto <span className="text-rose-500">*</span>
+                  {L("Nome do Objeto", "Object Name")} <span className="text-rose-500">*</span>
                 </label>
                 <span
                   id="title-char-counter"
@@ -1504,7 +1650,7 @@ export const RegisterItemView: React.FC = () => {
                       : "text-slate-400"
                   }`}
                 >
-                  {title.length} / {ITEM_FIELD_LIMITS.TITLE} caracteres
+                  {title.length} / {ITEM_FIELD_LIMITS.TITLE} {L("caracteres", "characters")}
                 </span>
               </div>
               <UIInput
@@ -1514,7 +1660,10 @@ export const RegisterItemView: React.FC = () => {
                 maxLength={ITEM_FIELD_LIMITS.TITLE}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Ex: Garrafa térmica Kouda azul marinho 750ml"
+                placeholder={L(
+                  "Ex: Garrafa térmica Kouda azul marinho 750ml",
+                  "e.g., Navy blue 750ml Kouda insulated water bottle"
+                )}
                 hasError={Boolean(stepErrors.title)}
               />
               {stepErrors.title && (
@@ -1523,7 +1672,11 @@ export const RegisterItemView: React.FC = () => {
             </div>
 
             {/* Categoria */}
-            <UIFieldGroup label="Categoria do Objeto" htmlFor="category-input" required>
+            <UIFieldGroup
+              label={L("Categoria do Objeto", "Object Category")}
+              htmlFor="category-input"
+              required
+            >
               <UISelect
                 id="category-input"
                 value={category}
@@ -1531,7 +1684,7 @@ export const RegisterItemView: React.FC = () => {
               >
                 {CATEGORIES_LIST.map((cat) => (
                   <option key={cat} value={cat}>
-                    {cat}
+                    {translateCategory(cat, language)}
                   </option>
                 ))}
               </UISelect>
@@ -1544,7 +1697,8 @@ export const RegisterItemView: React.FC = () => {
                   htmlFor="description-input"
                   className="block text-xs font-bold text-[#172B2A] dark:text-slate-200"
                 >
-                  Descrição Detalhada <span className="text-rose-500">*</span>
+                  {L("Descrição Detalhada", "Detailed Description")}{" "}
+                  <span className="text-rose-500">*</span>
                 </label>
                 <span
                   id="description-char-counter"
@@ -1554,7 +1708,8 @@ export const RegisterItemView: React.FC = () => {
                       : "text-slate-400"
                   }`}
                 >
-                  {description.length} / {ITEM_FIELD_LIMITS.DESCRIPTION} caracteres
+                  {description.length} / {ITEM_FIELD_LIMITS.DESCRIPTION}{" "}
+                  {L("caracteres", "characters")}
                 </span>
               </div>
               <UITextarea
@@ -1564,7 +1719,10 @@ export const RegisterItemView: React.FC = () => {
                 maxLength={ITEM_FIELD_LIMITS.DESCRIPTION}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Descreva características que ajudem a reconhecer o objeto (marcas de uso, arranhões, chaveiros, adesivos, conteúdo interno, etc.)..."
+                placeholder={L(
+                  "Descreva características que ajudem a reconhecer o objeto (marcas de uso, arranhões, chaveiros, adesivos, conteúdo interno, etc.)...",
+                  "Describe details that help recognize the object (wear marks, scratches, keychains, stickers, contents, etc.)..."
+                )}
                 hasError={Boolean(stepErrors.description)}
               />
               {stepErrors.description && (
@@ -1580,10 +1738,13 @@ export const RegisterItemView: React.FC = () => {
                     htmlFor="color-input"
                     className="block text-xs font-bold text-[#172B2A] dark:text-slate-200"
                   >
-                    Cor Principal <span className="text-slate-400 font-normal">(Opcional)</span>
+                    {L("Cor Principal", "Primary Color")}{" "}
+                    <span className="text-slate-400 font-normal">
+                      ({L("Opcional", "Optional")})
+                    </span>
                   </label>
                   <span className="text-[10px] text-slate-400 font-mono">
-                    Máx. {ITEM_FIELD_LIMITS.COLOR}
+                    {L("Máx.", "Max.")} {ITEM_FIELD_LIMITS.COLOR}
                   </span>
                 </div>
                 <UIInput
@@ -1592,7 +1753,7 @@ export const RegisterItemView: React.FC = () => {
                   maxLength={ITEM_FIELD_LIMITS.COLOR}
                   value={color}
                   onChange={(e) => setColor(e.target.value)}
-                  placeholder="Ex: Azul marinho, Preto, Prata"
+                  placeholder={L("Ex: Azul marinho, Preto, Prata", "e.g., Navy blue, Black, Silver")}
                 />
               </div>
 
@@ -1602,10 +1763,13 @@ export const RegisterItemView: React.FC = () => {
                     htmlFor="brand-input"
                     className="block text-xs font-bold text-[#172B2A] dark:text-slate-200"
                   >
-                    Marca ou Modelo <span className="text-slate-400 font-normal">(Opcional)</span>
+                    {L("Marca ou Modelo", "Brand or Model")}{" "}
+                    <span className="text-slate-400 font-normal">
+                      ({L("Opcional", "Optional")})
+                    </span>
                   </label>
                   <span className="text-[10px] text-slate-400 font-mono">
-                    Máx. {ITEM_FIELD_LIMITS.BRAND}
+                    {L("Máx.", "Max.")} {ITEM_FIELD_LIMITS.BRAND}
                   </span>
                 </div>
                 <UIInput
@@ -1614,7 +1778,10 @@ export const RegisterItemView: React.FC = () => {
                   maxLength={ITEM_FIELD_LIMITS.BRAND}
                   value={brand}
                   onChange={(e) => setBrand(e.target.value)}
-                  placeholder="Ex: Dell, Nike, Casio, Faber-Castell"
+                  placeholder={L(
+                    "Ex: Dell, Nike, Casio, Faber-Castell",
+                    "e.g., Dell, Nike, Casio, Faber-Castell"
+                  )}
                 />
               </div>
             </div>
@@ -1624,10 +1791,13 @@ export const RegisterItemView: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <label className="block text-xs font-bold text-[#172B2A] dark:text-slate-200">
-                    Adicionar foto (opcional)
+                    {L("Adicionar foto (opcional)", "Add photo (optional)")}
                   </label>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    PNG, JPG ou WEBP — Uma foto nítida aumenta em até 80% as chances de devolução.
+                    {L(
+                      "PNG, JPG ou WEBP — Uma foto nítida aumenta em até 80% as chances de devolução.",
+                      "PNG, JPG, or WEBP — A clear photo increases return chances by up to 80%."
+                    )}
                   </p>
                 </div>
                 {hasCustomImage && (
@@ -1637,7 +1807,7 @@ export const RegisterItemView: React.FC = () => {
                     className="text-xs text-rose-600 hover:text-rose-700 dark:text-rose-400 font-bold flex items-center gap-1 cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
-                    <span>Remover foto</span>
+                    <span>{L("Remover foto", "Remove photo")}</span>
                   </button>
                 )}
               </div>
@@ -1648,7 +1818,7 @@ export const RegisterItemView: React.FC = () => {
                   <div className="w-28 h-28 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shrink-0 shadow-xs">
                     <img
                       src={imageUrl}
-                      alt="Prévia do objeto"
+                      alt={L("Prévia do objeto", "Object preview")}
                       className="w-full h-full object-cover"
                     />
                   </div>
@@ -1657,11 +1827,12 @@ export const RegisterItemView: React.FC = () => {
                     <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#EBF5F0] text-[#064E3B] dark:bg-emerald-950/60 dark:text-emerald-300 text-xs font-bold">
                         <CheckCircle2 className="w-3.5 h-3.5 text-[#16845B]" />
-                        <span>Foto pronta para envio</span>
+                        <span>{L("Foto pronta para envio", "Photo ready to send")}</span>
                       </span>
                       {compressionStats && (
                         <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                          Otimizada: {compressionStats.compressed} (-{compressionStats.savings}%)
+                          {L("Otimizada:", "Optimized:")} {compressionStats.compressed} (-
+                          {compressionStats.savings}%)
                         </span>
                       )}
                     </div>
@@ -1669,7 +1840,7 @@ export const RegisterItemView: React.FC = () => {
                     <div className="flex flex-wrap gap-2 justify-center sm:justify-start pt-1">
                       <label className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-[#172B2A] dark:text-slate-200 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5">
                         <Upload className="w-3.5 h-3.5 text-[#16845B]" />
-                        <span>Substituir Foto</span>
+                        <span>{L("Substituir Foto", "Replace Photo")}</span>
                         <input
                           type="file"
                           accept="image/*"
@@ -1683,7 +1854,7 @@ export const RegisterItemView: React.FC = () => {
                         className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-[#172B2A] dark:text-slate-200 text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5"
                       >
                         <Camera className="w-3.5 h-3.5 text-[#16845B]" />
-                        <span>Tirar Nova Foto</span>
+                        <span>{L("Tirar Nova Foto", "Take New Photo")}</span>
                       </button>
                     </div>
                   </div>
@@ -1697,17 +1868,20 @@ export const RegisterItemView: React.FC = () => {
 
                   <div className="space-y-1">
                     <p className="text-xs sm:text-sm font-bold text-[#172B2A] dark:text-slate-200">
-                      Adicionar foto (opcional)
+                      {L("Adicionar foto (opcional)", "Add photo (optional)")}
                     </p>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      PNG, JPG ou WEBP (máx. 15MB). A foto é comprimida automaticamente.
+                      {L(
+                        "PNG, JPG ou WEBP (máx. 15MB). A foto é comprimida automaticamente.",
+                        "PNG, JPG, or WEBP (max 15MB). Photos are compressed automatically."
+                      )}
                     </p>
                   </div>
 
                   <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
                     <label className="px-5 py-2.5 rounded-xl bg-[#16845B] hover:bg-[#064E3B] text-white text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-2">
                       <Upload className="w-4 h-4" />
-                      <span>Escolher do dispositivo</span>
+                      <span>{L("Escolher do dispositivo", "Choose from device")}</span>
                       <input
                         type="file"
                         accept="image/*"
@@ -1722,7 +1896,7 @@ export const RegisterItemView: React.FC = () => {
                       className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-[#172B2A] dark:text-slate-200 text-xs font-bold transition-all cursor-pointer flex items-center gap-2"
                     >
                       <Camera className="w-4 h-4 text-[#16845B]" />
-                      <span>Tirar com a câmera</span>
+                      <span>{L("Tirar com a câmera", "Take with camera")}</span>
                     </button>
                   </div>
                 </div>
@@ -1731,7 +1905,12 @@ export const RegisterItemView: React.FC = () => {
               {isCompressing && (
                 <div className="flex items-center gap-2 p-3 rounded-xl bg-[#EBF5F0] dark:bg-emerald-950/40 text-[#064E3B] dark:text-emerald-300 text-xs font-semibold animate-pulse">
                   <Loader2 className="w-4 h-4 animate-spin text-[#16845B]" />
-                  <span>Otimizando e comprimindo imagem para o PWA...</span>
+                  <span>
+                    {L(
+                      "Otimizando e comprimindo imagem para o aplicativo...",
+                      "Optimizing and compressing image for the app..."
+                    )}
+                  </span>
                 </div>
               )}
 
@@ -1755,7 +1934,7 @@ export const RegisterItemView: React.FC = () => {
               onClick={handlePrevStep}
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Voltar</span>
+              <span>{t("back")}</span>
             </UIButton>
 
             <UIButton
@@ -1766,7 +1945,7 @@ export const RegisterItemView: React.FC = () => {
               onClick={handleNextStep}
               className="px-8"
             >
-              <span>Continuar</span>
+              <span>{L("Continuar", "Continue")}</span>
               <ArrowRight className="w-4 h-4" />
             </UIButton>
           </div>
@@ -1780,22 +1959,34 @@ export const RegisterItemView: React.FC = () => {
         <SurfaceCard className="p-6 sm:p-8 space-y-6 animate-in fade-in duration-200">
           <div className="space-y-1">
             <span className="text-[11px] font-bold uppercase text-[#16845B] dark:text-emerald-400 tracking-wider">
-              Etapa 3 de 4 • Local e Data
+              {L("Etapa 3 de 4 • Local e Data", "Step 3 of 4 • Location and Date")}
             </span>
             <h2 className="text-xl sm:text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight">
               {type === "ENCONTRADO"
-                ? "Onde e quando você encontrou o objeto?"
-                : "Onde e quando você viu o objeto pela última vez?"}
+                ? L(
+                    "Onde e quando você encontrou o objeto?",
+                    "Where and when did you find the object?"
+                  )
+                : L(
+                    "Onde e quando você viu o objeto pela última vez?",
+                    "Where and when did you last see the object?"
+                  )}
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-              Essas informações são essenciais para que o dono e a equipe do campus localizem o
-              pertence.
+              {L(
+                "Essas informações são essenciais para que o dono e a equipe do campus localizem o pertence.",
+                "This information is essential for the owner and campus staff to locate the belonging."
+              )}
             </p>
           </div>
 
           <div className="space-y-5">
             {/* Local no Campus */}
-            <UIFieldGroup label="Local no Campus Ivaiporã" htmlFor="location-input" required>
+            <UIFieldGroup
+              label={L("Local no Campus Ivaiporã", "Location at Campus Ivaiporã")}
+              htmlFor="location-input"
+              required
+            >
               <UISelect
                 id="location-input"
                 value={location}
@@ -1803,16 +1994,18 @@ export const RegisterItemView: React.FC = () => {
                 leftIcon={<MapPin className="w-4 h-4" />}
               >
                 {IFPR_LOCATION_GROUPS.map((group) => (
-                  <optgroup key={group.group} label={group.group}>
+                  <optgroup key={group.group} label={translateLocationGroup(group.group, language)}>
                     {group.locations.map((loc) => (
                       <option key={loc} value={loc}>
-                        {loc}
+                        {translateCampusLocation(loc, language)}
                       </option>
                     ))}
                   </optgroup>
                 ))}
                 {location && !IFPR_LOCATIONS.includes(location) && (
-                  <option value={location}>{location} (Legado)</option>
+                  <option value={location}>
+                    {translateCampusLocation(location, language)} ({L("Legado", "Legacy")})
+                  </option>
                 )}
               </UISelect>
             </UIFieldGroup>
@@ -1822,7 +2015,10 @@ export const RegisterItemView: React.FC = () => {
               const maxComplementChars = Math.max(0, ITEM_FIELD_LIMITS.LOCATION - location.trim().length - 3);
               return (
                 <UIFieldGroup
-                  label="Ponto de Referência / Detalhes do Local (Opcional)"
+                  label={L(
+                    "Ponto de Referência / Detalhes do Local (Opcional)",
+                    "Landmark / Location Details (Optional)"
+                  )}
                   htmlFor="location-complement-input"
                   error={stepErrors.locationComplement}
                 >
@@ -1833,11 +2029,18 @@ export const RegisterItemView: React.FC = () => {
                     value={locationComplement}
                     onChange={(e) => setLocationComplement(e.target.value)}
                     hasError={Boolean(stepErrors.locationComplement)}
-                    placeholder="Ex: Em cima da mesa 04 da biblioteca, ou próximo aos bebedouros"
+                    placeholder={L(
+                      "Ex: Em cima da mesa 04 da biblioteca, ou próximo aos bebedouros",
+                      "e.g., On table 04 in the library, or near the drinking fountains"
+                    )}
                   />
                   <div className="flex justify-end mt-1">
                     <span className="text-[10px] text-slate-400 tabular-nums">
-                      {locationComplement.length}/{maxComplementChars} caracteres disponíveis para o complemento
+                      {locationComplement.length}/{maxComplementChars}{" "}
+                      {L(
+                        "caracteres disponíveis para o complemento",
+                        "characters available for details"
+                      )}
                     </span>
                   </div>
                 </UIFieldGroup>
@@ -1851,9 +2054,12 @@ export const RegisterItemView: React.FC = () => {
                   htmlFor="date-input"
                   className="block text-xs font-bold text-[#172B2A] dark:text-slate-200"
                 >
-                  Data da Ocorrência <span className="text-rose-500">*</span>
+                  {L("Data da Ocorrência", "Occurrence Date")}{" "}
+                  <span className="text-rose-500">*</span>
                 </label>
-                <span className="text-[10px] text-slate-400">Não pode ser data futura</span>
+                <span className="text-[10px] text-slate-400">
+                  {L("Não pode ser data futura", "Cannot be a future date")}
+                </span>
               </div>
               <UIInput
                 id="date-input"
@@ -1876,20 +2082,36 @@ export const RegisterItemView: React.FC = () => {
                 <h4 className="text-xs font-bold text-[#172B2A] dark:text-slate-200 flex items-center gap-1.5">
                   <Info className="w-4 h-4 text-[#16845B]" />
                   {type === "ENCONTRADO"
-                    ? "Onde o pertence está guardado atualmente?"
-                    : "Como podemos falar com você quando o objeto for encontrado?"}
+                    ? L(
+                        "Onde o pertence está guardado atualmente?",
+                        "Where is the belonging currently being held?"
+                      )
+                    : L(
+                        "Como podemos falar com você quando o objeto for encontrado?",
+                        "How can we contact you when the object is found?"
+                      )}
                 </h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                   {type === "ENCONTRADO"
-                    ? "Informe o ponto institucional onde o objeto foi entregue (ex: Guarita, Secretaria) ou seu e-mail institucional."
-                    : "Informe seu e-mail institucional ou número de WhatsApp para receber avisos sobre seu pertence."}
+                    ? L(
+                        "Informe o ponto institucional onde o objeto foi entregue (ex: Guarita, Secretaria) ou seu e-mail institucional.",
+                        "Enter the campus point where the object was handed in (e.g., Main Gate, Academic Office) or your institutional email."
+                      )
+                    : L(
+                        "Informe seu e-mail institucional ou número de WhatsApp para receber avisos sobre seu pertence.",
+                        "Enter your institutional email or WhatsApp number to receive alerts about your belonging."
+                      )}
                 </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 {/* E-mail ou Ponto de Guarda */}
                 <UIFieldGroup
-                  label={type === "ENCONTRADO" ? "Ponto de Guarda / E-mail" : "E-mail de Contato"}
+                  label={
+                    type === "ENCONTRADO"
+                      ? L("Ponto de Guarda / E-mail", "Holding Point / Email")
+                      : L("E-mail de Contato", "Contact Email")
+                  }
                   htmlFor="contact-input"
                   error={stepErrors.contactInfo}
                   required
@@ -1905,15 +2127,18 @@ export const RegisterItemView: React.FC = () => {
                     leftIcon={<Mail className="w-4 h-4" />}
                     placeholder={
                       type === "ENCONTRADO"
-                        ? "Ex: Guarita Principal ou meu.email@ifpr.edu.br"
-                        : "seu.email@escola.ifpr.edu.br"
+                        ? L(
+                            "Ex: Guarita Principal ou meu.email@ifpr.edu.br",
+                            "e.g., Main Gate or my.email@ifpr.edu.br"
+                          )
+                        : L("seu.email@ifpr.edu.br", "your.email@ifpr.edu.br")
                     }
                   />
                 </UIFieldGroup>
 
                 {/* Telefone / WhatsApp */}
                 <UIFieldGroup
-                  label="Telefone / WhatsApp (Opcional)"
+                  label={L("Telefone / WhatsApp (Opcional)", "Phone / WhatsApp (Optional)")}
                   htmlFor="contact-phone-input"
                   error={stepErrors.contactPhone}
                 >
@@ -1940,7 +2165,7 @@ export const RegisterItemView: React.FC = () => {
               onClick={handlePrevStep}
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Voltar</span>
+              <span>{t("back")}</span>
             </UIButton>
 
             <UIButton
@@ -1951,7 +2176,7 @@ export const RegisterItemView: React.FC = () => {
               onClick={handleNextStep}
               className="px-8"
             >
-              <span>Revisar Cadastro</span>
+              <span>{L("Revisar Cadastro", "Review Registration")}</span>
               <ArrowRight className="w-4 h-4" />
             </UIButton>
           </div>
@@ -1965,14 +2190,19 @@ export const RegisterItemView: React.FC = () => {
         <SurfaceCard className="p-6 sm:p-8 space-y-6 animate-in fade-in duration-200">
           <div className="space-y-1">
             <span className="text-[11px] font-bold uppercase text-[#16845B] dark:text-emerald-400 tracking-wider">
-              Etapa 4 de 4 • Revisão Final
+              {L("Etapa 4 de 4 • Revisão Final", "Step 4 of 4 • Final Review")}
             </span>
             <h2 className="text-xl sm:text-2xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-              Revise as informações antes de cadastrar
+              {L(
+                "Revise as informações antes de cadastrar",
+                "Review the details before submitting"
+              )}
             </h2>
             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-              Verifique com atenção se todos os dados estão corretos. Você pode clicar em "Editar"
-              em qualquer seção para fazer alterações sem reiniciar o formulário.
+              {L(
+                'Verifique com atenção se todos os dados estão corretos. Você pode clicar em "Editar" em qualquer seção para fazer alterações sem reiniciar o formulário.',
+                'Check carefully that all details are accurate. You can click "Edit" in any section to make changes without restarting the form.'
+              )}
             </p>
           </div>
 
@@ -1981,7 +2211,7 @@ export const RegisterItemView: React.FC = () => {
             <SubtlePanel className="p-4 sm:p-5 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Tipo de Ocorrência
+                  {L("Tipo de Ocorrência", "Report Type")}
                 </span>
                 <button
                   type="button"
@@ -1989,20 +2219,26 @@ export const RegisterItemView: React.FC = () => {
                   className="text-xs text-[#16845B] dark:text-emerald-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
-                  <span>Editar</span>
+                  <span>{t("edit")}</span>
                 </button>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <UIBadge tone={type === "ENCONTRADO" ? "emerald" : "rose"}>
                   {type === "ENCONTRADO"
-                    ? "✓ Objeto Encontrado (Achado)"
-                    : "⚠️ Objeto Perdido"}
+                    ? L("✓ Objeto Encontrado (Achado)", "✓ Found Object")
+                    : L("⚠️ Objeto Perdido", "⚠️ Lost Object")}
                 </UIBadge>
                 <span className="text-xs text-slate-500 dark:text-slate-400">
                   {type === "ENCONTRADO"
-                    ? "Aguardando devolução ao legítimo dono"
-                    : "Aguardando localização por alguém do campus"}
+                    ? L(
+                        "Aguardando devolução ao legítimo dono",
+                        "Awaiting return to the rightful owner"
+                      )
+                    : L(
+                        "Aguardando localização por alguém do campus",
+                        "Awaiting discovery by someone on campus"
+                      )}
                 </span>
               </div>
             </SubtlePanel>
@@ -2011,7 +2247,7 @@ export const RegisterItemView: React.FC = () => {
             <SubtlePanel className="p-4 sm:p-5 space-y-3">
               <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-700 pb-2">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Dados do Objeto
+                  {L("Dados do Objeto", "Object Details")}
                 </span>
                 <button
                   type="button"
@@ -2019,7 +2255,7 @@ export const RegisterItemView: React.FC = () => {
                   className="text-xs text-[#16845B] dark:text-emerald-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
-                  <span>Editar</span>
+                  <span>{t("edit")}</span>
                 </button>
               </div>
 
@@ -2035,36 +2271,37 @@ export const RegisterItemView: React.FC = () => {
                 ) : (
                   <div
                     className="w-20 h-20 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center text-slate-400 p-2 text-center shrink-0"
-                    aria-label="Sem foto anexada"
+                    aria-label={L("Sem foto anexada", "No photo attached")}
                   >
                     <CameraOff className="w-5 h-5 mb-1 text-[#16845B]" />
                     <span className="text-[10px] font-semibold text-slate-500 leading-tight">
-                      Sem foto
+                      {t("noPhoto")}
                     </span>
                   </div>
                 )}
 
                 <div className="space-y-1.5 flex-1 min-w-0">
                   <h4 className="text-base font-bold text-[#172B2A] dark:text-white truncate">
-                    {title || "Nome não informado"}
+                    {title || L("Nome não informado", "Name not provided")}
                   </h4>
                   <div className="flex flex-wrap gap-2 text-xs">
                     <span className="px-2.5 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-[#172B2A] dark:text-slate-200 font-medium">
-                      Categoria: <strong>{category}</strong>
+                      {L("Categoria:", "Category:")}{" "}
+                      <strong>{translateCategory(category, language)}</strong>
                     </span>
                     {color && (
                       <span className="px-2.5 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-[#172B2A] dark:text-slate-200 font-medium">
-                        Cor: <strong>{color}</strong>
+                        {L("Cor:", "Color:")} <strong>{color}</strong>
                       </span>
                     )}
                     {brand && (
                       <span className="px-2.5 py-0.5 rounded-md bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-[#172B2A] dark:text-slate-200 font-medium">
-                        Marca: <strong>{brand}</strong>
+                        {L("Marca:", "Brand:")} <strong>{brand}</strong>
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed pt-1">
-                    {description || "Sem descrição"}
+                    {description || L("Sem descrição", "No description")}
                   </p>
                 </div>
               </div>
@@ -2074,7 +2311,7 @@ export const RegisterItemView: React.FC = () => {
             <SubtlePanel className="p-4 sm:p-5 space-y-3">
               <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-700 pb-2">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Local, Data & Contato
+                  {L("Local, Data e Contato", "Location, Date & Contact")}
                 </span>
                 <button
                   type="button"
@@ -2082,29 +2319,35 @@ export const RegisterItemView: React.FC = () => {
                   className="text-xs text-[#16845B] dark:text-emerald-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
-                  <span>Editar</span>
+                  <span>{t("edit")}</span>
                 </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                 <div>
-                  <span className="text-slate-500 font-semibold block">Local:</span>
+                  <span className="text-slate-500 font-semibold block">
+                    {L("Local:", "Location:")}
+                  </span>
                   <span className="font-bold text-[#172B2A] dark:text-white">
-                    {location}
+                    {translateCampusLocation(location, language)}
                     {locationComplement && ` — ${locationComplement}`}
                   </span>
                 </div>
 
                 <div>
-                  <span className="text-slate-500 font-semibold block">Data da Ocorrência:</span>
+                  <span className="text-slate-500 font-semibold block">
+                    {L("Data da Ocorrência:", "Occurrence Date:")}
+                  </span>
                   <span className="font-bold text-[#172B2A] dark:text-white">
-                    {date.split("-").reverse().join("/")}
+                    {formatDate(date, undefined, language)}
                   </span>
                 </div>
 
                 <div>
                   <span className="text-slate-500 font-semibold block">
-                    {type === "ENCONTRADO" ? "Ponto de Guarda / E-mail:" : "E-mail de Contato:"}
+                    {type === "ENCONTRADO"
+                      ? L("Ponto de Guarda / E-mail:", "Holding Point / Email:")
+                      : L("E-mail de Contato:", "Contact Email:")}
                   </span>
                   <span className="font-bold text-[#172B2A] dark:text-white">{contactInfo}</span>
                 </div>
@@ -2112,7 +2355,7 @@ export const RegisterItemView: React.FC = () => {
                 {contactPhone && (
                   <div>
                     <span className="text-slate-500 font-semibold block">
-                      Telefone / WhatsApp:
+                      {L("Telefone / WhatsApp:", "Phone / WhatsApp:")}
                     </span>
                     <span className="font-bold text-[#172B2A] dark:text-white">
                       {contactPhone}
@@ -2127,10 +2370,14 @@ export const RegisterItemView: React.FC = () => {
               <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-3 text-xs text-amber-800 dark:text-amber-300">
                 <Clock className="w-5 h-5 text-amber-600 shrink-0" />
                 <div>
-                  <p className="font-bold">Modo Offline Detectado</p>
+                  <p className="font-bold">
+                    {L("Modo Offline Detectado", "Offline Mode Detected")}
+                  </p>
                   <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                    Ao confirmar, o cadastro será armazenado com segurança no seu dispositivo
-                    (IndexedDB) e sincronizado com o Firestore assim que a conexão retornar.
+                    {L(
+                      "Ao confirmar, o cadastro será armazenado com segurança no seu dispositivo (IndexedDB) e sincronizado com o Firestore assim que a conexão retornar.",
+                      "Upon confirmation, this record will be stored safely on your device (IndexedDB) and synced with Firestore once connectivity returns."
+                    )}
                   </p>
                 </div>
               </div>
@@ -2147,8 +2394,10 @@ export const RegisterItemView: React.FC = () => {
                   className="w-5 h-5 mt-0.5 rounded-lg text-[#16845B] focus:ring-[#16845B] border-slate-300 cursor-pointer accent-[#16845B]"
                 />
                 <span className="text-xs sm:text-sm font-semibold text-[#172B2A] dark:text-slate-200 leading-snug">
-                  Revisei todas as informações e confirmo que os dados prestados são verdadeiros e
-                  condizem com a ocorrência no IFPR Campus Ivaiporã.
+                  {L(
+                    "Revisei todas as informações e confirmo que os dados prestados são verdadeiros e condizem com a ocorrência no IFPR Campus Ivaiporã.",
+                    "I have reviewed all details and confirm that the information provided is accurate and matches the occurrence at IFPR Campus Ivaiporã."
+                  )}
                 </span>
               </label>
             </div>
@@ -2163,7 +2412,7 @@ export const RegisterItemView: React.FC = () => {
               onClick={handlePrevStep}
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Voltar</span>
+              <span>{t("back")}</span>
             </UIButton>
 
             <UIButton
@@ -2178,12 +2427,12 @@ export const RegisterItemView: React.FC = () => {
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>Cadastrando Objeto...</span>
+                  <span>{L("Cadastrando Objeto...", "Registering Object...")}</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4 text-emerald-200" />
-                  <span>Cadastrar Item</span>
+                  <span>{t("submitItem")}</span>
                 </>
               )}
             </UIButton>
@@ -2204,43 +2453,55 @@ export const RegisterItemView: React.FC = () => {
 
               <div className="space-y-2">
                 <UIBadge tone="emerald">
-                  <ShieldCheck className="w-3.5 h-3.5 mr-1" /> Persistência Confirmada no Firestore
+                  <ShieldCheck className="w-3.5 h-3.5 mr-1" />{" "}
+                  {L("Persistência Confirmada no Firestore", "Persistence Confirmed in Firestore")}
                 </UIBadge>
                 <h2 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-                  Objeto Cadastrado com Sucesso!
+                  {L("Objeto Cadastrado com Sucesso!", "Object Registered Successfully!")}
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-lg mx-auto">
-                  O pertence{" "}
+                  {L("O pertence", "The belonging")}{" "}
                   <strong className="text-[#172B2A] dark:text-white">
                     "{registrationFeedback.item.title}"
                   </strong>{" "}
-                  foi registrado e autenticado com sucesso no sistema do IFPR Campus Ivaiporã.
+                  {L(
+                    "foi registrado e autenticado com sucesso no sistema do IFPR Campus Ivaiporã.",
+                    "has been successfully registered and verified in the IFPR Campus Ivaiporã system."
+                  )}
                 </p>
               </div>
 
               <SubtlePanel className="p-4 sm:p-5 text-left space-y-2.5 text-xs text-slate-600 dark:text-slate-300 max-w-md mx-auto">
                 <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-700">
-                  <span className="text-slate-500 font-semibold">Identificador (ID):</span>
+                  <span className="text-slate-500 font-semibold">
+                    {L("Identificador (ID):", "Identifier (ID):")}
+                  </span>
                   <span className="font-mono font-bold text-[#172B2A] dark:text-white">
                     {registrationFeedback.item.id}
                   </span>
                 </div>
                 <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-700">
-                  <span className="text-slate-500 font-semibold">Código QR da Etiqueta:</span>
+                  <span className="text-slate-500 font-semibold">
+                    {L("Código QR da Etiqueta:", "Label QR Code:")}
+                  </span>
                   <span className="font-mono text-[11px] font-semibold text-[#16845B] dark:text-emerald-400">
                     {registrationFeedback.item.qrCodeId}
                   </span>
                 </div>
                 <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-700">
-                  <span className="text-slate-500 font-semibold">Local Registrado:</span>
+                  <span className="text-slate-500 font-semibold">
+                    {L("Local Registrado:", "Registered Location:")}
+                  </span>
                   <span className="font-semibold text-[#172B2A] dark:text-white">
-                    {registrationFeedback.item.location}
+                    {translateCampusLocation(registrationFeedback.item.location, language)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-semibold">Status do Objeto:</span>
+                  <span className="text-slate-500 font-semibold">
+                    {L("Situação do Objeto:", "Object Status:")}
+                  </span>
                   <span className="font-bold text-[#16845B] dark:text-emerald-400 uppercase">
-                    {registrationFeedback.item.status}
+                    {translateItemStatus(registrationFeedback.item.status, language)}
                   </span>
                 </div>
               </SubtlePanel>
@@ -2257,7 +2518,11 @@ export const RegisterItemView: React.FC = () => {
                   className="flex-1"
                 >
                   <Eye className="w-4 h-4" />
-                  <span>Ver no Mural de {type === "PERDIDO" ? "Perdidos" : "Encontrados"}</span>
+                  <span>
+                    {type === "PERDIDO"
+                      ? L("Ver no Mural de Perdidos", "View in Lost Board")
+                      : L("Ver no Mural de Encontrados", "View in Found Board")}
+                  </span>
                 </UIButton>
 
                 <UIButton
@@ -2267,7 +2532,7 @@ export const RegisterItemView: React.FC = () => {
                   onClick={handleRegisterAnother}
                 >
                   <PlusCircle className="w-4 h-4 text-[#16845B]" />
-                  <span>Cadastrar Outro</span>
+                  <span>{L("Cadastrar Outro", "Register Another")}</span>
                 </UIButton>
               </div>
             </>
@@ -2279,28 +2544,37 @@ export const RegisterItemView: React.FC = () => {
 
               <div className="space-y-2">
                 <UIBadge tone="rose">
-                  <AlertCircle className="w-3.5 h-3.5 mr-1" /> Falha no Envio ao Servidor
+                  <AlertCircle className="w-3.5 h-3.5 mr-1" />{" "}
+                  {L("Falha no Envio ao Servidor", "Server Upload Failed")}
                 </UIBadge>
                 <h2 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-                  Salvo Localmente no Dispositivo
+                  {L("Salvo Localmente no Dispositivo", "Saved Locally on Device")}
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-lg mx-auto">
-                  Não foi possível completar o envio para o Firestore em nuvem neste momento. Seu
-                  item{" "}
+                  {L(
+                    "Não foi possível completar o envio para o Firestore em nuvem neste momento. Seu item",
+                    "Could not complete the upload to cloud Firestore right now. Your item"
+                  )}{" "}
                   <strong className="text-[#172B2A] dark:text-white">
                     "{registrationFeedback.item.title}"
                   </strong>{" "}
-                  foi protegido com segurança no banco local (IndexedDB) para não se perder.
+                  {L(
+                    "foi protegido com segurança no banco local (IndexedDB) para não se perder.",
+                    "has been safely preserved in the local database (IndexedDB) so it is not lost."
+                  )}
                 </p>
                 {registrationFeedback.error && (
                   <div
                     role="alert"
                     className="mt-3 max-w-lg mx-auto rounded-xl border border-rose-200 dark:border-rose-800/80 bg-rose-50/80 dark:bg-rose-950/30 px-4 py-3 text-left text-xs text-rose-800 dark:text-rose-200"
                   >
-                    <p className="font-bold mb-0.5">Detalhe do diagnóstico:</p>
+                    <p className="font-bold mb-0.5">
+                      {L("Detalhe do diagnóstico:", "Diagnostic details:")}
+                    </p>
                     <p className="leading-relaxed">{registrationFeedback.error}</p>
                     <p className="mt-1 font-mono text-[11px] opacity-80">
-                      ID preservado na fila local: {registrationFeedback.item.id}
+                      {L("ID preservado na fila local:", "ID preserved in local queue:")}{" "}
+                      {registrationFeedback.item.id}
                     </p>
                   </div>
                 )}
@@ -2321,7 +2595,7 @@ export const RegisterItemView: React.FC = () => {
                   className="flex-1"
                 >
                   <RotateCcw className="w-4 h-4" />
-                  <span>Tentar Novamente</span>
+                  <span>{L("Tentar Novamente", "Try Again")}</span>
                 </UIButton>
 
                 <UIButton
@@ -2333,7 +2607,7 @@ export const RegisterItemView: React.FC = () => {
                     navigate("/");
                   }}
                 >
-                  Voltar ao Início
+                  {t("backToHome")}
                 </UIButton>
               </div>
             </>
@@ -2345,18 +2619,21 @@ export const RegisterItemView: React.FC = () => {
 
               <div className="space-y-2">
                 <UIBadge tone="amber">
-                  <Clock className="w-3.5 h-3.5 mr-1" /> Aguardando Sincronização
+                  <Clock className="w-3.5 h-3.5 mr-1" />{" "}
+                  {L("Aguardando Sincronização", "Waiting to Sync")}
                 </UIBadge>
                 <h2 className="text-2xl sm:text-3xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-                  Objeto Salvo no Dispositivo
+                  {L("Objeto Salvo no Dispositivo", "Object Saved on Device")}
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-lg mx-auto">
-                  O objeto{" "}
+                  {L("O objeto", "The object")}{" "}
                   <strong className="text-[#172B2A] dark:text-white">
                     "{registrationFeedback.item.title}"
                   </strong>{" "}
-                  foi armazenado localmente com segurança no dispositivo. A sincronização com a nuvem
-                  ocorrerá assim que você se conectar à internet.
+                  {L(
+                    "foi armazenado localmente com segurança no dispositivo. A sincronização com a nuvem ocorrerá assim que você se conectar à internet.",
+                    "has been safely stored locally on your device. Cloud synchronization will occur as soon as you reconnect to the internet."
+                  )}
                 </p>
               </div>
 
@@ -2371,7 +2648,7 @@ export const RegisterItemView: React.FC = () => {
                   }}
                   className="flex-1"
                 >
-                  Ver no Mural
+                  {L("Ver no Mural", "View on Board")}
                 </UIButton>
                 <UIButton
                   type="button"
@@ -2382,7 +2659,7 @@ export const RegisterItemView: React.FC = () => {
                     navigate("/");
                   }}
                 >
-                  Início
+                  {t("home")}
                 </UIButton>
               </div>
             </>
@@ -2403,10 +2680,13 @@ export const RegisterItemView: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-bold text-sm text-[#172B2A] dark:text-white">
-                    Tirar Foto com a Câmera
+                    {L("Tirar Foto com a Câmera", "Take Photo with Camera")}
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    Capture uma foto nítida do pertence cadastrado
+                    {L(
+                      "Capture uma foto nítida do pertence cadastrado",
+                      "Capture a clear photo of the registered belonging"
+                    )}
                   </p>
                 </div>
               </div>
@@ -2417,6 +2697,7 @@ export const RegisterItemView: React.FC = () => {
                   stopCamera();
                   setCameraModalOpen(false);
                 }}
+                aria-label={t("close")}
                 className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -2438,12 +2719,18 @@ export const RegisterItemView: React.FC = () => {
                 <div className="p-4 space-y-2">
                   {cameraStatus === "denied" ? (
                     <p className="text-xs font-bold text-rose-400">
-                      {cameraError || "Permissão de acesso à câmera negada."}
+                      {cameraError ||
+                        L(
+                          "Permissão de acesso à câmera negada.",
+                          "Camera access permission denied."
+                        )}
                     </p>
                   ) : (
                     <p className="text-xs font-bold text-amber-300 animate-pulse">
-                      Solicitando permissão para usar a câmera... Por favor, confirme no seu
-                      navegador.
+                      {L(
+                        "Solicitando permissão para usar a câmera... Por favor, confirme no seu navegador.",
+                        "Requesting camera permission... Please confirm in your browser."
+                      )}
                     </p>
                   )}
                 </div>
@@ -2460,7 +2747,7 @@ export const RegisterItemView: React.FC = () => {
                   setCameraModalOpen(false);
                 }}
               >
-                Cancelar
+                {t("cancel")}
               </UIButton>
 
               {cameraStatus === "granted" && (
@@ -2471,7 +2758,7 @@ export const RegisterItemView: React.FC = () => {
                   onClick={handleCaptureCamera}
                 >
                   <Camera className="w-4 h-4" />
-                  <span>Capturar Foto</span>
+                  <span>{L("Capturar Foto", "Capture Photo")}</span>
                 </UIButton>
               )}
             </div>

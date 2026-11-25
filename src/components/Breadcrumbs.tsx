@@ -46,11 +46,12 @@ const SEGMENT_CONFIG: Record<
     labelPt: string;
     labelEn: string;
     icon?: React.ComponentType<{ className?: string }>;
-    badge?: string;
+    badgePt?: string;
+    badgeEn?: string;
     badgeColor?: BreadcrumbSegment["badgeColor"];
   }
 > = {
-  admin: { labelPt: "Admin", labelEn: "Admin", icon: ShieldCheck, badge: "Admin", badgeColor: "amber" },
+  admin: { labelPt: "Administração", labelEn: "Admin", icon: ShieldCheck, badgePt: "Admin", badgeEn: "Admin", badgeColor: "amber" },
   dashboard: { labelPt: "Visão Geral", labelEn: "Overview", icon: LayoutDashboard },
   usuarios: { labelPt: "Gestão de Usuários", labelEn: "User Management", icon: Users },
   users: { labelPt: "Gestão de Usuários", labelEn: "User Management", icon: Users },
@@ -59,27 +60,27 @@ const SEGMENT_CONFIG: Record<
   itens: { labelPt: "Controle de Itens & QR", labelEn: "Items & QR Control", icon: PackageSearch },
   items: { labelPt: "Controle de Itens & QR", labelEn: "Items & QR Control", icon: PackageSearch },
   objetos: { labelPt: "Objetos", labelEn: "Objects", icon: PackageSearch },
-  feedbacks: { labelPt: "Feedbacks da Comunidade", labelEn: "Community Feedback", icon: MessageSquare },
-  feedback: { labelPt: "Feedback", labelEn: "Feedback", icon: MessageSquare },
-  bugs: { labelPt: "Relatos de Bugs", labelEn: "Bug Reports", icon: Bug, badge: "TI", badgeColor: "red" },
-  "relatar-bug": { labelPt: "Relatar Bug", labelEn: "Report Bug", icon: Bug, badge: "TI", badgeColor: "red" },
+  feedbacks: { labelPt: "Sugestões da Comunidade", labelEn: "Community Feedback", icon: MessageSquare },
+  feedback: { labelPt: "Sugestões", labelEn: "Feedback", icon: MessageSquare },
+  bugs: { labelPt: "Relatos de Erros", labelEn: "Bug Reports", icon: Bug, badgePt: "TI", badgeEn: "IT", badgeColor: "red" },
+  "relatar-bug": { labelPt: "Relatar Erro", labelEn: "Report Bug", icon: Bug, badgePt: "TI", badgeEn: "IT", badgeColor: "red" },
   documentos: { labelPt: "Termos & Documentos", labelEn: "Terms & Documents", icon: FileText },
   documents: { labelPt: "Termos & Documentos", labelEn: "Terms & Documents", icon: FileText },
-  monitoramento: { labelPt: "Monitoramento & Logs", labelEn: "Monitoring & Logs", icon: Activity },
-  monitoring: { labelPt: "Monitoramento & Logs", labelEn: "Monitoring & Logs", icon: Activity },
+  monitoramento: { labelPt: "Monitoramento e Registros", labelEn: "Monitoring & Logs", icon: Activity },
+  monitoring: { labelPt: "Monitoramento e Registros", labelEn: "Monitoring & Logs", icon: Activity },
   configuracoes: { labelPt: "Configurações", labelEn: "Settings", icon: SlidersHorizontal },
   settings: { labelPt: "Configurações", labelEn: "Settings", icon: Settings },
   buscar: { labelPt: "Buscar Objetos", labelEn: "Search Objects", icon: PackageSearch },
-  perdidos: { labelPt: "Objetos Perdidos", labelEn: "Lost Objects", icon: PackageSearch, badge: "Perdidos", badgeColor: "red" },
-  encontrados: { labelPt: "Objetos Encontrados", labelEn: "Found Objects", icon: CheckCircle2, badge: "Achados", badgeColor: "green" },
+  perdidos: { labelPt: "Objetos Perdidos", labelEn: "Lost Objects", icon: PackageSearch, badgePt: "Perdidos", badgeEn: "Lost", badgeColor: "red" },
+  encontrados: { labelPt: "Objetos Encontrados", labelEn: "Found Objects", icon: CheckCircle2, badgePt: "Achados", badgeEn: "Found", badgeColor: "green" },
   devolvidos: { labelPt: "Objetos Devolvidos", labelEn: "Returned Objects", icon: CheckCircle2 },
   cadastrar: { labelPt: "Cadastrar Objeto", labelEn: "Register Object", icon: PlusCircle },
   "meus-itens": { labelPt: "Meus Registros", labelEn: "My Records", icon: Bookmark },
   "meus-registros": { labelPt: "Meus Registros", labelEn: "My Records", icon: Bookmark },
   notificacoes: { labelPt: "Notificações & Alertas", labelEn: "Notifications & Alerts", icon: Bell },
   perfil: { labelPt: "Meu Perfil", labelEn: "My Profile", icon: User },
-  "analisador-ia": { labelPt: "Analisador Visual IA", labelEn: "AI Visual Analyzer", icon: Sparkles, badge: "Gemini", badgeColor: "purple" },
-  ia: { labelPt: "Inteligência Artificial", labelEn: "Artificial Intelligence", icon: Sparkles, badge: "Gemini", badgeColor: "purple" },
+  "analisador-ia": { labelPt: "Analisador Visual IA", labelEn: "AI Visual Analyzer", icon: Sparkles, badgePt: "Gemini", badgeEn: "Gemini", badgeColor: "purple" },
+  ia: { labelPt: "Inteligência Artificial", labelEn: "Artificial Intelligence", icon: Sparkles, badgePt: "Gemini", badgeEn: "Gemini", badgeColor: "purple" },
   ajuda: { labelPt: "Ajuda & Manual do Usuário", labelEn: "Help & User Manual", icon: FileText },
   manual: { labelPt: "Manual do Usuário", labelEn: "User Manual", icon: FileText },
   suporte: { labelPt: "Central de Suporte", labelEn: "Support Center", icon: LifeBuoy },
@@ -89,7 +90,7 @@ const SEGMENT_CONFIG: Record<
   "termos-de-uso": { labelPt: "Termos de Uso", labelEn: "Terms of Use", icon: FileCheck },
   versoes: { labelPt: "Histórico de Versões", labelEn: "Version History", icon: GitBranch },
   "historico-de-versoes": { labelPt: "Histórico de Versões", labelEn: "Version History", icon: GitBranch },
-  changelog: { labelPt: "Changelog", labelEn: "Changelog", icon: GitBranch },
+  changelog: { labelPt: "Histórico de Versões", labelEn: "Changelog", icon: GitBranch },
   servidor: { labelPt: "Painel do Servidor", labelEn: "Staff Panel", icon: Building2 },
   "painel-servidor": { labelPt: "Painel do Servidor", labelEn: "Staff Panel", icon: Building2 },
   "verificar-email": { labelPt: "Verificar E-mail", labelEn: "Verify Email", icon: ShieldCheck },
@@ -151,7 +152,7 @@ export const Breadcrumbs: React.FC = () => {
           : config.labelPt
         : formatSegmentTitle(seg);
       let itemIcon = config?.icon;
-      let itemBadge = config?.badge;
+      let itemBadge = language === "en" ? config?.badgeEn : config?.badgePt;
       let itemBadgeColor = config?.badgeColor;
 
       if ((lowerSeg === "admin" || lowerSeg === "servidor") && currentUser?.role === "SERVIDOR") {
@@ -231,7 +232,7 @@ export const Breadcrumbs: React.FC = () => {
 
   return (
     <nav
-      aria-label="Breadcrumbs"
+      aria-label={language === "en" ? "Breadcrumb navigation" : "Caminho de navegação"}
       className="mb-3 flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 py-1"
     >
       {/* Breadcrumb List */}

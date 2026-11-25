@@ -1,4 +1,6 @@
 import React, { useRef, useEffect, useId } from "react";
+import { useApp } from "../../context/AppContext";
+import { localize } from "../../lib/i18n";
 
 export interface AutoResizeTextareaProps {
   id?: string;
@@ -39,6 +41,8 @@ export const AutoResizeTextarea: React.FC<AutoResizeTextareaProps> = ({
   darkMode = false,
   className = "",
 }) => {
+  const { language } = useApp();
+  const isEn = language === "en";
   const generatedId = useId();
   const inputId = id || generatedId;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -95,7 +99,12 @@ export const AutoResizeTextarea: React.FC<AutoResizeTextareaProps> = ({
       {/* Row Below Bottom Border: Helper Text & Real-Time Character Counter */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] text-neutral-500">
         <div className="text-neutral-500 dark:text-neutral-400">
-          {helperText || "Área ampla com suporte a quebra de linha e expansão automática."}
+          {helperText ||
+            localize(
+              language,
+              "Área ampla com suporte a quebra de linha e expansão automática.",
+              "Expanded field with line-break support and automatic resizing."
+            )}
         </div>
 
         {/* Real-time character counter positioned below bottom border */}
@@ -111,10 +120,12 @@ export const AutoResizeTextarea: React.FC<AutoResizeTextareaProps> = ({
         >
           {maxLength ? (
             <span>
-              {charCount} / {maxLength} caracteres
+              {charCount} / {maxLength} {isEn ? "characters" : "caracteres"}
             </span>
           ) : (
-            <span>{charCount} caracteres</span>
+            <span>
+              {charCount} {isEn ? "characters" : "caracteres"}
+            </span>
           )}
         </div>
       </div>

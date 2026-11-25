@@ -1,26 +1,21 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import { ItemCategory, LostFoundItem } from "../types";
 import { auth } from "../lib/firebase";
-import { safeFetchJson, clientAnalyzeImage, clientMatchSimilarity } from "../lib/apiHelper";
+import { localize, translateCategory, translateColor } from "../lib/i18n";
 import {
   Sparkles,
   Upload,
   Image as ImageIcon,
   CheckCircle2,
-  AlertCircle,
   Loader2,
   Search,
   PlusCircle,
   ShieldCheck,
   Tag,
   Eye,
-  RefreshCw,
-  Zap,
   ArrowRight,
-  FileCheck2,
   Camera,
-  CameraOff,
   X,
 } from "lucide-react";
 
@@ -38,12 +33,13 @@ interface AIAnalysisResult {
 export const ImageAnalyzerView: React.FC = () => {
   const {
     items,
-    setActiveTab,
     setPrefilledItemFromAI,
     setSelectedItemForDetail,
     addToast,
     requestAuthForRegistration,
+    language,
   } = useApp();
+  const l = (pt: string, en: string) => localize(language, pt, en);
 
   const [selectedImage, setSelectedImage] = useState<string>(
     "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop&q=80"
@@ -78,7 +74,7 @@ export const ImageAnalyzerView: React.FC = () => {
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("Seu navegador não possui suporte a acesso de mídia.");
+        throw new Error(l("Seu navegador não possui suporte a acesso de mídia.", "Your browser does not support media access."));
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -93,16 +89,24 @@ export const ImageAnalyzerView: React.FC = () => {
       }
 
       setCameraStatus("granted");
-      addToast("Acesso à câmera liberado! Fotografe o pertence.", "success");
+      addToast(
+        l("Acesso à câmera liberado! Fotografe o pertence.", "Camera access granted! Take a photo of the item."),
+        "success"
+      );
     } catch (err: any) {
       console.error("Erro ao solicitar acesso à câmera:", err);
       setCameraStatus("denied");
       if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-        setCameraError("Permissão de acesso à câmera negada. Habilite a permissão no navegador para fotografar o objeto.");
+        setCameraError(
+          l(
+            "Permissão de acesso à câmera negada. Habilite a permissão no navegador para fotografar o objeto.",
+            "Camera permission denied. Enable camera access in your browser to photograph the item."
+          )
+        );
       } else {
-        setCameraError("Erro ao iniciar dispositivo de câmera.");
+        setCameraError(l("Erro ao iniciar dispositivo de câmera.", "Error starting camera device."));
       }
-      addToast("Erro ao solicitar acesso à câmera.", "error");
+      addToast(l("Erro ao solicitar acesso à câmera.", "Error requesting camera access."), "error");
     }
   };
 
@@ -119,7 +123,10 @@ export const ImageAnalyzerView: React.FC = () => {
       setSelectedImage(dataUrl);
       setAnalysis(null);
       setDatabaseMatches([]);
-      addToast("Foto capturada da câmera com sucesso!", "success");
+      addToast(
+        l("Foto capturada da câmera com sucesso!", "Photo captured from camera successfully!"),
+        "success"
+      );
       stopCamera();
       setCameraModalOpen(false);
     }
@@ -130,7 +137,10 @@ export const ImageAnalyzerView: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 8 * 1024 * 1024) {
-        addToast("Por favor, selecione uma imagem menor que 8MB.", "error");
+        addToast(
+          l("Por favor, selecione uma imagem menor que 8MB.", "Please select an image smaller than 8MB."),
+          "error"
+        );
         return;
       }
       const reader = new FileReader();
@@ -146,27 +156,27 @@ export const ImageAnalyzerView: React.FC = () => {
   // Preset sample images
   const sampleImages = [
     {
-      label: "Relógio Casio",
+      label: l("Relógio Casio", "Casio Watch"),
       url: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&auto=format&fit=crop&q=80",
     },
     {
-      label: "Garrafa Térmica",
+      label: l("Garrafa Térmica", "Insulated Bottle"),
       url: "https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=800&auto=format&fit=crop&q=80",
     },
     {
-      label: "Calculadora",
+      label: l("Calculadora", "Calculator"),
       url: "https://images.unsplash.com/photo-1594980596870-8aa52a78d8cd?w=800&auto=format&fit=crop&q=80",
     },
     {
-      label: "Carteira de Couro",
+      label: l("Carteira de Couro", "Leather Wallet"),
       url: "https://images.unsplash.com/photo-1627123424574-724758594e93?w=800&auto=format&fit=crop&q=80",
     },
     {
-      label: "Casaco / Moletom",
+      label: l("Casaco / Moletom", "Jacket / Hoodie"),
       url: "https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=800&auto=format&fit=crop&q=80",
     },
     {
-      label: "Chaves com Chaveiro",
+      label: l("Chaves com Chaveiro", "Keys with Keychain"),
       url: "https://images.unsplash.com/photo-1582139329536-e7284fece509?w=800&auto=format&fit=crop&q=80",
     },
   ];
@@ -174,12 +184,18 @@ export const ImageAnalyzerView: React.FC = () => {
   // Call Gemini 3.1 Pro Preview Image Analysis Endpoint
   const handleAnalyzeImage = async () => {
     if (!selectedImage) {
-      addToast("Selecione ou envie uma foto para analisar.", "error");
+      addToast(l("Selecione ou envie uma foto para analisar.", "Select or upload a photo to analyze."), "error");
       return;
     }
 
     if (!auth.currentUser) {
-      addToast("Faça login com sua conta institucional para analisar fotos com o Gemini.", "error");
+      addToast(
+        l(
+          "Faça login com sua conta institucional para analisar fotos com o Gemini.",
+          "Sign in with your institutional account to analyze photos with Gemini."
+        ),
+        "error"
+      );
       return;
     }
 
@@ -203,21 +219,41 @@ export const ImageAnalyzerView: React.FC = () => {
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.error || `Erro ${res.status}: Falha ao analisar foto com Gemini.`);
+        throw new Error(
+          data.error ||
+            l(
+              `Erro ${res.status}: Falha ao analisar foto com Gemini.`,
+              `Error ${res.status}: Failed to analyze photo with Gemini.`
+            )
+        );
       }
 
       if (data.success && data.analysis) {
         setAnalysis(data.analysis);
-        addToast("Foto analisada com sucesso pela Inteligência Artificial Gemini!", "success");
+        addToast(
+          l(
+            "Foto analisada com sucesso pela Inteligência Artificial Gemini!",
+            "Photo analyzed successfully by Gemini Artificial Intelligence!"
+          ),
+          "success"
+        );
 
         // Automatically trigger a database check in background
         performDbMatching(data.analysis);
       } else {
-        throw new Error("Não foi possível extrair dados da imagem via Gemini.");
+        throw new Error(
+          l(
+            "Não foi possível extrair dados da imagem via Gemini.",
+            "Could not extract image details via Gemini."
+          )
+        );
       }
     } catch (err: any) {
       console.error("Erro ao analisar foto:", err);
-      addToast(err.message || "Falha na análise da imagem pelo Gemini.", "error");
+      addToast(
+        err.message || l("Falha na análise da imagem pelo Gemini.", "Image analysis failed via Gemini."),
+        "error"
+      );
     } finally {
       setIsAnalyzing(false);
     }
@@ -301,12 +337,19 @@ export const ImageAnalyzerView: React.FC = () => {
       category: (analysis.category as ItemCategory) || "Outros",
       color: analysis.color,
       brand: analysis.brand,
-      description: `${analysis.description}\n\n🔍 [Análise de Visão Gemini 3.1 Pro]\n• Estado: ${analysis.condition}\n• Marcas identificadas: ${analysis.distinctiveFeatures.join(", ")}`,
+      description: `${analysis.description}\n\n🔍 [${l("Análise de Visão Gemini 3.1 Pro", "Gemini 3.1 Pro Vision Analysis")}]\n• ${l("Estado", "Condition")}: ${analysis.condition}\n• ${l("Marcas identificadas", "Identified marks")}: ${analysis.distinctiveFeatures.join(", ")}`,
       imageUrl: selectedImage,
     };
 
     setPrefilledItemFromAI(prefilledData);
-    requestAuthForRegistration("ENCONTRADO", prefilledData, "Faça login para cadastrar o objeto analisado pela IA.");
+    requestAuthForRegistration(
+      "ENCONTRADO",
+      prefilledData,
+      l(
+        "Faça login para cadastrar o objeto analisado pela IA.",
+        "Sign in to register the AI-analyzed item."
+      )
+    );
   };
 
   return (
@@ -322,15 +365,18 @@ export const ImageAnalyzerView: React.FC = () => {
               Gemini 3.1 Pro Preview
             </span>
             <span className="px-3 py-1 rounded-full bg-white/10 text-emerald-300 text-[11px] font-bold border border-white/10">
-              Visão Computacional & Multimodal
+              {l("Visão Computacional e Multimodal", "Computer Vision & Multimodal")}
             </span>
           </div>
 
           <h1 className="text-2xl sm:text-4xl font-black tracking-tight">
-            Analisador Inteligente de Fotos de Objetos
+            {l("Analisador Inteligente de Fotos de Objetos", "Smart Item Photo Analyzer")}
           </h1>
           <p className="text-xs sm:text-sm text-neutral-300 max-w-2xl leading-relaxed">
-            Envie uma fotografia de qualquer pertence encontrado ou perdido no IFPR Campus Ivaiporã. A Inteligência Artificial do Google analisa cores, marcas, arranhões, adesivos e sugere a descrição completa e a pista secreta de verificação.
+            {l(
+              "Envie uma fotografia de qualquer pertence encontrado ou perdido no IFPR Campus Ivaiporã. A Inteligência Artificial do Google analisa cores, marcas, arranhões, adesivos e sugere a descrição completa e a pista secreta de verificação.",
+              "Upload a photo of any lost or found item at IFPR Campus Ivaiporã. Google AI analyzes colors, brands, scratches, stickers, and suggests a complete description and secret verification hint."
+            )}
           </p>
         </div>
       </div>
@@ -342,14 +388,14 @@ export const ImageAnalyzerView: React.FC = () => {
           <div className="bg-white dark:bg-[#1E1E1E] p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-5">
             <h2 className="text-sm font-black uppercase tracking-wider text-neutral-800 dark:text-neutral-200 flex items-center gap-2">
               <ImageIcon className="w-4 h-4 text-[#00843D]" />
-              1. Selecionar Fotografia
+              {l("1. Selecionar Fotografia", "1. Select Photo")}
             </h2>
 
             {/* Image Preview Box */}
             <div className="relative aspect-4/3 rounded-2xl overflow-hidden bg-neutral-100 dark:bg-neutral-900 border-2 border-dashed border-neutral-300 dark:border-neutral-700 group">
               <img
                 src={selectedImage}
-                alt="Objeto para análise"
+                alt={l("Objeto para análise", "Item for analysis")}
                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
               />
 
@@ -360,7 +406,7 @@ export const ImageAnalyzerView: React.FC = () => {
                     <Sparkles className="w-6 h-6 text-amber-300 fill-amber-300" />
                   </div>
                   <p className="text-xs font-bold text-white">
-                    Gemini 3.1 Pro analisando detalhes visuais...
+                    {l("Gemini 3.1 Pro analisando detalhes visuais...", "Gemini 3.1 Pro analyzing visual details...")}
                   </p>
                   <div className="w-32 h-1.5 bg-neutral-700 rounded-full overflow-hidden">
                     <div className="h-full bg-[#00843D] animate-pulse w-full" />
@@ -372,7 +418,7 @@ export const ImageAnalyzerView: React.FC = () => {
             {/* Upload File or Capture Camera Input */}
             <div className="space-y-2">
               <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                Enviar Arquivo ou Tirar Foto com a Câmera:
+                {l("Enviar Arquivo ou Tirar Foto com a Câmera:", "Upload File or Take a Photo with Camera:")}
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
@@ -381,12 +427,12 @@ export const ImageAnalyzerView: React.FC = () => {
                   className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-2xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold cursor-pointer transition-colors shadow-xs"
                 >
                   <Camera className="w-4 h-4 text-amber-300" />
-                  <span>Tirar Foto (Câmera)</span>
+                  <span>{l("Tirar Foto (Câmera)", "Take Photo (Camera)")}</span>
                 </button>
 
                 <label className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-2xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-bold cursor-pointer transition-colors border border-neutral-200 dark:border-neutral-700">
                   <Upload className="w-4 h-4 text-[#00843D]" />
-                  <span>Escolher Arquivo</span>
+                  <span>{l("Escolher Arquivo", "Choose File")}</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -400,12 +446,12 @@ export const ImageAnalyzerView: React.FC = () => {
             {/* Sample Images Shortcuts */}
             <div>
               <label className="block text-[11px] font-bold text-neutral-500 mb-2">
-                Ou escolha um exemplo pronto:
+                {l("Ou escolha um exemplo pronto:", "Or choose a ready-made sample:")}
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {sampleImages.map((s) => (
                   <button
-                    key={s.label}
+                    key={s.url}
                     onClick={() => {
                       setSelectedImage(s.url);
                       setAnalysis(null);
@@ -426,13 +472,16 @@ export const ImageAnalyzerView: React.FC = () => {
             {/* Custom Context Field */}
             <div>
               <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                Contexto Adicional (Opcional):
+                {l("Contexto Adicional (Opcional):", "Additional Context (Optional):")}
               </label>
               <input
                 type="text"
                 value={customContext}
                 onChange={(e) => setCustomContext(e.target.value)}
-                placeholder="Ex: Encontrado perto dos armários do Bloco B..."
+                placeholder={l(
+                  "Ex: Encontrado perto dos armários do Bloco B...",
+                  "e.g. Found near the Block B lockers..."
+                )}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-[#00843D]"
               />
             </div>
@@ -446,12 +495,12 @@ export const ImageAnalyzerView: React.FC = () => {
               {isAnalyzing ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Processando Visão de IA...</span>
+                  <span>{l("Processando Visão de IA...", "Processing AI Vision...")}</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="w-4 h-4 text-amber-300 fill-amber-300" />
-                  <span>Analisar Foto com Gemini 3.1 Pro</span>
+                  <span>{l("Analisar Foto com Gemini 3.1 Pro", "Analyze Photo with Gemini 3.1 Pro")}</span>
                 </>
               )}
             </button>
@@ -467,12 +516,17 @@ export const ImageAnalyzerView: React.FC = () => {
               </div>
               <div className="max-w-md mx-auto space-y-2">
                 <h3 className="text-base font-extrabold text-neutral-800 dark:text-neutral-100">
-                  Nenhuma análise iniciada
+                  {l("Nenhuma análise iniciada", "No analysis started yet")}
                 </h3>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
-                  Escolha uma foto ao lado e clique em{" "}
-                  <strong className="text-[#00843D]">"Analisar Foto com Gemini 3.1 Pro"</strong>{" "}
-                  para extrair características visuais, marcas de uso e gerar a descrição automática do pertence.
+                  {l("Escolha uma foto ao lado e clique em ", "Choose a photo on the left and click ")}
+                  <strong className="text-[#00843D]">
+                    {l('"Analisar Foto com Gemini 3.1 Pro"', '"Analyze Photo with Gemini 3.1 Pro"')}
+                  </strong>{" "}
+                  {l(
+                    "para extrair características visuais, marcas de uso e gerar a descrição automática do pertence.",
+                    "to extract visual features, wear marks, and generate an automatic item description."
+                  )}
                 </p>
               </div>
             </div>
@@ -482,10 +536,13 @@ export const ImageAnalyzerView: React.FC = () => {
             <div className="bg-white dark:bg-[#1E1E1E] p-10 rounded-3xl border border-neutral-200 dark:border-neutral-800 text-center space-y-4">
               <Loader2 className="w-10 h-10 text-[#00843D] animate-spin mx-auto" />
               <h3 className="text-sm font-extrabold text-neutral-800 dark:text-neutral-100">
-                Aguarde... Processando foto com Gemini 3.1 Pro
+                {l("Aguarde... Processando foto com Gemini 3.1 Pro", "Please wait... Processing photo with Gemini 3.1 Pro")}
               </h3>
               <p className="text-xs text-neutral-500">
-                Identificando objetos, esquema de cores, marcas e características únicas de segurança...
+                {l(
+                  "Identificando objetos, esquema de cores, marcas e características únicas de segurança...",
+                  "Identifying objects, color scheme, brands, and unique security features..."
+                )}
               </p>
             </div>
           )}
@@ -498,7 +555,7 @@ export const ImageAnalyzerView: React.FC = () => {
                   <div>
                     <div className="flex items-center space-x-2">
                       <span className="px-2.5 py-0.5 rounded-full bg-[#00843D]/10 text-[#00843D] dark:text-green-400 text-[10px] font-black uppercase tracking-wider border border-[#00843D]/20">
-                        {analysis.category}
+                        {translateCategory(analysis.category, language)}
                       </span>
                       <span className="px-2.5 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 text-[10px] font-bold">
                         {analysis.condition}
@@ -514,7 +571,7 @@ export const ImageAnalyzerView: React.FC = () => {
                     className="px-4 py-2 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white text-xs font-bold shadow-sm transition-all flex items-center space-x-1.5"
                   >
                     <PlusCircle className="w-4 h-4" />
-                    <span>Usar no Cadastro</span>
+                    <span>{l("Usar no Cadastro", "Use in Registration")}</span>
                   </button>
                 </div>
 
@@ -522,16 +579,16 @@ export const ImageAnalyzerView: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/60 dark:border-neutral-800">
                     <span className="text-[10px] font-bold text-neutral-400 uppercase block mb-0.5">
-                      Cor Predominante
+                      {l("Cor Predominante", "Predominant Color")}
                     </span>
                     <span className="text-xs font-black text-neutral-800 dark:text-neutral-100">
-                      {analysis.color}
+                      {translateColor(analysis.color, language)}
                     </span>
                   </div>
 
                   <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/60 dark:border-neutral-800">
                     <span className="text-[10px] font-bold text-neutral-400 uppercase block mb-0.5">
-                      Marca / Fabricante
+                      {l("Marca / Fabricante", "Brand / Manufacturer")}
                     </span>
                     <span className="text-xs font-black text-neutral-800 dark:text-neutral-100">
                       {analysis.brand}
@@ -540,7 +597,7 @@ export const ImageAnalyzerView: React.FC = () => {
 
                   <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/60 dark:border-neutral-800 col-span-2 sm:col-span-1">
                     <span className="text-[10px] font-bold text-neutral-400 uppercase block mb-0.5">
-                      Estado de Conservação
+                      {l("Estado de Conservação", "Condition")}
                     </span>
                     <span className="text-xs font-black text-neutral-800 dark:text-neutral-100 truncate block">
                       {analysis.condition}
@@ -553,7 +610,7 @@ export const ImageAnalyzerView: React.FC = () => {
                   <div className="space-y-2">
                     <h3 className="text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
                       <Tag className="w-3.5 h-3.5 text-[#00843D]" />
-                      Detecções Únicas e Marcas Identificadas:
+                      {l("Detecções Únicas e Marcas Identificadas:", "Unique Detections & Identified Marks:")}
                     </h3>
                     <div className="flex flex-wrap gap-2">
                       {analysis.distinctiveFeatures.map((feat, idx) => (
@@ -573,7 +630,7 @@ export const ImageAnalyzerView: React.FC = () => {
                 <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-1">
                   <span className="text-[11px] font-black uppercase text-amber-700 dark:text-amber-400 flex items-center gap-1.5">
                     <ShieldCheck className="w-4 h-4" />
-                    Sugestão de Pista Secreta para Comprovação:
+                    {l("Sugestão de Pista Secreta para Comprovação:", "Suggested Secret Hint for Ownership Verification:")}
                   </span>
                   <p className="text-xs text-amber-900 dark:text-amber-200 font-medium">
                     "{analysis.suggestedSecretHint}"
@@ -583,7 +640,7 @@ export const ImageAnalyzerView: React.FC = () => {
                 {/* Full Description */}
                 <div className="space-y-1">
                   <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
-                    Descrição Detalhada Gerada:
+                    {l("Descrição Detalhada Gerada:", "Generated Detailed Description:")}
                   </span>
                   <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed bg-neutral-50 dark:bg-neutral-800/40 p-3.5 rounded-2xl border border-neutral-200 dark:border-neutral-800">
                     {analysis.description}
@@ -596,23 +653,29 @@ export const ImageAnalyzerView: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-black uppercase tracking-wider text-neutral-800 dark:text-neutral-200 flex items-center gap-2">
                     <Search className="w-4 h-4 text-[#00843D]" />
-                    Cruzamento de Dados com Banco de Registros IFPR
+                    {l("Cruzamento de Dados com Banco de Registros IFPR", "Cross-Check with IFPR Records Database")}
                   </h3>
                   {isSearchingDb && (
                     <span className="text-xs text-neutral-400 flex items-center gap-1">
-                      <Loader2 className="w-3 h-3 animate-spin" /> Buscando...
+                      <Loader2 className="w-3 h-3 animate-spin" /> {l("Buscando...", "Searching...")}
                     </span>
                   )}
                 </div>
 
                 {databaseMatches.length === 0 ? (
                   <p className="text-xs text-neutral-500 dark:text-neutral-400 py-2">
-                    Nenhum objeto idêntico com pontuação alta encontrado no banco até o momento. Você pode prosseguir com o novo cadastro.
+                    {l(
+                      "Nenhum objeto idêntico com pontuação alta encontrado no banco até o momento. Você pode prosseguir com o novo cadastro.",
+                      "No identical item with a high score was found in the database so far. You may proceed with registering a new item."
+                    )}
                   </p>
                 ) : (
                   <div className="space-y-3">
                     <p className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">
-                      A IA encontrou {databaseMatches.length} possível(is) correspondência(s) no sistema:
+                      {l(
+                        `A IA encontrou ${databaseMatches.length} possível(is) correspondência(s) no sistema:`,
+                        `AI found ${databaseMatches.length} possible match(es) in the system:`
+                      )}
                     </p>
                     <div className="space-y-2">
                       {databaseMatches.map(({ item, score, reason }) => (
@@ -635,7 +698,7 @@ export const ImageAnalyzerView: React.FC = () => {
                                     : "bg-emerald-500/10 text-emerald-500"
                                 }`}
                               >
-                                {item.type}
+                                {item.type === "PERDIDO" ? l("PERDIDO", "LOST") : l("ENCONTRADO", "FOUND")}
                               </span>
                               <h4 className="text-xs font-bold text-neutral-900 dark:text-white truncate mt-0.5">
                                 {item.title}
@@ -646,10 +709,10 @@ export const ImageAnalyzerView: React.FC = () => {
 
                           <div className="text-right shrink-0">
                             <span className="text-xs font-black text-[#00843D] dark:text-green-400 block">
-                              {score}% Similar
+                              {l(`${score}% Similar`, `${score}% Match`)}
                             </span>
                             <span className="text-[10px] text-neutral-400 flex items-center justify-end gap-0.5 group-hover:text-[#00843D]">
-                              Ver Detalhes <ArrowRight className="w-3 h-3" />
+                              {l("Ver Detalhes", "View Details")} <ArrowRight className="w-3 h-3" />
                             </span>
                           </div>
                         </div>
@@ -674,16 +737,17 @@ export const ImageAnalyzerView: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-bold text-sm text-neutral-900 dark:text-white">
-                    Fotografar Objeto via Câmera
+                    {l("Fotografar Objeto via Câmera", "Photograph Item via Camera")}
                   </h3>
                   <p className="text-[10px] text-neutral-500">
-                    Posicione o pertence e capture para análise Gemini IA
+                    {l("Posicione o pertence e capture para análise Gemini IA", "Position the item and capture for Gemini AI analysis")}
                   </p>
                 </div>
               </div>
 
               <button
                 type="button"
+                aria-label={l("Fechar câmera", "Close camera")}
                 onClick={() => {
                   stopCamera();
                   setCameraModalOpen(false);
@@ -707,11 +771,14 @@ export const ImageAnalyzerView: React.FC = () => {
                 <div className="p-4 space-y-2">
                   {cameraStatus === "denied" ? (
                     <p className="text-xs font-bold text-red-400">
-                      {cameraError || "Permissão de acesso à câmera negada."}
+                      {cameraError || l("Permissão de acesso à câmera negada.", "Camera access permission denied.")}
                     </p>
                   ) : (
                     <p className="text-xs font-bold text-amber-300 animate-pulse">
-                      Solicitando permissão para usar a câmera... Aceite a solicitação no topo da tela.
+                      {l(
+                        "Solicitando permissão para usar a câmera... Aceite a solicitação no topo da tela.",
+                        "Requesting camera permission... Accept the prompt at the top of the screen."
+                      )}
                     </p>
                   )}
                 </div>
@@ -728,7 +795,7 @@ export const ImageAnalyzerView: React.FC = () => {
                 }}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
               >
-                Cancelar
+                {l("Cancelar", "Cancel")}
               </button>
 
               {cameraStatus === "granted" && (
@@ -738,7 +805,7 @@ export const ImageAnalyzerView: React.FC = () => {
                   className="px-5 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#006e33] text-white font-extrabold text-xs shadow-md flex items-center gap-2"
                 >
                   <Camera className="w-4 h-4 text-amber-300" />
-                  <span>Capturar e Analisar Foto</span>
+                  <span>{l("Capturar e Analisar Foto", "Capture & Analyze Photo")}</span>
                 </button>
               )}
             </div>

@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import type { LostFoundItem, ActivityLog } from "../types";
 import { safeParseDate, formatDateTime } from "../lib/utils";
+import { useApp } from "../context/AppContext";
+import { localize, getLocaleForLanguage, translateCategory } from "../lib/i18n";
 import { SurfaceCard, SubtlePanel, UIBadge, UIButton, UIInput, EmptyState } from "./ui";
 
 export interface DigitalReturnsD3ChartProps {
@@ -45,6 +47,9 @@ export function DigitalReturnsD3Chart({
   darkMode = false,
   onSelectItem,
 }: DigitalReturnsD3ChartProps) {
+  const { language } = useApp();
+  const locale = getLocaleForLanguage(language);
+  const tr = (pt: string, en: string) => localize(language, pt, en);
   const [selectedRange, setSelectedRange] = useState<"7" | "14" | "30" | "60">("30");
   const [selectedModality, setSelectedModality] = useState<"ALL" | "REMOTE" | "IN_PERSON">("ALL");
   const [searchTerm, setSearchTerm] = useState("");
@@ -427,13 +432,34 @@ export function DigitalReturnsD3Chart({
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(9);
-    doc.text("Relatório de Devoluções Validadas Digitalmente (D3 Engine)", 14, 18);
+    doc.text(
+      tr(
+        "Relatório de Devoluções Validadas Digitalmente (Motor D3)",
+        "Digitally Validated Returns Report (D3 Engine)"
+      ),
+      14,
+      18
+    );
+
+    const modalityLabel =
+      selectedModality === "ALL"
+        ? tr("Todas", "All")
+        : selectedModality === "REMOTE"
+        ? tr("Remotas", "Remote")
+        : tr("Presenciais", "In-person");
 
     // Report Metadata
     doc.setTextColor(...darkColor);
     doc.setFontSize(9);
-    doc.text(`Emissão: ${new Date().toLocaleString("pt-BR")}`, 14, 32);
-    doc.text(`Período analisado: Últimos ${selectedRange} dias | Modalidade: ${selectedModality}`, 14, 37);
+    doc.text(`${tr("Emissão", "Issued")}: ${new Date().toLocaleString(locale)}`, 14, 32);
+    doc.text(
+      `${tr("Período analisado", "Analyzed period")}: ${tr(
+        `Últimos ${selectedRange} dias`,
+        `Last ${selectedRange} days`
+      )} | ${tr("Modalidade", "Modality")}: ${modalityLabel}`,
+      14,
+      37
+    );
 
     // KPIs summary box
     doc.setFillColor(248, 250, 252);
@@ -442,12 +468,12 @@ export function DigitalReturnsD3Chart({
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
     doc.text(
-      `TOTAL VALIDADAS: ${kpis.total} | PENDENTES REMOTA: ${kpis.pendingRemote} | ATESTAÇÃO PENDENTE: ${kpis.pendingStaffAttestation}`,
+      `${tr("TOTAL VALIDADAS", "TOTAL VALIDATED")}: ${kpis.total} | ${tr("PENDENTES REMOTA", "PENDING REMOTE")}: ${kpis.pendingRemote} | ${tr("ATESTAÇÃO PENDENTE", "PENDING ATTESTATION")}: ${kpis.pendingStaffAttestation}`,
       20,
       50
     );
     doc.text(
-      `MÉDIA DIÁRIA: ${kpis.avgDaily} | PICO DIÁRIO: ${kpis.peak.val} (${kpis.peak.date}) | TAXA REMOTA: ${kpis.remotePercentage}%`,
+      `${tr("MÉDIA DIÁRIA", "DAILY AVERAGE")}: ${kpis.avgDaily} | ${tr("PICO DIÁRIO", "DAILY PEAK")}: ${kpis.peak.val} (${kpis.peak.date}) | ${tr("TAXA REMOTA", "REMOTE RATE")}: ${kpis.remotePercentage}%`,
       20,
       56
     );
@@ -462,18 +488,26 @@ export function DigitalReturnsD3Chart({
 
       return [
         it.title,
-        it.category,
-        it.recipientName || "Não informado",
-        isRemote ? "Remota (E-mail)" : "Presencial",
-        staffAttested ? "Dupla Assinatura" : "Atestação Pendente",
-        it.receiptValidationCode || "Validado",
+        translateCategory(it.category, language),
+        it.recipientName || tr("Não informado", "Not provided"),
+        isRemote ? tr("Remota (E-mail)", "Remote (Email)") : tr("Presencial", "In-person"),
+        staffAttested ? tr("Dupla Assinatura", "Dual Signature") : tr("Atestação Pendente", "Pending Attestation"),
+        it.receiptValidationCode || tr("Validado", "Validated"),
         it.signedAt || it.returnDate || it.createdAt || "--",
       ];
     });
 
     autoTable(doc, {
       startY: 66,
-      head: [["Objeto", "Categoria", "Recebedor", "Modalidade", "Atestação", "Cód. Validação", "Data/Hora"]],
+      head: [[
+        tr("Objeto", "Item"),
+        tr("Categoria", "Category"),
+        tr("Recebedor", "Recipient"),
+        tr("Modalidade", "Modality"),
+        tr("Atestação", "Attestation"),
+        tr("Cód. Validação", "Validation Code"),
+        tr("Data/Hora", "Date/Time"),
+      ]],
       body: tableRows,
       headStyles: {
         fillColor: primaryColor,
@@ -508,12 +542,15 @@ export function DigitalReturnsD3Chart({
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg sm:text-xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-                Métricas de Devoluções Validadas Digitalmente
+                {tr("Métricas de Devoluções Validadas Digitalmente", "Digitally Validated Returns Metrics")}
               </h2>
-              <UIBadge tone="emerald">D3 Engine</UIBadge>
+              <UIBadge tone="emerald">{tr("Motor D3", "D3 Engine")}</UIBadge>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Volume diário de termos de restituição e quitação validados via token criptográfico no Firestore
+              {tr(
+                "Volume diário de termos de restituição e quitação validados via código criptográfico no Firestore",
+                "Daily volume of return and settlement receipts validated via cryptographic token in Firestore"
+              )}
             </p>
           </div>
         </div>
@@ -531,7 +568,7 @@ export function DigitalReturnsD3Chart({
                   : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
-              Todas
+              {tr("Todas", "All")}
             </button>
             <button
               type="button"
@@ -542,7 +579,7 @@ export function DigitalReturnsD3Chart({
                   : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
-              <Mail className="w-3 h-3" /> Remotas
+              <Mail className="w-3 h-3" /> {tr("Remotas", "Remote")}
             </button>
             <button
               type="button"
@@ -553,7 +590,7 @@ export function DigitalReturnsD3Chart({
                   : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
               }`}
             >
-              <Smartphone className="w-3 h-3" /> Presenciais
+              <Smartphone className="w-3 h-3" /> {tr("Presenciais", "In-person")}
             </button>
           </div>
 
@@ -580,10 +617,10 @@ export function DigitalReturnsD3Chart({
             variant="primary"
             size="sm"
             onClick={handleExportPDF}
-            title="Exportar Relatório em PDF"
+            title={tr("Exportar Relatório em PDF", "Export PDF Report")}
           >
             <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Exportar PDF</span>
+            <span className="hidden sm:inline">{tr("Exportar PDF", "Export PDF")}</span>
           </UIButton>
         </div>
       </div>
@@ -592,17 +629,17 @@ export function DigitalReturnsD3Chart({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
         <SubtlePanel padding="sm" className="space-y-1">
           <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5 text-[#16845B]" /> Total Validadas
+            <CheckCircle2 className="w-3.5 h-3.5 text-[#16845B]" /> {tr("Total Validadas", "Total Validated")}
           </span>
           <div className="text-2xl font-bold text-[#172B2A] dark:text-white flex items-baseline gap-2 tabular-nums">
             <span>{kpis.total}</span>
-            <span className="text-[10px] text-slate-400 font-medium">assinadas no período</span>
+            <span className="text-[10px] text-slate-400 font-medium">{tr("assinadas no período", "signed in period")}</span>
           </div>
         </SubtlePanel>
 
         <SubtlePanel padding="sm" className="space-y-1">
           <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-            <TrendingUp className="w-3.5 h-3.5 text-[#16845B]" /> Pico Diário
+            <TrendingUp className="w-3.5 h-3.5 text-[#16845B]" /> {tr("Pico Diário", "Daily Peak")}
           </span>
           <div className="text-2xl font-bold text-[#172B2A] dark:text-white flex items-baseline gap-2 tabular-nums">
             <span>{kpis.peak.val}</span>
@@ -612,21 +649,21 @@ export function DigitalReturnsD3Chart({
 
         <SubtlePanel padding="sm" className="space-y-1">
           <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-            <Calendar className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" /> Média Diária
+            <Calendar className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" /> {tr("Média Diária", "Daily Average")}
           </span>
           <div className="text-2xl font-bold text-[#172B2A] dark:text-white flex items-baseline gap-2 tabular-nums">
             <span>{kpis.avgDaily}</span>
-            <span className="text-[10px] text-slate-400 font-medium">por dia</span>
+            <span className="text-[10px] text-slate-400 font-medium">{tr("por dia", "per day")}</span>
           </div>
         </SubtlePanel>
 
         <SubtlePanel padding="sm" className="space-y-1">
           <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-[#064E3B] dark:text-emerald-400" /> Taxa Remota
+            <ShieldCheck className="w-3.5 h-3.5 text-[#064E3B] dark:text-emerald-400" /> {tr("Taxa Remota", "Remote Rate")}
           </span>
           <div className="text-2xl font-bold text-[#172B2A] dark:text-white flex items-baseline gap-2 tabular-nums">
             <span>{kpis.remotePercentage}%</span>
-            <span className="text-[10px] text-slate-400 font-medium">via link/e-mail</span>
+            <span className="text-[10px] text-slate-400 font-medium">{tr("via link/e-mail", "via link/email")}</span>
           </div>
         </SubtlePanel>
       </div>
@@ -636,13 +673,23 @@ export function DigitalReturnsD3Chart({
           {kpis.pendingRemote > 0 && (
             <UIBadge tone="amber">
               <Mail className="w-3 h-3" />
-              <span>{kpis.pendingRemote} aguardando assinatura remota (fora da contagem assinada)</span>
+              <span>
+                {tr(
+                  `${kpis.pendingRemote} aguardando assinatura remota (fora da contagem assinada)`,
+                  `${kpis.pendingRemote} awaiting remote signature (excluded from signed count)`
+                )}
+              </span>
             </UIBadge>
           )}
           {kpis.pendingStaffAttestation > 0 && (
             <UIBadge tone="blue">
               <ShieldCheck className="w-3 h-3" />
-              <span>{kpis.pendingStaffAttestation} com assinatura do receptor e atestação do atendente pendente</span>
+              <span>
+                {tr(
+                  `${kpis.pendingStaffAttestation} com assinatura do receptor e atestação do atendente pendente`,
+                  `${kpis.pendingStaffAttestation} signed by recipient and awaiting staff attestation`
+                )}
+              </span>
             </UIBadge>
           )}
         </div>
@@ -652,16 +699,16 @@ export function DigitalReturnsD3Chart({
       <SubtlePanel padding="md" className="relative">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-            Tendência Temporal de Devoluções Concluídas
+            {tr("Tendência Temporal de Devoluções Concluídas", "Completed Returns Timeline Trend")}
           </span>
           <div className="flex items-center gap-4 text-[11px] text-slate-500 dark:text-slate-400">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-0.5 bg-[#16845B] rounded-full inline-block" />
-              <span>Devoluções</span>
+              <span>{tr("Devoluções", "Returns")}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-[#16845B]/20 border border-[#16845B] inline-block" />
-              <span>Volume</span>
+              <span>{tr("Volume", "Volume")}</span>
             </div>
           </div>
         </div>
@@ -683,15 +730,15 @@ export function DigitalReturnsD3Chart({
                 <span className="text-[10px] text-slate-300 font-normal">{hoveredPoint.date.getFullYear()}</span>
               </div>
               <div className="flex justify-between items-center text-[11px]">
-                <span className="text-slate-300">Total:</span>
+                <span className="text-slate-300">{tr("Total:", "Total:")}</span>
                 <span className="font-bold text-white tabular-nums">{hoveredPoint.count}</span>
               </div>
               <div className="flex justify-between items-center text-[10px] text-slate-300">
-                <span>Remotas:</span>
+                <span>{tr("Remotas:", "Remote:")}</span>
                 <span className="tabular-nums text-emerald-400 font-semibold">{hoveredPoint.remoteCount}</span>
               </div>
               <div className="flex justify-between items-center text-[10px] text-slate-300">
-                <span>Presenciais:</span>
+                <span>{tr("Presenciais:", "In-person:")}</span>
                 <span className="tabular-nums text-blue-300 font-semibold">{hoveredPoint.inPersonCount}</span>
               </div>
             </div>
@@ -705,10 +752,13 @@ export function DigitalReturnsD3Chart({
           <div>
             <h3 className="text-sm font-bold text-[#172B2A] dark:text-white flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-[#16845B]" />
-              Registros com Validação Criptográfica e Assinatura
+              {tr("Registros com Validação Criptográfica e Assinatura", "Cryptographically Validated & Signed Records")}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Objetos cuja quitação foi formalizada via termo digital nos registros do sistema
+              {tr(
+                "Objetos cuja quitação foi formalizada via termo digital nos registros do sistema",
+                "Items whose return was formalized via digital receipt in system records"
+              )}
             </p>
           </div>
 
@@ -717,7 +767,7 @@ export function DigitalReturnsD3Chart({
             <UIInput
               type="text"
               leftIcon={<Search className="w-4 h-4" />}
-              placeholder="Buscar por objeto ou recebedor..."
+              placeholder={tr("Buscar por objeto ou recebedor...", "Search by item or recipient...")}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -728,8 +778,11 @@ export function DigitalReturnsD3Chart({
         {filteredAuditItems.length === 0 ? (
           <EmptyState
             icon={<Info className="w-6 h-6" />}
-            title="Nenhuma devolução encontrada"
-            description="Nenhuma devolução validada digitalmente encontrada com os filtros selecionados."
+            title={tr("Nenhuma devolução encontrada", "No returns found")}
+            description={tr(
+              "Nenhuma devolução validada digitalmente encontrada com os filtros selecionados.",
+              "No digitally validated returns found for the selected filters."
+            )}
           />
         ) : (
           <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-white dark:bg-[#111827]">
@@ -737,13 +790,13 @@ export function DigitalReturnsD3Chart({
               <table className="w-full text-left text-xs">
                 <thead className="bg-[#F8FAFC] dark:bg-slate-900 text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-100 dark:border-slate-800">
                   <tr>
-                    <th className="py-2.5 px-4">Objeto</th>
-                    <th className="py-2.5 px-4">Categoria</th>
-                    <th className="py-2.5 px-4">Recebedor</th>
-                    <th className="py-2.5 px-4">Modalidade</th>
-                    <th className="py-2.5 px-4">Atestação</th>
-                    <th className="py-2.5 px-4">Cód. Validação</th>
-                    <th className="py-2.5 px-4 text-right">Ação</th>
+                    <th className="py-2.5 px-4">{tr("Objeto", "Item")}</th>
+                    <th className="py-2.5 px-4">{tr("Categoria", "Category")}</th>
+                    <th className="py-2.5 px-4">{tr("Recebedor", "Recipient")}</th>
+                    <th className="py-2.5 px-4">{tr("Modalidade", "Modality")}</th>
+                    <th className="py-2.5 px-4">{tr("Atestação", "Attestation")}</th>
+                    <th className="py-2.5 px-4">{tr("Cód. Validação", "Validation Code")}</th>
+                    <th className="py-2.5 px-4 text-right">{tr("Ação", "Action")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -779,12 +832,12 @@ export function DigitalReturnsD3Chart({
                         </td>
                         <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
                           <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[11px] text-slate-600 dark:text-slate-300 font-medium">
-                            {item.category}
+                            {translateCategory(item.category, language)}
                           </span>
                         </td>
                         <td className="py-3 px-4 text-slate-700 dark:text-slate-300">
                           <div className="font-medium text-[#172B2A] dark:text-white">
-                            {item.recipientName || "Não registrado"}
+                            {item.recipientName || tr("Não registrado", "Not recorded")}
                           </div>
                           {item.recipientBond && (
                             <div className="text-[10px] text-slate-400">{item.recipientBond}</div>
@@ -793,23 +846,23 @@ export function DigitalReturnsD3Chart({
                         <td className="py-3 px-4">
                           {isRemote ? (
                             <UIBadge tone="emerald">
-                              <Mail className="w-3 h-3" /> Remota
+                              <Mail className="w-3 h-3" /> {tr("Remota", "Remote")}
                             </UIBadge>
                           ) : (
                             <UIBadge tone="blue">
-                              <Smartphone className="w-3 h-3" /> Presencial
+                              <Smartphone className="w-3 h-3" /> {tr("Presencial", "In-person")}
                             </UIBadge>
                           )}
                         </td>
                         <td className="py-3 px-4">
                           {isStaffSigned ? (
-                            <UIBadge tone="emerald">Dupla Assinatura</UIBadge>
+                            <UIBadge tone="emerald">{tr("Dupla Assinatura", "Dual Signature")}</UIBadge>
                           ) : (
-                            <UIBadge tone="amber">Atestação Pendente</UIBadge>
+                            <UIBadge tone="amber">{tr("Atestação Pendente", "Pending Attestation")}</UIBadge>
                           )}
                         </td>
                         <td className="py-3 px-4 font-mono text-[11px] text-slate-500 dark:text-slate-400">
-                          {item.receiptValidationCode || "Validado"}
+                          {item.receiptValidationCode || tr("Validado", "Validated")}
                         </td>
                         <td className="py-3 px-4 text-right">
                           {onSelectItem && (
@@ -820,7 +873,7 @@ export function DigitalReturnsD3Chart({
                               className="text-[#16845B] dark:text-emerald-400 hover:bg-[#EBF5F0] dark:hover:bg-[#16845B]/20"
                             >
                               <Eye className="w-3.5 h-3.5" />
-                              <span>Ver</span>
+                              <span>{tr("Ver", "View")}</span>
                             </UIButton>
                           )}
                         </td>

@@ -29,6 +29,8 @@ import {
 import { logTestError } from "../../lib/testErrorLogService";
 import { AutoResizeTextarea } from "./AutoResizeTextarea";
 import { useDebouncedSave } from "../../hooks/useDebouncedSave";
+import { useApp } from "../../context/AppContext";
+import { getLocaleForLanguage, localize, translateUserRole } from "../../lib/i18n";
 
 interface TestEvidenceModalProps {
   isOpen: boolean;
@@ -64,6 +66,10 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
   onSave,
   darkMode,
 }) => {
+  const { language } = useApp();
+  const l = useCallback((pt: string, en: string) => localize(language, pt, en), [language]);
+  const locale = getLocaleForLanguage(language);
+
   if (!isOpen || !test) return null;
 
   const isAdmin = currentUser?.role === "ADMIN" || currentUser?.role === "SERVIDOR";
@@ -256,11 +262,14 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
             success: false,
             error:
               res.error ||
-              "Erro de conexão com o Firestore. O backup local deste teste foi preservado.",
+              l(
+                "Erro de conexão com o Firestore. A cópia de segurança local deste teste foi preservada.",
+                "Firestore connection error. A local backup of this test was preserved."
+              ),
           };
         }
       } catch (err: any) {
-        const errMsg = err?.message || "Erro inesperado ao persistir dados.";
+        const errMsg = err?.message || l("Erro inesperado ao persistir dados.", "Unexpected error while saving data.");
 
         saveTestBackup(test.id, {
           status: payload.status,
@@ -286,7 +295,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
         return { success: false, error: errMsg };
       }
     },
-    [battery.id, test, participants, onSave, isAdmin, currentUser]
+    [battery.id, test, participants, onSave, isAdmin, currentUser, l]
   );
 
   // Debounced auto-save hook with 1.5 seconds delay (useDebouncedSave)
@@ -359,7 +368,10 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
 
         // Prompt the user to prevent accidental page closure
         e.preventDefault();
-        e.returnValue = "Você possui alterações não salvas no caso de teste. Deseja sair?";
+        e.returnValue = l(
+          "Você possui alterações não salvas no caso de teste. Deseja sair?",
+          "You have unsaved changes in this test case. Do you want to leave?"
+        );
         return e.returnValue;
       }
     };
@@ -382,6 +394,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
     logText,
     url,
     screenshotUrl,
+    l,
   ]);
 
   // Restore draft handler
@@ -468,7 +481,10 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
   const handleClose = () => {
     if (isDifferentFromRemote && saveStatus !== "SUCCESS") {
       const confirmDiscard = window.confirm(
-        "Você possui alterações não salvas neste caso de teste. Deseja realmente fechar? As alterações digitadas permanecerão salvas localmente como rascunho de segurança."
+        l(
+          "Você possui alterações não salvas neste caso de teste. Deseja realmente fechar? As alterações digitadas permanecerão salvas localmente como rascunho de segurança.",
+          "You have unsaved changes in this test case. Are you sure you want to close? Your typed changes will remain saved locally as a safety draft."
+        )
       );
       if (!confirmDiscard) return;
     }
@@ -516,7 +532,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
               </span>
               {test.isCriticalPersistence && (
                 <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                  ★ Persistência Crítica (RNF-04)
+                  ★ {l("Persistência Crítica (RNF-04)", "Critical Persistence (RNF-04)")}
                 </span>
               )}
 
@@ -527,7 +543,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                   className="flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950/80 dark:text-blue-300 border border-blue-300 dark:border-blue-800 animate-pulse"
                 >
                   <Loader2 className="w-3 h-3 animate-spin" />
-                  Salvando...
+                  {l("Salvando...", "Saving...")}
                 </span>
               )}
               {saveStatus === "SUCCESS" && (
@@ -536,7 +552,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                   className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800"
                 >
                   <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                  Salvo
+                  {l("Salvo", "Saved")}
                 </span>
               )}
               {saveStatus === "ERROR" && (
@@ -545,12 +561,12 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                   className="flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-300 border border-red-300 dark:border-red-800"
                 >
                   <AlertTriangle className="w-3 h-3 text-red-600 dark:text-red-400" />
-                  Erro
+                  {l("Erro", "Error")}
                 </span>
               )}
               {saveStatus === "IDLE" && isDifferentFromRemote && (
                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                  ● Alterações pendentes (Salva em 1,5s)
+                  ● {l("Alterações pendentes (Salva em 1,5s)", "Pending changes (Saves in 1.5s)")}
                 </span>
               )}
             </div>
@@ -560,7 +576,8 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
             type="button"
             onClick={handleClose}
             className="p-2 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
-            title="Fechar formulário"
+            title={l("Fechar formulário", "Close form")}
+            aria-label={l("Fechar formulário", "Close form")}
           >
             <X className="w-5 h-5" />
           </button>
@@ -572,8 +589,9 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
             <div className="flex items-center gap-2">
               <Shield className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
               <span>
-                <strong>Backup de falha localizado no dispositivo:</strong> Versão salva localmente em{" "}
-                {new Date(detectedBackup.savedAt).toLocaleTimeString("pt-BR")}.
+                <strong>{l("Cópia de segurança localizada no dispositivo:", "Local failure backup found on this device:")}</strong>{" "}
+                {l("Versão salva localmente em", "Version saved locally at")}{" "}
+                {new Date(detectedBackup.savedAt).toLocaleTimeString(locale)}.
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -582,7 +600,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                 onClick={handleRestoreBackup}
                 className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg transition"
               >
-                Carregar Backup Local
+                {l("Carregar Cópia Local", "Load Local Backup")}
               </button>
               <button
                 type="button"
@@ -590,7 +608,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                 className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition flex items-center gap-1"
               >
                 <RotateCcw className="w-3 h-3" />
-                Tentar Salvar Backup
+                {l("Tentar Salvar Cópia", "Retry Saving Backup")}
               </button>
             </div>
           </div>
@@ -602,8 +620,9 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
             <div className="flex items-center gap-2">
               <RotateCcw className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>
-                <strong>Rascunho local detectado:</strong> Há alterações salvas no navegador em{" "}
-                {new Date(detectedDraft.savedAt).toLocaleTimeString("pt-BR")}.
+                <strong>{l("Rascunho local detectado:", "Local draft detected:")}</strong>{" "}
+                {l("Há alterações salvas no navegador em", "There are changes saved in this browser at")}{" "}
+                {new Date(detectedDraft.savedAt).toLocaleTimeString(locale)}.
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -612,14 +631,14 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                 onClick={handleRestoreDraft}
                 className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg transition"
               >
-                Restaurar Rascunho
+                {l("Restaurar Rascunho", "Restore Draft")}
               </button>
               <button
                 type="button"
                 onClick={handleDiscardDraft}
                 className="px-2 py-1 border border-neutral-300 dark:border-neutral-700 font-semibold rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition"
               >
-                Descartar
+                {l("Descartar", "Discard")}
               </button>
             </div>
           </div>
@@ -634,10 +653,13 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
             <div className="flex items-start gap-3 max-w-xl">
               <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <p className="font-bold">Falha ao salvar no Firestore:</p>
+                <p className="font-bold">{l("Falha ao salvar no Firestore:", "Failed to save to Firestore:")}</p>
                 <p>{errorMessage}</p>
                 <p className="text-[11px] text-red-800 dark:text-red-300 font-medium">
-                  Seus dados estão protegidos no armazenamento local sob a chave do teste #{test.id}.
+                  {l(
+                    `Seus dados estão protegidos no armazenamento local sob a chave do teste #${test.id}.`,
+                    `Your data is protected in local storage under test key #${test.id}.`
+                  )}
                 </p>
               </div>
             </div>
@@ -650,7 +672,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
               className="px-4 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold rounded-xl shadow-md transition flex items-center gap-2 self-center shrink-0"
             >
               <RotateCcw className="w-4 h-4" />
-              <span>Tentar Novamente</span>
+              <span>{l("Tentar Novamente", "Try Again")}</span>
             </button>
           </div>
         )}
@@ -661,15 +683,19 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="p-3.5 rounded-xl border dark:border-neutral-800 border-neutral-200 bg-neutral-500/5 space-y-1">
               <span className="font-bold text-neutral-500 uppercase tracking-wider text-[10px]">
-                Objetivo do Teste
+                {l("Objetivo do Teste", "Test Objective")}
               </span>
               <p className="font-medium text-neutral-700 dark:text-neutral-300 leading-relaxed">
-                {test.description || "Validar conformidade do sistema conforme especificação."}
+                {test.description ||
+                  l(
+                    "Validar conformidade do sistema conforme especificação.",
+                    "Validate system compliance according to specification."
+                  )}
               </p>
             </div>
             <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-1 text-emerald-950 dark:text-emerald-200">
               <span className="font-bold uppercase tracking-wider text-[10px] text-emerald-600 dark:text-emerald-400">
-                Resultado Esperado
+                {l("Resultado Esperado", "Expected Result")}
               </span>
               <p className="font-medium leading-relaxed">{test.expectedResult}</p>
             </div>
@@ -680,7 +706,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
             <div className="p-4 rounded-xl border dark:border-neutral-800 border-neutral-200 space-y-2 bg-neutral-500/5">
               <span className="font-bold text-neutral-500 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
                 <FileText className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                Roteiro de Procedimentos para Validação
+                {l("Roteiro de Procedimentos para Validação", "Validation Procedure Steps")}
               </span>
               <ol className="list-decimal list-inside space-y-1 text-neutral-600 dark:text-neutral-400 font-medium">
                 {(test.procedureSteps || test.procedure)!.map((step, idx) => (
@@ -697,32 +723,32 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
             {/* Status Selector */}
             <div className="space-y-1.5">
               <label className="font-bold text-neutral-500 uppercase tracking-wider text-[10px] flex items-center justify-between">
-                <span>Status da Validação *</span>
-                <span className="text-[10px] font-normal text-neutral-400">Obrigatório</span>
+                <span>{l("Situação da Validação *", "Validation Status *")}</span>
+                <span className="text-[10px] font-normal text-neutral-400">{l("Obrigatório", "Required")}</span>
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
                   {
                     key: "APROVADO",
-                    label: "Aprovado",
+                    label: l("Aprovado", "Passed"),
                     color:
                       "border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 ring-2 ring-emerald-500",
                   },
                   {
                     key: "REPROVADO",
-                    label: "Reprovado",
+                    label: l("Reprovado", "Failed"),
                     color:
                       "border-red-500 bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-300 ring-2 ring-red-500",
                   },
                   {
                     key: "PENDENTE",
-                    label: "Pendente",
+                    label: l("Pendente", "Pending"),
                     color:
                       "border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300 ring-2 ring-amber-500",
                   },
                   {
                     key: "BLOQUEADO",
-                    label: "Bloqueado",
+                    label: l("Bloqueado", "Blocked"),
                     color:
                       "border-rose-700 bg-rose-50 text-rose-900 dark:bg-rose-950 dark:text-rose-300 ring-2 ring-rose-500",
                   },
@@ -746,13 +772,13 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
             {/* Tester Assignment (RBAC Protected) */}
             <div className="space-y-1.5">
               <label className="font-bold text-neutral-500 uppercase tracking-wider text-[10px] flex items-center justify-between">
-                <span>Testador Responsável</span>
+                <span>{l("Testador Responsável", "Assigned Tester")}</span>
                 {isAdmin ? (
                   <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
-                    Admin: Edição Liberada
+                    {l("Admin: Edição Liberada", "Admin: Editing Enabled")}
                   </span>
                 ) : (
-                  <span className="text-[10px] text-neutral-400 font-medium">Informativo</span>
+                  <span className="text-[10px] text-neutral-400 font-medium">{l("Informativo", "Read-only")}</span>
                 )}
               </label>
 
@@ -766,10 +792,10 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                       : "bg-neutral-50 border-neutral-300 text-neutral-900"
                   }`}
                 >
-                  <option value="">-- Sem atribuição específica --</option>
+                  <option value="">{l("-- Sem atribuição específica --", "-- No specific assignment --")}</option>
                   {participants.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.email}) - {p.globalRole}
+                      {p.name} ({p.email}) - {translateUserRole(p.globalRole, language)}
                     </option>
                   ))}
                 </select>
@@ -785,7 +811,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                     <UserCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                     <div>
                       <p className="font-bold text-xs">
-                        {test.assignedToName || "Não atribuído a testador específico"}
+                        {test.assignedToName || l("Não atribuído a testador específico", "Not assigned to a specific tester")}
                       </p>
                       {test.assignedToEmail && (
                         <p className="text-[11px] text-neutral-500">{test.assignedToEmail}</p>
@@ -793,7 +819,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                     </div>
                   </div>
                   <span className="text-[10px] px-2 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 font-semibold text-neutral-600 dark:text-neutral-300">
-                    Definido na Distribuição
+                    {l("Definido na Distribuição", "Set in Distribution")}
                   </span>
                 </div>
               )}
@@ -803,32 +829,51 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
           {/* Field: RESULTADO OBTIDO NA PRÁTICA (AutoResizeTextarea, min-rows: 6, character counter below border) */}
           <AutoResizeTextarea
             id="field-obtained-result"
-            label="Resultado Obtido na Prática"
+            label={l("Resultado Obtido na Prática", "Actual Observed Result")}
             required
             minRows={6}
             value={obtainedResult}
             onChange={setObtainedResult}
             darkMode={darkMode}
-            placeholder="Descreva detalhadamente o comportamento observado no sistema durante o teste na prática, incluindo mensagens exibidas, elementos visuais confirmados e conformidade com o resultado esperado..."
-            helperText="Registre a constatação fática: o que ocorreu ao executar as etapas no ambiente real."
+            placeholder={l(
+              "Descreva detalhadamente o comportamento observado no sistema durante o teste na prática, incluindo mensagens exibidas, elementos visuais confirmados e conformidade com o resultado esperado...",
+              "Describe in detail the behavior observed in the system during hands-on testing, including displayed messages, confirmed visual elements, and compliance with the expected result..."
+            )}
+            helperText={l(
+              "Registre a constatação fática: o que ocorreu ao executar as etapas no ambiente real.",
+              "Record the factual finding: what occurred when running the steps in the real environment."
+            )}
           />
 
           {/* Field: OBSERVAÇÕES ADICIONAIS / SUGESTÃO DE CORREÇÃO TÉCNICA (AutoResizeTextarea, min-rows: 6, character counter below border) */}
           <div className="space-y-1">
             <AutoResizeTextarea
               id="field-observations"
-              label="Observações Adicionais / Sugestão de Correção Técnica"
+              label={l(
+                "Observações Adicionais / Sugestão de Correção Técnica",
+                "Additional Observations / Technical Fix Suggestion"
+              )}
               minRows={6}
               maxLength={4000}
               value={observations}
               onChange={setObservations}
               darkMode={darkMode}
-              placeholder={`Utilize este espaço para registrar com riqueza de detalhes:
+              placeholder={l(
+                `Utilize este espaço para registrar com riqueza de detalhes:
 1. Problema ou inconsistência encontrada (se houver divergência);
 2. Comportamento observado e condições de reprodução;
 3. Sugestão de correção técnica ou melhoria para a equipe de desenvolvimento;
-4. Informações de ambiente, rede, logs e observações relevantes.`}
-              helperText="Área de escrita ampla com suporte a textos longos e preservação automática."
+4. Informações de ambiente, rede, registros e observações relevantes.`,
+                `Use this space to document in rich detail:
+1. Any issue or inconsistency found (if there is a discrepancy);
+2. Observed behavior and reproduction conditions;
+3. Technical fix suggestion or improvement for the development team;
+4. Environment, network, log details, and relevant observations.`
+              )}
+              helperText={l(
+                "Área de escrita ampla com suporte a textos longos e preservação automática.",
+                "Expanded writing area with long-text support and automatic preservation."
+              )}
             />
             {observations.length > 0 && (
               <div className="flex justify-end px-1 pt-0.5">
@@ -837,7 +882,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                   onClick={() => setObservations("")}
                   className="text-neutral-400 hover:text-red-500 transition flex items-center gap-1 text-[11px]"
                 >
-                  <Trash2 className="w-3 h-3" /> Limpar observações
+                  <Trash2 className="w-3 h-3" /> {l("Limpar observações", "Clear observations")}
                 </button>
               </div>
             )}
@@ -848,23 +893,25 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
             <div className="flex items-center justify-between border-b pb-2 dark:border-neutral-800 border-neutral-200">
               <div className="flex items-center gap-2">
                 <Shield className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <h3 className="font-bold text-xs">Evidências de Auditoria & Persistência Backend</h3>
+                <h3 className="font-bold text-xs">
+                  {l("Evidências de Auditoria e Persistência no Servidor", "Audit Evidence & Backend Persistence")}
+                </h3>
               </div>
               <span className="text-[10px] text-neutral-500 font-semibold">
-                Garantia de Não-Regressão
+                {l("Garantia de Não Regressão", "Non-Regression Guarantee")}
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="font-bold text-neutral-500 uppercase tracking-wider text-[10px]">
-                  ID do Registro Criado no Firestore
+                  {l("ID do Registro Criado no Firestore", "Firestore Created Record ID")}
                 </label>
                 <input
                   type="text"
                   value={recordId}
                   onChange={(e) => setRecordId(e.target.value)}
-                  placeholder="ex: item-1725501234567 ou claim-987"
+                  placeholder={l("ex: item-1725501234567 ou claim-987", "e.g., item-1725501234567 or claim-987")}
                   className={`w-full font-mono text-xs px-3 py-2 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
                     darkMode
                       ? "bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-600"
@@ -875,13 +922,13 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
 
               <div className="space-y-1">
                 <label className="font-bold text-neutral-500 uppercase tracking-wider text-[10px]">
-                  ID da Transação / Operação
+                  {l("ID da Transação / Operação", "Transaction / Operation ID")}
                 </label>
                 <input
                   type="text"
                   value={transactionId}
                   onChange={(e) => setTransactionId(e.target.value)}
-                  placeholder="ex: tx-audit-1725501234567"
+                  placeholder={l("ex: tx-audit-1725501234567", "e.g., tx-audit-1725501234567")}
                   className={`w-full font-mono text-xs px-3 py-2 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
                     darkMode
                       ? "bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-600"
@@ -893,13 +940,16 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
               {/* Log text */}
               <div className="space-y-1 sm:col-span-2">
                 <label className="font-bold text-neutral-500 uppercase tracking-wider text-[10px]">
-                  Snippet do Log do Console / Resposta da API
+                  {l("Trecho do Registro do Console / Resposta da API", "Console Log Snippet / API Response")}
                 </label>
                 <input
                   type="text"
                   value={logText}
                   onChange={(e) => setLogText(e.target.value)}
-                  placeholder="ex: [Firestore] Document written successfully with ID: item-xyz"
+                  placeholder={l(
+                    "ex: [Firestore] Documento gravado com sucesso com ID: item-xyz",
+                    "e.g., [Firestore] Document written successfully with ID: item-xyz"
+                  )}
                   className={`w-full font-mono text-xs px-3 py-2 rounded-xl border outline-none focus:ring-2 focus:ring-emerald-500 ${
                     darkMode
                       ? "bg-neutral-800 border-neutral-700 text-white placeholder:text-neutral-600"
@@ -913,7 +963,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                 <div className="flex items-center justify-between">
                   <label className="font-bold text-neutral-500 uppercase tracking-wider text-[10px] flex items-center gap-1">
                     <ImageIcon className="w-3 h-3" />
-                    URL da Captura de Tela / Imagem
+                    {l("URL da Captura de Tela / Imagem", "Screenshot / Image URL")}
                   </label>
                   {screenshotUrl.trim() && (
                     <a
@@ -922,7 +972,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                       rel="noopener noreferrer"
                       className="text-[10px] text-emerald-600 hover:underline flex items-center gap-0.5"
                     >
-                      Visualizar <ExternalLink className="w-2.5 h-2.5" />
+                      {l("Visualizar", "View")} <ExternalLink className="w-2.5 h-2.5" />
                     </a>
                   )}
                 </div>
@@ -946,14 +996,14 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-neutral-500">
                 {saveStatus === "SAVING"
-                  ? "Salvando..."
+                  ? l("Salvando...", "Saving...")
                   : saveStatus === "SUCCESS"
-                  ? "Salvo no Firestore."
+                  ? l("Salvo no Firestore.", "Saved to Firestore.")
                   : saveStatus === "ERROR"
-                  ? "Erro ao salvar. Backup local disponível."
+                  ? l("Erro ao salvar. Cópia de segurança local disponível.", "Error saving. Local backup available.")
                   : isDifferentFromRemote
-                  ? "Modificações detectadas. Salvamento com debounce de 1,5s."
-                  : "Todos os dados sincronizados."}
+                  ? l("Modificações detectadas. Salvamento automático em 1,5s.", "Changes detected. Auto-saving in 1.5s.")
+                  : l("Todos os dados sincronizados.", "All data synced.")}
               </span>
             </div>
 
@@ -964,7 +1014,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                 disabled={saveStatus === "SAVING"}
                 className="px-4 py-2.5 font-bold rounded-xl border dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition disabled:opacity-50"
               >
-                Cancelar
+                {l("Cancelar", "Cancel")}
               </button>
 
               {/* Retry Button if in ERROR state */}
@@ -976,7 +1026,7 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                   className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-md transition flex items-center gap-2 active:scale-95"
                 >
                   <RotateCcw className="w-4 h-4" />
-                  Tentar Novamente
+                  {l("Tentar Novamente", "Try Again")}
                 </button>
               )}
 
@@ -995,22 +1045,22 @@ export const TestEvidenceModal: React.FC<TestEvidenceModalProps> = ({
                 {saveStatus === "SAVING" ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Salvando...
+                    {l("Salvando...", "Saving...")}
                   </>
                 ) : saveStatus === "SUCCESS" ? (
                   <>
                     <CheckCircle2 className="w-4 h-4" />
-                    Salvo
+                    {l("Salvo", "Saved")}
                   </>
                 ) : saveStatus === "ERROR" ? (
                   <>
                     <Save className="w-4 h-4" />
-                    Salvar Manualmente
+                    {l("Salvar Manualmente", "Save Manually")}
                   </>
                 ) : (
                   <>
                     <Save className="w-4 h-4" />
-                    Salvar Evidências & Atualizar Teste
+                    {l("Salvar Evidências e Atualizar Teste", "Save Evidence & Update Test")}
                   </>
                 )}
               </button>

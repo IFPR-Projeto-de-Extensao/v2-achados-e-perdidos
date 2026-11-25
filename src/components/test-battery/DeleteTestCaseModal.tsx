@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { X, Trash2, AlertTriangle, UserX, AlertCircle } from "lucide-react";
 import { TestCaseItem } from "../../types";
 import { vibrateClick, vibrateWarning, vibrateSuccess } from "../../lib/utils";
+import { useApp } from "../../context/AppContext";
+import { localize } from "../../lib/i18n";
 
 interface DeleteTestCaseModalProps {
   isOpen: boolean;
@@ -18,6 +20,8 @@ export const DeleteTestCaseModal: React.FC<DeleteTestCaseModalProps> = ({
   onConfirmDelete,
   darkMode,
 }) => {
+  const { language } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
   const [isDeleting, setIsDeleting] = useState(false);
 
   if (!isOpen || !test) return null;
@@ -51,13 +55,14 @@ export const DeleteTestCaseModal: React.FC<DeleteTestCaseModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-black tracking-tight text-rose-600 dark:text-rose-400">
-                Confirmar Exclusão de Caso de Teste
+                {L("Confirmar Exclusão de Caso de Teste", "Confirm Test Case Deletion")}
               </h2>
               <p className="text-xs text-neutral-500 font-mono">ID: {test.id}</p>
             </div>
           </div>
           <button
             onClick={onClose}
+            aria-label={L("Fechar", "Close")}
             className="p-2 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition"
           >
             <X className="w-5 h-5" />
@@ -67,7 +72,10 @@ export const DeleteTestCaseModal: React.FC<DeleteTestCaseModalProps> = ({
         <div className="p-5 space-y-4">
           <div className="space-y-2">
             <p className="text-sm font-semibold">
-              Você tem certeza de que deseja excluir permanentemente o seguinte caso de teste desta bateria?
+              {L(
+                "Você tem certeza de que deseja excluir permanentemente o seguinte caso de teste desta bateria?",
+                "Are you sure you want to permanently delete the following test case from this battery?"
+              )}
             </p>
             <div
               className={`p-3.5 rounded-xl border space-y-1 text-xs ${
@@ -89,25 +97,31 @@ export const DeleteTestCaseModal: React.FC<DeleteTestCaseModalProps> = ({
             <div className="p-3.5 rounded-xl bg-amber-500/15 border-2 border-amber-500/40 text-amber-950 dark:text-amber-200 space-y-1.5 text-xs">
               <div className="flex items-center gap-2 font-black text-amber-800 dark:text-amber-300 uppercase tracking-wide">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                Atenção: Teste com Atribuição Ativa
+                {L("Atenção: Teste com Atribuição Ativa", "Warning: Actively Assigned Test")}
               </div>
               <p className="leading-relaxed">
-                Este teste está atualmente distribuído para o testador{" "}
+                {L("Este teste está atualmente distribuído para o testador ", "This test is currently assigned to tester ")}
                 <strong className="underline">{test.assignedToName || test.assignedToEmail}</strong>.
               </p>
               <p className="text-[11px] text-amber-800/90 dark:text-amber-300/90">
-                Ao excluir, a atribuição será revogada imediatamente e o teste será removido da fila de trabalho do participante sem deixar registros órfãos.
+                {L(
+                  "Ao excluir, a atribuição será revogada imediatamente e o teste será removido da fila de trabalho do participante sem deixar registros órfãos.",
+                  "Upon deletion, the assignment will be revoked immediately and the test will be removed from the participant's work queue without leaving orphan records."
+                )}
               </p>
             </div>
           ) : (
             <div className="p-3 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-neutral-400 shrink-0" />
-              <span>O teste não possui nenhum testador atribuído no momento.</span>
+              <span>{L("O teste não possui nenhum testador atribuído no momento.", "This test currently has no tester assigned.")}</span>
             </div>
           )}
 
           <p className="text-xs text-rose-600 dark:text-rose-400 font-medium">
-            Esta operação é definitiva e atualizará os contadores da bateria e a trilha de auditoria no Firestore.
+            {L(
+              "Esta operação é definitiva e atualizará os contadores da bateria e a trilha de auditoria no Firestore.",
+              "This operation is final and will update the battery counters and audit trail in Firestore."
+            )}
           </p>
         </div>
 
@@ -118,7 +132,7 @@ export const DeleteTestCaseModal: React.FC<DeleteTestCaseModalProps> = ({
             disabled={isDeleting}
             className="px-4 py-2.5 text-xs font-semibold rounded-xl border dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
           >
-            Cancelar
+            {L("Cancelar", "Cancel")}
           </button>
           <button
             type="button"
@@ -127,7 +141,7 @@ export const DeleteTestCaseModal: React.FC<DeleteTestCaseModalProps> = ({
             className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center gap-1.5"
           >
             <Trash2 className="w-4 h-4" />
-            {isDeleting ? "Excluindo..." : "Confirmar Exclusão"}
+            {isDeleting ? L("Excluindo...", "Deleting...") : L("Confirmar Exclusão", "Confirm Deletion")}
           </button>
         </div>
       </div>

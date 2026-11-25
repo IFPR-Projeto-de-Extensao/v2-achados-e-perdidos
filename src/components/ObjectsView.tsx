@@ -22,6 +22,8 @@ import {
   translateCategory,
   translateColor,
   translateCampusBlock,
+  translateLocationGroup,
+  translateCampusLocation,
 } from "../lib/i18n";
 import {
   formatDate,
@@ -919,10 +921,10 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
               >
                 <option value="TODOS">{t("allLocations", "Todos os locais")}</option>
                 {IFPR_LOCATION_GROUPS.map((group) => (
-                  <optgroup key={group.group} label={group.group}>
+                  <optgroup key={group.group} label={translateLocationGroup(group.group, language)}>
                     {group.locations.map((loc) => (
                       <option key={loc} value={loc}>
-                        {loc}
+                        {translateCampusLocation(loc, language)}
                       </option>
                     ))}
                   </optgroup>
@@ -1235,7 +1237,9 @@ export const ObjectsView: React.FC<ObjectsViewProps> = ({
                           {translateCategory(getCategoryDisplay(item.category), language)}
                         </td>
                         <td className="py-3 px-4 text-slate-600 dark:text-slate-300 max-w-[200px] truncate">
-                          {item.location || t("locationNotProvided", "Local não informado")}
+                          {item.location
+                            ? translateCampusLocation(item.location, language)
+                            : t("locationNotProvided", "Local não informado")}
                         </td>
                         <td className="py-3 px-4 text-slate-500 dark:text-slate-400 whitespace-nowrap tabular-nums">
                           {formatDate(item.date, undefined, language)}

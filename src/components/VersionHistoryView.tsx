@@ -47,6 +47,7 @@ import {
 import { downloadVersionsReportPdf } from "../lib/versionsReportPdfGenerator";
 import { useApp } from "../context/AppContext";
 import { vibrateClick, vibrateSuccess } from "../lib/utils";
+import { localize } from "../lib/i18n";
 import { TestBatteryManagerView } from "./TestBatteryManagerView";
 
 interface VersionHistoryViewProps {
@@ -54,7 +55,8 @@ interface VersionHistoryViewProps {
 }
 
 export const VersionHistoryView: React.FC<VersionHistoryViewProps> = ({ darkMode }) => {
-  const { addToast, currentUser } = useApp();
+  const { addToast, currentUser, language } = useApp();
+  const tr = (pt: string, en: string) => localize(language, pt, en);
 
   // Role-Based Access Control: Test Batteries & Validation are restricted to Staff/Admins
   const canAccessTestBatteries = currentUser?.role === "ADMIN" || currentUser?.role === "SERVIDOR";
@@ -139,21 +141,32 @@ export const VersionHistoryView: React.FC<VersionHistoryViewProps> = ({ darkMode
       case "VERCEL":
         return "Vercel";
       case "ADMIN":
-        return "Painel Admin";
+        return tr("Painel Admin", "Admin Panel");
       case "IA_GEMINI":
-        return "IA Gemini";
+        return tr("IA Gemini", "Gemini AI");
       case "PWA":
-        return "PWA / Mobile";
+        return tr("PWA / Celular", "PWA / Mobile");
       case "FIRESTORE":
         return "Firestore";
       case "QR_CODE":
         return "QR Code";
       case "DOCUMENTOS":
-        return "Documentos";
+        return tr("Documentos", "Documents");
       case "AUTH":
-        return "Autenticação";
+        return tr("Autenticação", "Authentication");
       default:
-        return "Sistema";
+        return tr("Sistema", "System");
+    }
+  };
+
+  const getVersionTypeLabel = (type: AppVersion["type"]) => {
+    switch (type) {
+      case "MAJOR":
+        return tr("PRINCIPAL", "MAJOR");
+      case "MINOR":
+        return tr("INTERMEDIÁRIA", "MINOR");
+      default:
+        return tr("CORREÇÃO", "PATCH");
     }
   };
 
@@ -230,13 +243,13 @@ export const VersionHistoryView: React.FC<VersionHistoryViewProps> = ({ darkMode
           filterType: filterToUse,
           selectedVersion: verToUse,
           selectedModule: selectedModule,
-          issuedByName: currentUser?.name || "Membro da Comunidade Acadêmica",
+          issuedByName: currentUser?.name || tr("Membro da Comunidade Acadêmica", "Academic Community Member"),
           issuedByRole:
             currentUser?.role === "ADMIN"
-              ? "Administrador do Sistema"
+              ? tr("Administrador do Sistema", "System Administrator")
               : currentUser?.role === "SERVIDOR"
-              ? "Servidor / SEBAC"
-              : "Aluno / Acadêmico",
+              ? tr("Servidor / SEBAC", "Staff / SEBAC")
+              : tr("Aluno / Acadêmico", "Student / Academic"),
           includeSignatures: signaturesToUse,
         });
 
@@ -245,14 +258,20 @@ export const VersionHistoryView: React.FC<VersionHistoryViewProps> = ({ darkMode
         setIsExportModalOpen(false);
 
         addToast(
-          `Relatório de versões baixado com sucesso! Protocolo oficial: ${protocol}`,
+          tr(
+            `Relatório de versões baixado com sucesso! Protocolo oficial: ${protocol}`,
+            `Version report downloaded successfully! Official protocol: ${protocol}`
+          ),
           "success"
         );
       }, 400);
     } catch (err) {
       console.error("Erro ao gerar PDF de versões:", err);
       setIsExportingPdf(false);
-      addToast("Não foi possível gerar o documento. Tente novamente.", "error");
+      addToast(
+        tr("Não foi possível gerar o documento. Tente novamente.", "Could not generate the document. Please try again."),
+        "error"
+      );
     }
   };
 
@@ -261,10 +280,10 @@ export const VersionHistoryView: React.FC<VersionHistoryViewProps> = ({ darkMode
     const md = `### ${version.version} - ${version.codename} (${version.releaseDate})
 ${version.summary}
 
-#### 🚀 Novas Funcionalidades / Adições:
+#### 🚀 ${tr("Novas Funcionalidades / Adições:", "New Features / Additions:")}
 ${version.additions.map((a) => `- **${a.title}**: ${a.description}`).join("\n")}
 
-#### 🛠️ Correções de Erros & Ajustes Técnicos:
+#### 🛠️ ${tr("Correções de Erros e Ajustes Técnicos:", "Bug Fixes & Technical Adjustments:")}
 ${version.bugFixes.map((f) => `- **${f.title}**: ${f.description}`).join("\n")}`;
 
     navigator.clipboard.writeText(md);
@@ -274,17 +293,20 @@ ${version.bugFixes.map((f) => `- **${f.title}**: ${f.description}`).join("\n")}`
 
   const exportFullChangelog = () => {
     vibrateClick();
-    let fullText = `# Localiza+ (IFPR Campus Ivaiporã) - Histórico Oficial de Versões
-Relatório completo de atualizações e manutenções desde a criação do sistema.\n\n`;
+    let fullText = `# Localiza+ (IFPR Campus Ivaiporã) - ${tr("Histórico Oficial de Versões", "Official Version History")}
+${tr(
+  "Relatório completo de atualizações e manutenções desde a criação do sistema.",
+  "Complete report of updates and maintenance since the creation of the system."
+)}\n\n`;
 
     APP_VERSIONS_DATA.forEach((v) => {
       fullText += `## ${v.version} - ${v.codename} (${v.releaseDateTime})\n`;
       fullText += `> ${v.summary}\n\n`;
-      fullText += `### 🚀 Adições e Novas Funcionalidades (${v.additions.length}):\n`;
+      fullText += `### 🚀 ${tr("Adições e Novas Funcionalidades", "Additions & New Features")} (${v.additions.length}):\n`;
       v.additions.forEach((a) => {
         fullText += `- [${a.module}] **${a.title}**: ${a.description}\n`;
       });
-      fullText += `\n### 🛠️ Correções de Erros (${v.bugFixes.length}):\n`;
+      fullText += `\n### 🛠️ ${tr("Correções de Erros", "Bug Fixes")} (${v.bugFixes.length}):\n`;
       v.bugFixes.forEach((f) => {
         fullText += `- [${f.module}] **${f.title}**: ${f.description}\n`;
       });
@@ -300,7 +322,10 @@ Relatório completo de atualizações e manutenções desde a criação do siste
     link.click();
     document.body.removeChild(link);
 
-    addToast("Changelog exportado em Markdown com sucesso!", "success");
+    addToast(
+      tr("Histórico de versões exportado em Markdown com sucesso!", "Version history exported to Markdown successfully!"),
+      "success"
+    );
   };
 
   return (
@@ -321,11 +346,11 @@ Relatório completo de atualizações e manutenções desde a criação do siste
             }`}
           >
             <GitBranch className="w-4 h-4" />
-            <span>Changelog & Histórico de Versões</span>
+            <span>{tr("Histórico de Versões", "Version History & Changelog")}</span>
             <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
               effectiveMainTab === "CHANGELOG" ? "bg-white/20 text-white" : "bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
             }`}>
-              {TOTAL_VERSIONS_COUNT} Releases
+              {TOTAL_VERSIONS_COUNT} {tr("Versões", "Releases")}
             </span>
           </button>
 
@@ -343,18 +368,20 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               }`}
             >
               <ShieldCheck className="w-4 h-4" />
-              <span>Bateria de Testes & Validação</span>
+              <span>{tr("Bateria de Testes e Validação", "Test Battery & Validation")}</span>
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
                 effectiveMainTab === "TEST_BATTERIES" ? "bg-white/20 text-white" : "bg-purple-500/10 text-purple-600 dark:text-purple-400"
               }`}>
-                Governança & QA
+                {tr("Governança e Qualidade", "Governance & QA")}
               </span>
             </button>
           )}
         </div>
 
         <div className="text-[11px] text-neutral-500 font-medium px-3">
-          {effectiveMainTab === "CHANGELOG" ? "Relatório Oficial de Alterações" : "Validação com Trilha de Auditoria"}
+          {effectiveMainTab === "CHANGELOG"
+            ? tr("Relatório Oficial de Alterações", "Official Change Report")
+            : tr("Validação com Trilha de Auditoria", "Validation with Audit Trail")}
         </div>
       </div>
 
@@ -373,14 +400,17 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               <div>
                 <div className="flex items-center space-x-2">
                   <h2 className="text-xl font-black text-neutral-900 dark:text-white">
-                    Histórico de Versões & Changelog
+                    {tr("Histórico Oficial de Versões", "Official Version History")}
                   </h2>
                   <span className="px-2.5 py-0.5 rounded-full bg-[#00843D]/15 text-[#00843D] dark:text-[#00c75c] text-xs font-black">
-                    {CURRENT_VERSION} Atual
+                    {CURRENT_VERSION} {tr("Atual", "Current")}
                   </span>
                 </div>
                 <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                  Registro cronológico consolidado de todas as atividades, novas funcionalidades e correções de erros (IFPR Campus Ivaiporã).
+                  {tr(
+                    "Registro cronológico consolidado de todas as atividades, novas funcionalidades e correções de erros (IFPR Campus Ivaiporã).",
+                    "Consolidated chronological record of all activities, new features, and bug fixes (IFPR Campus Ivaiporã)."
+                  )}
                 </p>
               </div>
             </div>
@@ -394,7 +424,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               className="px-4 py-2.5 rounded-xl bg-[#00843D] hover:bg-[#007033] text-white font-black text-xs shadow-md transition-all flex items-center space-x-2 cursor-pointer active:scale-98"
             >
               <FileText className="w-4 h-4" />
-              <span>Exportar Relatório PDF</span>
+              <span>{tr("Exportar Relatório PDF", "Export PDF Report")}</span>
             </button>
 
             <button
@@ -403,7 +433,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 font-bold text-xs border border-neutral-200 dark:border-neutral-700 shadow-xs transition-colors flex items-center space-x-1.5 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-neutral-500" />
-              <span>Exportar .MD</span>
+              <span>{tr("Exportar .MD", "Export .MD")}</span>
             </button>
           </div>
         </div>
@@ -413,36 +443,38 @@ Relatório completo de atualizações e manutenções desde a criação do siste
           <div className="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-1">
             <span className="text-[10px] font-extrabold text-neutral-500 uppercase flex items-center space-x-1">
               <Layers className="w-3.5 h-3.5 text-purple-500" />
-              <span>Total de Versões</span>
+              <span>{tr("Total de Versões", "Total Versions")}</span>
             </span>
             <p className="text-2xl font-black text-neutral-900 dark:text-white">{TOTAL_VERSIONS_COUNT}</p>
-            <p className="text-[10px] text-neutral-400">10 Releases (04 a 28/Ago)</p>
+            <p className="text-[10px] text-neutral-400">
+              {tr(`${TOTAL_VERSIONS_COUNT} versões registradas`, `${TOTAL_VERSIONS_COUNT} recorded releases`)}
+            </p>
           </div>
 
           <div className="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-1">
             <span className="text-[10px] font-extrabold text-emerald-600 uppercase flex items-center space-x-1">
               <Sparkles className="w-3.5 h-3.5 text-emerald-500" />
-              <span>Novas Funcionalidades</span>
+              <span>{tr("Novas Funcionalidades", "New Features")}</span>
             </span>
             <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">+{TOTAL_ADDITIONS_COUNT}</p>
-            <p className="text-[10px] text-neutral-400">Recursos e módulos ativos</p>
+            <p className="text-[10px] text-neutral-400">{tr("Recursos e módulos ativos", "Active features & modules")}</p>
           </div>
 
           <div className="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-1">
             <span className="text-[10px] font-extrabold text-amber-600 uppercase flex items-center space-x-1">
               <Wrench className="w-3.5 h-3.5 text-amber-500" />
-              <span>Correções de Erros</span>
+              <span>{tr("Correções de Erros", "Bug Fixes")}</span>
             </span>
             <p className="text-2xl font-black text-amber-600 dark:text-amber-400">{TOTAL_FIXES_COUNT}</p>
-            <p className="text-[10px] text-neutral-400">Bugs e ajustes resolvidos</p>
+            <p className="text-[10px] text-neutral-400">{tr("Erros e ajustes resolvidos", "Resolved fixes & improvements")}</p>
           </div>
 
           <div className="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs space-y-1">
             <span className="text-[10px] font-extrabold text-blue-600 uppercase flex items-center space-x-1">
               <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" />
-              <span>Status em Produção</span>
+              <span>{tr("Situação em Produção", "Production Status")}</span>
             </span>
-            <p className="text-2xl font-black text-blue-600 dark:text-blue-400">100% OK</p>
+            <p className="text-2xl font-black text-blue-600 dark:text-blue-400">{tr("100% Ativo", "100% Live")}</p>
             <p className="text-[10px] text-neutral-400">ifprivp.vercel.app</p>
           </div>
         </div>
@@ -466,7 +498,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               }`}
             >
               <Layers className="w-3.5 h-3.5 text-neutral-500" />
-              <span>Todas as Alterações</span>
+              <span>{tr("Todas as Alterações", "All Changes")}</span>
               <span className="px-2 py-0.5 rounded-full bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 text-[10px]">
                 {TOTAL_ADDITIONS_COUNT + TOTAL_FIXES_COUNT}
               </span>
@@ -485,7 +517,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>🚀 Novas Funcionalidades</span>
+              <span>🚀 {tr("Novas Funcionalidades", "New Features")}</span>
               <span
                 className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
                   activeFilter === "ADDITIONS"
@@ -510,7 +542,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               }`}
             >
               <Wrench className="w-3.5 h-3.5" />
-              <span>🛠️ Correção de Erros</span>
+              <span>🛠️ {tr("Correção de Erros", "Bug Fixes")}</span>
               <span
                 className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
                   activeFilter === "FIXES"
@@ -539,7 +571,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                 }`}
               >
                 <Clock className="w-3.5 h-3.5" />
-                <span>Linha do Tempo</span>
+                <span>{tr("Linha do Tempo", "Timeline")}</span>
               </button>
 
               <button
@@ -555,7 +587,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span>Cards Detalhados</span>
+                <span>{tr("Cartões Detalhados", "Detailed Cards")}</span>
               </button>
             </div>
 
@@ -563,17 +595,17 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               type="button"
               onClick={expandAll}
               className="px-2.5 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 text-xs font-bold transition-colors"
-              title="Expandir todas as versões"
+              title={tr("Expandir todas as versões", "Expand all versions")}
             >
-              Expandir
+              {tr("Expandir", "Expand")}
             </button>
             <button
               type="button"
               onClick={collapseAll}
               className="px-2.5 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 text-xs font-bold transition-colors"
-              title="Recolher todas as versões"
+              title={tr("Recolher todas as versões", "Collapse all versions")}
             >
-              Recolher
+              {tr("Recolher", "Collapse")}
             </button>
           </div>
         </div>
@@ -586,7 +618,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar por termo, bug, funcionalidade..."
+              placeholder={tr("Buscar por termo, erro ou funcionalidade...", "Search by term, bug, or feature...")}
               className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 text-xs font-bold text-neutral-900 dark:text-white outline-none focus:border-[#00843D]"
             />
           </div>
@@ -597,17 +629,17 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               onChange={(e) => setSelectedModule(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 text-xs font-bold text-neutral-900 dark:text-white outline-none focus:border-[#00843D]"
             >
-              <option value="ALL">Todos os Módulos do Sistema</option>
-              <option value="DISCORD">🌐 Discord Webhooks & Notificações</option>
-              <option value="VERCEL">⚡ Vercel Serverless & Rotas API</option>
-              <option value="ADMIN">🛡️ Painel Admin & Governança</option>
-              <option value="IA_GEMINI">🤖 IA Google Gemini Multimodal</option>
-              <option value="PWA">📱 PWA, Offline & Háptico</option>
-              <option value="FIRESTORE">🗄️ Firestore BD & Sincronização</option>
-              <option value="QR_CODE">🏷️ QR Code & Leitor de Câmera</option>
-              <option value="DOCUMENTOS">📄 Gerador de Termos PDF</option>
-              <option value="AUTH">🔑 Autenticação & E-mails @ifpr</option>
-              <option value="GERAL">⚙️ Core & Interface Geral</option>
+              <option value="ALL">{tr("Todos os Módulos do Sistema", "All System Modules")}</option>
+              <option value="DISCORD">🌐 {tr("Webhooks e Notificações Discord", "Discord Webhooks & Notifications")}</option>
+              <option value="VERCEL">⚡ {tr("Vercel Serverless e Rotas de API", "Vercel Serverless & API Routes")}</option>
+              <option value="ADMIN">🛡️ {tr("Painel Administrativo e Governança", "Admin Panel & Governance")}</option>
+              <option value="IA_GEMINI">🤖 {tr("IA Google Gemini Multimodal", "Google Gemini Multimodal AI")}</option>
+              <option value="PWA">📱 {tr("PWA, Modo Offline e Resposta Tátil", "PWA, Offline & Haptics")}</option>
+              <option value="FIRESTORE">🗄️ {tr("Banco Firestore e Sincronização", "Firestore DB & Sync")}</option>
+              <option value="QR_CODE">🏷️ {tr("QR Code e Leitor de Câmera", "QR Code & Camera Scanner")}</option>
+              <option value="DOCUMENTOS">📄 {tr("Gerador de Termos em PDF", "PDF Receipt Generator")}</option>
+              <option value="AUTH">🔑 {tr("Autenticação e E-mails @ifpr", "Authentication & @ifpr Emails")}</option>
+              <option value="GERAL">⚙️ {tr("Núcleo e Interface Geral", "Core & General Interface")}</option>
             </select>
           </div>
 
@@ -617,10 +649,10 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               onChange={(e) => setSelectedType(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 text-xs font-bold text-neutral-900 dark:text-white outline-none focus:border-[#00843D]"
             >
-              <option value="ALL">Todas as Versões (Major, Minor, Patch)</option>
-              <option value="MAJOR">Major Releases (Grandes Marcos)</option>
-              <option value="MINOR">Minor Releases (Novos Módulos)</option>
-              <option value="PATCH">Patch Releases (Correções Rápidas)</option>
+              <option value="ALL">{tr("Todas as Versões (Principal, Intermediária, Correção)", "All Versions (Major, Minor, Patch)")}</option>
+              <option value="MAJOR">{tr("Versões Principais (Grandes Marcos)", "Major Releases (Milestones)")}</option>
+              <option value="MINOR">{tr("Versões Intermediárias (Novos Módulos)", "Minor Releases (New Modules)")}</option>
+              <option value="PATCH">{tr("Correções Rápidas (Ajustes e Segurança)", "Patch Releases (Quick Fixes)")}</option>
             </select>
           </div>
         </div>
@@ -631,10 +663,13 @@ Relatório completo de atualizações e manutenções desde a criação do siste
         <div className="bg-white dark:bg-[#1E1E1E] rounded-3xl p-10 text-center space-y-3 border border-neutral-200 dark:border-neutral-800">
           <Filter className="w-10 h-10 text-neutral-400 mx-auto opacity-50" />
           <h3 className="text-sm font-black text-neutral-800 dark:text-neutral-200">
-            Nenhuma alteração encontrada com os filtros atuais
+            {tr("Nenhuma alteração encontrada com os filtros atuais", "No changes found matching the current filters")}
           </h3>
           <p className="text-xs text-neutral-500 max-w-sm mx-auto">
-            Tente redefinir o termo de busca ou selecione "Todas as Alterações" para ver todas as versões.
+            {tr(
+              "Tente redefinir o termo de busca ou selecione \"Todas as Alterações\" para ver todas as versões.",
+              "Try resetting the search term or selecting \"All Changes\" to see all versions."
+            )}
           </p>
           <button
             onClick={() => {
@@ -645,7 +680,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
             }}
             className="px-4 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-xs font-bold text-neutral-700 dark:text-neutral-300"
           >
-            Limpar Filtros
+            {tr("Limpar Filtros", "Clear Filters")}
           </button>
         </div>
       ) : viewMode === "TIMELINE" ? (
@@ -724,7 +759,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
 
                           {version.isCurrent && (
                             <span className="px-2.5 py-0.5 rounded-full bg-[#00843D] text-white text-[10px] font-black uppercase tracking-wider animate-pulse">
-                              Versão Atual em Produção
+                              {tr("Versão Atual em Produção", "Current Production Version")}
                             </span>
                           )}
 
@@ -737,7 +772,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                                 : "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400 border border-neutral-500/20"
                             }`}
                           >
-                            {version.type}
+                            {getVersionTypeLabel(version.type)}
                           </span>
                         </div>
 
@@ -760,14 +795,14 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                         {version.additions.length > 0 && (
                           <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs font-black flex items-center space-x-1 border border-emerald-500/20">
                             <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>+{version.additions.length} Adições</span>
+                            <span>+{version.additions.length} {tr("Adições", "Additions")}</span>
                           </span>
                         )}
 
                         {version.bugFixes.length > 0 && (
                           <span className="px-2.5 py-1 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-black flex items-center space-x-1 border border-amber-500/20">
                             <Wrench className="w-3.5 h-3.5 text-amber-600" />
-                            <span>{version.bugFixes.length} Correções</span>
+                            <span>{version.bugFixes.length} {tr("Correções", "Fixes")}</span>
                           </span>
                         )}
                       </div>
@@ -778,7 +813,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                           e.stopPropagation();
                           copyChangelogMarkdown(version);
                         }}
-                        title="Copiar notas em Markdown"
+                        title={tr("Copiar notas em Markdown", "Copy release notes as Markdown")}
                         className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 transition-colors cursor-pointer"
                       >
                         {copiedVersion === version.version ? (
@@ -790,6 +825,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
 
                       <button
                         type="button"
+                        aria-label={isExpanded ? tr("Recolher versão", "Collapse version") : tr("Expandir versão", "Expand version")}
                         className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 cursor-pointer"
                       >
                         {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -807,10 +843,10 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                             <h4 className="text-xs font-black uppercase text-emerald-700 dark:text-emerald-400 flex items-center space-x-2 tracking-wider">
                               <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
                               <Sparkles className="w-4 h-4" />
-                              <span>Novas Funcionalidades Entregues ({additionsToShow.length})</span>
+                              <span>{tr("Novas Funcionalidades Entregues", "Delivered New Features")} ({additionsToShow.length})</span>
                             </h4>
                             <span className="text-[10px] font-bold text-neutral-400">
-                              Adicionado nesta release
+                              {tr("Adicionado nesta versão", "Added in this release")}
                             </span>
                           </div>
 
@@ -859,10 +895,10 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                             <h4 className="text-xs font-black uppercase text-amber-700 dark:text-amber-400 flex items-center space-x-2 tracking-wider">
                               <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
                               <Wrench className="w-4 h-4" />
-                              <span>Correções de Erros & Ajustes Técnicos ({fixesToShow.length})</span>
+                              <span>{tr("Correções de Erros e Ajustes Técnicos", "Bug Fixes & Technical Adjustments")} ({fixesToShow.length})</span>
                             </h4>
                             <span className="text-[10px] font-bold text-neutral-400">
-                              Resolvido & Otimizado
+                              {tr("Resolvido e Otimizado", "Resolved & Optimized")}
                             </span>
                           </div>
 
@@ -955,7 +991,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
 
                         {version.isCurrent && (
                           <span className="px-2.5 py-0.5 rounded-full bg-[#00843D] text-white text-[10px] font-black uppercase tracking-wider">
-                            Versão Atual
+                            {tr("Versão Atual", "Current Version")}
                           </span>
                         )}
 
@@ -968,7 +1004,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                               : "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400 border border-neutral-500/20"
                           }`}
                         >
-                          {version.type}
+                          {getVersionTypeLabel(version.type)}
                         </span>
                       </div>
 
@@ -991,14 +1027,14 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                       {version.additions.length > 0 && (
                         <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs font-black flex items-center space-x-1 border border-emerald-500/20">
                           <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>+{version.additions.length} Adições</span>
+                          <span>+{version.additions.length} {tr("Adições", "Additions")}</span>
                         </span>
                       )}
 
                       {version.bugFixes.length > 0 && (
                         <span className="px-2.5 py-1 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-400 text-xs font-black flex items-center space-x-1 border border-amber-500/20">
                           <Wrench className="w-3.5 h-3.5 text-amber-600" />
-                          <span>{version.bugFixes.length} Correções</span>
+                          <span>{version.bugFixes.length} {tr("Correções", "Fixes")}</span>
                         </span>
                       )}
                     </div>
@@ -1009,7 +1045,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                         e.stopPropagation();
                         copyChangelogMarkdown(version);
                       }}
-                      title="Copiar notas em Markdown"
+                      title={tr("Copiar notas em Markdown", "Copy release notes as Markdown")}
                       className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 transition-colors cursor-pointer"
                     >
                       {copiedVersion === version.version ? (
@@ -1021,6 +1057,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
 
                     <button
                       type="button"
+                      aria-label={isExpanded ? tr("Recolher versão", "Collapse version") : tr("Expandir versão", "Expand version")}
                       className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300"
                     >
                       {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -1038,10 +1075,10 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                           <h4 className="text-xs font-black uppercase text-emerald-700 dark:text-emerald-400 flex items-center space-x-2 tracking-wider">
                             <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
                             <Sparkles className="w-4 h-4" />
-                            <span>Novas Adições & Funcionalidades ({additionsToShow.length})</span>
+                            <span>{tr("Novas Adições e Funcionalidades", "New Additions & Features")} ({additionsToShow.length})</span>
                           </h4>
                           <span className="text-[10px] font-bold text-neutral-400">
-                            Adicionado nesta versão
+                            {tr("Adicionado nesta versão", "Added in this version")}
                           </span>
                         </div>
 
@@ -1085,10 +1122,10 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                           <h4 className="text-xs font-black uppercase text-amber-700 dark:text-amber-400 flex items-center space-x-2 tracking-wider">
                             <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
                             <Wrench className="w-4 h-4" />
-                            <span>Correções de Erros & Ajustes Técnicos ({fixesToShow.length})</span>
+                            <span>{tr("Correções de Erros e Ajustes Técnicos", "Bug Fixes & Technical Adjustments")} ({fixesToShow.length})</span>
                           </h4>
                           <span className="text-[10px] font-bold text-neutral-400">
-                            Resolvido & Otimizado
+                            {tr("Resolvido e Otimizado", "Resolved & Optimized")}
                           </span>
                         </div>
 
@@ -1144,15 +1181,19 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                 </div>
                 <div>
                   <h3 className="text-base font-black text-neutral-900 dark:text-white">
-                    Exportar Relatório PDF Oficial
+                    {tr("Exportar Relatório PDF Oficial", "Export Official PDF Report")}
                   </h3>
                   <p className="text-xs text-neutral-500">
-                    Consolidado de atividades, versões e correções (IFPR Campus Ivaiporã)
+                    {tr(
+                      "Consolidado de atividades, versões e correções (IFPR Campus Ivaiporã)",
+                      "Consolidated summary of activities, versions, and fixes (IFPR Campus Ivaiporã)"
+                    )}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
+                aria-label={tr("Fechar", "Close")}
                 onClick={() => setIsExportModalOpen(false)}
                 className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-500 cursor-pointer"
               >
@@ -1165,7 +1206,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               {/* Category Filter */}
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-neutral-700 dark:text-neutral-300">
-                  Conteúdo do Relatório
+                  {tr("Conteúdo do Relatório", "Report Contents")}
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   <button
@@ -1177,9 +1218,9 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                         : "bg-neutral-50 dark:bg-neutral-800/60 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400"
                     }`}
                   >
-                    Completo
+                    {tr("Completo", "Complete")}
                     <span className="block text-[10px] font-normal text-neutral-500 mt-0.5">
-                      Adições + Bugs
+                      {tr("Adições + Erros", "Additions + Fixes")}
                     </span>
                   </button>
 
@@ -1192,9 +1233,9 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                         : "bg-neutral-50 dark:bg-neutral-800/60 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400"
                     }`}
                   >
-                    🚀 Adições
+                    🚀 {tr("Adições", "Additions")}
                     <span className="block text-[10px] font-normal text-neutral-500 mt-0.5">
-                      Novos Recursos
+                      {tr("Novos Recursos", "New Features")}
                     </span>
                   </button>
 
@@ -1207,9 +1248,9 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                         : "bg-neutral-50 dark:bg-neutral-800/60 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400"
                     }`}
                   >
-                    🛠️ Correções
+                    🛠️ {tr("Correções", "Fixes")}
                     <span className="block text-[10px] font-normal text-neutral-500 mt-0.5">
-                      Bugs & Ajustes
+                      {tr("Erros e Ajustes", "Fixes & Adjustments")}
                     </span>
                   </button>
                 </div>
@@ -1218,7 +1259,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               {/* Version Select */}
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-neutral-700 dark:text-neutral-300">
-                  Escopo de Versões
+                  {tr("Escopo de Versões", "Version Scope")}
                 </label>
                 <select
                   value={pdfSelectedVersion}
@@ -1226,11 +1267,14 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                   className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs font-bold text-neutral-900 dark:text-white outline-none focus:border-[#00843D]"
                 >
                   <option value="ALL">
-                    Todas as {TOTAL_VERSIONS_COUNT} Versões ({APP_VERSIONS_DATA[APP_VERSIONS_DATA.length - 1]?.version} a {CURRENT_VERSION})
+                    {tr(
+                      `Todas as ${TOTAL_VERSIONS_COUNT} Versões (${APP_VERSIONS_DATA[APP_VERSIONS_DATA.length - 1]?.version} a ${CURRENT_VERSION})`,
+                      `All ${TOTAL_VERSIONS_COUNT} Versions (${APP_VERSIONS_DATA[APP_VERSIONS_DATA.length - 1]?.version} to ${CURRENT_VERSION})`
+                    )}
                   </option>
                   {APP_VERSIONS_DATA.map((v) => (
                     <option key={v.version} value={v.version}>
-                      {v.version} — {v.codename} ({v.releaseDate}) {v.isCurrent ? "★ Atual" : ""}
+                      {v.version} — {v.codename} ({v.releaseDate}) {v.isCurrent ? tr("★ Atual", "★ Current") : ""}
                     </option>
                   ))}
                 </select>
@@ -1240,10 +1284,13 @@ Relatório completo de atualizações e manutenções desde a criação do siste
               <div className="flex items-center justify-between p-3.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700">
                 <div className="space-y-0.5">
                   <span className="text-xs font-black text-neutral-800 dark:text-neutral-200">
-                    Bloco de Assinaturas Institucionais
+                    {tr("Bloco de Assinaturas Institucionais", "Institutional Signatures Block")}
                   </span>
                   <p className="text-[11px] text-neutral-500">
-                    Incluir campos para Coordenação InovaIF e SEBAC / TI
+                    {tr(
+                      "Incluir campos para Coordenação InovaIF e SEBAC / TI",
+                      "Include fields for InovaIF Coordination and SEBAC / IT"
+                    )}
                   </p>
                 </div>
                 <input
@@ -1256,9 +1303,14 @@ Relatório completo de atualizações e manutenções desde a criação do siste
 
               {/* Information Notice */}
               <div className="p-3 rounded-xl bg-[#00843D]/10 border border-[#00843D]/20 text-[11px] text-neutral-700 dark:text-neutral-300 space-y-1">
-                <p className="font-bold text-[#00843D]">Documento com Numeração Oficial e Timestamp</p>
+                <p className="font-bold text-[#00843D]">
+                  {tr("Documento com Numeração Oficial e Carimbo de Data/Hora", "Document with Official Protocol & Timestamp")}
+                </p>
                 <p className="text-neutral-500">
-                  O PDF será gerado com cabeçalho institucional do IFPR Campus Ivaiporã, protocolo único rastreável e sumário de métricas técnicas.
+                  {tr(
+                    "O PDF será gerado com cabeçalho institucional do IFPR Campus Ivaiporã, protocolo único rastreável e sumário de métricas técnicas.",
+                    "The PDF will be generated with the official IFPR Campus Ivaiporã header, a unique traceable protocol, and a technical metrics summary."
+                  )}
                 </p>
               </div>
             </div>
@@ -1270,7 +1322,7 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                 onClick={() => setIsExportModalOpen(false)}
                 className="px-4 py-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-xs font-bold text-neutral-700 dark:text-neutral-300 cursor-pointer"
               >
-                Cancelar
+                {tr("Cancelar", "Cancel")}
               </button>
 
               <button
@@ -1282,12 +1334,12 @@ Relatório completo de atualizações e manutenções desde a criação do siste
                 {isExportingPdf ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Gerando PDF...</span>
+                    <span>{tr("Gerando PDF...", "Generating PDF...")}</span>
                   </>
                 ) : (
                   <>
                     <Download className="w-4 h-4" />
-                    <span>Baixar Relatório PDF</span>
+                    <span>{tr("Baixar Relatório PDF", "Download PDF Report")}</span>
                   </>
                 )}
               </button>

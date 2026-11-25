@@ -371,16 +371,37 @@ export function isItemNew(
 /**
  * Returns a human-friendly age string for recent items (e.g., "Há 2 horas", "Há 45 min", "Hoje")
  */
-export function getItemAgeText(input?: unknown, fallback = "Data não informada"): string {
+export function getItemAgeText(
+  input?: unknown,
+  fallback?: string,
+  lang?: SupportedLanguage
+): string {
+  const effectiveLang = lang ?? getStoredLanguage();
+  const resolvedFallback =
+    fallback !== undefined
+      ? fallback
+      : effectiveLang === "en"
+      ? "Date not provided"
+      : "Data não informada";
   const date = safeParseDate(input);
-  if (!date) return fallback;
+  if (!date) return resolvedFallback;
   try {
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
-    if (isNaN(diffMs)) return formatDate(date, fallback);
+    if (isNaN(diffMs)) return formatDate(date, resolvedFallback, effectiveLang);
 
     const diffMinutes = Math.floor(diffMs / (1000 * 60));
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+
+    if (effectiveLang === "en") {
+      if (diffMinutes < 1) return "Just now";
+      if (diffMinutes < 60) return `${diffMinutes} min ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays === 1) return "Yesterday";
+      if (diffDays < 7) return `${diffDays} days ago`;
+      return formatDate(date, resolvedFallback, effectiveLang);
+    }
 
     if (diffMinutes < 1) return "Agora mesmo";
     if (diffMinutes < 60) return `Há ${diffMinutes} min`;
@@ -388,9 +409,9 @@ export function getItemAgeText(input?: unknown, fallback = "Data não informada"
     const diffDays = Math.floor(diffHours / 24);
     if (diffDays === 1) return "Ontem";
     if (diffDays < 7) return `Há ${diffDays} dias`;
-    return formatDate(date, fallback);
+    return formatDate(date, resolvedFallback, effectiveLang);
   } catch {
-    return formatDate(date, fallback);
+    return formatDate(date, resolvedFallback, effectiveLang);
   }
 }
 

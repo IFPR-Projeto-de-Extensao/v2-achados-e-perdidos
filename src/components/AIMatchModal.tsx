@@ -1,10 +1,12 @@
 import React from "react";
 import { useApp } from "../context/AppContext";
+import { localize, translateCampusLocation, translateCategory } from "../lib/i18n";
 import { ModalShell, SubtlePanel, UIBadge, UIButton } from "./ui";
 import { Sparkles, X, ArrowRight, CheckCircle2 } from "lucide-react";
 
 export const AIMatchModal: React.FC = () => {
-  const { aiMatchAlert, setAiMatchAlert, setSelectedItemForDetail } = useApp();
+  const { aiMatchAlert, setAiMatchAlert, setSelectedItemForDetail, language } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
 
   if (!aiMatchAlert) return null;
 
@@ -29,20 +31,20 @@ export const AIMatchModal: React.FC = () => {
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] font-semibold text-[#16845B] dark:text-emerald-400 uppercase tracking-wider">
-                  Correspondência Inteligente IFPR
+                  {L("Correspondência Inteligente IFPR", "IFPR Smart Matching")}
                 </span>
                 {topMatch && (
                   <UIBadge tone="emerald">
-                    Correspondência {topMatch.matchScore}%
+                    {L(`Correspondência ${topMatch.matchScore}%`, `${topMatch.matchScore}% Match`)}
                   </UIBadge>
                 )}
-                <UIBadge tone="blue">Push FCM Enviado</UIBadge>
+                <UIBadge tone="blue">{L("Notificação Enviada", "Push Sent")}</UIBadge>
               </div>
               <h3
                 id="ai-match-modal-title"
                 className="text-lg sm:text-xl font-bold text-[#172B2A] dark:text-white tracking-tight"
               >
-                Encontramos objetos semelhantes!
+                {L("Encontramos objetos semelhantes!", "We found similar items!")}
               </h3>
             </div>
           </div>
@@ -50,7 +52,7 @@ export const AIMatchModal: React.FC = () => {
           <button
             type="button"
             onClick={() => setAiMatchAlert(null)}
-            aria-label="Fechar alerta de correspondência"
+            aria-label={L("Fechar alerta de correspondência", "Close match alert")}
             className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" />
@@ -60,12 +62,21 @@ export const AIMatchModal: React.FC = () => {
         <div className="p-3.5 rounded-xl bg-[#EBF5F0]/70 dark:bg-emerald-950/30 border border-[#16845B]/20 dark:border-emerald-800/50 text-xs text-[#064E3B] dark:text-emerald-200 flex items-start gap-2.5">
           <CheckCircle2 className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0 mt-0.5" />
           <span className="leading-relaxed">
-            <strong>Alerta Push Disparado:</strong> Os usuários que cadastraram os itens correspondentes foram notificados automaticamente em tempo real via Firebase Cloud Messaging no navegador e celular.
+            <strong>{L("Alerta de Notificação Enviado:", "Push Alert Sent:")}</strong>{" "}
+            {L(
+              "Os usuários que cadastraram os itens correspondentes foram notificados automaticamente em tempo real via Firebase Cloud Messaging no navegador e celular.",
+              "Users who registered the matching items have been automatically notified in real time via Firebase Cloud Messaging on desktop and mobile."
+            )}
           </span>
         </div>
 
         <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-          Ao registrar <strong className="text-[#172B2A] dark:text-white">&quot;{newItem.title}&quot;</strong>, nossa IA analisou o acervo e detectou que este pertence pode ser a contraparte de um objeto cadastrado anteriormente.
+          {L("Ao registrar", "When registering")}{" "}
+          <strong className="text-[#172B2A] dark:text-white">&quot;{newItem.title}&quot;</strong>
+          {L(
+            ", nossa IA analisou o acervo e detectou que este pertence pode ser a contraparte de um objeto cadastrado anteriormente.",
+            ", our AI analyzed the catalog and detected that this item may correspond to a previously registered record."
+          )}
         </p>
 
         {/* Matches list */}
@@ -83,10 +94,12 @@ export const AIMatchModal: React.FC = () => {
                     <span className="text-xs sm:text-sm font-bold text-[#172B2A] dark:text-white truncate">
                       {match.matchedItem.title}
                     </span>
-                    <UIBadge tone="emerald">{match.matchScore}% de Match</UIBadge>
+                    <UIBadge tone="emerald">
+                      {L(`${match.matchScore}% de Correspondência`, `${match.matchScore}% Match`)}
+                    </UIBadge>
                   </div>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1">
-                    Local: {match.matchedItem.location} • Categoria: {match.matchedItem.category}
+                    {L("Local:", "Location:")} {translateCampusLocation(match.matchedItem.location, language)} • {L("Categoria:", "Category:")} {translateCategory(match.matchedItem.category, language)}
                   </p>
                   <p className="text-[11px] text-[#064E3B] dark:text-emerald-300 bg-[#EBF5F0]/80 dark:bg-emerald-950/40 border border-[#16845B]/15 p-2 rounded-lg font-medium leading-relaxed">
                     &quot;{match.reason}&quot;
@@ -104,7 +117,7 @@ export const AIMatchModal: React.FC = () => {
                     setSelectedItemForDetail(match.matchedItem);
                   }}
                 >
-                  <span>Ver Objeto Correspondente</span>
+                  <span>{L("Ver Objeto Correspondente", "View Matching Item")}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </UIButton>
               </div>
@@ -120,7 +133,7 @@ export const AIMatchModal: React.FC = () => {
             size="md"
             onClick={() => setAiMatchAlert(null)}
           >
-            Entendido, Continuar
+            {L("Entendido, Continuar", "Got it, Continue")}
           </UIButton>
         </div>
       </div>

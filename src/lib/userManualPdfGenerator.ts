@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import type { SupportedLanguage } from "./i18n";
 
 export interface ManualSection {
   id: string;
@@ -155,16 +156,165 @@ export const USER_MANUAL_SECTIONS: ManualSection[] = [
   },
 ];
 
+export const USER_MANUAL_SECTIONS_EN: ManualSection[] = [
+  {
+    id: "apresentacao",
+    number: "1",
+    title: "Introduction to Localiza+",
+    summary:
+      "Localiza+ is the official Lost & Found system of IFPR Ivaiporã Campus, designed to centralize item registration, public search, QR Code tracking, and formal auditable item returns on campus.",
+    bullets: [
+      "Public catalog searchable by text, voice, filters, and QR Code scanning.",
+      "Institutional custody management with a standard retention period of up to 90 days.",
+      "Digital return receipt issuance with in-person or remote electronic signature.",
+    ],
+  },
+  {
+    id: "perfis",
+    number: "2",
+    title: "User Types and Access Roles",
+    summary:
+      "Available features depend on your authenticated and verified account role:",
+    bullets: [
+      "Visitor (no login): browse the public catalog, search objects, scan QR Codes, read the User Manual, and contact Support.",
+      "External Community (verified personal email): create an account, sign in, browse public catalog details, scan QR Codes, submit ownership claims, track own requests, manage own notifications, and edit personal profile fields.",
+      "Student (@estudantes.ifpr.edu.br verified): all catalog searches plus online ownership claims, claim tracking, notifications, and profile editing.",
+      "Staff / TAE (@ifpr.edu.br verified and approved): register items, print QR Code labels, review ownership claims, process formal returns, and access the Staff Panel.",
+      "Administrator: full management of users, approvals, objects, returns, audit logs, reports, support, and system settings.",
+    ],
+  },
+  {
+    id: "criar-conta",
+    number: "3",
+    title: "How to Create an Account (IFPR & External Community)",
+    summary:
+      "Both IFPR members and external community visitors can create an account directly via Sign In > Create Account:",
+    bullets: [
+      "Provide your Full Name, a valid Email address, and a Password (at least 6 characters).",
+      "Affiliation is detected automatically: @estudantes.ifpr.edu.br (Student), @ifpr.edu.br (Staff), and other providers such as Gmail/Outlook (External Community).",
+      "Accept the Terms of Use and Privacy Policy to complete registration.",
+      "Mandatory email verification: open the confirmation email (check your Spam folder too), click the link, and confirm on the verification screen.",
+    ],
+  },
+  {
+    id: "login-senha",
+    number: "4",
+    title: "How to Sign In and Recover Your Password",
+    summary:
+      "Authenticated access works with your registered email and password or with Google Sign-In:",
+    bullets: [
+      "Click Sign In in the top bar and enter your credentials or choose Continue with Google.",
+      "To recover or set your password: click First access or forgot password?, enter your registered email, and use the link sent to your inbox.",
+    ],
+  },
+  {
+    id: "consultar-objetos",
+    number: "5",
+    title: "How to Search Lost and Found Objects",
+    summary:
+      "Searching belongings is public and can be started directly from the home page or catalog:",
+    bullets: [
+      "Use the Home search bar to look up items by name, color, brand, location, or QR code.",
+      "Use voice search (microphone icon) on supported browsers.",
+      "Browse quick shortcuts: Search Objects, Found, Lost, and Returned.",
+      "In the catalog (/objetos), filter by category, status, and campus location, and switch between Grid or List view.",
+    ],
+  },
+  {
+    id: "cadastrar-objeto",
+    number: "6",
+    title: "How to Register an Object",
+    summary:
+      "To ensure custody integrity, catalog registration is performed by approved Staff and Administrators.",
+    bullets: [
+      "Open Register Object on the home screen or Register in the top navigation bar (/cadastrar).",
+      "Select the type (Found or Lost), attach photos, and fill in title, category, location, date, color, brand, and description.",
+      "Use private custody notes for sensitive details (e.g., ID numbers) that must not appear publicly.",
+      "Upon confirmation, the record is saved to the database with an automatically generated unique QR code.",
+    ],
+    note: "Students and external visitors who find or lose an item should visit the Main Gate or SEPAE/SEBAC for official registration.",
+  },
+  {
+    id: "reivindicar-devolucao",
+    number: "7",
+    title: "How to Claim an Object and Request Return",
+    summary:
+      "When you recognize a belonging found in the catalog, you can submit an ownership claim:",
+    bullets: [
+      "Open the object's detail card in the catalog and click Claim Belonging (available for authenticated accounts with verified email, including External Community and IFPR members).",
+      "Describe specific evidence proving ownership (internal contents, unique marks, serial number, etc.).",
+      "Track your own requests in My Profile and receive notifications about status changes.",
+      "Once approved by campus staff, collect the item with an official photo ID and sign the Return Receipt (in person or via remote link).",
+    ],
+    note: "For security, each user can only access their own claims and notifications. Unverified or suspended accounts cannot submit claims.",
+  },
+  {
+    id: "qr-code",
+    number: "8",
+    title: "How the QR Code Works",
+    summary:
+      "Each registered object receives a unique QR identifier for physical and digital tracking:",
+    bullets: [
+      "Staff and administrators can print the QR Code Identification Label directly from the object details.",
+      "Any user can click Scan QR Code on the home page or top bar and point the camera at the label.",
+      "Scanning immediately opens the corresponding object details in Localiza+.",
+    ],
+  },
+  {
+    id: "analise-ia",
+    number: "9",
+    title: "How AI Visual Analysis Works",
+    summary:
+      "During object registration, the system provides AI assistance to speed up cataloging when configured on the server:",
+    bullets: [
+      "Upload the object's photo in the registration form and click Analyze Photo with AI.",
+      "The system suggests title, category, color, brand, and description based on the uploaded image.",
+      "All suggestions can be reviewed and edited before saving. If the AI API is not configured, manual entry works normally.",
+    ],
+  },
+  {
+    id: "instalar-pwa",
+    number: "10",
+    title: "How to Install as an App (PWA)",
+    summary:
+      "Localiza+ works as an installable Progressive Web App (PWA) on smartphones and computers:",
+    bullets: [
+      "Android (Chrome/Edge): click Install App (PWA) in the menu/footer or open Menu (⋮) > Install app.",
+      "iOS (Safari): tap Share and select Add to Home Screen.",
+      "Desktop (Chrome/Edge): click the install icon in the address bar or Install App (PWA) in the footer.",
+    ],
+  },
+  {
+    id: "suporte",
+    number: "11",
+    title: "How to Contact Support & Campus Desk",
+    summary:
+      "Official channels for questions, suggestions, technical issues, and item pickup at IFPR Ivaiporã Campus:",
+    bullets: [
+      "In-app Support Center: /suporte (FAQ, Feedback at /suporte/feedback, and Bug Report at /suporte/relatar-bug).",
+      "In-Person Desk: Main Gate and Secretariat / SEPAE / SEBAC — Administrative Block, PR-466 Highway.",
+      "Hours: Monday to Friday, 07:30 to 22:30 (school days).",
+      "Phone: (43) 3126-9400 | Email: achados.ivaipora@ifpr.edu.br.",
+    ],
+  },
+];
+
+export function getUserManualSections(lang: SupportedLanguage = "pt"): ManualSection[] {
+  return lang === "en" ? USER_MANUAL_SECTIONS_EN : USER_MANUAL_SECTIONS;
+}
+
 /**
  * Generates and downloads the official Localiza+ User Manual in PDF format.
  * Uses strictly real system documentation (zero placeholder/mock data).
  */
-export function downloadUserManualPdf(): string {
+export function downloadUserManualPdf(lang: SupportedLanguage = "pt"): string {
+  const isEn = lang === "en";
+  const sections = getUserManualSections(lang);
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const marginX = 14;
   const maxWidth = pageWidth - marginX * 2;
-  const generatedAt = new Date().toLocaleString("pt-BR");
+  const generatedAt = new Date().toLocaleString(isEn ? "en-US" : "pt-BR");
 
   // Header Banner
   doc.setFillColor(6, 78, 59);
@@ -172,16 +322,26 @@ export function downloadUserManualPdf(): string {
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(17);
-  doc.text("Localiza+ — Manual Oficial de Utilização", marginX, 15);
+  doc.text(
+    isEn ? "Localiza+ — Official User Manual" : "Localiza+ — Manual Oficial de Utilização",
+    marginX,
+    15
+  );
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.text(
-    `IFPR Campus Ivaiporã • Sistema de Achados e Perdidos • Versão ${USER_MANUAL_VERSION}`,
+    isEn
+      ? `IFPR Ivaiporã Campus • Lost & Found System • Version ${USER_MANUAL_VERSION}`
+      : `IFPR Campus Ivaiporã • Sistema de Achados e Perdidos • Versão ${USER_MANUAL_VERSION}`,
     marginX,
     22
   );
   doc.setFontSize(8.5);
-  doc.text(`Documento gerado em: ${generatedAt}`, marginX, 28);
+  doc.text(
+    isEn ? `Generated on: ${generatedAt}` : `Documento gerado em: ${generatedAt}`,
+    marginX,
+    28
+  );
 
   let cursorY = 42;
 
@@ -189,20 +349,36 @@ export function downloadUserManualPdf(): string {
   doc.setTextColor(23, 43, 42);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.text("Resumo Rápido de Perfis de Acesso", marginX, cursorY);
+  doc.text(
+    isEn ? "Quick Overview of Access Roles" : "Resumo Rápido de Perfis de Acesso",
+    marginX,
+    cursorY
+  );
   cursorY += 3;
 
   autoTable(doc, {
     startY: cursorY,
     margin: { left: marginX, right: marginX },
-    head: [["Perfil", "Identificação", "Ações Principais"]],
-    body: [
-      ["Visitante", "Acesso público", "Consultar catálogo, buscar, ler QR Code, acessar Ajuda e Suporte"],
-      ["Comunidade Externa", "E-mail pessoal verificado", "Criar conta, consultar catálogo, reivindicar objetos, perfil pessoal e próprias notificações"],
-      ["Discente (Aluno)", "@estudantes.ifpr.edu.br", "Consultar, reivindicar objetos, acompanhar solicitações e notificações"],
-      ["Servidor / TAE", "@ifpr.edu.br (aprovado)", "Cadastrar objetos, etiquetas QR, analisar reivindicações e devoluções formais"],
-      ["Administrador", "Atribuição de governança", "Gestão integral de usuários, aprovações, itens, auditoria, relatórios e sistema"],
+    head: [
+      isEn
+        ? ["Role", "Identification", "Main Actions"]
+        : ["Perfil", "Identificação", "Ações Principais"],
     ],
+    body: isEn
+      ? [
+          ["Visitor", "Public access", "Browse catalog, search, scan QR Codes, read Help & contact Support"],
+          ["External Community", "Verified personal email", "Create account, browse catalog, claim objects, edit personal profile & own notifications"],
+          ["Student", "@estudantes.ifpr.edu.br", "Search catalog, claim objects, track requests & notifications"],
+          ["Staff / TAE", "@ifpr.edu.br (approved)", "Register objects, QR labels, review claims & process formal returns"],
+          ["Administrator", "Governance role", "Full management of users, approvals, items, audit logs, reports & settings"],
+        ]
+      : [
+          ["Visitante", "Acesso público", "Consultar catálogo, buscar, ler QR Code, acessar Ajuda e Suporte"],
+          ["Comunidade Externa", "E-mail pessoal verificado", "Criar conta, consultar catálogo, reivindicar objetos, perfil pessoal e próprias notificações"],
+          ["Discente (Aluno)", "@estudantes.ifpr.edu.br", "Consultar, reivindicar objetos, acompanhar solicitações e notificações"],
+          ["Servidor / TAE", "@ifpr.edu.br (aprovado)", "Cadastrar objetos, etiquetas QR, analisar reivindicações e devoluções formais"],
+          ["Administrador", "Atribuição de governança", "Gestão integral de usuários, aprovações, itens, auditoria, relatórios e sistema"],
+        ],
     headStyles: { fillColor: [22, 132, 91], textColor: 255, fontSize: 8.5 },
     bodyStyles: { fontSize: 8, textColor: [30, 41, 59] },
     alternateRowStyles: { fillColor: [248, 250, 252] },
@@ -210,7 +386,7 @@ export function downloadUserManualPdf(): string {
 
   cursorY = ((doc as any).lastAutoTable?.finalY || 92) + 8;
 
-  for (const section of USER_MANUAL_SECTIONS) {
+  for (const section of sections) {
     if (cursorY > 258) {
       doc.addPage();
       cursorY = 18;
@@ -242,7 +418,8 @@ export function downloadUserManualPdf(): string {
     }
 
     if (section.note) {
-      const noteLines = doc.splitTextToSize(`Observação: ${section.note}`, maxWidth - 4);
+      const notePrefix = isEn ? "Note:" : "Observação:";
+      const noteLines = doc.splitTextToSize(`${notePrefix} ${section.note}`, maxWidth - 4);
       if (cursorY + noteLines.length * 4.2 > 278) {
         doc.addPage();
         cursorY = 18;
@@ -264,14 +441,23 @@ export function downloadUserManualPdf(): string {
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
     doc.text(
-      `Localiza+ IFPR Campus Ivaiporã • Manual do Usuário (${USER_MANUAL_VERSION})`,
+      isEn
+        ? `Localiza+ IFPR Ivaiporã Campus • User Manual (${USER_MANUAL_VERSION})`
+        : `Localiza+ IFPR Campus Ivaiporã • Manual do Usuário (${USER_MANUAL_VERSION})`,
       marginX,
       290
     );
-    doc.text(`Página ${i} de ${totalPages}`, pageWidth - marginX, 290, { align: "right" });
+    doc.text(
+      isEn ? `Page ${i} of ${totalPages}` : `Página ${i} de ${totalPages}`,
+      pageWidth - marginX,
+      290,
+      { align: "right" }
+    );
   }
 
-  const filename = `Manual_de_Utilizacao_LocalizaPlus_IFPR_${USER_MANUAL_VERSION}.pdf`;
+  const filename = isEn
+    ? `LocalizaPlus_IFPR_User_Manual_${USER_MANUAL_VERSION}.pdf`
+    : `Manual_de_Utilizacao_LocalizaPlus_IFPR_${USER_MANUAL_VERSION}.pdf`;
   doc.save(filename);
   return filename;
 }

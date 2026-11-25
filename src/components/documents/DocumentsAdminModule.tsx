@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { DocumentTemplate, GeneratedDocumentRecord } from "../../types";
 import { useApp } from "../../context/AppContext";
+import { localize, getLocaleForLanguage } from "../../lib/i18n";
 import { DocumentPreviewModal } from "./DocumentPreviewModal";
 import { DocumentFillForm } from "./DocumentFillForm";
 import { DocumentTemplateEditor } from "./DocumentTemplateEditor";
@@ -64,7 +65,10 @@ export const DocumentsAdminModule: React.FC = () => {
     projectSettings,
     currentUser,
     addToast,
+    language,
   } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
+  const locale = getLocaleForLanguage(language);
 
   const isAdmin = currentUser?.role === "ADMIN";
 
@@ -149,7 +153,10 @@ export const DocumentsAdminModule: React.FC = () => {
       documentTemplates[0];
 
     if (!parentTpl) {
-      addToast("Não foi possível localizar o modelo deste documento.", "error");
+      addToast(
+        L("Não foi possível localizar o modelo deste documento.", "Could not find the template for this document."),
+        "error"
+      );
       return;
     }
 
@@ -159,7 +166,10 @@ export const DocumentsAdminModule: React.FC = () => {
     setViewMode("fill");
     setDetailsRecord(null);
     addToast(
-      `Dados do documento '${rec.documentNumber}' carregados no gerador para edição/nova emissão.`,
+      L(
+        `Dados do documento '${rec.documentNumber}' carregados no gerador para edição/nova emissão.`,
+        `Document '${rec.documentNumber}' data loaded into the generator for editing/reissue.`
+      ),
       "info"
     );
   };
@@ -167,7 +177,10 @@ export const DocumentsAdminModule: React.FC = () => {
   // Action: Edit Model Schema (Admin Only)
   const handleOpenEdit = (tpl: DocumentTemplate) => {
     if (!isAdmin) {
-      addToast("Apenas administradores podem editar a estrutura de modelos.", "error");
+      addToast(
+        L("Apenas administradores podem editar a estrutura de modelos.", "Only administrators can edit template structure."),
+        "error"
+      );
       return;
     }
     setSelectedTemplate(tpl);
@@ -177,7 +190,10 @@ export const DocumentsAdminModule: React.FC = () => {
   // Action: Create New Model from Scratch (Admin Only)
   const handleOpenCreate = () => {
     if (!isAdmin) {
-      addToast("Apenas administradores podem criar novos modelos.", "error");
+      addToast(
+        L("Apenas administradores podem criar novos modelos.", "Only administrators can create new templates."),
+        "error"
+      );
       return;
     }
     setSelectedTemplate(null);
@@ -193,12 +209,18 @@ export const DocumentsAdminModule: React.FC = () => {
   // Action: Delete Model (Admin Only)
   const handleDelete = async (tpl: DocumentTemplate) => {
     if (!isAdmin) {
-      addToast("Apenas administradores podem excluir modelos.", "error");
+      addToast(
+        L("Apenas administradores podem excluir modelos.", "Only administrators can delete templates."),
+        "error"
+      );
       return;
     }
     if (
       window.confirm(
-        `Tem certeza que deseja excluir o modelo de documento '${tpl.title}' (${tpl.code})? Esta ação não pode ser desfeita.`
+        L(
+          `Tem certeza que deseja excluir o modelo de documento '${tpl.title}' (${tpl.code})? Esta ação não pode ser desfeita.`,
+          `Are you sure you want to delete document template '${tpl.title}' (${tpl.code})? This action cannot be undone.`
+        )
       )
     ) {
       await deleteDocumentTemplate(tpl.id);
@@ -208,7 +230,10 @@ export const DocumentsAdminModule: React.FC = () => {
   // Action: Duplicate Model (Admin Only)
   const handleDuplicate = async (tpl: DocumentTemplate) => {
     if (!isAdmin) {
-      addToast("Apenas administradores podem duplicar modelos.", "error");
+      addToast(
+        L("Apenas administradores podem duplicar modelos.", "Only administrators can duplicate templates."),
+        "error"
+      );
       return;
     }
     await duplicateDocumentTemplate(tpl.id);
@@ -217,7 +242,10 @@ export const DocumentsAdminModule: React.FC = () => {
   // Action: Toggle Status (Active / Inactive)
   const handleToggleStatus = async (tpl: DocumentTemplate) => {
     if (!isAdmin) {
-      addToast("Apenas administradores podem alterar o status do modelo.", "error");
+      addToast(
+        L("Apenas administradores podem alterar a situação do modelo.", "Only administrators can change template status."),
+        "error"
+      );
       return;
     }
     await toggleDocumentTemplateStatus(tpl.id);
@@ -226,12 +254,18 @@ export const DocumentsAdminModule: React.FC = () => {
   // Action: Delete from Generated History (Admin Only)
   const handleDeleteHistory = async (rec: GeneratedDocumentRecord) => {
     if (!isAdmin) {
-      addToast("Apenas administradores podem remover registros do histórico.", "error");
+      addToast(
+        L("Apenas administradores podem remover registros do histórico.", "Only administrators can remove history records."),
+        "error"
+      );
       return;
     }
     if (
       window.confirm(
-        `Deseja remover o registro de emissão do documento '${rec.templateTitle}' (Nº ${rec.documentNumber})?`
+        L(
+          `Deseja remover o registro de emissão do documento '${rec.templateTitle}' (Nº ${rec.documentNumber})?`,
+          `Do you want to remove the issue record for document '${rec.templateTitle}' (#${rec.documentNumber})?`
+        )
       )
     ) {
       await deleteGeneratedDocument(rec.id);
@@ -254,13 +288,19 @@ export const DocumentsAdminModule: React.FC = () => {
           projectSettings,
         });
         doc.save(filename);
-        addToast(`Documento ${rec.documentNumber} baixado com sucesso!`, "success");
+        addToast(
+          L(`Documento ${rec.documentNumber} baixado com sucesso!`, `Document ${rec.documentNumber} downloaded successfully!`),
+          "success"
+        );
       } catch (err) {
         console.error("Erro ao gerar PDF:", err);
-        addToast("Erro ao processar o arquivo PDF.", "error");
+        addToast(L("Erro ao processar o arquivo PDF.", "Error processing the PDF file."), "error");
       }
     } else {
-      addToast("O modelo original deste documento não está mais disponível.", "error");
+      addToast(
+        L("O modelo original deste documento não está mais disponível.", "The original template for this document is no longer available."),
+        "error"
+      );
     }
   };
 
@@ -270,17 +310,17 @@ export const DocumentsAdminModule: React.FC = () => {
   ): { label: string; tone: "emerald" | "darkEmerald" | "blue" | "amber" | "slate" } => {
     switch (category) {
       case "EXTENSAO":
-        return { label: "Extensão", tone: "emerald" };
+        return { label: L("Extensão", "Extension"), tone: "emerald" };
       case "RESPONSABILIDADE":
-        return { label: "Responsabilidade", tone: "darkEmerald" };
+        return { label: L("Responsabilidade", "Responsibility"), tone: "darkEmerald" };
       case "DECLARACOES":
-        return { label: "Declaração", tone: "blue" };
+        return { label: L("Declaração", "Declaration"), tone: "blue" };
       case "RELATORIOS":
-        return { label: "Relatório", tone: "amber" };
+        return { label: L("Relatório", "Report"), tone: "amber" };
       case "ACHADOS_PERDIDOS":
-        return { label: "Achados e Perdidos", tone: "blue" };
+        return { label: L("Achados e Perdidos", "Lost & Found"), tone: "blue" };
       case "INSTITUCIONAL":
-        return { label: "Institucional", tone: "slate" };
+        return { label: L("Institucional", "Institutional"), tone: "slate" };
       default:
         return { label: category, tone: "slate" };
     }
@@ -324,12 +364,15 @@ export const DocumentsAdminModule: React.FC = () => {
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-xl font-bold text-[#172B2A] dark:text-white tracking-tight">
-                  Biblioteca de Modelos e Gerador de Documentos
+                  {L("Biblioteca de Modelos e Gerador de Documentos", "Template Library & Document Generator")}
                 </h2>
                 <UIBadge tone="emerald">IFPR A4</UIBadge>
               </div>
               <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 mt-1">
-                Selecione um modelo pré-pronto, personalize os dados específicos e gere PDFs institucionais oficiais com histórico completo de emissões.
+                {L(
+                  "Selecione um modelo pré-pronto, personalize os dados específicos e gere PDFs institucionais oficiais com histórico completo de emissões.",
+                  "Select a ready-made template, customize specific fields, and generate official institutional PDFs with full issuance history."
+                )}
               </p>
             </div>
           </div>
@@ -344,7 +387,7 @@ export const DocumentsAdminModule: React.FC = () => {
               size="sm"
             >
               <FileText className="w-4 h-4" />
-              <span>Modelos Pré-prontos ({activeModelsCount})</span>
+              <span>{L(`Modelos Pré-prontos (${activeModelsCount})`, `Ready Templates (${activeModelsCount})`)}</span>
             </UIButton>
 
             <UIButton
@@ -355,7 +398,7 @@ export const DocumentsAdminModule: React.FC = () => {
               size="sm"
             >
               <History className="w-4 h-4" />
-              <span>Meus Documentos ({generatedDocuments.length})</span>
+              <span>{L(`Meus Documentos (${generatedDocuments.length})`, `My Documents (${generatedDocuments.length})`)}</span>
             </UIButton>
 
             <UIButton
@@ -366,7 +409,7 @@ export const DocumentsAdminModule: React.FC = () => {
               size="sm"
             >
               <Sparkles className="w-4 h-4" />
-              <span>Dados do Projeto</span>
+              <span>{L("Dados do Projeto", "Project Data")}</span>
             </UIButton>
 
             {isAdmin && (
@@ -378,7 +421,7 @@ export const DocumentsAdminModule: React.FC = () => {
                 size="sm"
               >
                 <Plus className="w-4 h-4" />
-                <span>Novo Modelo</span>
+                <span>{L("Novo Modelo", "New Template")}</span>
               </UIButton>
             )}
           </div>
@@ -388,7 +431,7 @@ export const DocumentsAdminModule: React.FC = () => {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-xs">
           <SubtlePanel padding="sm">
             <span className="text-slate-500 dark:text-slate-400 block text-[11px] font-medium">
-              Modelos Disponíveis
+              {L("Modelos Disponíveis", "Available Templates")}
             </span>
             <span className="text-lg font-bold text-[#172B2A] dark:text-white mt-0.5 block">
               {documentTemplates.length}
@@ -397,7 +440,7 @@ export const DocumentsAdminModule: React.FC = () => {
 
           <SubtlePanel padding="sm">
             <span className="text-slate-500 dark:text-slate-400 block text-[11px] font-medium">
-              Modelos Ativos
+              {L("Modelos Ativos", "Active Templates")}
             </span>
             <span className="text-lg font-bold text-[#16845B] dark:text-emerald-400 mt-0.5 block">
               {documentTemplates.filter((t) => t.status === "ATIVO").length}
@@ -406,7 +449,7 @@ export const DocumentsAdminModule: React.FC = () => {
 
           <SubtlePanel padding="sm">
             <span className="text-slate-500 dark:text-slate-400 block text-[11px] font-medium">
-              Documentos Gerados
+              {L("Documentos Gerados", "Generated Documents")}
             </span>
             <span className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-0.5 block">
               {generatedDocuments.length}
@@ -415,7 +458,7 @@ export const DocumentsAdminModule: React.FC = () => {
 
           <SubtlePanel padding="sm">
             <span className="text-slate-500 dark:text-slate-400 block text-[11px] font-medium">
-              Campus IFPR
+              {L("Campus IFPR", "IFPR Campus")}
             </span>
             <span className="text-xs font-bold text-[#064E3B] dark:text-emerald-300 mt-1 block truncate">
               {projectSettings.institution.campus}
@@ -435,7 +478,7 @@ export const DocumentsAdminModule: React.FC = () => {
               onClick={() => setViewMode("gallery")}
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Voltar para Modelos Pré-prontos</span>
+              <span>{L("Voltar para Modelos Pré-prontos", "Back to Ready Templates")}</span>
             </UIButton>
           </div>
           <ProjectConfigView />
@@ -452,12 +495,14 @@ export const DocumentsAdminModule: React.FC = () => {
                   leftIcon={<Search className="w-4 h-4" />}
                   value={historySearchQuery}
                   onChange={(e) => setHistorySearchQuery(e.target.value)}
-                  placeholder="Buscar por protocolo, título, parceiro ou usuário..."
+                  placeholder={L("Buscar por protocolo, título, parceiro ou usuário...", "Search by protocol, title, partner, or user...")}
                 />
               </div>
 
               <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
-                <span className="font-medium">{filteredHistory.length} documento(s) encontrado(s)</span>
+                <span className="font-medium">
+                  {L(`${filteredHistory.length} documento(s) encontrado(s)`, `${filteredHistory.length} document(s) found`)}
+                </span>
                 <UIButton
                   type="button"
                   variant="secondary"
@@ -465,7 +510,7 @@ export const DocumentsAdminModule: React.FC = () => {
                   onClick={() => setViewMode("gallery")}
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Emitir Novo</span>
+                  <span>{L("Emitir Novo", "Issue New")}</span>
                 </UIButton>
               </div>
             </div>
@@ -477,13 +522,19 @@ export const DocumentsAdminModule: React.FC = () => {
                 icon={<FileCheck className="w-7 h-7" />}
                 title={
                   generatedDocuments.length === 0
-                    ? "Nenhum documento emitido ainda"
-                    : "Nenhum documento corresponde à busca"
+                    ? L("Nenhum documento emitido ainda", "No documents issued yet")
+                    : L("Nenhum documento corresponde à busca", "No documents match your search")
                 }
                 description={
                   generatedDocuments.length === 0
-                    ? "Na aba 'Modelos Pré-prontos', selecione um modelo e clique em 'Usar modelo' para gerar seu primeiro documento oficial em PDF."
-                    : "Tente buscar com outros termos de protocolo, nome ou destinatário."
+                    ? L(
+                        "Na aba 'Modelos Pré-prontos', selecione um modelo e clique em 'Usar modelo' para gerar seu primeiro documento oficial em PDF.",
+                        "In the 'Ready Templates' tab, select a template and click 'Use template' to generate your first official PDF document."
+                      )
+                    : L(
+                        "Tente buscar com outros termos de protocolo, nome ou destinatário.",
+                        "Try searching with different protocol, name, or recipient terms."
+                      )
                 }
                 action={
                   generatedDocuments.length === 0 ? (
@@ -494,7 +545,7 @@ export const DocumentsAdminModule: React.FC = () => {
                       onClick={() => setViewMode("gallery")}
                     >
                       <FileText className="w-4 h-4" />
-                      <span>Explorar Modelos Disponíveis</span>
+                      <span>{L("Explorar Modelos Disponíveis", "Explore Available Templates")}</span>
                     </UIButton>
                   ) : undefined
                 }
@@ -506,13 +557,13 @@ export const DocumentsAdminModule: React.FC = () => {
                 <table className="w-full text-left text-xs text-slate-700 dark:text-slate-300">
                   <thead className="bg-[#F8FAFC] dark:bg-slate-800/80 text-slate-500 dark:text-slate-300 uppercase tracking-wider text-[10px] border-b border-slate-200 dark:border-slate-800">
                     <tr>
-                      <th className="px-4 py-3.5 font-semibold">Nº Protocolo</th>
-                      <th className="px-4 py-3.5 font-semibold">Documento / Modelo</th>
-                      <th className="px-4 py-3.5 font-semibold">Destinatário / Parte</th>
-                      <th className="px-4 py-3.5 font-semibold">Data de Emissão</th>
-                      <th className="px-4 py-3.5 font-semibold">Responsável</th>
-                      <th className="px-4 py-3.5 font-semibold">Status</th>
-                      <th className="px-4 py-3.5 font-semibold text-right">Ações</th>
+                      <th className="px-4 py-3.5 font-semibold">{L("Nº Protocolo", "Protocol #")}</th>
+                      <th className="px-4 py-3.5 font-semibold">{L("Documento / Modelo", "Document / Template")}</th>
+                      <th className="px-4 py-3.5 font-semibold">{L("Destinatário / Parte", "Recipient / Party")}</th>
+                      <th className="px-4 py-3.5 font-semibold">{L("Data de Emissão", "Issue Date")}</th>
+                      <th className="px-4 py-3.5 font-semibold">{L("Responsável", "Issued By")}</th>
+                      <th className="px-4 py-3.5 font-semibold">{L("Situação", "Status")}</th>
+                      <th className="px-4 py-3.5 font-semibold text-right">{L("Ações", "Actions")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
@@ -531,7 +582,7 @@ export const DocumentsAdminModule: React.FC = () => {
                           <div className="flex items-center space-x-1">
                             <Clock className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
                             <span>
-                              {new Date(doc.generatedAt).toLocaleString("pt-BR", {
+                              {new Date(doc.generatedAt).toLocaleString(locale, {
                                 day: "2-digit",
                                 month: "2-digit",
                                 year: "numeric",
@@ -550,7 +601,7 @@ export const DocumentsAdminModule: React.FC = () => {
                           </div>
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap">
-                          <UIBadge tone="emerald">{doc.status || "Emitido"}</UIBadge>
+                          <UIBadge tone="emerald">{doc.status || L("Emitido", "Issued")}</UIBadge>
                         </td>
                         <td className="px-4 py-3.5 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end space-x-1.5">
@@ -560,7 +611,8 @@ export const DocumentsAdminModule: React.FC = () => {
                               size="sm"
                               onClick={() => setDetailsRecord(doc)}
                               className="!px-2 !py-1.5"
-                              title="Ver detalhes do preenchimento"
+                              title={L("Ver detalhes do preenchimento", "View filled details")}
+                              aria-label={L("Ver detalhes do preenchimento", "View filled details")}
                             >
                               <Eye className="w-3.5 h-3.5" />
                             </UIButton>
@@ -571,7 +623,8 @@ export const DocumentsAdminModule: React.FC = () => {
                               size="sm"
                               onClick={() => handleReuseHistoryDocument(doc)}
                               className="!px-2 !py-1.5 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/50 hover:bg-amber-50 dark:hover:bg-amber-950/30"
-                              title="Reutilizar / Editar no Gerador"
+                              title={L("Reutilizar / Editar no Gerador", "Reuse / Edit in Generator")}
+                              aria-label={L("Reutilizar / Editar no Gerador", "Reuse / Edit in Generator")}
                             >
                               <RotateCcw className="w-3.5 h-3.5" />
                             </UIButton>
@@ -582,7 +635,7 @@ export const DocumentsAdminModule: React.FC = () => {
                               size="sm"
                               onClick={() => handleReDownloadHistory(doc)}
                               className="!px-2.5 !py-1.5"
-                              title="Baixar PDF novamente"
+                              title={L("Baixar PDF novamente", "Download PDF again")}
                             >
                               <Download className="w-3.5 h-3.5" />
                               <span>PDF</span>
@@ -595,7 +648,8 @@ export const DocumentsAdminModule: React.FC = () => {
                                 size="sm"
                                 onClick={() => handleDeleteHistory(doc)}
                                 className="!px-2 !py-1.5"
-                                title="Excluir do histórico"
+                                title={L("Excluir do histórico", "Delete from history")}
+                                aria-label={L("Excluir do histórico", "Delete from history")}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </UIButton>
@@ -621,38 +675,50 @@ export const DocumentsAdminModule: React.FC = () => {
                   <FileText className="w-4 h-4" />
                 </div>
                 <h3 className="text-base font-bold text-[#172B2A] dark:text-white">
-                  Modelos pré-prontos
+                  {L("Modelos pré-prontos", "Ready-made templates")}
                 </h3>
                 <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                  ({activeModelsCount} {activeModelsCount === 1 ? "modelo disponível" : "modelos disponíveis"})
+                  ({activeModelsCount}{" "}
+                  {activeModelsCount === 1
+                    ? L("modelo disponível", "template available")
+                    : L("modelos disponíveis", "templates available")}
+                  )
                 </span>
               </div>
               <span className="text-[11px] text-[#16845B] dark:text-emerald-400 font-semibold">
-                Imutabilidade garantida · Os templates originais são preservados
+                {L(
+                  "Imutabilidade garantida · Os modelos originais são preservados",
+                  "Immutability guaranteed · Original templates are preserved"
+                )}
               </span>
             </div>
 
             <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-              Selecione um dos modelos institucionais abaixo e clique em <strong className="text-[#172B2A] dark:text-white">"Usar modelo"</strong>. O gerador será aberto com os dados cadastrais do projeto já preenchidos, permitindo que você revise apenas os campos variáveis antes de exportar o PDF oficial.
+              {L("Selecione um dos modelos institucionais abaixo e clique em ", "Select one of the institutional templates below and click ")}
+              <strong className="text-[#172B2A] dark:text-white">"{L("Usar modelo", "Use template")}"</strong>
+              {L(
+                ". O gerador será aberto com os dados cadastrais do projeto já preenchidos, permitindo que você revise apenas os campos variáveis antes de exportar o PDF oficial.",
+                ". The generator opens with project registration data already filled in, allowing you to review only variable fields before exporting the official PDF."
+              )}
             </p>
 
             {/* Workflow steps chip track */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px]">
               <SubtlePanel padding="sm" className="!py-2 !px-2.5 flex items-center space-x-2 text-slate-700 dark:text-slate-300">
                 <span className="w-4 h-4 rounded-full bg-[#EBF5F0] dark:bg-emerald-500/20 text-[#16845B] dark:text-emerald-300 font-bold text-[10px] flex items-center justify-center shrink-0">1</span>
-                <span className="truncate font-medium">Selecionar modelo</span>
+                <span className="truncate font-medium">{L("Selecionar modelo", "Select template")}</span>
               </SubtlePanel>
               <SubtlePanel padding="sm" className="!py-2 !px-2.5 flex items-center space-x-2 text-slate-700 dark:text-slate-300">
                 <span className="w-4 h-4 rounded-full bg-[#EBF5F0] dark:bg-emerald-500/20 text-[#16845B] dark:text-emerald-300 font-bold text-[10px] flex items-center justify-center shrink-0">2</span>
-                <span className="truncate font-medium">Clicar "Usar modelo"</span>
+                <span className="truncate font-medium">{L('Clicar em "Usar modelo"', 'Click "Use template"')}</span>
               </SubtlePanel>
               <SubtlePanel padding="sm" className="!py-2 !px-2.5 flex items-center space-x-2 text-slate-700 dark:text-slate-300">
                 <span className="w-4 h-4 rounded-full bg-[#EBF5F0] dark:bg-emerald-500/20 text-[#16845B] dark:text-emerald-300 font-bold text-[10px] flex items-center justify-center shrink-0">3</span>
-                <span className="truncate font-medium">Editar campos necessários</span>
+                <span className="truncate font-medium">{L("Editar campos necessários", "Edit required fields")}</span>
               </SubtlePanel>
               <SubtlePanel padding="sm" className="!py-2 !px-2.5 flex items-center space-x-2 text-slate-700 dark:text-slate-300">
                 <span className="w-4 h-4 rounded-full bg-[#EBF5F0] dark:bg-emerald-500/20 text-[#16845B] dark:text-emerald-300 font-bold text-[10px] flex items-center justify-center shrink-0">4</span>
-                <span className="truncate font-medium">Gerar e baixar PDF</span>
+                <span className="truncate font-medium">{L("Gerar e baixar PDF", "Generate & download PDF")}</span>
               </SubtlePanel>
             </div>
           </SurfaceCard>
@@ -667,20 +733,20 @@ export const DocumentsAdminModule: React.FC = () => {
                   leftIcon={<Search className="w-4 h-4" />}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar modelo por título, código ou finalidade..."
+                  placeholder={L("Buscar modelo por título, código ou finalidade...", "Search template by title, code, or purpose...")}
                 />
               </div>
 
               {/* Category Pills & Status Filter */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 text-xs">
                 {[
-                  { id: "TODOS", label: "Todos" },
-                  { id: "EXTENSAO", label: "Extensão" },
-                  { id: "RESPONSABILIDADE", label: "Responsabilidade" },
-                  { id: "DECLARACOES", label: "Declarações" },
-                  { id: "RELATORIOS", label: "Relatórios" },
-                  { id: "ACHADOS_PERDIDOS", label: "Achados & Perdidos" },
-                  { id: "INSTITUCIONAL", label: "Institucional" },
+                  { id: "TODOS", label: L("Todos", "All") },
+                  { id: "EXTENSAO", label: L("Extensão", "Extension") },
+                  { id: "RESPONSABILIDADE", label: L("Responsabilidade", "Responsibility") },
+                  { id: "DECLARACOES", label: L("Declarações", "Declarations") },
+                  { id: "RELATORIOS", label: L("Relatórios", "Reports") },
+                  { id: "ACHADOS_PERDIDOS", label: L("Achados e Perdidos", "Lost & Found") },
+                  { id: "INSTITUCIONAL", label: L("Institucional", "Institutional") },
                 ].map((cat) => (
                   <UIButton
                     key={cat.id}
@@ -701,9 +767,9 @@ export const DocumentsAdminModule: React.FC = () => {
                     onChange={(e) => setStatusFilter(e.target.value as any)}
                     className="!py-1.5 !text-xs"
                   >
-                    <option value="TODOS">Status: Todos</option>
-                    <option value="ATIVO">Apenas Ativos</option>
-                    <option value="INATIVO">Apenas Inativos</option>
+                    <option value="TODOS">{L("Situação: Todos", "Status: All")}</option>
+                    <option value="ATIVO">{L("Apenas Ativos", "Active Only")}</option>
+                    <option value="INATIVO">{L("Apenas Inativos", "Inactive Only")}</option>
                   </UISelect>
                 </div>
               </div>
@@ -715,8 +781,11 @@ export const DocumentsAdminModule: React.FC = () => {
             <SurfaceCard padding="lg">
               <EmptyState
                 icon={<FileText className="w-7 h-7" />}
-                title="Nenhum modelo encontrado"
-                description="Tente ajustar os termos de pesquisa ou os filtros de categoria."
+                title={L("Nenhum modelo encontrado", "No templates found")}
+                description={L(
+                  "Tente ajustar os termos de pesquisa ou os filtros de categoria.",
+                  "Try adjusting the search terms or category filters."
+                )}
               />
             </SurfaceCard>
           ) : (
@@ -725,12 +794,12 @@ export const DocumentsAdminModule: React.FC = () => {
                 const catBadge = getCategoryBadge(template.category);
 
                 const lastUpdatedFormatted = template.updatedAt
-                  ? new Date(template.updatedAt).toLocaleDateString("pt-BR", {
+                  ? new Date(template.updatedAt).toLocaleDateString(locale, {
                       day: "2-digit",
                       month: "2-digit",
                       year: "numeric",
                     })
-                  : "Padrão Sistema";
+                  : L("Padrão do Sistema", "System Default");
 
                 return (
                   <SurfaceCard
@@ -754,7 +823,7 @@ export const DocumentsAdminModule: React.FC = () => {
 
                         <div className="flex items-center space-x-1.5 shrink-0">
                           <UIBadge tone={template.status === "ATIVO" ? "emerald" : "slate"}>
-                            {template.status}
+                            {template.status === "ATIVO" ? L("ATIVO", "ACTIVE") : L("INATIVO", "INACTIVE")}
                           </UIBadge>
 
                           {isAdmin && (
@@ -764,8 +833,13 @@ export const DocumentsAdminModule: React.FC = () => {
                               className="text-slate-400 hover:text-[#16845B] dark:hover:text-emerald-400 transition-colors cursor-pointer"
                               title={
                                 template.status === "ATIVO"
-                                  ? "Desativar modelo"
-                                  : "Ativar modelo"
+                                  ? L("Desativar modelo", "Deactivate template")
+                                  : L("Ativar modelo", "Activate template")
+                              }
+                              aria-label={
+                                template.status === "ATIVO"
+                                  ? L("Desativar modelo", "Deactivate template")
+                                  : L("Ativar modelo", "Activate template")
                               }
                             >
                               {template.status === "ATIVO" ? (
@@ -790,18 +864,18 @@ export const DocumentsAdminModule: React.FC = () => {
                     {/* Metadata Details (Seções, Campos, Assinaturas, Última Atualização) */}
                     <div className="space-y-2 pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400">
                       <div className="flex items-center justify-between font-medium">
-                        <span>{template.sections?.length || 0} seções</span>
+                        <span>{L(`${template.sections?.length || 0} seções`, `${template.sections?.length || 0} sections`)}</span>
                         <span>•</span>
-                        <span>{template.fields?.length || 0} campos padrão</span>
+                        <span>{L(`${template.fields?.length || 0} campos padrão`, `${template.fields?.length || 0} default fields`)}</span>
                         <span>•</span>
-                        <span>{template.signatures?.length || 0} assinaturas</span>
+                        <span>{L(`${template.signatures?.length || 0} assinaturas`, `${template.signatures?.length || 0} signatures`)}</span>
                       </div>
                       <div className="flex items-center justify-between text-[10px] text-slate-400 dark:text-slate-500">
                         <span className="flex items-center space-x-1">
                           <Clock className="w-3 h-3" />
-                          <span>Atualizado: {lastUpdatedFormatted}</span>
+                          <span>{L(`Atualizado: ${lastUpdatedFormatted}`, `Updated: ${lastUpdatedFormatted}`)}</span>
                         </span>
-                        <span>Versão {template.version}.0</span>
+                        <span>{L(`Versão ${template.version}.0`, `Version ${template.version}.0`)}</span>
                       </div>
                     </div>
 
@@ -814,7 +888,8 @@ export const DocumentsAdminModule: React.FC = () => {
                           size="sm"
                           onClick={() => handleOpenPreview(template)}
                           className="!p-2 text-slate-500 hover:text-[#16845B] dark:hover:text-emerald-400"
-                          title="Visualizar prévia A4"
+                          title={L("Visualizar prévia A4", "View A4 preview")}
+                          aria-label={L("Visualizar prévia A4", "View A4 preview")}
                         >
                           <Eye className="w-4 h-4" />
                         </UIButton>
@@ -827,7 +902,8 @@ export const DocumentsAdminModule: React.FC = () => {
                               size="sm"
                               onClick={() => handleOpenEdit(template)}
                               className="!p-2 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400"
-                              title="Editar modelo (Estrutura, Campos e Textos)"
+                              title={L("Editar modelo (Estrutura, Campos e Textos)", "Edit template (Structure, Fields & Text)")}
+                              aria-label={L("Editar modelo", "Edit template")}
                             >
                               <Edit3 className="w-4 h-4" />
                             </UIButton>
@@ -838,7 +914,8 @@ export const DocumentsAdminModule: React.FC = () => {
                               size="sm"
                               onClick={() => handleDuplicate(template)}
                               className="!p-2 text-slate-500 hover:text-amber-600 dark:hover:text-amber-400"
-                              title="Duplicar modelo (Criar nova versão)"
+                              title={L("Duplicar modelo (Criar nova versão)", "Duplicate template (Create new version)")}
+                              aria-label={L("Duplicar modelo", "Duplicate template")}
                             >
                               <Copy className="w-4 h-4" />
                             </UIButton>
@@ -849,7 +926,8 @@ export const DocumentsAdminModule: React.FC = () => {
                               size="sm"
                               onClick={() => handleDelete(template)}
                               className="!p-2 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400"
-                              title="Excluir modelo"
+                              title={L("Excluir modelo", "Delete template")}
+                              aria-label={L("Excluir modelo", "Delete template")}
                             >
                               <Trash2 className="w-4 h-4" />
                             </UIButton>
@@ -866,7 +944,7 @@ export const DocumentsAdminModule: React.FC = () => {
                         onClick={() => handleUseTemplate(template)}
                       >
                         <FilePlus className="w-4 h-4" />
-                        <span>Usar modelo</span>
+                        <span>{L("Usar modelo", "Use template")}</span>
                       </UIButton>
                     </div>
                   </SurfaceCard>
@@ -907,7 +985,7 @@ export const DocumentsAdminModule: React.FC = () => {
                     <span className="text-xs font-mono font-bold text-[#16845B] dark:text-emerald-400">
                       {detailsRecord.documentNumber}
                     </span>
-                    <UIBadge tone="emerald">{detailsRecord.status || "Emitido"}</UIBadge>
+                    <UIBadge tone="emerald">{detailsRecord.status || L("Emitido", "Issued")}</UIBadge>
                   </div>
                   <h3 className="text-sm font-bold text-[#172B2A] dark:text-white mt-0.5">
                     {detailsRecord.templateTitle}
@@ -920,7 +998,7 @@ export const DocumentsAdminModule: React.FC = () => {
                 size="sm"
                 onClick={() => setDetailsRecord(null)}
                 className="!p-1.5"
-                aria-label="Fechar detalhes"
+                aria-label={L("Fechar detalhes", "Close details")}
               >
                 <X className="w-5 h-5" />
               </UIButton>
@@ -932,7 +1010,7 @@ export const DocumentsAdminModule: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <span className="text-slate-500 dark:text-slate-400 block text-[10px] font-semibold uppercase tracking-wide">
-                      Destinatário / Parte
+                      {L("Destinatário / Parte", "Recipient / Party")}
                     </span>
                     <span className="font-semibold text-[#172B2A] dark:text-slate-200 text-xs mt-0.5 block">
                       {detailsRecord.recipientOrOrg}
@@ -940,15 +1018,15 @@ export const DocumentsAdminModule: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-slate-500 dark:text-slate-400 block text-[10px] font-semibold uppercase tracking-wide">
-                      Data e Hora da Emissão
+                      {L("Data e Hora da Emissão", "Issue Date & Time")}
                     </span>
                     <span className="font-semibold text-[#172B2A] dark:text-slate-200 text-xs mt-0.5 block">
-                      {new Date(detailsRecord.generatedAt).toLocaleString("pt-BR")}
+                      {new Date(detailsRecord.generatedAt).toLocaleString(locale)}
                     </span>
                   </div>
                   <div>
                     <span className="text-slate-500 dark:text-slate-400 block text-[10px] font-semibold uppercase tracking-wide">
-                      Emitido Por
+                      {L("Emitido Por", "Issued By")}
                     </span>
                     <span className="font-semibold text-[#172B2A] dark:text-slate-200 text-xs mt-0.5 block">
                       {detailsRecord.generatedByName}
@@ -956,10 +1034,10 @@ export const DocumentsAdminModule: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-slate-500 dark:text-slate-400 block text-[10px] font-semibold uppercase tracking-wide">
-                      E-mail do Emissor
+                      {L("E-mail do Emissor", "Issuer E-mail")}
                     </span>
                     <span className="font-semibold text-[#172B2A] dark:text-slate-200 text-xs mt-0.5 block">
-                      {detailsRecord.generatedByEmail || "Sistema Institucional"}
+                      {detailsRecord.generatedByEmail || L("Sistema Institucional", "Institutional System")}
                     </span>
                   </div>
                 </div>
@@ -969,7 +1047,7 @@ export const DocumentsAdminModule: React.FC = () => {
               <div className="space-y-2">
                 <h4 className="font-bold text-[#172B2A] dark:text-slate-200 text-xs flex items-center space-x-1.5">
                   <Info className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
-                  <span>Dados e Campos Registrados na Emissão:</span>
+                  <span>{L("Dados e Campos Registrados na Emissão:", "Data and Fields Recorded at Issuance:")}</span>
                 </h4>
                 <div className="bg-[#F8FAFC] dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl divide-y divide-slate-200/70 dark:divide-slate-800 max-h-60 overflow-y-auto">
                   {Object.entries(detailsRecord.fieldsData || {}).map(([key, val]) => (
@@ -978,7 +1056,7 @@ export const DocumentsAdminModule: React.FC = () => {
                         {`{{${key}}}`}
                       </span>
                       <span className="text-slate-700 dark:text-slate-300 font-sans whitespace-pre-line flex-1 text-right sm:text-left">
-                        {val || <em className="text-slate-400 dark:text-slate-600">(vazio)</em>}
+                        {val || <em className="text-slate-400 dark:text-slate-600">{L("(vazio)", "(empty)")}</em>}
                       </span>
                     </div>
                   ))}
@@ -994,7 +1072,7 @@ export const DocumentsAdminModule: React.FC = () => {
                 size="sm"
                 onClick={() => setDetailsRecord(null)}
               >
-                Fechar
+                {L("Fechar", "Close")}
               </UIButton>
               <div className="flex items-center space-x-2">
                 <UIButton
@@ -1005,7 +1083,7 @@ export const DocumentsAdminModule: React.FC = () => {
                   className="text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60 hover:bg-amber-50 dark:hover:bg-amber-950/30"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Reutilizar / Editar no Gerador</span>
+                  <span>{L("Reutilizar / Editar no Gerador", "Reuse / Edit in Generator")}</span>
                 </UIButton>
                 <UIButton
                   type="button"
@@ -1014,7 +1092,7 @@ export const DocumentsAdminModule: React.FC = () => {
                   onClick={() => handleReDownloadHistory(detailsRecord)}
                 >
                   <Download className="w-4 h-4" />
-                  <span>Baixar PDF</span>
+                  <span>{L("Baixar PDF", "Download PDF")}</span>
                 </UIButton>
               </div>
             </div>

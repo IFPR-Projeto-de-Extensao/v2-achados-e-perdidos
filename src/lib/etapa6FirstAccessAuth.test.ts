@@ -654,7 +654,7 @@ describe("Etapa 6 — Autenticação, Criação Administrativa e Primeiro Acesso
     expect(dashboardSrc).not.toContain('logAdminAction(\n        "NOVO_USUARIO"');
     expect(dashboardSrc).not.toContain('logAdminAction("NOVO_USUARIO"');
     expect(dashboardSrc).toContain("isVerifiedRootAdminAuthUser(auth.currentUser)");
-    expect(dashboardSrc).toContain('{isRootAdminUser && <option value="ADMIN">ADMINISTRADOR (TI)</option>}');
+    expect(dashboardSrc).toContain('{isRootAdminUser && <option value="ADMIN">');
 
     // Protected firestore.rules SHA-256 must match Etapa 4 homologated hash
     expect(rulesSha256).toBe("7fa455e632a9d1831517fe7269e52d922b8614f903f0a28f025f6418812d95a5");

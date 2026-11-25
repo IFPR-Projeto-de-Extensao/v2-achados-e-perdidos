@@ -416,11 +416,11 @@ describe("LOCALIZA+ v1.10.10 — Validação da Persistência da Assinatura Digi
     const remoteCode = fs.readFileSync(remotePath, "utf-8");
 
     // Ponto 1: ItemDetailModal (Devolução presencial do recebedor/aluno)
-    expect(itemDetailCode).toContain("signerName={returnRecipientName || \"Aluno / Servidor\"}");
+    expect(itemDetailCode).toContain('signerName={returnRecipientName || L("Aluno / Servidor", "Student / Staff")}');
     expect(itemDetailCode).toContain("onSignatureCapture={(url) => setReturnSignatureDataUrl(url)}");
 
     // Ponto 2: ItemDetailModal (Assinatura presencial do servidor atendente)
-    expect(itemDetailCode).toContain("signerName={currentUser?.name || \"Servidor Atendente\"}");
+    expect(itemDetailCode).toContain('signerName={currentUser?.name || L("Servidor Atendente", "Attendant Staff")}');
     expect(itemDetailCode).toContain("setStaffSignatureDataUrl(dataUrl);");
 
     // Ponto 3: RemoteSignatureModal (Assinatura digital remota via e-mail)

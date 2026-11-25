@@ -455,7 +455,7 @@ describe("ETAPA 11: Blindagem Completa do Fluxo de Devolução, Leitor QR e Fire
       expect(code).toContain("canStartFormalReturnForItem");
       expect(code).toContain("canReopenFormalReturn");
       expect(code).toContain("returnModalAutoOpen");
-      expect(code).toContain('err?.message || "Erro ao registrar devolução do objeto."');
+      expect(code).toContain('err?.message || L("Erro ao registrar devolução do objeto."');
     });
 
     it("DashboardView.tsx, ObjectsView.tsx e RemoteSignatureModal.tsx não devem possuir atalho direto para DEVOLVIDO", () => {

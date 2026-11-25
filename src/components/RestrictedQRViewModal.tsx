@@ -15,6 +15,13 @@ import {
   Lock,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import {
+  localize,
+  translateCampusLocation,
+  translateCategory,
+  translateColor,
+  translateItemStatus,
+} from "../lib/i18n";
 
 interface RestrictedQRViewModalProps {
   item: LostFoundItem;
@@ -25,12 +32,16 @@ export const RestrictedQRViewModal: React.FC<RestrictedQRViewModalProps> = ({
   item,
   onClose,
 }) => {
-  const { addToast } = useApp();
+  const { addToast, language = "pt" } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
 
   const handleCopyPublicInfo = () => {
-    const textToCopy = `[IFPR Achados e Perdidos] Objeto: ${item.title} | Código QR: ${item.qrCodeId} | Local: ${item.location} | Status: ${item.status}`;
+    const textToCopy = L(
+      `[IFPR Achados e Perdidos] Objeto: ${item.title} | Código QR: ${item.qrCodeId} | Local: ${item.location} | Situação: ${translateItemStatus(item.status, language)}`,
+      `[IFPR Lost & Found] Item: ${item.title} | QR Code: ${item.qrCodeId} | Location: ${translateCampusLocation(item.location, language)} | Status: ${translateItemStatus(item.status, language)}`
+    );
     navigator.clipboard.writeText(textToCopy);
-    addToast("Informações públicas do QR Code copiadas!", "success");
+    addToast(L("Informações públicas do Código QR copiadas!", "Public QR Code details copied!"), "success");
   };
 
   return (
@@ -52,10 +63,10 @@ export const RestrictedQRViewModal: React.FC<RestrictedQRViewModalProps> = ({
               id="restricted-qr-title"
               className="font-bold text-sm sm:text-base tracking-tight text-[#172B2A] dark:text-white"
             >
-              Visualização Pública Restrita QR
+              {L("Visualização Pública Restrita QR", "Restricted Public QR View")}
             </h3>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-              IFPR Campus Ivaiporã • Achados & Perdidos
+              {L("IFPR Campus Ivaiporã • Achados & Perdidos", "IFPR Campus Ivaiporã • Lost & Found")}
             </p>
           </div>
         </div>
@@ -63,7 +74,7 @@ export const RestrictedQRViewModal: React.FC<RestrictedQRViewModalProps> = ({
         <button
           type="button"
           onClick={onClose}
-          aria-label="Fechar visualização pública do QR Code"
+          aria-label={L("Fechar visualização pública do Código QR", "Close public QR Code view")}
           className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-[#172B2A] dark:hover:text-white transition-colors cursor-pointer"
         >
           <X className="w-4 h-4" />
@@ -74,7 +85,10 @@ export const RestrictedQRViewModal: React.FC<RestrictedQRViewModalProps> = ({
       <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200/80 dark:border-amber-800/60 px-5 sm:px-6 py-2.5 flex items-center gap-2.5 text-xs text-amber-900 dark:text-amber-200">
         <Lock className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
         <p className="text-[11px] font-semibold leading-snug">
-          Modo Restrito de Privacidade: Dados confidenciais, e-mails e chave de segurança do proprietário omitidos.
+          {L(
+            "Modo Restrito de Privacidade: Dados confidenciais, e-mails e chave de segurança do proprietário omitidos.",
+            "Restricted Privacy Mode: Confidential details, emails, and owner security keys are hidden."
+          )}
         </p>
       </div>
 
@@ -91,9 +105,9 @@ export const RestrictedQRViewModal: React.FC<RestrictedQRViewModalProps> = ({
           <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-1.5">
               <UIBadge tone={item.type === "PERDIDO" ? "rose" : "emerald"}>
-                {item.type}
+                {translateItemStatus(item.type, language)}
               </UIBadge>
-              <UIBadge tone="slate">{item.status}</UIBadge>
+              <UIBadge tone="slate">{translateItemStatus(item.status, language)}</UIBadge>
             </div>
 
             <h2 className="text-base font-bold text-[#172B2A] dark:text-white leading-tight break-words">
@@ -102,7 +116,7 @@ export const RestrictedQRViewModal: React.FC<RestrictedQRViewModalProps> = ({
 
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium flex items-center justify-center sm:justify-start gap-1.5">
               <Tag className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
-              <span>{item.category}</span>
+              <span>{translateCategory(item.category, language)}</span>
             </p>
           </div>
         </SubtlePanel>
@@ -111,39 +125,39 @@ export const RestrictedQRViewModal: React.FC<RestrictedQRViewModalProps> = ({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
           <SubtlePanel padding="sm">
             <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block mb-0.5">
-              Local no Campus
+              {L("Local no Campus", "Campus Location")}
             </span>
             <span className="font-semibold text-[#172B2A] dark:text-white flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400 shrink-0" />
-              <span>{item.location}</span>
+              <span>{translateCampusLocation(item.location, language)}</span>
             </span>
           </SubtlePanel>
 
           <SubtlePanel padding="sm">
             <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block mb-0.5">
-              Data da Ocorrência
+              {L("Data da Ocorrência", "Occurrence Date")}
             </span>
             <span className="font-semibold text-[#172B2A] dark:text-white flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400 shrink-0" />
-              <span>{formatDate(item.date)}</span>
+              <span>{formatDate(item.date, undefined, language)}</span>
             </span>
           </SubtlePanel>
 
           <SubtlePanel padding="sm">
             <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block mb-0.5">
-              Cor Predominante
+              {L("Cor Predominante", "Primary Color")}
             </span>
             <span className="font-semibold text-[#172B2A] dark:text-white">
-              {item.color || "Não informada"}
+              {item.color ? translateColor(item.color, language) : L("Não informada", "Not provided")}
             </span>
           </SubtlePanel>
 
           <SubtlePanel padding="sm">
             <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block mb-0.5">
-              Marca / Modelo
+              {L("Marca / Modelo", "Brand / Model")}
             </span>
             <span className="font-semibold text-[#172B2A] dark:text-white">
-              {item.brand || "Não informada"}
+              {item.brand || L("Não informada", "Not provided")}
             </span>
           </SubtlePanel>
         </div>
@@ -151,7 +165,7 @@ export const RestrictedQRViewModal: React.FC<RestrictedQRViewModalProps> = ({
         {/* Description */}
         <div className="space-y-1.5">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
-            Descrição Pública
+            {L("Descrição Pública", "Public Description")}
           </span>
           <SubtlePanel padding="sm">
             <p className="text-xs text-[#172B2A] dark:text-slate-200 leading-relaxed">
@@ -171,13 +185,16 @@ export const RestrictedQRViewModal: React.FC<RestrictedQRViewModalProps> = ({
 
           <div className="space-y-1 min-w-0">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-[#16845B] dark:text-emerald-400 block">
-              Código do QR Tag Institucional
+              {L("Código da Etiqueta QR Institucional", "Institutional QR Tag Code")}
             </span>
             <p className="text-xs font-mono font-bold text-[#172B2A] dark:text-white break-all">
               {item.qrCodeId}
             </p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
-              Código gravado e verificado no acervo de Achados e Perdidos do IFPR Campus Ivaiporã.
+              {L(
+                "Código gravado e verificado no acervo de Achados e Perdidos do IFPR Campus Ivaiporã.",
+                "Code recorded and verified in the IFPR Campus Ivaiporã Lost & Found catalog."
+              )}
             </p>
           </div>
         </SubtlePanel>
@@ -186,12 +203,22 @@ export const RestrictedQRViewModal: React.FC<RestrictedQRViewModalProps> = ({
         <div className="p-4 rounded-2xl bg-[#EBF5F0]/70 dark:bg-emerald-950/30 border border-[#16845B]/20 dark:border-emerald-800/50 text-xs space-y-2 text-[#172B2A] dark:text-slate-200">
           <div className="flex items-center gap-2 font-bold text-[#064E3B] dark:text-emerald-300">
             <Building className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
-            <span>Instruções para Resgate no Campus Ivaiporã</span>
+            <span>{L("Instruções para Resgate no Campus Ivaiporã", "Pickup Instructions at Campus Ivaiporã")}</span>
           </div>
           <ul className="space-y-1 text-[11px] leading-relaxed list-disc list-inside text-slate-600 dark:text-slate-300">
-            <li>Dirija-se à <strong>Portaria/Guarita Principal</strong> ou à <strong>Seção de Apoio ao Estudante (SEBAC)</strong> no Bloco Administrativo.</li>
-            <li>Apresente um <strong>documento oficial com foto</strong> (RG, CNH ou Carteira do Estudante IFPR).</li>
-            <li>Informe o código da etiqueta QR (<strong className="font-mono">{item.qrCodeId}</strong>) ao servidor responsável para conferência e devolução.</li>
+            {language === "en" ? (
+              <>
+                <li>Go to the <strong>Main Gatehouse</strong> or the <strong>Student Support Section (SEBAC)</strong> in the Administrative Building.</li>
+                <li>Present an <strong>official photo ID</strong> (National ID, Driver's License, or IFPR Student ID).</li>
+                <li>Provide the QR tag code (<strong className="font-mono">{item.qrCodeId}</strong>) to the staff member for verification and return.</li>
+              </>
+            ) : (
+              <>
+                <li>Dirija-se à <strong>Portaria/Guarita Principal</strong> ou à <strong>Seção de Apoio ao Estudante (SEBAC)</strong> no Bloco Administrativo.</li>
+                <li>Apresente um <strong>documento oficial com foto</strong> (RG, CNH ou Carteira do Estudante IFPR).</li>
+                <li>Informe o código da etiqueta QR (<strong className="font-mono">{item.qrCodeId}</strong>) ao servidor responsável para conferência e devolução.</li>
+              </>
+            )}
           </ul>
         </div>
       </div>
@@ -205,7 +232,7 @@ export const RestrictedQRViewModal: React.FC<RestrictedQRViewModalProps> = ({
           onClick={handleCopyPublicInfo}
         >
           <Copy className="w-3.5 h-3.5" />
-          <span>Copiar Dados Públicos</span>
+          <span>{L("Copiar Dados Públicos", "Copy Public Details")}</span>
         </UIButton>
 
         <UIButton
@@ -214,7 +241,7 @@ export const RestrictedQRViewModal: React.FC<RestrictedQRViewModalProps> = ({
           size="sm"
           onClick={onClose}
         >
-          Fechar
+          {L("Fechar", "Close")}
         </UIButton>
       </div>
     </ModalShell>

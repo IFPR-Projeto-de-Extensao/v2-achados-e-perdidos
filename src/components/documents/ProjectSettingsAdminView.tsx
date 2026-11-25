@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useApp } from "../../context/AppContext";
+import { localize, getLocaleForLanguage } from "../../lib/i18n";
 import { ProjectSettings, ProjectTeamMember } from "../../types";
 import {
   PROJECT_AVAILABLE_TAGS,
@@ -37,7 +38,8 @@ import {
 } from "lucide-react";
 
 export const ProjectSettingsAdminView: React.FC = () => {
-  const { projectSettings, saveProjectSettings, resetProjectSettingsToDefault, addToast } = useApp();
+  const { projectSettings, saveProjectSettings, resetProjectSettingsToDefault, addToast, language } = useApp();
+  const L = (pt: string, en: string) => localize(language, pt, en);
 
   const [formData, setFormData] = useState<ProjectSettings>(() => {
     return JSON.parse(JSON.stringify(projectSettings || DEFAULT_PROJECT_SETTINGS));
@@ -64,17 +66,29 @@ export const ProjectSettingsAdminView: React.FC = () => {
   const handleCopyTag = (tag: string) => {
     navigator.clipboard.writeText(`{{${tag}}}`);
     setCopiedTag(tag);
-    addToast(`Tag {{${tag}}} copiada para a área de transferência!`, "info");
+    addToast(
+      L(
+        `Marcador {{${tag}}} copiado para a área de transferência!`,
+        `Tag {{${tag}}} copied to clipboard!`
+      ),
+      "info"
+    );
     setTimeout(() => setCopiedTag(null), 2000);
   };
 
   const handleSave = async () => {
     if (!formData.teamName.trim()) {
-      addToast("O nome da equipe/projeto não pode ficar em branco.", "error");
+      addToast(
+        L("O nome da equipe/projeto não pode ficar em branco.", "Team/project name cannot be blank."),
+        "error"
+      );
       return;
     }
     if (!formData.institution.name.trim()) {
-      addToast("O nome da instituição não pode ficar em branco.", "error");
+      addToast(
+        L("O nome da instituição não pode ficar em branco.", "Institution name cannot be blank."),
+        "error"
+      );
       return;
     }
 
@@ -91,7 +105,10 @@ export const ProjectSettingsAdminView: React.FC = () => {
   const handleReset = async () => {
     if (
       window.confirm(
-        "Deseja restaurar as informações permanentes para a configuração padrão da Equipe InovaIF (IFPR Campus Ivaiporã)?"
+        L(
+          "Deseja restaurar as informações permanentes para a configuração padrão da Equipe InovaIF (IFPR Campus Ivaiporã)?",
+          "Do you want to restore permanent information to the default InovaIF Team (IFPR Campus Ivaiporã) settings?"
+        )
       )
     ) {
       setIsSaving(true);
@@ -110,7 +127,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
     setMemberForm({
       name: "",
       registrationNumber: "",
-      role: "Estudante Pesquisador / Desenvolvedor",
+      role: L("Estudante Pesquisador / Desenvolvedor", "Student Researcher / Developer"),
     });
     setIsMemberModalOpen(true);
   };
@@ -120,7 +137,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
     setMemberForm({
       name: member.name,
       registrationNumber: member.registrationNumber || "",
-      role: member.role || "Estudante Pesquisador / Desenvolvedor",
+      role: member.role || L("Estudante Pesquisador / Desenvolvedor", "Student Researcher / Developer"),
     });
     setIsMemberModalOpen(true);
   };
@@ -128,7 +145,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
   const handleSaveMemberModal = (e: React.FormEvent) => {
     e.preventDefault();
     if (!memberForm.name.trim()) {
-      addToast("Informe o nome do integrante.", "error");
+      addToast(L("Informe o nome do integrante.", "Please enter the member's name."), "error");
       return;
     }
 
@@ -146,7 +163,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
             : m
         ),
       }));
-      addToast("Integrante atualizado na listagem.", "info");
+      addToast(L("Integrante atualizado na listagem.", "Member updated in the list."), "info");
     } else {
       const newMember: ProjectTeamMember = {
         id: `mem_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -159,7 +176,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
         ...prev,
         members: [...(prev.members || []), newMember],
       }));
-      addToast("Novo integrante adicionado à equipe.", "success");
+      addToast(L("Novo integrante adicionado à equipe.", "New member added to the team."), "success");
     }
 
     setIsMemberModalOpen(false);
@@ -170,7 +187,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
       ...prev,
       members: prev.members.filter((m) => m.id !== memberId),
     }));
-    addToast("Integrante removido da equipe.", "info");
+    addToast(L("Integrante removido da equipe.", "Member removed from the team."), "info");
   };
 
   const handleMoveMember = (idx: number, direction: "up" | "down") => {
@@ -198,12 +215,16 @@ export const ProjectSettingsAdminView: React.FC = () => {
               <Sparkles className="w-5 h-5" />
             </div>
             <h1 className="text-xl font-bold text-[#172B2A] dark:text-slate-100">
-              Dados do Projeto & Informações Permanentes
+              {L("Dados do Projeto e Informações Permanentes", "Project Data & Permanent Information")}
             </h1>
           </div>
           <p className="text-sm text-slate-600 dark:text-slate-400 max-w-2xl">
-            Configure as informações da equipe <span className="font-semibold text-[#16845B] dark:text-emerald-400">InovaIF</span>,
-            matrículas dos integrantes, orientador e campus. Estas variáveis são integradas automaticamente aos modelos e geradores de documentos oficiais em PDF.
+            {L("Configure as informações da equipe ", "Configure team information for ")}
+            <span className="font-semibold text-[#16845B] dark:text-emerald-400">InovaIF</span>
+            {L(
+              ", matrículas dos integrantes, orientador e campus. Estas variáveis são integradas automaticamente aos modelos e geradores de documentos oficiais em PDF.",
+              ", member registration IDs, advisor, and campus. These variables are automatically integrated into official PDF document templates and generators."
+            )}
           </p>
         </div>
 
@@ -216,10 +237,10 @@ export const ProjectSettingsAdminView: React.FC = () => {
             size="sm"
             onClick={handleReset}
             disabled={isSaving}
-            title="Restaurar dados padrão recomendados do InovaIF"
+            title={L("Restaurar dados padrão recomendados do InovaIF", "Restore recommended InovaIF defaults")}
           >
             <RotateCcw className="w-4 h-4" />
-            <span>Restaurar Padrão InovaIF</span>
+            <span>{L("Restaurar Padrão InovaIF", "Restore InovaIF Default")}</span>
           </UIButton>
 
           <UIButton
@@ -231,7 +252,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
             disabled={isSaving}
           >
             <Save className="w-4 h-4" />
-            <span>{isSaving ? "Salvando..." : "Salvar Alterações"}</span>
+            <span>{isSaving ? L("Salvando...", "Saving...") : L("Salvar Alterações", "Save Changes")}</span>
           </UIButton>
         </div>
       </SurfaceCard>
@@ -241,13 +262,17 @@ export const ProjectSettingsAdminView: React.FC = () => {
         <div className="flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0" />
           <span>
-            Persistência em tempo real via <strong>Firestore</strong> (Coleção <code>/project_settings/inovaif</code>).
+            {L("Persistência em tempo real via ", "Real-time persistence via ")}
+            <strong>Firestore</strong>
+            {L(" (Coleção ", " (Collection ")}
+            <code>/project_settings/inovaif</code>).
           </span>
         </div>
         {formData.updatedAt && (
           <span className="text-[#16845B] dark:text-emerald-400/80 font-medium">
-            Última alteração: {new Date(formData.updatedAt).toLocaleString("pt-BR")}
-            {formData.updatedBy ? ` por ${formData.updatedBy}` : ""}
+            {L("Última alteração:", "Last updated:")}{" "}
+            {new Date(formData.updatedAt).toLocaleString(getLocaleForLanguage(language))}
+            {formData.updatedBy ? L(` por ${formData.updatedBy}`, ` by ${formData.updatedBy}`) : ""}
           </span>
         )}
       </div>
@@ -261,21 +286,21 @@ export const ProjectSettingsAdminView: React.FC = () => {
             <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
               <Users className="w-5 h-5 text-[#16845B] dark:text-emerald-400" />
               <h2 className="text-base font-bold text-[#172B2A] dark:text-slate-100">
-                1. Identificação da Equipe & Projeto
+                {L("1. Identificação da Equipe e Projeto", "1. Team & Project Identification")}
               </h2>
             </div>
 
             <UIFieldGroup
-              label="Nome da Equipe / Solução"
+              label={L("Nome da Equipe / Solução", "Team / Solution Name")}
               htmlFor="input-team-name"
-              hint="Disponível na tag: {{nome_equipe}}"
+              hint={L("Disponível no marcador: {{nome_equipe}}", "Available in tag: {{nome_equipe}}")}
             >
               <UIInput
                 id="input-team-name"
                 type="text"
                 value={formData.teamName}
                 onChange={(e) => setFormData({ ...formData, teamName: e.target.value })}
-                placeholder="Ex: InovaIF"
+                placeholder={L("Ex.: InovaIF", "e.g., InovaIF")}
               />
             </UIFieldGroup>
           </SurfaceCard>
@@ -287,10 +312,13 @@ export const ProjectSettingsAdminView: React.FC = () => {
                 <Users className="w-5 h-5 text-[#16845B] dark:text-emerald-400" />
                 <div>
                   <h2 className="text-base font-bold text-[#172B2A] dark:text-slate-100">
-                    2. Integrantes da Equipe (Estudantes)
+                    {L("2. Integrantes da Equipe (Estudantes)", "2. Team Members (Students)")}
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {formData.members?.length || 0} estudantes cadastrados no InovaIF
+                    {L(
+                      `${formData.members?.length || 0} estudantes cadastrados no InovaIF`,
+                      `${formData.members?.length || 0} students registered in InovaIF`
+                    )}
                   </p>
                 </div>
               </div>
@@ -303,7 +331,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
                 onClick={handleOpenAddMember}
               >
                 <Plus className="w-4 h-4" />
-                <span>Adicionar Integrante</span>
+                <span>{L("Adicionar Integrante", "Add Member")}</span>
               </UIButton>
             </div>
 
@@ -312,8 +340,11 @@ export const ProjectSettingsAdminView: React.FC = () => {
               {formData.members?.length === 0 ? (
                 <EmptyState
                   icon={<Users className="w-7 h-7" />}
-                  title="Nenhum integrante cadastrado"
-                  description='Clique em "Adicionar Integrante" para incluir estudantes na equipe.'
+                  title={L("Nenhum integrante cadastrado", "No members registered")}
+                  description={L(
+                    'Clique em "Adicionar Integrante" para incluir estudantes na equipe.',
+                    'Click "Add Member" to include students on the team.'
+                  )}
                 />
               ) : (
                 formData.members.map((member, idx) => (
@@ -332,7 +363,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
                         </p>
                         <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                           <span className="font-mono bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-                            Matrícula: {member.registrationNumber || "Não informada"}
+                            {L("Matrícula:", "Registration ID:")} {member.registrationNumber || L("Não informada", "Not informed")}
                           </span>
                           {member.role && (
                             <span className="hidden sm:inline text-slate-400 dark:text-slate-500 truncate">
@@ -349,7 +380,8 @@ export const ProjectSettingsAdminView: React.FC = () => {
                         onClick={() => handleMoveMember(idx, "up")}
                         disabled={idx === 0}
                         className="p-1 text-slate-400 hover:text-[#172B2A] dark:hover:text-slate-200 disabled:opacity-20 rounded cursor-pointer"
-                        title="Mover para cima"
+                        title={L("Mover para cima", "Move up")}
+                        aria-label={L("Mover para cima", "Move up")}
                       >
                         <MoveUp className="w-4 h-4" />
                       </button>
@@ -358,7 +390,8 @@ export const ProjectSettingsAdminView: React.FC = () => {
                         onClick={() => handleMoveMember(idx, "down")}
                         disabled={idx === formData.members.length - 1}
                         className="p-1 text-slate-400 hover:text-[#172B2A] dark:hover:text-slate-200 disabled:opacity-20 rounded cursor-pointer"
-                        title="Mover para baixo"
+                        title={L("Mover para baixo", "Move down")}
+                        aria-label={L("Mover para baixo", "Move down")}
                       >
                         <MoveDown className="w-4 h-4" />
                       </button>
@@ -366,7 +399,8 @@ export const ProjectSettingsAdminView: React.FC = () => {
                         type="button"
                         onClick={() => handleOpenEditMember(member)}
                         className="p-1.5 text-[#16845B] dark:text-emerald-400 hover:bg-[#EBF5F0] dark:hover:bg-emerald-950/40 rounded-lg transition-colors cursor-pointer"
-                        title="Editar integrante"
+                        title={L("Editar integrante", "Edit member")}
+                        aria-label={L("Editar integrante", "Edit member")}
                       >
                         <Edit3 className="w-4 h-4" />
                       </button>
@@ -374,7 +408,8 @@ export const ProjectSettingsAdminView: React.FC = () => {
                         type="button"
                         onClick={() => handleDeleteMember(member.id)}
                         className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
-                        title="Excluir integrante"
+                        title={L("Excluir integrante", "Delete member")}
+                        aria-label={L("Excluir integrante", "Delete member")}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -388,10 +423,10 @@ export const ProjectSettingsAdminView: React.FC = () => {
             <SubtlePanel padding="sm" className="space-y-2 text-xs">
               <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                 <Info className="w-3.5 h-3.5 text-[#16845B] dark:text-emerald-400" />
-                Prévia da tag {"{{integrantes_com_matricula}}"}:
+                {L("Prévia do marcador {{integrantes_com_matricula}}:", "Preview of tag {{integrantes_com_matricula}}:")}
               </span>
               <p className="font-mono text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 break-words">
-                {projectTags.integrantes_com_matricula || "Nenhum integrante cadastrado."}
+                {projectTags.integrantes_com_matricula || L("Nenhum integrante cadastrado.", "No members registered.")}
               </p>
             </SubtlePanel>
           </SurfaceCard>
@@ -404,12 +439,12 @@ export const ProjectSettingsAdminView: React.FC = () => {
             <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
               <GraduationCap className="w-5 h-5 text-amber-600 dark:text-amber-400" />
               <h2 className="text-base font-bold text-[#172B2A] dark:text-slate-100">
-                3. Professor(a) Responsável & Orientador
+                {L("3. Professor(a) Responsável e Orientador", "3. Responsible Professor & Advisor")}
               </h2>
             </div>
 
             <div className="space-y-3.5">
-              <UIFieldGroup label="Nome Completo do Docente" htmlFor="input-prof-name">
+              <UIFieldGroup label={L("Nome Completo do Docente", "Full Name of Faculty Advisor")} htmlFor="input-prof-name">
                 <UIInput
                   id="input-prof-name"
                   type="text"
@@ -420,12 +455,12 @@ export const ProjectSettingsAdminView: React.FC = () => {
                       professor: { ...formData.professor, name: e.target.value },
                     })
                   }
-                  placeholder="Ex: Ronan Anacleto Lopes"
+                  placeholder={L("Ex.: Ronan Anacleto Lopes", "e.g., Ronan Anacleto Lopes")}
                 />
               </UIFieldGroup>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                <UIFieldGroup label="Titulação Acadêmica" htmlFor="input-prof-title">
+                <UIFieldGroup label={L("Titulação Acadêmica", "Academic Degree")} htmlFor="input-prof-title">
                   <UIInput
                     id="input-prof-title"
                     type="text"
@@ -436,11 +471,11 @@ export const ProjectSettingsAdminView: React.FC = () => {
                         professor: { ...formData.professor, title: e.target.value },
                       })
                     }
-                    placeholder="Ex: Mestre, Doutor, Especialista"
+                    placeholder={L("Ex.: Mestre, Doutor, Especialista", "e.g., Master, PhD, Specialist")}
                   />
                 </UIFieldGroup>
 
-                <UIFieldGroup label="Cargo / Função no Campus" htmlFor="input-prof-role">
+                <UIFieldGroup label={L("Cargo / Função no Campus", "Position / Role on Campus")} htmlFor="input-prof-role">
                   <UIInput
                     id="input-prof-role"
                     type="text"
@@ -451,7 +486,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
                         professor: { ...formData.professor, role: e.target.value },
                       })
                     }
-                    placeholder="Ex: Coordenador do Curso de BSI"
+                    placeholder={L("Ex.: Coordenador do Curso de BSI", "e.g., Information Systems Coordinator")}
                   />
                 </UIFieldGroup>
               </div>
@@ -459,7 +494,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
               {/* Tag doc preview */}
               <SubtlePanel padding="sm" className="space-y-1 text-xs">
                 <span className="font-bold text-slate-700 dark:text-slate-300">
-                  Prévia da tag {"{{docente_completo}}"}:
+                  {L("Prévia do marcador {{docente_completo}}:", "Preview of tag {{docente_completo}}:")}
                 </span>
                 <p className="font-mono text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
                   {projectTags.docente_completo}
@@ -473,13 +508,13 @@ export const ProjectSettingsAdminView: React.FC = () => {
             <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
               <Building2 className="w-5 h-5 text-[#16845B] dark:text-emerald-400" />
               <h2 className="text-base font-bold text-[#172B2A] dark:text-slate-100">
-                4. Dados Institucionais do Campus
+                {L("4. Dados Institucionais do Campus", "4. Institutional Campus Data")}
               </h2>
             </div>
 
             <div className="space-y-3.5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                <UIFieldGroup label="Instituição" htmlFor="input-inst-name">
+                <UIFieldGroup label={L("Instituição", "Institution")} htmlFor="input-inst-name">
                   <UIInput
                     id="input-inst-name"
                     type="text"
@@ -494,7 +529,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
                   />
                 </UIFieldGroup>
 
-                <UIFieldGroup label="Campus" htmlFor="input-inst-campus">
+                <UIFieldGroup label={L("Campus", "Campus")} htmlFor="input-inst-campus">
                   <UIInput
                     id="input-inst-campus"
                     type="text"
@@ -510,7 +545,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
                 </UIFieldGroup>
               </div>
 
-              <UIFieldGroup label="Endereço / Logradouro" htmlFor="input-inst-address">
+              <UIFieldGroup label={L("Endereço / Logradouro", "Street Address")} htmlFor="input-inst-address">
                 <UIInput
                   id="input-inst-address"
                   type="text"
@@ -526,7 +561,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
               </UIFieldGroup>
 
               <div className="grid grid-cols-3 gap-3.5">
-                <UIFieldGroup label="Cidade" htmlFor="input-inst-city">
+                <UIFieldGroup label={L("Cidade", "City")} htmlFor="input-inst-city">
                   <UIInput
                     id="input-inst-city"
                     type="text"
@@ -541,7 +576,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
                   />
                 </UIFieldGroup>
 
-                <UIFieldGroup label="Estado (UF)" htmlFor="input-inst-state">
+                <UIFieldGroup label={L("Estado (UF)", "State")} htmlFor="input-inst-state">
                   <UIInput
                     id="input-inst-state"
                     type="text"
@@ -556,7 +591,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
                   />
                 </UIFieldGroup>
 
-                <UIFieldGroup label="CEP" htmlFor="input-inst-zip">
+                <UIFieldGroup label={L("CEP", "ZIP Code")} htmlFor="input-inst-zip">
                   <UIInput
                     id="input-inst-zip"
                     type="text"
@@ -575,7 +610,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
               {/* Tag address preview */}
               <SubtlePanel padding="sm" className="space-y-1 text-xs">
                 <span className="font-bold text-slate-700 dark:text-slate-300">
-                  Prévia da tag {"{{endereco_completo}}"}:
+                  {L("Prévia do marcador {{endereco_completo}}:", "Preview of tag {{endereco_completo}}:")}
                 </span>
                 <p className="font-mono text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
                   {projectTags.endereco_completo}
@@ -593,10 +628,13 @@ export const ProjectSettingsAdminView: React.FC = () => {
             <FileCode2 className="w-5 h-5 text-[#16845B] dark:text-emerald-400" />
             <div>
               <h2 className="text-base font-bold text-[#172B2A] dark:text-slate-100">
-                5. Catálogo de Tags Dinâmicas do Projeto InovaIF
+                {L("5. Catálogo de Marcadores Dinâmicos do Projeto InovaIF", "5. InovaIF Project Dynamic Tags Catalog")}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Utilize essas variáveis nos textos de cabeçalho, seções e rodapés dos seus modelos de documentos.
+                {L(
+                  "Utilize essas variáveis nos textos de cabeçalho, seções e rodapés dos seus modelos de documentos.",
+                  "Use these variables in headers, sections, and footers of your document templates."
+                )}
               </p>
             </div>
           </div>
@@ -635,12 +673,12 @@ export const ProjectSettingsAdminView: React.FC = () => {
                   {copiedTag === item.tag ? (
                     <>
                       <Check className="w-3 h-3 text-[#16845B] dark:text-emerald-400" />
-                      <span>Copiado!</span>
+                      <span>{L("Copiado!", "Copied!")}</span>
                     </>
                   ) : (
                     <>
                       <Copy className="w-3 h-3 text-slate-400" />
-                      <span>Copiar</span>
+                      <span>{L("Copiar", "Copy")}</span>
                     </>
                   )}
                 </UIButton>
@@ -655,7 +693,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
         isOpen={isMemberModalOpen}
         onClose={() => setIsMemberModalOpen(false)}
         maxWidthClass="max-w-md"
-        ariaLabel={editingMember ? "Editar Integrante" : "Novo Integrante da Equipe"}
+        ariaLabel={editingMember ? L("Editar Integrante", "Edit Member") : L("Novo Integrante da Equipe", "New Team Member")}
       >
         <div className="p-6 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
@@ -664,7 +702,7 @@ export const ProjectSettingsAdminView: React.FC = () => {
                 <Users className="w-4 h-4" />
               </div>
               <h3 className="text-base font-bold text-[#172B2A] dark:text-slate-100">
-                {editingMember ? "Editar Integrante" : "Novo Integrante da Equipe"}
+                {editingMember ? L("Editar Integrante", "Edit Member") : L("Novo Integrante da Equipe", "New Team Member")}
               </h3>
             </div>
             <UIButton
@@ -673,24 +711,24 @@ export const ProjectSettingsAdminView: React.FC = () => {
               size="sm"
               onClick={() => setIsMemberModalOpen(false)}
               className="!p-1.5"
-              aria-label="Fechar modal"
+              aria-label={L("Fechar modal", "Close modal")}
             >
               ✕
             </UIButton>
           </div>
 
           <form onSubmit={handleSaveMemberModal} className="space-y-4">
-            <UIFieldGroup label="Nome Completo" required>
+            <UIFieldGroup label={L("Nome Completo", "Full Name")} required>
               <UIInput
                 type="text"
                 required
                 value={memberForm.name}
                 onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })}
-                placeholder="Ex: Gabriel Oliveira da Silva"
+                placeholder={L("Ex.: Gabriel Oliveira da Silva", "e.g., Gabriel Oliveira da Silva")}
               />
             </UIFieldGroup>
 
-            <UIFieldGroup label="Número de Matrícula (IFPR)" required>
+            <UIFieldGroup label={L("Número de Matrícula (IFPR)", "Registration Number (IFPR)")} required>
               <UIInput
                 type="text"
                 required
@@ -698,17 +736,17 @@ export const ProjectSettingsAdminView: React.FC = () => {
                 onChange={(e) =>
                   setMemberForm({ ...memberForm, registrationNumber: e.target.value })
                 }
-                placeholder="Ex: 20251IVA10030010"
+                placeholder={L("Ex.: 20251IVA10030010", "e.g., 20251IVA10030010")}
                 className="font-mono"
               />
             </UIFieldGroup>
 
-            <UIFieldGroup label="Função no Projeto">
+            <UIFieldGroup label={L("Função no Projeto", "Role in Project")}>
               <UIInput
                 type="text"
                 value={memberForm.role}
                 onChange={(e) => setMemberForm({ ...memberForm, role: e.target.value })}
-                placeholder="Ex: Estudante Pesquisador / Desenvolvedor"
+                placeholder={L("Ex.: Estudante Pesquisador / Desenvolvedor", "e.g., Student Researcher / Developer")}
               />
             </UIFieldGroup>
 
@@ -719,10 +757,10 @@ export const ProjectSettingsAdminView: React.FC = () => {
                 size="sm"
                 onClick={() => setIsMemberModalOpen(false)}
               >
-                Cancelar
+                {L("Cancelar", "Cancel")}
               </UIButton>
               <UIButton type="submit" variant="primary" size="sm">
-                {editingMember ? "Salvar Alterações" : "Adicionar Integrante"}
+                {editingMember ? L("Salvar Alterações", "Save Changes") : L("Adicionar Integrante", "Add Member")}
               </UIButton>
             </div>
           </form>

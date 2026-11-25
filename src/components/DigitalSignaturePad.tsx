@@ -1,5 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import { PenTool, RotateCcw, Check, AlertCircle, FileText, Eraser } from "lucide-react";
+import { useApp } from "../context/AppContext";
+import { localize, translateUserRole } from "../lib/i18n";
 
 interface DigitalSignaturePadProps {
   signerName: string;
@@ -20,6 +22,11 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
   initialSignature,
   disabled = false,
 }) => {
+  const { language } = useApp();
+  const languageRef = useRef(language);
+  languageRef.current = language;
+  const l = (pt: string, en: string) => localize(language, pt, en);
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Stable references for parent callbacks to prevent canvas re-initialization on parent re-renders
@@ -47,13 +54,25 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
   const [penWidth] = useState<number>(2.5);
   const [signatureMode, setSignatureMode] = useState<"draw" | "type">("draw");
   const [typedName, setTypedName] = useState(
-    signerName && signerName !== "Proprietário / Receptor" && signerName !== "Aluno / Servidor" ? signerName : ""
+    signerName &&
+      signerName !== "Proprietário / Receptor" &&
+      signerName !== "Owner / Recipient" &&
+      signerName !== "Aluno / Servidor" &&
+      signerName !== "Student / Staff"
+      ? signerName
+      : ""
   );
   const [typedFont, setTypedFont] = useState<"cursive" | "serif" | "sans">("cursive");
 
   // Synchronize typedName whenever signerName is populated or updated by parent
   useEffect(() => {
-    if (signerName && signerName !== "Proprietário / Receptor" && signerName !== "Aluno / Servidor") {
+    if (
+      signerName &&
+      signerName !== "Proprietário / Receptor" &&
+      signerName !== "Owner / Recipient" &&
+      signerName !== "Aluno / Servidor" &&
+      signerName !== "Student / Staff"
+    ) {
       setTypedName((prev) => (prev ? prev : signerName));
     }
   }, [signerName]);
@@ -97,7 +116,15 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
     // Text hint
     ctx.font = "10px sans-serif";
     ctx.fillStyle = "#94a3b8";
-    ctx.fillText("Assine sobre a linha pontilhada (Toque ou Mouse)", 24, height - 20);
+    ctx.fillText(
+      localize(
+        languageRef.current,
+        "Assine sobre a linha pontilhada (Toque ou Mouse)",
+        "Sign above the dotted line (Touch or Mouse)"
+      ),
+      24,
+      height - 20
+    );
 
     // Save initial blank state
     try {
@@ -159,7 +186,15 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
 
       ctx.font = "9px monospace";
       ctx.fillStyle = "#94a3b8";
-      ctx.fillText(`Assinado digitalmente por ${cleanText}`, width / 2, height - 18);
+      ctx.fillText(
+        localize(
+          languageRef.current,
+          `Assinado digitalmente por ${cleanText}`,
+          `Digitally signed by ${cleanText}`
+        ),
+        width / 2,
+        height - 18
+      );
 
       setHasSignature(true);
       try {
@@ -388,6 +423,11 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
     // In draw mode: existing drawn strokes are preserved; subsequent strokes use the new color!
   };
 
+  const localizedBond =
+    signerBond === "Aluno(a)"
+      ? l("Aluno(a)", "Student")
+      : translateUserRole(signerBond, language);
+
   return (
     <div className="space-y-3">
       {/* Header & Mode Switch */}
@@ -395,7 +435,7 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
         <div className="flex items-center space-x-2">
           <PenTool className="w-4 h-4 text-[#16845B] dark:text-emerald-400" />
           <span className="text-xs font-bold text-[#172B2A] dark:text-slate-200">
-            Assinatura Digital de Recebimento
+            {l("Assinatura Digital de Recebimento", "Digital Receipt Signature")}
           </span>
         </div>
 
@@ -409,7 +449,7 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
                 : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
             }`}
           >
-            ✍️ Desenhar Traço
+            ✍️ {l("Desenhar Traço", "Draw Stroke")}
           </button>
           <button
             type="button"
@@ -420,7 +460,7 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
                 : "text-slate-600 dark:text-slate-400 hover:text-[#172B2A] dark:hover:text-white"
             }`}
           >
-            ⌨️ Digitar Nome
+            ⌨️ {l("Digitar Nome", "Type Name")}
           </button>
         </div>
       </div>
@@ -434,18 +474,19 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
                 type="text"
                 value={typedName}
                 onChange={(e) => setTypedName(e.target.value)}
-                placeholder="Digite o nome completo do receptor..."
+                placeholder={l("Digite o nome completo do receptor...", "Type the recipient's full name...")}
                 className="w-full p-2 text-xs font-semibold bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-[#16845B]/30 focus:border-[#16845B] text-[#172B2A] dark:text-white"
               />
             </div>
             <select
               value={typedFont}
               onChange={(e) => setTypedFont(e.target.value as any)}
+              aria-label={l("Estilo da assinatura digitada", "Typed signature style")}
               className="p-2 text-xs font-semibold bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-700 rounded-xl outline-none focus:border-[#16845B] text-[#172B2A] dark:text-slate-200 cursor-pointer"
             >
-              <option value="cursive">Estilo Manuscrito (Caveat)</option>
-              <option value="serif">Estilo Clássico (Serif)</option>
-              <option value="sans">Estilo Moderno (Sans)</option>
+              <option value="cursive">{l("Estilo Manuscrito (Caveat)", "Handwritten Style (Caveat)")}</option>
+              <option value="serif">{l("Estilo Clássico (Serif)", "Classic Style (Serif)")}</option>
+              <option value="sans">{l("Estilo Moderno (Sans)", "Modern Style (Sans)")}</option>
             </select>
           </div>
         )}
@@ -467,7 +508,8 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
           {/* Color pickers */}
           <button
             type="button"
-            title="Caneta Preta"
+            title={l("Caneta Preta", "Black Pen")}
+            aria-label={l("Caneta Preta", "Black Pen")}
             onClick={() => handlePenColorChange("#0f172a")}
             className={`w-5 h-5 rounded-full bg-slate-900 border-2 transition-transform cursor-pointer ${
               penColor === "#0f172a" ? "scale-110 border-[#16845B]" : "border-white"
@@ -475,7 +517,8 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
           />
           <button
             type="button"
-            title="Caneta Azul Institucional"
+            title={l("Caneta Azul Institucional", "Institutional Blue Pen")}
+            aria-label={l("Caneta Azul Institucional", "Institutional Blue Pen")}
             onClick={() => handlePenColorChange("#0047AB")}
             className={`w-5 h-5 rounded-full bg-blue-700 border-2 transition-transform cursor-pointer ${
               penColor === "#0047AB" ? "scale-110 border-[#16845B]" : "border-white"
@@ -483,7 +526,8 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
           />
           <button
             type="button"
-            title="Caneta Verde IFPR"
+            title={l("Caneta Verde IFPR", "IFPR Green Pen")}
+            aria-label={l("Caneta Verde IFPR", "IFPR Green Pen")}
             onClick={() => handlePenColorChange("#00843D")}
             className={`w-5 h-5 rounded-full bg-[#16845B] border-2 transition-transform cursor-pointer ${
               penColor === "#00843D" ? "scale-110 border-white" : "border-white"
@@ -498,7 +542,8 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
                 type="button"
                 onClick={handleUndo}
                 disabled={strokeHistory.length <= 1}
-                title="Desfazer último traço"
+                title={l("Desfazer último traço", "Undo last stroke")}
+                aria-label={l("Desfazer último traço", "Undo last stroke")}
                 className="p-1 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-30 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -507,7 +552,8 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
               <button
                 type="button"
                 onClick={handleClear}
-                title="Limpar assinatura"
+                title={l("Limpar assinatura", "Clear signature")}
+                aria-label={l("Limpar assinatura", "Clear signature")}
                 className="p-1 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
               >
                 <Eraser className="w-3.5 h-3.5" />
@@ -520,10 +566,10 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
         <div className="p-2.5 bg-[#F8FAFC] dark:bg-slate-900/95 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[10px] text-slate-600 dark:text-slate-400">
           <div className="flex items-center space-x-1.5 min-w-0">
             <span className="font-bold text-[#172B2A] dark:text-white truncate">
-              {typedName || signerName || "Proprietário / Receptor"}
+              {typedName || signerName || l("Proprietário / Receptor", "Owner / Recipient")}
             </span>
             <span>•</span>
-            <span className="shrink-0">{signerBond}</span>
+            <span className="shrink-0">{localizedBond}</span>
             {signerEmail && (
               <>
                 <span className="hidden sm:inline">•</span>
@@ -535,12 +581,14 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
           <div className="flex items-center space-x-1 font-semibold shrink-0">
             {hasSignature ? (
               <span className="text-[#16845B] dark:text-emerald-400 flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" /> Assinatura válida
+                <Check className="w-3.5 h-3.5" /> {l("Assinatura válida", "Valid signature")}
               </span>
             ) : (
               <span className="text-amber-700 dark:text-amber-400 flex items-center gap-1">
                 <AlertCircle className="w-3.5 h-3.5" />
-                {signatureMode === "draw" ? "Aguardando desenho" : "Digite o nome"}
+                {signatureMode === "draw"
+                  ? l("Aguardando desenho", "Awaiting signature")
+                  : l("Digite o nome", "Type your name")}
               </span>
             )}
           </div>
@@ -551,9 +599,14 @@ export const DigitalSignaturePad: React.FC<DigitalSignaturePadProps> = ({
       <div className="p-3 bg-[#EBF5F0]/70 dark:bg-emerald-950/30 border border-[#16845B]/20 dark:border-emerald-800/50 rounded-xl text-[11px] text-[#064E3B] dark:text-emerald-200 leading-snug flex items-start gap-2.5">
         <FileText className="w-4 h-4 text-[#16845B] dark:text-emerald-400 shrink-0 mt-0.5" />
         <div>
-          <span className="font-bold">Termo de Devolução & Recebimento Oficial:</span>
+          <span className="font-bold">
+            {l("Termo de Devolução e Recebimento Oficial:", "Official Return & Receipt Statement:")}
+          </span>
           <p className="mt-0.5 text-slate-600 dark:text-slate-300">
-            Declaro ter recebido o pertence correspondente na Seção de Apoio ao Estudante (SEBAC) / Guarita do IFPR Campus Ivaiporã em perfeitas condições, conferido mediante documento.
+            {l(
+              "Declaro ter recebido o pertence correspondente na Seção de Apoio ao Estudante (SEBAC) / Guarita do IFPR Campus Ivaiporã em perfeitas condições, conferido mediante documento.",
+              "I declare that I received the corresponding item at the Student Support Office (SEBAC) / Gatehouse of IFPR Ivaiporã Campus in proper condition, verified with identification."
+            )}
           </p>
         </div>
       </div>

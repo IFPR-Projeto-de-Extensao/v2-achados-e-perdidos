@@ -119,8 +119,8 @@ describe("Auditoria Pós-Correção — Correção dos 5 Defeitos Residuais (v1.
       // Garante que nenhuma referência residual de leitura UI/handler permaneceu ligada a `item.` ou `item?.`
       // além da linha de resolução de `currentItem`
       const lines = modalSrc.split("\n");
-      const residualItemPropReads = lines.filter((line, idx) => {
-        if (idx + 1 === 147 && line.includes("items.find((i) => i.id === item.id)")) {
+      const residualItemPropReads = lines.filter((line) => {
+        if (line.includes("const currentItem = items.find((i) => i.id === item.id) || item;")) {
           return false;
         }
         return /(?<![A-Za-zÀ-ÿ])item(\?\.|\.)[A-Za-z_]/.test(line);
@@ -362,7 +362,7 @@ describe("Auditoria Pós-Correção — Correção dos 5 Defeitos Residuais (v1.
 
     it("DashboardView.tsx implementa cartões empilhados mobile (md:hidden), tabela desktop (hidden md:block), paginação progressiva e empty state", () => {
       const dashSrc = readSrc("src/components/DashboardView.tsx");
-      const sectionStart = dashSrc.indexOf("Controle de Objetos e Override de Status");
+      const sectionStart = dashSrc.indexOf("Controle de Objetos e Alteração Manual de Situação");
       const sectionEnd = dashSrc.indexOf("{/* TAB: AUDITORIA E LOGS DO SISTEMA */}", sectionStart);
       expect(sectionStart).toBeGreaterThan(-1);
       expect(sectionEnd).toBeGreaterThan(sectionStart);

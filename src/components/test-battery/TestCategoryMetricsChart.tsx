@@ -26,6 +26,8 @@ import {
 } from "recharts";
 import { TestBatteryExecution } from "../../types";
 import { calculateCategoryMetrics, calculateParticipantMetrics, calculateBatterySummary } from "../../data/defaultTestBatteryData";
+import { useApp } from "../../context/AppContext";
+import { localize, translateUserRole } from "../../lib/i18n";
 
 interface TestCategoryMetricsChartProps {
   battery: TestBatteryExecution;
@@ -48,19 +50,21 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
   onFilterByCategory,
   onFilterByTester,
 }) => {
+  const { language } = useApp();
+  const l = (pt: string, en: string) => localize(language, pt, en);
+
   const [chartViewMode, setChartViewMode] = useState<"charts" | "cards">("charts");
-  const summary很好 = calculateBatterySummary(battery);
-  const summary = summary很好;
+  const summary = calculateBatterySummary(battery);
   const categoryMetrics = calculateCategoryMetrics(battery);
   const participantMetrics = calculateParticipantMetrics(battery);
 
   // Pie chart data for status distribution
   const pieData = [
-    { name: "Aprovados", value: summary.passed, color: STATUS_COLORS.APROVADO },
-    { name: "Reprovados", value: summary.failed, color: STATUS_COLORS.REPROVADO },
-    { name: "Pendentes", value: summary.pending, color: STATUS_COLORS.PENDENTE },
-    { name: "Não Executados", value: summary.notExecuted, color: STATUS_COLORS.NAO_EXECUTADO },
-    ...(summary.blocked > 0 ? [{ name: "Bloqueados", value: summary.blocked, color: STATUS_COLORS.BLOQUEADO }] : []),
+    { name: l("Aprovados", "Passed"), value: summary.passed, color: STATUS_COLORS.APROVADO },
+    { name: l("Reprovados", "Failed"), value: summary.failed, color: STATUS_COLORS.REPROVADO },
+    { name: l("Pendentes", "Pending"), value: summary.pending, color: STATUS_COLORS.PENDENTE },
+    { name: l("Não Executados", "Not Executed"), value: summary.notExecuted, color: STATUS_COLORS.NAO_EXECUTADO },
+    ...(summary.blocked > 0 ? [{ name: l("Bloqueados", "Blocked"), value: summary.blocked, color: STATUS_COLORS.BLOQUEADO }] : []),
   ].filter((item) => item.value > 0);
 
   // Category Bar chart data
@@ -98,11 +102,11 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
           }`}
         >
           <div className="flex items-center justify-between text-neutral-500 mb-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider">Total de Testes</span>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider">{l("Total de Testes", "Total Tests")}</span>
             <Layers className="w-4 h-4 text-neutral-400" />
           </div>
           <p className="text-2xl font-black text-neutral-900 dark:text-white">{summary.total}</p>
-          <span className="text-[10px] font-semibold text-neutral-500">Casos Definidos</span>
+          <span className="text-[10px] font-semibold text-neutral-500">{l("Casos Definidos", "Defined Cases")}</span>
         </div>
 
         <div
@@ -111,12 +115,12 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
           }`}
         >
           <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 mb-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider">Aprovados</span>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider">{l("Aprovados", "Passed")}</span>
             <CheckCircle2 className="w-4 h-4" />
           </div>
           <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">{summary.passed}</p>
           <span className="text-[10px] font-semibold text-emerald-700/80 dark:text-emerald-400/80">
-            {summary.passRate}% de sucesso
+            {l(`${summary.passRate}% de sucesso`, `${summary.passRate}% pass rate`)}
           </span>
         </div>
 
@@ -126,11 +130,13 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
           }`}
         >
           <div className="flex items-center justify-between text-red-600 dark:text-red-400 mb-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider">Reprovados</span>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider">{l("Reprovados", "Failed")}</span>
             <XCircle className="w-4 h-4" />
           </div>
           <p className="text-2xl font-black text-red-600 dark:text-red-400">{summary.failed}</p>
-          <span className="text-[10px] font-semibold text-red-700/80 dark:text-red-400/80">Necessitam correção</span>
+          <span className="text-[10px] font-semibold text-red-700/80 dark:text-red-400/80">
+            {l("Necessitam correção", "Need fixing")}
+          </span>
         </div>
 
         <div
@@ -139,11 +145,13 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
           }`}
         >
           <div className="flex items-center justify-between text-amber-600 dark:text-amber-400 mb-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider">Em Análise / Pend.</span>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider">{l("Em Análise / Pend.", "In Review / Pend.")}</span>
             <Clock className="w-4 h-4" />
           </div>
           <p className="text-2xl font-black text-amber-600 dark:text-amber-400">{summary.pending}</p>
-          <span className="text-[10px] font-semibold text-amber-700/80 dark:text-amber-400/80">Em andamento</span>
+          <span className="text-[10px] font-semibold text-amber-700/80 dark:text-amber-400/80">
+            {l("Em andamento", "In progress")}
+          </span>
         </div>
 
         <div
@@ -152,11 +160,11 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
           }`}
         >
           <div className="flex items-center justify-between text-neutral-500 mb-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider">Não Executados</span>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider">{l("Não Executados", "Not Executed")}</span>
             <AlertTriangle className="w-4 h-4 text-neutral-400" />
           </div>
           <p className="text-2xl font-black text-neutral-700 dark:text-neutral-300">{summary.notExecuted}</p>
-          <span className="text-[10px] font-semibold text-neutral-500">Aguardando início</span>
+          <span className="text-[10px] font-semibold text-neutral-500">{l("Aguardando início", "Awaiting start")}</span>
         </div>
 
         <div
@@ -165,11 +173,13 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
           }`}
         >
           <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 mb-1">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider">Conclusão Total</span>
+            <span className="text-[10px] font-extrabold uppercase tracking-wider">{l("Conclusão Total", "Total Completion")}</span>
             <Activity className="w-4 h-4" />
           </div>
           <p className="text-2xl font-black text-blue-600 dark:text-blue-400">{summary.completionRate}%</p>
-          <span className="text-[10px] font-semibold text-blue-700/80 dark:text-blue-400/80">Progresso Geral</span>
+          <span className="text-[10px] font-semibold text-blue-700/80 dark:text-blue-400/80">
+            {l("Progresso Geral", "Overall Progress")}
+          </span>
         </div>
       </div>
 
@@ -182,10 +192,13 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
           <div>
             <h3 className="text-xs font-black uppercase tracking-wider text-neutral-600 dark:text-neutral-400">
-              Distribuição Geral de Resultados da Bateria
+              {l("Distribuição Geral de Resultados da Bateria", "Overall Battery Results Distribution")}
             </h3>
             <span className="text-xs text-neutral-500">
-              {summary.passed + summary.failed} de {summary.total} casos concluídos ({summary.completionRate}%)
+              {l(
+                `${summary.passed + summary.failed} de ${summary.total} casos concluídos (${summary.completionRate}%)`,
+                `${summary.passed + summary.failed} of ${summary.total} cases completed (${summary.completionRate}%)`
+              )}
             </span>
           </div>
 
@@ -199,7 +212,7 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
               }`}
             >
               <BarChart3 className="w-3.5 h-3.5" />
-              <span>Gráficos Recharts</span>
+              <span>{l("Gráficos Interativos", "Interactive Charts")}</span>
             </button>
             <button
               onClick={() => setChartViewMode("cards")}
@@ -210,7 +223,7 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
               }`}
             >
               <PieChartIcon className="w-3.5 h-3.5" />
-              <span>Visão Detalhada</span>
+              <span>{l("Visão Detalhada", "Detailed View")}</span>
             </button>
           </div>
         </div>
@@ -221,28 +234,28 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
             <div
               className="h-full bg-emerald-500 transition-all duration-500"
               style={{ width: `${(summary.passed / summary.total) * 100}%` }}
-              title={`Aprovados: ${summary.passed}`}
+              title={l(`Aprovados: ${summary.passed}`, `Passed: ${summary.passed}`)}
             />
           )}
           {summary.failed > 0 && (
             <div
               className="h-full bg-red-500 transition-all duration-500"
               style={{ width: `${(summary.failed / summary.total) * 100}%` }}
-              title={`Reprovados: ${summary.failed}`}
+              title={l(`Reprovados: ${summary.failed}`, `Failed: ${summary.failed}`)}
             />
           )}
           {summary.pending > 0 && (
             <div
               className="h-full bg-amber-500 transition-all duration-500"
               style={{ width: `${(summary.pending / summary.total) * 100}%` }}
-              title={`Pendentes: ${summary.pending}`}
+              title={l(`Pendentes: ${summary.pending}`, `Pending: ${summary.pending}`)}
             />
           )}
           {summary.blocked > 0 && (
             <div
               className="h-full bg-rose-700 transition-all duration-500"
               style={{ width: `${(summary.blocked / summary.total) * 100}%` }}
-              title={`Bloqueados: ${summary.blocked}`}
+              title={l(`Bloqueados: ${summary.blocked}`, `Blocked: ${summary.blocked}`)}
             />
           )}
         </div>
@@ -250,19 +263,19 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
         <div className="flex flex-wrap items-center gap-4 text-xs mt-3 font-semibold">
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-            <span>Aprovados ({summary.passed})</span>
+            <span>{l(`Aprovados (${summary.passed})`, `Passed (${summary.passed})`)}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-            <span>Reprovados ({summary.failed})</span>
+            <span>{l(`Reprovados (${summary.failed})`, `Failed (${summary.failed})`)}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-            <span>Pendentes ({summary.pending})</span>
+            <span>{l(`Pendentes (${summary.pending})`, `Pending (${summary.pending})`)}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-neutral-400" />
-            <span>Não Executados ({summary.notExecuted})</span>
+            <span>{l(`Não Executados (${summary.notExecuted})`, `Not Executed (${summary.notExecuted})`)}</span>
           </div>
         </div>
       </div>
@@ -279,9 +292,11 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
             <div className="w-full flex items-center justify-between border-b pb-3 dark:border-neutral-800 border-neutral-200 mb-2">
               <div className="flex items-center gap-2">
                 <PieChartIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <h3 className="font-bold text-sm">Status Geral da Bateria</h3>
+                <h3 className="font-bold text-sm">{l("Situação Geral da Bateria", "Overall Battery Status")}</h3>
               </div>
-              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{summary.passRate}% Taxa</span>
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                {l(`${summary.passRate}% Taxa`, `${summary.passRate}% Rate`)}
+              </span>
             </div>
 
             <div className="w-full h-64">
@@ -313,7 +328,7 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
               </ResponsiveContainer>
             </div>
             <div className="w-full text-center text-[11px] text-neutral-500 font-semibold pt-1 border-t dark:border-neutral-800 border-neutral-200">
-              Taxa de Aprovação: <span className="text-emerald-600 font-bold">{summary.passRate}%</span> • Conclusão:{" "}
+              {l("Taxa de Aprovação:", "Pass Rate:")} <span className="text-emerald-600 font-bold">{summary.passRate}%</span> • {l("Conclusão:", "Completion:")}{" "}
               <span className="text-blue-600 font-bold">{summary.completionRate}%</span>
             </div>
           </div>
@@ -327,9 +342,11 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
             <div className="flex items-center justify-between border-b pb-3 dark:border-neutral-800 border-neutral-200 mb-2">
               <div className="flex items-center gap-2">
                 <BarChart3 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                <h3 className="font-bold text-sm">Resultados por Módulo Funcional</h3>
+                <h3 className="font-bold text-sm">{l("Resultados por Módulo Funcional", "Results by Functional Module")}</h3>
               </div>
-              <span className="text-xs text-neutral-500 font-semibold">{categoryMetrics.length} Categorias</span>
+              <span className="text-xs text-neutral-500 font-semibold">
+                {categoryMetrics.length} {l("Categorias", "Categories")}
+              </span>
             </div>
 
             <div className="w-full h-64">
@@ -354,14 +371,17 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
                     }}
                   />
                   <Legend verticalAlign="top" height={30} wrapperStyle={{ fontSize: "11px" }} />
-                  <Bar dataKey="aprovados" name="Aprovados" fill={STATUS_COLORS.APROVADO} stackId="a" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="reprovados" name="Reprovados" fill={STATUS_COLORS.REPROVADO} stackId="a" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="pendentes" name="Pendentes" fill={STATUS_COLORS.PENDENTE} stackId="a" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="aprovados" name={l("Aprovados", "Passed")} fill={STATUS_COLORS.APROVADO} stackId="a" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="reprovados" name={l("Reprovados", "Failed")} fill={STATUS_COLORS.REPROVADO} stackId="a" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="pendentes" name={l("Pendentes", "Pending")} fill={STATUS_COLORS.PENDENTE} stackId="a" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
             <div className="text-center text-[11px] text-neutral-500 font-semibold pt-1 border-t dark:border-neutral-800 border-neutral-200">
-              Clique nas categorias na visualização detalhada para filtrar a matriz de testes.
+              {l(
+                "Clique nas categorias na visualização detalhada para filtrar a matriz de testes.",
+                "Click categories in the detailed view to filter the test matrix."
+              )}
             </div>
           </div>
         </div>
@@ -378,9 +398,11 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
           <div className="flex items-center justify-between border-b pb-3 dark:border-neutral-800 border-neutral-200">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-              <h3 className="font-bold text-sm sm:text-base">Métricas por Módulo Funcional</h3>
+              <h3 className="font-bold text-sm sm:text-base">{l("Métricas por Módulo Funcional", "Metrics by Functional Module")}</h3>
             </div>
-            <span className="text-xs text-neutral-500 font-semibold">{categoryMetrics.length} Áreas</span>
+            <span className="text-xs text-neutral-500 font-semibold">
+              {categoryMetrics.length} {l("Áreas", "Areas")}
+            </span>
           </div>
 
           <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
@@ -408,7 +430,7 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
                         : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
                     }`}
                   >
-                    {cat.passRate}% Aprovado
+                    {cat.passRate}% {l("Aprovado", "Passed")}
                   </span>
                 </div>
 
@@ -435,7 +457,7 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 mt-2">
-                  <span>Total: {cat.total} testes</span>
+                  <span>{l(`Total: ${cat.total} testes`, `Total: ${cat.total} tests`)}</span>
                   <div className="flex items-center gap-2">
                     <span className="text-emerald-600 dark:text-emerald-400">✓ {cat.passed}</span>
                     <span className="text-red-600 dark:text-red-400">✕ {cat.failed}</span>
@@ -456,9 +478,13 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
           <div className="flex items-center justify-between border-b pb-3 dark:border-neutral-800 border-neutral-200">
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-              <h3 className="font-bold text-sm sm:text-base">Desempenho da Equipe de Validação (Req 21 & 22)</h3>
+              <h3 className="font-bold text-sm sm:text-base">
+                {l("Desempenho da Equipe de Validação (Req 21 e 22)", "Validation Team Performance (Req 21 & 22)")}
+              </h3>
             </div>
-            <span className="text-xs text-neutral-500 font-semibold">{participantMetrics.length} Testadores</span>
+            <span className="text-xs text-neutral-500 font-semibold">
+              {participantMetrics.length} {l("Testadores", "Testers")}
+            </span>
           </div>
 
           {participantChartData.length > 0 && (
@@ -476,9 +502,9 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
                       fontSize: "0.75rem",
                     }}
                   />
-                  <Bar dataKey="aprovados" name="Aprovados" fill={STATUS_COLORS.APROVADO} stackId="p" />
-                  <Bar dataKey="reprovados" name="Reprovados" fill={STATUS_COLORS.REPROVADO} stackId="p" />
-                  <Bar dataKey="pendentes" name="Pendentes" fill={STATUS_COLORS.PENDENTE} stackId="p" />
+                  <Bar dataKey="aprovados" name={l("Aprovados", "Passed")} fill={STATUS_COLORS.APROVADO} stackId="p" />
+                  <Bar dataKey="reprovados" name={l("Reprovados", "Failed")} fill={STATUS_COLORS.REPROVADO} stackId="p" />
+                  <Bar dataKey="pendentes" name={l("Pendentes", "Pending")} fill={STATUS_COLORS.PENDENTE} stackId="p" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -487,7 +513,10 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
           <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
             {participantMetrics.length === 0 ? (
               <div className="text-center py-10 text-xs text-neutral-500">
-                Nenhum participante com testes atribuídos nesta execução.
+                {l(
+                  "Nenhum participante com testes atribuídos nesta execução.",
+                  "No participant has assigned tests in this execution."
+                )}
               </div>
             ) : (
               participantMetrics.map((p) => (
@@ -505,13 +534,13 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
                       <div className="flex items-center gap-2">
                         <h4 className="text-xs font-black tracking-tight">{p.name}</h4>
                         <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-neutral-200 text-neutral-800 dark:bg-neutral-700 dark:text-neutral-200">
-                          {p.globalRole}
+                          {translateUserRole(p.globalRole, language)}
                         </span>
                       </div>
                       <span className="text-[10px] text-neutral-500">{p.email}</span>
                     </div>
                     <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">
-                      {p.completionRate}% Concluído
+                      {p.completionRate}% {l("Concluído", "Completed")}
                     </span>
                   </div>
 
@@ -524,12 +553,15 @@ export const TestCategoryMetricsChart: React.FC<TestCategoryMetricsChartProps> =
 
                   <div className="flex items-center justify-between text-[11px] font-semibold text-neutral-500 mt-2">
                     <span>
-                      {p.completedCount} de {p.assignedCount} testes executados
+                      {l(
+                        `${p.completedCount} de ${p.assignedCount} testes executados`,
+                        `${p.completedCount} of ${p.assignedCount} tests executed`
+                      )}
                     </span>
                     <div className="flex items-center gap-2">
-                      <span className="text-emerald-600 dark:text-emerald-400">Aprov: {p.passedCount}</span>
-                      <span className="text-red-600 dark:text-red-400">Reprov: {p.failedCount}</span>
-                      <span className="text-amber-600 dark:text-amber-400">Pend: {p.pendingCount}</span>
+                      <span className="text-emerald-600 dark:text-emerald-400">{l("Aprov:", "Pass:")} {p.passedCount}</span>
+                      <span className="text-red-600 dark:text-red-400">{l("Reprov:", "Fail:")} {p.failedCount}</span>
+                      <span className="text-amber-600 dark:text-amber-400">{l("Pend:", "Pend:")} {p.pendingCount}</span>
                     </div>
                   </div>
                 </div>

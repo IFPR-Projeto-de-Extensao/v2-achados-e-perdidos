@@ -126,7 +126,7 @@ export function computeUploadSubtitle(params: {
     return `Fila offline: ${pendingSyncCount} ${pendingSyncCount === 1 ? "item pendente" : "itens pendentes"}`;
   }
 
-  return "Nenhum upload pendente.";
+  return "Nenhum envio pendente.";
 }
 
 export const UploadStatusIndicator: React.FC = () => {
@@ -232,7 +232,7 @@ export const UploadStatusIndicator: React.FC = () => {
   return (
     <aside
       id="pwa-upload-status-indicator"
-      aria-label="Status de upload em segundo plano"
+      aria-label={language === "en" ? "Background upload status" : "Situação dos envios em segundo plano"}
       className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-50 max-w-sm w-[calc(100vw-2rem)] sm:w-96 transition-all duration-300"
     >
       <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-xl overflow-hidden backdrop-blur-md">
@@ -287,7 +287,11 @@ export const UploadStatusIndicator: React.FC = () => {
             <button
               type="button"
               id="btn-toggle-upload-details"
-              aria-label={isExpanded ? "Recolher detalhes" : "Expandir detalhes"}
+              aria-label={
+                isExpanded
+                  ? language === "en" ? "Collapse details" : "Recolher detalhes"
+                  : language === "en" ? "Expand details" : "Expandir detalhes"
+              }
               className="p-1.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-700/50 transition-colors"
             >
               {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
@@ -296,7 +300,7 @@ export const UploadStatusIndicator: React.FC = () => {
               <button
                 type="button"
                 id="btn-dismiss-upload-status"
-                aria-label="Fechar painel de status"
+                aria-label={language === "en" ? "Close status panel" : "Fechar painel de situação"}
                 onClick={(e) => {
                   e.stopPropagation();
                   vibrateClick();
@@ -333,7 +337,7 @@ export const UploadStatusIndicator: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <strong>Background Sync:</strong> Você pode fechar o aplicativo com segurança. Suas fotos e itens serão sincronizados em segundo plano.
+                  <strong>Sincronização em Segundo Plano:</strong> Você pode fechar o aplicativo com segurança. Suas fotos e itens serão sincronizados em segundo plano.
                 </>
               )}
             </p>
@@ -359,7 +363,7 @@ export const UploadStatusIndicator: React.FC = () => {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center space-x-1.5">
                           <h4 className="text-xs font-bold text-neutral-900 dark:text-neutral-100 truncate">
-                            {task.itemTitle || "Objeto sem título"}
+                            {task.itemTitle || (language === "en" ? "Untitled object" : "Objeto sem título")}
                           </h4>
                           {getStatusBadge(task.status)}
                         </div>
@@ -370,7 +374,9 @@ export const UploadStatusIndicator: React.FC = () => {
 
                         {task.savingsPercentage !== undefined && task.savingsPercentage > 0 && (
                           <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                            Economia de dados: {task.savingsPercentage}%
+                            {language === "en"
+                              ? `Data savings: ${task.savingsPercentage}%`
+                              : `Economia de dados: ${task.savingsPercentage}%`}
                           </p>
                         )}
                       </div>
@@ -384,8 +390,8 @@ export const UploadStatusIndicator: React.FC = () => {
                             vibrateClick();
                             retryUploadTask(task.id);
                           }}
-                          title="Tentar novamente"
-                          aria-label="Tentar novamente"
+                          title={language === "en" ? "Try again" : "Tentar novamente"}
+                          aria-label={language === "en" ? "Try again" : "Tentar novamente"}
                           className="p-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 rounded hover:bg-blue-50 dark:hover:bg-blue-950/40"
                         >
                           <RefreshCw className="w-3.5 h-3.5" />
@@ -398,8 +404,8 @@ export const UploadStatusIndicator: React.FC = () => {
                             vibrateClick();
                             await cancelUploadTask(task.id);
                           }}
-                          title="Cancelar upload e remover da fila"
-                          aria-label="Cancelar upload e remover da fila"
+                          title={language === "en" ? "Cancel upload and remove from queue" : "Cancelar envio e remover da fila"}
+                          aria-label={language === "en" ? "Cancel upload and remove from queue" : "Cancelar envio e remover da fila"}
                           className="p-1 text-neutral-400 hover:text-red-600 dark:hover:text-red-400 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
                         >
                           <X className="w-3.5 h-3.5" />
@@ -411,8 +417,8 @@ export const UploadStatusIndicator: React.FC = () => {
                             vibrateClick();
                             removeUploadTask(task.id);
                           }}
-                          title="Remover da lista"
-                          aria-label="Remover da lista"
+                          title={language === "en" ? "Remove from list" : "Remover da lista"}
+                          aria-label={language === "en" ? "Remove from list" : "Remover da lista"}
                           className="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
                         >
                           <X className="w-3.5 h-3.5" />
@@ -435,13 +441,23 @@ export const UploadStatusIndicator: React.FC = () => {
               <div className="text-center py-3 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 rounded-xl p-3 border border-amber-200/60 dark:border-amber-900/40">
                 <p className="font-bold flex items-center justify-center space-x-1.5">
                   <HardDrive className="w-3.5 h-3.5" />
-                  <span>{pendingSyncCount} {pendingSyncCount === 1 ? "item aguardando" : "itens aguardando"} sincronização</span>
+                  <span>
+                    {language === "en"
+                      ? `${pendingSyncCount} ${pendingSyncCount === 1 ? "item waiting" : "items waiting"} to sync`
+                      : `${pendingSyncCount} ${pendingSyncCount === 1 ? "item aguardando" : "itens aguardando"} sincronização`}
+                  </span>
                 </p>
                 <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-1">
                   {isOnline
                     ? isSyncing
-                      ? "Processando fila com o Firestore..."
+                      ? language === "en"
+                        ? "Processing queue with Firestore..."
+                        : "Processando fila com o Firestore..."
+                      : language === "en"
+                      ? "Connected. Automatic sync will run shortly."
                       : "Conectado. A sincronização automática será processada."
+                    : language === "en"
+                    ? "Data is safely stored in local IndexedDB."
                     : "Os dados estão gravados com segurança no IndexedDB local."}
                 </p>
               </div>

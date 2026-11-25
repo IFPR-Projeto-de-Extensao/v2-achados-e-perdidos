@@ -107,7 +107,11 @@ export const Navbar: React.FC = () => {
             <Link
               to="/"
               className="flex items-center cursor-pointer select-none group focus-visible:outline-none rounded-lg"
-              title="Ir para a página inicial do Localiza+ IFPR"
+              title={
+                language === "en"
+                  ? "Go to Localiza+ IFPR home page"
+                  : "Ir para a página inicial do Localiza+ IFPR"
+              }
             >
               <BrandLogo size="sm" showSubtitle={false} showIfprBadge />
             </Link>
@@ -118,7 +122,11 @@ export const Navbar: React.FC = () => {
                 role="status"
                 aria-live="polite"
                 title={
-                  pendingSyncCount > 0
+                  language === "en"
+                    ? pendingSyncCount > 0
+                      ? `Offline Mode active. ${pendingSyncCount} saved record(s) waiting to sync.`
+                      : "Offline Mode: Records are safely saved locally."
+                    : pendingSyncCount > 0
                     ? `Modo Offline ativado. ${pendingSyncCount} ocorrência(s) salva(s) aguardando sincronização.`
                     : "Modo Offline: Registros salvos localmente com segurança."
                 }
@@ -281,7 +289,11 @@ export const Navbar: React.FC = () => {
                     setNotificationsOpen(!notificationsOpen);
                   }}
                   type="button"
-                  aria-label={`Notificações: ${unreadCount} não lidas`}
+                  aria-label={
+                    language === "en"
+                      ? `Notifications: ${unreadCount} unread`
+                      : `Notificações: ${unreadCount} não lidas`
+                  }
                   aria-expanded={notificationsOpen}
                   aria-haspopup="dialog"
                   className={`w-8 h-8 flex items-center justify-center rounded-xl transition-colors relative shrink-0 cursor-pointer ${
@@ -302,7 +314,11 @@ export const Navbar: React.FC = () => {
                 {notificationsOpen && (
                   <div
                     role="dialog"
-                    aria-label="Painel de Notificações do IFPR"
+                    aria-label={
+                      language === "en"
+                        ? "IFPR Notifications Panel"
+                        : "Painel de Notificações do IFPR"
+                    }
                     className="absolute right-0 top-full mt-2 w-72 xs:w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-white dark:bg-[#111827] rounded-2xl shadow-[0_12px_36px_rgba(23,43,42,0.12)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.6)] border border-slate-200 dark:border-slate-800 z-50 p-4"
                   >
                     <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
@@ -454,7 +470,11 @@ export const Navbar: React.FC = () => {
                 setMobileMenuOpen(!mobileMenuOpen);
               }}
               type="button"
-              aria-label={mobileMenuOpen ? "Fechar menu móvel" : "Abrir menu móvel"}
+              aria-label={
+                mobileMenuOpen
+                  ? language === "en" ? "Close mobile menu" : "Fechar menu móvel"
+                  : language === "en" ? "Open mobile menu" : "Abrir menu móvel"
+              }
               aria-expanded={mobileMenuOpen}
               className="lg:hidden p-1.5 sm:p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0 cursor-pointer"
             >
@@ -476,7 +496,9 @@ export const Navbar: React.FC = () => {
 
           <div
             role="navigation"
-            aria-label="Menu Móvel de Navegação"
+            aria-label={
+              language === "en" ? "Mobile Navigation Menu" : "Menu Móvel de Navegação"
+            }
             className="lg:hidden fixed top-14 sm:top-15 right-0 left-0 max-h-[calc(100dvh-3.5rem)] overflow-y-auto overscroll-contain bg-white dark:bg-[#111827] border-b border-slate-200 dark:border-slate-800 z-40 shadow-xl animate-in slide-in-from-top-2 duration-200 p-4 pb-20 space-y-4"
           >
             {/* User Session Row */}
@@ -631,7 +653,7 @@ export const Navbar: React.FC = () => {
                         : t("adminFullLabel", "Painel Administrativo Institucional")}
                     </span>
                   </div>
-                  <UIBadge tone="emerald">{currentUser.role}</UIBadge>
+                  <UIBadge tone="emerald">{translateUserRole(currentUser.role, language)}</UIBadge>
                 </button>
               </div>
             )}

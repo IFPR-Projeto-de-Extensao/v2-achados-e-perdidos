@@ -13,7 +13,7 @@ import {
   Layers,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
-import { translateCategory } from "../lib/i18n";
+import { localize, translateCategory, translateCampusLocation, translateLocationGroup } from "../lib/i18n";
 import { CANONICAL_ITEM_CATEGORIES, isCategoryMatch } from "../lib/categoryUtils";
 import { downloadFoundItemsReportPdf, generateFoundItemsReportPdf } from "../lib/foundItemsReportPdfGenerator";
 import { safeParseDate, vibrateClick, vibrateSuccess } from "../lib/utils";
@@ -111,13 +111,17 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
     setIsGenerating(true);
 
     try {
-      let periodLabel = "Histórico Geral";
-      if (periodPreset === "MES_ATUAL") periodLabel = "Mês Vigente";
-      else if (periodPreset === "30_DIAS") periodLabel = "Últimos 30 Dias";
-      else if (periodPreset === "SEMESTRE_ATUAL") periodLabel = "Semestre Letivo Atual";
-      else if (periodPreset === "ANO_2026") periodLabel = "Ano Letivo 2026";
+      let periodLabel = localize(language, "Histórico Geral", "Full History");
+      if (periodPreset === "MES_ATUAL") periodLabel = localize(language, "Mês Vigente", "Current Month");
+      else if (periodPreset === "30_DIAS") periodLabel = localize(language, "Últimos 30 Dias", "Last 30 Days");
+      else if (periodPreset === "SEMESTRE_ATUAL") periodLabel = localize(language, "Semestre Letivo Atual", "Current Academic Semester");
+      else if (periodPreset === "ANO_2026") periodLabel = localize(language, "Ano Letivo 2026", "Academic Year 2026");
       else if (periodPreset === "CUSTOM") {
-        periodLabel = `Período: ${startDate || "Início"} até ${endDate || "Hoje"}`;
+        periodLabel = localize(
+          language,
+          `Período: ${startDate || "Início"} até ${endDate || "Hoje"}`,
+          `Period: ${startDate || "Start"} to ${endDate || "Today"}`
+        );
       }
 
       const protocol = downloadFoundItemsReportPdf(filteredFoundItems, {
@@ -128,10 +132,10 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
         issuedByName: currentUser.name,
         issuedByRole:
           currentUser.role === "ADMIN"
-            ? "Administrador do Sistema"
+            ? localize(language, "Administrador do Sistema", "System Administrator")
             : currentUser.role === "SERVIDOR"
-            ? "Secretaria Acadêmica / SEBAC"
-            : "Usuário Responsável",
+            ? localize(language, "Secretaria Acadêmica / SEBAC", "Academic Office / SEBAC")
+            : localize(language, "Usuário Responsável", "Responsible User"),
         includeSignatures,
       });
 
@@ -169,7 +173,10 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
       }
     } catch (err) {
       console.error(err);
-      addToast("Erro ao abrir prévia de impressão.", "error");
+      addToast(
+        localize(language, "Erro ao abrir prévia de impressão.", "Error opening print preview."),
+        "error"
+      );
     }
   };
 
@@ -223,7 +230,7 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
             <p className="text-xs text-[#064E3B] dark:text-emerald-200 leading-relaxed">
               {language === "en"
                 ? "Generate an official high-fidelity PDF report containing the inventory of found items, custody status at the office, campus locations, custodians, and official signature fields."
-                : "Gere um documento PDF oficial em alta fidelidade contendo o inventário dos bens encontrados, status de custódia na secretaria, locais do campus, depositários e campos de visto e assinatura regulamentares."}
+                : "Gere um documento PDF oficial em alta fidelidade contendo o inventário dos bens encontrados, situação de custódia na secretaria, locais do campus, depositários e campos de visto e assinatura regulamentares."}
             </p>
           </div>
 
@@ -289,7 +296,7 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
               >
-                <option value="TODOS">{language === "en" ? "All Statuses" : "Todos os Status"}</option>
+                <option value="TODOS">{language === "en" ? "All Statuses" : "Todas as Situações"}</option>
                 <option value="DISPONIVEL">{language === "en" ? "In Custody (Pending)" : "Sob Custódia (Pendente)"}</option>
                 <option value="DEVOLVIDO">{language === "en" ? "Returned / Delivered" : "Devolvidos / Entregues"}</option>
               </UISelect>
@@ -318,10 +325,10 @@ export const ExportFoundItemsReportModal: React.FC<ExportFoundItemsReportModalPr
               >
                 <option value="TODOS">{t("allLocations")}</option>
                 {IFPR_LOCATION_GROUPS.map((group) => (
-                  <optgroup key={group.group} label={group.group}>
+                  <optgroup key={group.group} label={translateLocationGroup(group.group, language)}>
                     {group.locations.map((loc) => (
                       <option key={loc} value={loc}>
-                        {loc}
+                        {translateCampusLocation(loc, language)}
                       </option>
                     ))}
                   </optgroup>
