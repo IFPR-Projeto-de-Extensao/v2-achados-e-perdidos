@@ -265,10 +265,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "GERAL",
         tag: "i18n • PT-BR & EN-US",
       },
+      {
+        id: "v11013-fix-tts-natural-voice-android-pt-br",
+        title: "Aprimoramento da Leitura em Voz Alta (TTS) — Seleção Neural pt-BR, Pronúncia Natural e Estabilidade no Android Chrome",
+        description: "Refatoração completa do motor de acessibilidade de leitura em voz alta com criação de src/lib/ttsEngine.ts e atualização de src/components/AccessibleVoiceReader.tsx mantendo 100% do layout atual (Ouvir Descrição e velocidades 0.8x, 1x, 1.25x): correção da normalização BCP-47 para tags com underscore no Android (pt_BR -> pt-br); ranqueamento inteligente priorizando vozes neurais/naturais em português brasileiro (Google português do Brasil / pt-br-x-*-network, Microsoft Francisca/Antonio Online Natural, Luciana Enhanced) e penalizando sintetizadores robóticos (eSpeak/Pico/novelty); fallback automático offline para vozes locais on-device (pt-br-x-*-local) e recuperação transparente em erros de síntese; normalização prosódica de datas, horários, siglas do IFPR (IFPR, SEPAE, SEBAC), blocos romanos, salas, símbolos e código QR; fragmentação por frases com micro-pausas (evitando corte de textos longos no Chrome/Android), pausa/retomada confiável por segmento, correção do closure na troca de velocidade em execução, bloqueio global contra leituras simultâneas, interrupção imediata ao fechar detalhes/pagehide e respeito a prefers-reduced-motion. Validado por src/lib/ttsEngine.test.ts sem alteração em firestore.rules, autenticação ou dados.",
+        module: "GERAL",
+        tag: "Acessibilidade • TTS Neural",
+      },
     ],
     stats: {
       additionsCount: 9,
-      fixesCount: 24,
+      fixesCount: 25,
     },
   },
   {
