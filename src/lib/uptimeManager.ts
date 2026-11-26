@@ -124,38 +124,117 @@ export function clear30DayUptimeRecords() {
   }
 }
 
-// Monitora Service Worker e configura comunicação de Heartbeat sem conflito de registro
-export function registerUptimeServiceWorker(
-  onStatusChange?: (swStatus: 'ACTIVE' | 'REGISTERING' | 'FALLBACK', lastPing: number) => void
+type SwStatusCallback = (
+  swStatus: 'ACTIVE' | 'REGISTERING' | 'FALLBACK',
+  lastPing: number
+) => void;
+
+let swWatchdogInitialized = false;
+let swMessageHandler: ((event: MessageEvent) => void) | null = null;
+let swInitialPingFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+let swLastReportedStatus: 'ACTIVE' | 'REGISTERING' | 'FALLBACK' | null = null;
+let swLastReportedPing = 0;
+const swStatusSubscribers = new Set<SwStatusCallback>();
+
+function notifySwStatusSubscribers(
+  status: 'ACTIVE' | 'REGISTERING' | 'FALLBACK',
+  timestamp: number
 ) {
+  swLastReportedStatus = status;
+  swLastReportedPing = timestamp;
+  swStatusSubscribers.forEach((cb) => {
+    try {
+      cb(status, timestamp);
+    } catch (_) {}
+  });
+}
+
+export function resetUptimeWatchdogForTesting() {
+  if (swInitialPingFallbackTimer !== null) {
+    clearTimeout(swInitialPingFallbackTimer);
+    swInitialPingFallbackTimer = null;
+  }
+  if (
+    swMessageHandler &&
+    typeof navigator !== 'undefined' &&
+    'serviceWorker' in navigator &&
+    typeof navigator.serviceWorker.removeEventListener === 'function'
+  ) {
+    try {
+      navigator.serviceWorker.removeEventListener('message', swMessageHandler);
+    } catch (_) {}
+  }
+  swMessageHandler = null;
+  swWatchdogInitialized = false;
+  swLastReportedStatus = null;
+  swLastReportedPing = 0;
+  swStatusSubscribers.clear();
+}
+
+// Monitora Service Worker e configura comunicação de Heartbeat sem conflito ou duplicação de listeners
+export function registerUptimeServiceWorker(onStatusChange?: SwStatusCallback) {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     if (onStatusChange) onStatusChange('FALLBACK', Date.now());
     return;
   }
 
+  if (onStatusChange) {
+    swStatusSubscribers.add(onStatusChange);
+  }
+
+  // Guarda de idempotência: evita empilhar múltiplos listeners 'message' e múltiplos PING_HEALTH
+  if (swWatchdogInitialized) {
+    return;
+  }
+  swWatchdogInitialized = true;
+
+  let initialHandshakeReported = false;
+
+  const reportHandshakeOnce = (
+    status: 'ACTIVE' | 'REGISTERING' | 'FALLBACK',
+    timestamp: number
+  ) => {
+    if (swInitialPingFallbackTimer !== null) {
+      clearTimeout(swInitialPingFallbackTimer);
+      swInitialPingFallbackTimer = null;
+    }
+    initialHandshakeReported = true;
+    notifySwStatusSubscribers(status, timestamp);
+  };
+
+  swMessageHandler = (event: MessageEvent) => {
+    if (event.data && event.data.type === 'PONG_HEALTH') {
+      const ts = typeof event.data.timestamp === 'number' ? event.data.timestamp : Date.now();
+      // Evita duplicidade caso o mesmo timestamp de handshake já tenha sido reportado
+      if (initialHandshakeReported && swLastReportedStatus === 'ACTIVE' && swLastReportedPing === ts) {
+        return;
+      }
+      reportHandshakeOnce('ACTIVE', ts);
+    }
+  };
+
+  navigator.serviceWorker.addEventListener('message', swMessageHandler);
+
   // Utiliza a instância ativa do Service Worker gerenciada pelo vite-plugin-pwa
   navigator.serviceWorker.ready
-    .then((registration) => {
-      if (onStatusChange) {
-        onStatusChange('ACTIVE', Date.now());
-      }
-
+    .then(() => {
       if (navigator.serviceWorker.controller) {
+        // Aguarda a resposta real PONG_HEALTH (emitindo 1 único evento ACTIVE) com fallback em 1.5s
+        swInitialPingFallbackTimer = setTimeout(() => {
+          if (!initialHandshakeReported) {
+            reportHandshakeOnce('ACTIVE', Date.now());
+          }
+        }, 1500);
+
         navigator.serviceWorker.controller.postMessage({ type: 'PING_HEALTH' });
+      } else if (!initialHandshakeReported) {
+        reportHandshakeOnce('ACTIVE', Date.now());
       }
     })
     .catch((err) => {
       console.warn('[SW Uptime] Service Worker em modo fallback:', err);
-      if (onStatusChange) onStatusChange('FALLBACK', Date.now());
+      reportHandshakeOnce('FALLBACK', Date.now());
     });
-
-  navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'PONG_HEALTH') {
-      if (onStatusChange) {
-        onStatusChange('ACTIVE', event.data.timestamp);
-      }
-    }
-  });
 }
 
 // Dispara um ping manual via Service Worker (medição estritamente real)

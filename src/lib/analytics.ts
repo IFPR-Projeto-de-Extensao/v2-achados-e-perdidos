@@ -17,6 +17,12 @@ const defaultMeasurementId =
   (typeof process !== 'undefined' && process.env?.VITE_GA_MEASUREMENT_ID) ||
   '';
 
+let gtagLoadFailed = false;
+
+export function resetGoogleAnalyticsStateForTesting() {
+  gtagLoadFailed = false;
+}
+
 // Helper to check whether Google Analytics / GTM script is already present in DOM
 export function isGoogleAnalyticsScriptPresent(): boolean {
   if (typeof document === 'undefined') return false;
@@ -40,9 +46,19 @@ export function initGoogleAnalytics(measurementId = defaultMeasurementId) {
     return;
   }
 
+  // Do not attempt external GTM injection when offline or after a prior load failure (no infinite retries)
+  if (gtagLoadFailed) {
+    return;
+  }
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    console.debug('[Analytics Notice] Navegador offline: carregamento do Google Analytics adiado sem erro.');
+    return;
+  }
+
   const cleanId = measurementId.trim();
 
-  // Deduplication check: prevent multiple injections if gtag.js is already in DOM
+  // Deduplication check: prevent multiple injections if gtag.js is already in DOM (e.g. injected by Firebase SDK)
   if (isGoogleAnalyticsScriptPresent()) {
     console.debug(`[Analytics Notice] Script do Google Analytics já presente no DOM. Evitando injeção duplicada para ${cleanId}.`);
     return;
@@ -62,6 +78,7 @@ export function initGoogleAnalytics(measurementId = defaultMeasurementId) {
   script.async = true;
   script.src = `https://www.googletagmanager.com/gtag/js?id=${cleanId}`;
   script.onerror = () => {
+    gtagLoadFailed = true;
     console.warn(`[Analytics Notice] Não foi possível carregar o script do Google Analytics (${cleanId}). O aplicativo continuará funcionando normalmente.`);
   };
   document.head.appendChild(script);
@@ -74,7 +91,7 @@ export function trackCustomEvent(eventName: string, params: Record<string, any> 
   const timestamp = new Date().toISOString();
 
   // 1. Google Analytics Event
-  if (typeof window !== 'undefined' && window.gtag) {
+  if (!gtagLoadFailed && typeof window !== 'undefined' && typeof window.gtag === 'function') {
     try {
       window.gtag('event', eventName, params);
     } catch (e) {
@@ -89,8 +106,9 @@ export function trackCustomEvent(eventName: string, params: Record<string, any> 
     console.warn("Erro ao registrar evento no Firebase Analytics:", e);
   }
 
-  // 3. Backend Express Server Analytics Endpoint
-  if (typeof window !== 'undefined' && typeof fetch === 'function') {
+  // 3. Backend Express Server Analytics Endpoint (skipped cleanly when offline)
+  const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  if (!isOffline && typeof window !== 'undefined' && typeof fetch === 'function') {
     try {
       fetch('/api/analytics/track', {
         method: 'POST',

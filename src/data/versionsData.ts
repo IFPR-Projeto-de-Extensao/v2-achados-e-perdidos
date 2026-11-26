@@ -272,10 +272,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "GERAL",
         tag: "Acessibilidade • TTS Neural",
       },
+      {
+        id: "v11013-fix-firebase-analytics-gtm-sw-watchdog-dedup",
+        title: "Correção de Inicialização Duplicada do Firebase Analytics/GTM e Deduplicação do SW Uptime Watchdog",
+        description: "Eliminada a execução duplicada de serviços secundários entre src/main.tsx (appInit.ts) e src/App.tsx (secondaryServices.ts), unificando o pipeline em singleton idempotente (initializeAppServices); blindagem de initFirebaseSecondaryServices() em src/lib/firebase.ts e initGoogleAnalytics() em src/lib/analytics.ts com trava singleton de promessa, validação de measurementId (G-Q2BWFJTJ8K), guarda para modo offline (navigator.onLine === false) e latch de tentativa única em falhas de rede/DNS/bloqueador (net::ERR_ADDRESS_INVALID) sem novas tentativas infinitas; deduplicação de listeners 'message' e probes PING_HEALTH em registerUptimeServiceWorker() (src/lib/uptimeManager.ts), eliminando os 3 registros consecutivos de status ACTIVE mantendo integralmente o monitoramento, heartbeat e recuperação do Service Worker, além de Firebase Auth, Firestore e firestore.rules intactos.",
+        module: "PWA",
+        tag: "Analytics & SW Watchdog",
+      },
     ],
     stats: {
       additionsCount: 9,
-      fixesCount: 25,
+      fixesCount: 26,
     },
   },
   {

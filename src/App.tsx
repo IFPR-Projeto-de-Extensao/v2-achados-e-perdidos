@@ -38,7 +38,6 @@ import { PWAInstallBanner } from "./components/PWAInstallBanner";
 import { MobileBottomNav } from "./components/MobileBottomNav";
 import { UploadStatusIndicator } from "./components/UploadStatusIndicator";
 import { QuickSupportButton } from "./components/QuickSupportButton";
-import { initSecondaryServices } from "./lib/secondaryServices";
 import { trackPageView } from "./lib/analytics";
 import { traceFirebasePerformance } from "./lib/firebase";
 import { savePerformanceMetricLog } from "./lib/offlineDb";
@@ -288,18 +287,7 @@ const MainContent: React.FC = () => {
     resolveItemFromUrl();
   }, [items, setSelectedItemForDetail, addToast]);
 
-  // Secondary non-blocking services (Analytics, Performance, PWA Uptime)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      try {
-        initSecondaryServices();
-      } catch (err) {
-        console.warn("[App] Falha ao inicializar serviços secundários:", err);
-      }
-    }, 60);
-
-    return () => clearTimeout(timer);
-  }, []);
+  // Secondary services (Analytics, Performance, SW Uptime Watchdog) are initialized once by src/main.tsx via initializeAppServices().
 
   // Performance tracking per route
   useEffect(() => {

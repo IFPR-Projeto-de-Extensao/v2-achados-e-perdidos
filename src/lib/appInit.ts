@@ -9,31 +9,45 @@ import { initFirebaseSecondaryServices } from "./firebase";
 import { initGoogleAnalytics } from "./analytics";
 import { registerUptimeServiceWorker } from "./uptimeManager";
 
+let appServicesInitPromise: Promise<void> | null = null;
+
+export function resetAppInitForTesting(): void {
+  appServicesInitPromise = null;
+}
+
 export async function initializeAppServices(): Promise<void> {
   if (typeof window === "undefined") return;
 
-  console.log("[AppInit] Inicializando serviços em segundo plano após montagem do DOM...");
-
-  // 1. Firebase Secondary Services (Analytics & Performance Monitoring)
-  try {
-    await initFirebaseSecondaryServices();
-  } catch (err) {
-    console.warn("[AppInit] Firebase Secondary services init notice:", err);
+  if (appServicesInitPromise) {
+    return appServicesInitPromise;
   }
 
-  // 2. Google Analytics (standalone fallback only if not already initialized by Firebase)
-  try {
-    initGoogleAnalytics();
-  } catch (err) {
-    console.warn("[AppInit] Google Analytics init notice:", err);
-  }
+  appServicesInitPromise = (async () => {
+    console.log("[AppInit] Inicializando serviços em segundo plano após montagem do DOM...");
 
-  // 3. Service Worker Heartbeat Watchdog (attaches to active SW controller without registering anew)
-  try {
-    registerUptimeServiceWorker((status, ping) => {
-      console.log(`[AppInit] SW Uptime Watchdog status: ${status}, last ping: ${ping}`);
-    });
-  } catch (err) {
-    console.warn("[AppInit] SW Watchdog notice:", err);
-  }
+    // 1. Firebase Secondary Services (Analytics & Performance Monitoring)
+    try {
+      await initFirebaseSecondaryServices();
+    } catch (err) {
+      console.warn("[AppInit] Firebase Secondary services init notice:", err);
+    }
+
+    // 2. Google Analytics (standalone fallback only if not already initialized by Firebase)
+    try {
+      initGoogleAnalytics();
+    } catch (err) {
+      console.warn("[AppInit] Google Analytics init notice:", err);
+    }
+
+    // 3. Service Worker Heartbeat Watchdog (attaches once to active SW controller without registering anew)
+    try {
+      registerUptimeServiceWorker((status, ping) => {
+        console.log(`[AppInit] SW Uptime Watchdog status: ${status}, last ping: ${ping}`);
+      });
+    } catch (err) {
+      console.warn("[AppInit] SW Watchdog notice:", err);
+    }
+  })();
+
+  return appServicesInitPromise;
 }
