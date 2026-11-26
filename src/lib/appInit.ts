@@ -5,7 +5,7 @@
  * Imported dynamically only after React root has mounted to prevent circular initialization and TDZ.
  */
 
-import { initFirebaseSecondaryServices } from "./firebase";
+import { initFirebaseSecondaryServices, isFirebaseAnalyticsEnabled } from "./firebase";
 import { initGoogleAnalytics } from "./analytics";
 import { registerUptimeServiceWorker } from "./uptimeManager";
 
@@ -25,16 +25,18 @@ export async function initializeAppServices(): Promise<void> {
   appServicesInitPromise = (async () => {
     console.log("[AppInit] Inicializando serviços em segundo plano após montagem do DOM...");
 
-    // 1. Firebase Secondary Services (Analytics & Performance Monitoring)
+    // 1. Firebase Secondary Services (Analytics & Performance Monitoring — both strictly opt-in)
     try {
       await initFirebaseSecondaryServices();
     } catch (err) {
       console.warn("[AppInit] Firebase Secondary services init notice:", err);
     }
 
-    // 2. Google Analytics (standalone fallback only if not already initialized by Firebase)
+    // 2. Google Analytics (standalone fallback only when external Analytics is explicitly enabled)
     try {
-      initGoogleAnalytics();
+      if (isFirebaseAnalyticsEnabled()) {
+        initGoogleAnalytics();
+      }
     } catch (err) {
       console.warn("[AppInit] Google Analytics init notice:", err);
     }

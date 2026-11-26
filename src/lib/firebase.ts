@@ -1,7 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
-import { getAnalytics, isSupported as isAnalyticsSupported, logEvent as logFbEvent, Analytics } from 'firebase/analytics';
+import type { Analytics } from 'firebase/analytics';
 import { getPerformance, FirebasePerformance, trace } from 'firebase/performance';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { getFirebaseApp, getFirebaseAuth, getFirebaseDb, getGoogleAuthProvider, firebaseReadyPromise } from './firebaseInit';
@@ -18,14 +18,33 @@ export let firebasePerformance: FirebasePerformance | null = null;
 let secondaryServicesInitPromise: Promise<void> | null = null;
 let analyticsInitAttempted = false;
 let analyticsLoadFailed = false;
-let analyticsScriptObserver: MutationObserver | null = null;
+let logFbEventFn: ((analyticsInstance: Analytics, eventName: string, eventParams?: Record<string, any>) => void) | null = null;
 
 export function hasValidMeasurementId(id: unknown): id is string {
   return typeof id === 'string' && /^G-[A-Za-z0-9]+$/.test(id.trim());
 }
 
+/**
+ * Checks whether Firebase Analytics should be initialized.
+ * Strictly requires VITE_ENABLE_FIREBASE_ANALYTICS to be explicitly "true".
+ * Defaults to false so external GTM/Analytics telemetry is strictly optional
+ * and never triggers getAnalytics(app) or googletagmanager.com requests unless explicitly enabled.
+ */
+export function isFirebaseAnalyticsEnabled(): boolean {
+  try {
+    if (typeof import.meta !== "undefined" && import.meta.env?.VITE_ENABLE_FIREBASE_ANALYTICS === "true") {
+      return true;
+    }
+    if (typeof process !== "undefined" && process.env?.VITE_ENABLE_FIREBASE_ANALYTICS === "true") {
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
 export function getFirebaseAnalyticsState() {
   return {
+    enabled: isFirebaseAnalyticsEnabled(),
     initialized: Boolean(firebaseAnalytics),
     attempted: analyticsInitAttempted,
     failed: analyticsLoadFailed,
@@ -33,13 +52,8 @@ export function getFirebaseAnalyticsState() {
 }
 
 export function resetFirebaseAnalyticsStateForTesting() {
-  if (analyticsScriptObserver) {
-    try {
-      analyticsScriptObserver.disconnect();
-    } catch (_) {}
-    analyticsScriptObserver = null;
-  }
   firebaseAnalytics = null;
+  logFbEventFn = null;
   secondaryServicesInitPromise = null;
   analyticsInitAttempted = false;
   analyticsLoadFailed = false;
@@ -76,93 +90,12 @@ export function isFirebasePerformanceEnabled(): boolean {
   return false;
 }
 
-function attachGtmScriptFailureObserver(): void {
-  if (typeof document === "undefined" || typeof MutationObserver === "undefined") return;
-  if (analyticsScriptObserver) return;
-
-  const markScriptFailed = (src: string) => {
-    if (analyticsLoadFailed) return;
-    analyticsLoadFailed = true;
-    firebaseAnalytics = null;
-    if (analyticsScriptObserver) {
-      try {
-        analyticsScriptObserver.disconnect();
-      } catch (_) {}
-      analyticsScriptObserver = null;
-    }
-    console.warn(
-      `[Firebase Analytics Notice] Falha na resolução de rede/DNS para Google Tag Manager (${src}). A aplicação e os serviços essenciais continuam operando normalmente sem telemetria externa.`
-    );
-  };
-
-  const attachListenersToScript = (scriptEl: HTMLScriptElement) => {
-    if ((scriptEl as any).__localizaGtmObserved) return;
-    (scriptEl as any).__localizaGtmObserved = true;
-    scriptEl.addEventListener(
-      "error",
-      () => markScriptFailed(scriptEl.src || "https://www.googletagmanager.com/gtag/js"),
-      { once: true }
-    );
-    scriptEl.addEventListener(
-      "load",
-      () => {
-        if (analyticsScriptObserver) {
-          try {
-            analyticsScriptObserver.disconnect();
-          } catch (_) {}
-          analyticsScriptObserver = null;
-        }
-      },
-      { once: true }
-    );
-  };
-
-  try {
-    const existingScript =
-      typeof document.querySelector === "function"
-        ? (document.querySelector('script[src*="googletagmanager.com/gtag/js"]') as HTMLScriptElement | null)
-        : null;
-    if (existingScript) {
-      attachListenersToScript(existingScript);
-      return;
-    }
-
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const node of Array.from(mutation.addedNodes)) {
-          if (
-            node.nodeName === "SCRIPT" &&
-            (node as HTMLScriptElement).src &&
-            (node as HTMLScriptElement).src.includes("googletagmanager.com/gtag/js")
-          ) {
-            attachListenersToScript(node as HTMLScriptElement);
-            observer.disconnect();
-            if (analyticsScriptObserver === observer) {
-              analyticsScriptObserver = null;
-            }
-            return;
-          }
-        }
-      }
-    });
-
-    analyticsScriptObserver = observer;
-    observer.observe(document.head || document.documentElement, { childList: true, subtree: true });
-    setTimeout(() => {
-      if (analyticsScriptObserver === observer) {
-        try {
-          observer.disconnect();
-        } catch (_) {}
-        analyticsScriptObserver = null;
-      }
-    }, 5000);
-  } catch (_) {}
-}
-
 /**
  * Asynchronously initializes secondary Firebase services (Analytics and Performance)
  * without blocking the critical render path or main thread during initial DOM load.
- * Strictly singleton per page load: never duplicates initialization or retries infinitely.
+ * Strictly singleton per page load and opt-in for external telemetry:
+ * - When VITE_ENABLE_FIREBASE_ANALYTICS !== "true", getAnalytics(app) is never invoked.
+ * - When enabled, initializes strictly once with offline guard and non-blocking error handling.
  */
 export async function initFirebaseSecondaryServices(): Promise<void> {
   if (typeof window === 'undefined') return;
@@ -172,30 +105,35 @@ export async function initFirebaseSecondaryServices(): Promise<void> {
   }
 
   secondaryServicesInitPromise = (async () => {
-    // 1. Firebase Analytics (single attempt, skipped cleanly when offline or invalid measurementId)
+    // 1. Firebase Analytics (strictly optional via VITE_ENABLE_FIREBASE_ANALYTICS="true")
     if (!analyticsInitAttempted && !firebaseAnalytics && !analyticsLoadFailed) {
       analyticsInitAttempted = true;
 
-      const isOffline = typeof navigator !== "undefined" && navigator.onLine === false;
-      const measurementId = (firebaseConfig as any)?.measurementId;
-
-      if (isOffline) {
-        console.debug("[Firebase] Analytics adiado: navegador offline. Serviços essenciais seguem normalmente.");
-      } else if (!hasValidMeasurementId(measurementId)) {
-        console.debug("[Firebase] Analytics não inicializado: measurementId ausente ou inválido.");
+      if (!isFirebaseAnalyticsEnabled()) {
+        console.debug("[Firebase] Analytics desabilitado por configuração (VITE_ENABLE_FIREBASE_ANALYTICS !== 'true').");
       } else {
-        try {
-          const supported = await isAnalyticsSupported();
-          if (supported && !firebaseAnalytics && !analyticsLoadFailed) {
-            // Monitor DOM injection of the Firebase Analytics gtag script to handle DNS/blocker errors gracefully
-            attachGtmScriptFailureObserver();
-            firebaseAnalytics = getAnalytics(app);
-            console.log("[Firebase] Analytics inicializado de forma assíncrona.");
+        const isOffline = typeof navigator !== "undefined" && navigator.onLine === false;
+        const measurementId = (firebaseConfig as any)?.measurementId;
+
+        if (isOffline) {
+          console.debug("[Firebase] Analytics adiado: navegador offline. Serviços essenciais seguem normalmente.");
+        } else if (!hasValidMeasurementId(measurementId)) {
+          console.debug("[Firebase] Analytics não inicializado: measurementId ausente ou inválido.");
+        } else {
+          try {
+            const analyticsModule = await import('firebase/analytics');
+            const supported = await analyticsModule.isSupported();
+            if (supported && !firebaseAnalytics && !analyticsLoadFailed) {
+              firebaseAnalytics = analyticsModule.getAnalytics(app);
+              logFbEventFn = analyticsModule.logEvent;
+              console.log("[Firebase] Analytics inicializado de forma assíncrona.");
+            }
+          } catch (analyticsErr) {
+            analyticsLoadFailed = true;
+            firebaseAnalytics = null;
+            logFbEventFn = null;
+            console.warn("[Firebase] Aviso ao inicializar Analytics (serviço secundário não essencial):", analyticsErr);
           }
-        } catch (analyticsErr) {
-          analyticsLoadFailed = true;
-          firebaseAnalytics = null;
-          console.warn("[Firebase] Aviso ao inicializar Analytics (serviço secundário não essencial):", analyticsErr);
         }
       }
     }
@@ -228,11 +166,11 @@ export function traceFirebasePerformance(metricName: string) {
 }
 
 export function logFirebaseEvent(eventName: string, eventParams?: Record<string, any>) {
-  if (!firebaseAnalytics || analyticsLoadFailed) {
+  if (!firebaseAnalytics || !logFbEventFn || analyticsLoadFailed) {
     return;
   }
   try {
-    logFbEvent(firebaseAnalytics, eventName, eventParams);
+    logFbEventFn(firebaseAnalytics, eventName, eventParams);
   } catch (err) {
     analyticsLoadFailed = true;
     console.warn("Erro ao enviar evento para Firebase Analytics:", err);

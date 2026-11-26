@@ -2,6 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs";
 import path from "path";
 import firebaseConfig from "../../firebase-applet-config.json";
+
+const { mockGetAnalytics, mockIsAnalyticsSupported, mockLogFbEvent } = vi.hoisted(() => ({
+  mockGetAnalytics: vi.fn((appInstance: unknown) => ({ app: appInstance, _mocked: true })),
+  mockIsAnalyticsSupported: vi.fn(async () => true),
+  mockLogFbEvent: vi.fn(),
+}));
+
+vi.mock("firebase/analytics", () => ({
+  getAnalytics: mockGetAnalytics,
+  isSupported: mockIsAnalyticsSupported,
+  logEvent: mockLogFbEvent,
+}));
+
 import {
   initGoogleAnalytics,
   isGoogleAnalyticsScriptPresent,
@@ -9,8 +22,12 @@ import {
   resetGoogleAnalyticsStateForTesting,
 } from "./analytics";
 import {
+  app,
+  auth,
+  db,
   logFirebaseEvent,
   initFirebaseSecondaryServices,
+  isFirebaseAnalyticsEnabled,
   hasValidMeasurementId,
   getFirebaseAnalyticsState,
   resetFirebaseAnalyticsStateForTesting,
@@ -22,9 +39,24 @@ import {
   resetUptimeWatchdogForTesting,
 } from "./uptimeManager";
 
-describe("LOCALIZA+ — Auditoria do Firebase Analytics, Google Tag Manager e SW Uptime Watchdog", () => {
-  describe("1. Identificação da Causa Raiz da URL e Configuração do Firebase Analytics", () => {
-    it("deve comprovar que o measurementId G-Q2BWFJTJ8K tem origem em firebase-applet-config.json e é válido", () => {
+describe("LOCALIZA+ — Auditoria do Firebase Analytics (Opt-In), GTM e SW Uptime Watchdog", () => {
+  const originalAnalyticsEnv = process.env.VITE_ENABLE_FIREBASE_ANALYTICS;
+
+  afterEach(() => {
+    if (originalAnalyticsEnv === undefined) {
+      delete process.env.VITE_ENABLE_FIREBASE_ANALYTICS;
+    } else {
+      process.env.VITE_ENABLE_FIREBASE_ANALYTICS = originalAnalyticsEnv;
+    }
+    mockGetAnalytics.mockReset();
+    mockGetAnalytics.mockImplementation((appInstance: unknown) => ({ app: appInstance, _mocked: true }));
+    mockIsAnalyticsSupported.mockReset();
+    mockIsAnalyticsSupported.mockImplementation(async () => true);
+    mockLogFbEvent.mockReset();
+  });
+
+  describe("1. Configuração do Measurement ID e Controle Opt-In VITE_ENABLE_FIREBASE_ANALYTICS", () => {
+    it("preserva measurementId G-Q2BWFJTJ8K em firebase-applet-config.json e valida formato G-*", () => {
       expect(firebaseConfig.measurementId).toBe("G-Q2BWFJTJ8K");
       expect(firebaseConfig.projectId).toBe("gen-lang-client-0490390966");
       expect(hasValidMeasurementId(firebaseConfig.measurementId)).toBe(true);
@@ -33,20 +65,39 @@ describe("LOCALIZA+ — Auditoria do Firebase Analytics, Google Tag Manager e SW
       expect(hasValidMeasurementId("invalid")).toBe(false);
     });
 
+    it("mantém Firebase Analytics desabilitado por padrão (opt-in estrito via VITE_ENABLE_FIREBASE_ANALYTICS === 'true')", () => {
+      delete process.env.VITE_ENABLE_FIREBASE_ANALYTICS;
+      expect(isFirebaseAnalyticsEnabled()).toBe(false);
+
+      process.env.VITE_ENABLE_FIREBASE_ANALYTICS = "false";
+      expect(isFirebaseAnalyticsEnabled()).toBe(false);
+
+      process.env.VITE_ENABLE_FIREBASE_ANALYTICS = "1";
+      expect(isFirebaseAnalyticsEnabled()).toBe(false);
+
+      process.env.VITE_ENABLE_FIREBASE_ANALYTICS = "TRUE";
+      expect(isFirebaseAnalyticsEnabled()).toBe(false);
+
+      process.env.VITE_ENABLE_FIREBASE_ANALYTICS = "true";
+      expect(isFirebaseAnalyticsEnabled()).toBe(true);
+    });
+
     it("URL observada no erro corresponde exatamente à convenção interna do SDK @firebase/analytics", () => {
       const expectedUrlPattern = `https://www.googletagmanager.com/gtag/js?l=dataLayer&id=${firebaseConfig.measurementId}`;
       expect(expectedUrlPattern).toBe("https://www.googletagmanager.com/gtag/js?l=dataLayer&id=G-Q2BWFJTJ8K");
     });
   });
 
-  describe("2. Prevenção de Inicialização Duplicada, Modo Offline e GTM Bloqueado", () => {
+  describe("2. Analytics Desabilitado vs Habilitado (Singleton, Offline, GTM Bloqueado e Zero Requisições)", () => {
     let mockHead: any;
     let appendedScripts: any[] = [];
 
     beforeEach(() => {
+      delete process.env.VITE_ENABLE_FIREBASE_ANALYTICS;
       resetGoogleAnalyticsStateForTesting();
       resetFirebaseAnalyticsStateForTesting();
       resetAppInitForTesting();
+      resetUptimeWatchdogForTesting();
       appendedScripts = [];
       mockHead = {
         appendChild: vi.fn((el) => {
@@ -86,76 +137,125 @@ describe("LOCALIZA+ — Auditoria do Firebase Analytics, Google Tag Manager e SW
       vi.unstubAllGlobals();
     });
 
-    it("isGoogleAnalyticsScriptPresent deve detectar script existente injetado pelo Firebase SDK", () => {
-      expect(isGoogleAnalyticsScriptPresent()).toBe(false);
+    it("Teste 1 e 2 (Analytics DESABILITADO): ZERO chamadas a getAnalytics(app) e ZERO injeções para googletagmanager.com", async () => {
+      delete process.env.VITE_ENABLE_FIREBASE_ANALYTICS;
 
-      appendedScripts.push({
-        id: "",
-        src: "https://www.googletagmanager.com/gtag/js?l=dataLayer&id=G-Q2BWFJTJ8K",
-      });
+      await initializeAppServices();
+      await initFirebaseSecondaryServices();
 
-      expect(isGoogleAnalyticsScriptPresent()).toBe(true);
-    });
-
-    it("initGoogleAnalytics NÃO deve injetar script duplicado se o script do Firebase já estiver presente", () => {
-      appendedScripts.push({
-        id: "",
-        src: "https://www.googletagmanager.com/gtag/js?l=dataLayer&id=G-Q2BWFJTJ8K",
-      });
-
-      initGoogleAnalytics("G-Q2BWFJTJ8K");
+      expect(mockIsAnalyticsSupported).not.toHaveBeenCalled();
+      expect(mockGetAnalytics).not.toHaveBeenCalled();
       expect(mockHead.appendChild).not.toHaveBeenCalled();
+      expect(appendedScripts).toHaveLength(0);
+
+      const state = getFirebaseAnalyticsState();
+      expect(state.enabled).toBe(false);
+      expect(state.initialized).toBe(false);
+      expect(state.failed).toBe(false);
+
+      // Serviços principais do Firebase permanecem intactos
+      expect(app).toBeDefined();
+      expect(auth).toBeDefined();
+      expect(db).toBeDefined();
+
+      // logFirebaseEvent funciona como no-op silencioso
+      expect(() => logFirebaseEvent("page_view", { page: "home" })).not.toThrow();
+      expect(mockLogFbEvent).not.toHaveBeenCalled();
     });
 
-    it("initGoogleAnalytics NÃO deve injetar script duplicado se já foi inicializado anteriormente", () => {
-      initGoogleAnalytics("G-VALID12345");
-      expect(mockHead.appendChild).toHaveBeenCalledTimes(1);
+    it("Teste 6 (Analytics HABILITADO): executa getAnalytics(app) estritamente uma única vez (singleton) mesmo em chamadas concorrentes", async () => {
+      process.env.VITE_ENABLE_FIREBASE_ANALYTICS = "true";
 
-      initGoogleAnalytics("G-VALID12345");
-      expect(mockHead.appendChild).toHaveBeenCalledTimes(1);
+      await Promise.all([
+        initFirebaseSecondaryServices(),
+        initFirebaseSecondaryServices(),
+        initializeAppServices(),
+        initSecondaryServices(),
+      ]);
+
+      expect(mockIsAnalyticsSupported).toHaveBeenCalledTimes(1);
+      expect(mockGetAnalytics).toHaveBeenCalledTimes(1);
+      expect(mockGetAnalytics).toHaveBeenCalledWith(app);
+
+      const state = getFirebaseAnalyticsState();
+      expect(state.enabled).toBe(true);
+      expect(state.initialized).toBe(true);
+      expect(state.failed).toBe(false);
+
+      logFirebaseEvent("item_viewed", { item_id: "obj-1" });
+      expect(mockLogFbEvent).toHaveBeenCalledTimes(1);
     });
 
-    it("NÃO deve tentar carregar Google Tag Manager quando o navegador estiver offline", async () => {
+    it("Teste 7 (Analytics HABILITADO com GTM bloqueado/falha): aplicação permanece operacional sem retentativas infinitas", async () => {
+      process.env.VITE_ENABLE_FIREBASE_ANALYTICS = "true";
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      mockGetAnalytics.mockImplementationOnce(() => {
+        throw new Error("Simulated ERR_ADDRESS_INVALID / blocked GTM");
+      });
+
+      await expect(initFirebaseSecondaryServices()).resolves.toBeUndefined();
+      // Chamada posterior não deve tentar novamente
+      await expect(initFirebaseSecondaryServices()).resolves.toBeUndefined();
+
+      expect(mockGetAnalytics).toHaveBeenCalledTimes(1);
+      const state = getFirebaseAnalyticsState();
+      expect(state.initialized).toBe(false);
+      expect(state.failed).toBe(true);
+
+      // App continua operando normalmente sem exceções
+      expect(() => logFirebaseEvent("after_failure", { ok: true })).not.toThrow();
+      expect(auth).toBeDefined();
+      expect(db).toBeDefined();
+
+      warnSpy.mockRestore();
+    });
+
+    it("Analytics HABILITADO mas offline (navigator.onLine === false): não chama getAnalytics(app) nem injeta GTM", async () => {
+      process.env.VITE_ENABLE_FIREBASE_ANALYTICS = "true";
       vi.stubGlobal("navigator", {
         onLine: false,
         userAgent: "vitest",
       });
 
       initGoogleAnalytics("G-Q2BWFJTJ8K");
-      expect(mockHead.appendChild).not.toHaveBeenCalled();
-
       await initFirebaseSecondaryServices();
+
+      expect(mockHead.appendChild).not.toHaveBeenCalled();
+      expect(mockGetAnalytics).not.toHaveBeenCalled();
+
       const state = getFirebaseAnalyticsState();
       expect(state.attempted).toBe(true);
       expect(state.initialized).toBe(false);
       expect(state.failed).toBe(false);
     });
 
-    it("quando GTM falha (ERR_ADDRESS_INVALID / bloqueador), degrada silenciosamente sem novas tentativas", () => {
-      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    it("isGoogleAnalyticsScriptPresent e initGoogleAnalytics previnem injeção duplicada e degradam silenciosamente em onerror", () => {
+      expect(isGoogleAnalyticsScriptPresent()).toBe(false);
 
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      initGoogleAnalytics("G-Q2BWFJTJ8K");
+      expect(mockHead.appendChild).toHaveBeenCalledTimes(1);
+      expect(isGoogleAnalyticsScriptPresent()).toBe(true);
+
+      // Segunda chamada não duplica script
       initGoogleAnalytics("G-Q2BWFJTJ8K");
       expect(mockHead.appendChild).toHaveBeenCalledTimes(1);
 
-      const injectedScript = appendedScripts[0];
-      expect(typeof injectedScript.onerror).toBe("function");
-
       // Simula falha net::ERR_ADDRESS_INVALID no carregamento do script
+      const injectedScript = appendedScripts[0];
       injectedScript.onerror(new Event("error"));
       expect(warnSpy).toHaveBeenCalledTimes(1);
 
-      // Limpa scripts do DOM simulando tentativa posterior — latch impede retry infinito
+      // Mesmo removendo o script do DOM, latch impede nova tentativa
       appendedScripts.length = 0;
       initGoogleAnalytics("G-Q2BWFJTJ8K");
       expect(mockHead.appendChild).toHaveBeenCalledTimes(1);
-
-      // trackCustomEvent não deve lançar nem tentar disparar gtag após falha
       expect(() => trackCustomEvent("after_gtm_failure", { ok: true })).not.toThrow();
 
       warnSpy.mockRestore();
     });
 
-    it("chamadas simultâneas de initializeAppServices() e initSecondaryServices() executam uma única inicialização singleton", async () => {
+    it("Teste 8: chamadas simultâneas de initializeAppServices() e initSecondaryServices() executam uma única inicialização singleton", async () => {
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
       await Promise.all([
@@ -190,24 +290,17 @@ describe("LOCALIZA+ — Auditoria do Firebase Analytics, Google Tag Manager e SW
       vi.unstubAllGlobals();
     });
 
-    it("trackCustomEvent não deve propagar exceções se window.gtag falhar", () => {
-      expect(() => {
-        trackCustomEvent("test_event", { item_id: "123" });
-      }).not.toThrow();
+    it("trackCustomEvent e logFirebaseEvent nunca propagam exceções", () => {
+      expect(() => trackCustomEvent("test_event", { item_id: "123" })).not.toThrow();
+      expect(() => logFirebaseEvent("test_event", { item_id: "123" })).not.toThrow();
     });
 
-    it("logFirebaseEvent não deve propagar exceções se a instância de analytics falhar", () => {
-      expect(() => {
-        logFirebaseEvent("test_event", { item_id: "123" });
-      }).not.toThrow();
-    });
-
-    it("initializeAppServices deve concluir sem lançar exceções não tratadas", async () => {
+    it("initializeAppServices conclui sem lançar exceções não tratadas", async () => {
       await expect(initializeAppServices()).resolves.toBeUndefined();
     });
   });
 
-  describe("4. SW Uptime Watchdog — Eliminação de Duplicidade de Listeners e Logs ACTIVE", () => {
+  describe("4. SW Uptime Watchdog — Deduplicação de Listeners e Status ACTIVE Único", () => {
     beforeEach(() => {
       resetUptimeWatchdogForTesting();
     });
@@ -221,7 +314,6 @@ describe("LOCALIZA+ — Auditoria do Firebase Analytics, Google Tag Manager e SW
       const listeners: Array<(e: any) => void> = [];
       const postMessage = vi.fn((msg: any) => {
         if (msg?.type === "PING_HEALTH") {
-          // Simula resposta PONG_HEALTH do sw-custom.js
           queueMicrotask(() => {
             const pongEvent = { data: { type: "PONG_HEALTH", timestamp: 1764195000000 } };
             listeners.forEach((fn) => fn(pongEvent));
@@ -252,12 +344,10 @@ describe("LOCALIZA+ — Auditoria do Firebase Analytics, Google Tag Manager e SW
       const statusEvents: Array<{ status: string; ping: number }> = [];
       const cb = (status: string, ping: number) => statusEvents.push({ status, ping });
 
-      // Simula múltiplas invocações concorrentes (ex.: appInit + StrictMode / chamada duplicada)
       registerUptimeServiceWorker(cb);
       registerUptimeServiceWorker(cb);
       registerUptimeServiceWorker();
 
-      // Aguarda microtasks (ready.then -> postMessage -> PONG_HEALTH)
       await new Promise((r) => setTimeout(r, 20));
 
       expect(addEventListener).toHaveBeenCalledTimes(1);
@@ -279,7 +369,7 @@ describe("LOCALIZA+ — Auditoria do Firebase Analytics, Google Tag Manager e SW
     });
   });
 
-  describe("5. Preservação de Regras de Segurança, CSP, App.tsx e Arquitetura Singleton", () => {
+  describe("5. Preservação de Segurança, CSP e Ausência de MutationObserver como Bloqueio Pós-Disparo", () => {
     it("não deve enfraquecer diretivas CSP de script-src ou connect-src", () => {
       const secHeadersPath = path.resolve(process.cwd(), "src/lib/securityHeaders.ts");
       const code = fs.readFileSync(secHeadersPath, "utf-8");
@@ -291,14 +381,17 @@ describe("LOCALIZA+ — Auditoria do Firebase Analytics, Google Tag Manager e SW
       expect(code).not.toContain("script-src: ['https:']");
     });
 
-    it("appInit.ts deve manter carregamento assíncrono isolado e App.tsx não deve duplicar initSecondaryServices()", () => {
+    it("firebase.ts não utiliza MutationObserver e carrega firebase/analytics apenas sob demanda via opt-in", () => {
+      const firebaseCode = fs.readFileSync(path.resolve(process.cwd(), "src/lib/firebase.ts"), "utf-8");
       const appInitCode = fs.readFileSync(path.resolve(process.cwd(), "src/lib/appInit.ts"), "utf-8");
       const appCode = fs.readFileSync(path.resolve(process.cwd(), "src/App.tsx"), "utf-8");
 
+      expect(firebaseCode).not.toContain("MutationObserver");
+      expect(firebaseCode).toContain("VITE_ENABLE_FIREBASE_ANALYTICS");
+      expect(firebaseCode).toContain("await import('firebase/analytics')");
       expect(appInitCode).toContain("initFirebaseSecondaryServices()");
       expect(appInitCode).toContain("initGoogleAnalytics()");
-      expect(appInitCode).toContain("try {");
-      expect(appInitCode).toContain("catch (err) {");
+      expect(appInitCode).toContain("isFirebaseAnalyticsEnabled()");
       expect(appCode).not.toContain("initSecondaryServices()");
     });
   });

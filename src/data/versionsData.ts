@@ -279,10 +279,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "PWA",
         tag: "Analytics & SW Watchdog",
       },
+      {
+        id: "v11013-fix-firebase-analytics-strict-opt-in",
+        title: "Firebase Analytics Estritamente Opcional via VITE_ENABLE_FIREBASE_ANALYTICS (Opt-In)",
+        description: "Introdução da variável de ambiente VITE_ENABLE_FIREBASE_ANALYTICS (padrão 'false', documentada em .env.example) e função isFirebaseAnalyticsEnabled() em src/lib/firebase.ts, com importação dinâmica sob demanda de firebase/analytics e remoção do MutationObserver pós-disparo: quando desabilitado (padrão), getAnalytics(app) e initGoogleAnalytics() nunca são executados no boot (appInit.ts), eliminando completamente a primeira requisição GET para www.googletagmanager.com/gtag/js e o erro net::ERR_ADDRESS_INVALID em redes com bloqueio/DNS sinkhole, preservando o measurementId G-Q2BWFJTJ8K em firebase-applet-config.json e mantendo Firebase Auth, Firestore, Storage e PWA 100% intactos; quando habilitado ('true'), preserva inicialização singleton com guarda offline e tratamento não-bloqueante.",
+        module: "GERAL",
+        tag: "Telemetria Opt-In • Zero GTM",
+      },
     ],
     stats: {
       additionsCount: 9,
-      fixesCount: 26,
+      fixesCount: 27,
     },
   },
   {
