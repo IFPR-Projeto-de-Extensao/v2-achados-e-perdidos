@@ -235,7 +235,7 @@ async function sendFeedbackToDiscord(ticket, options) {
  * Executes the primary email delivery service logic.
  */
 async function triggerEmailService(feedback, protocol, timestamp) {
-    const destinationEmail = "localizamais6@gmail.com";
+    const destinationEmail = "localizamais0@gmail.com";
     const emailSubject = `[${protocol}] ${String(feedback.subject).trim().substring(0, 150)}`;
     const emailRecord = {
         protocol,
@@ -250,7 +250,7 @@ async function triggerEmailService(feedback, protocol, timestamp) {
         clientDiagnostics: feedback.clientDiagnostics,
         status: "DISPATCHED",
     };
-    logger.info(`[Email Service Dispatched] Protocol: ${protocol} | From: ${emailRecord.senderEmail} | To: ${destinationEmail} | Subject: ${emailSubject}`);
+    logger.info(`[Email Service Dispatched] Protocol: ${protocol} | From: ${sanitizeEmailForPrivacy(emailRecord.senderEmail, true)} | To: ${destinationEmail} | Subject: ${emailSubject}`);
     try {
         const db = (0, firestore_2.getFirestore)();
         await db.collection("support_tickets").doc(`ticket_${protocol}`).set({

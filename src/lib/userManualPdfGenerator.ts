@@ -151,7 +151,7 @@ export const USER_MANUAL_SECTIONS: ManualSection[] = [
       "Central de Suporte no sistema: /suporte (FAQ, Feedback em /suporte/feedback e Relato de Bug em /suporte/relatar-bug).",
       "Atendimento Presencial: Portaria Principal e Secretaria / SEPAE / SEBAC — Bloco Administrativo, Rodovia PR-466.",
       "Horário: Segunda a sexta-feira, das 07h30 às 22h30 (dias letivos).",
-      "Telefone: (43) 3126-9400 | E-mail: achados.ivaipora@ifpr.edu.br.",
+      "Telefone: (43) 3126-9400 | E-mail: localizamais0@gmail.com.",
     ],
   },
 ];
@@ -294,7 +294,7 @@ export const USER_MANUAL_SECTIONS_EN: ManualSection[] = [
       "In-app Support Center: /suporte (FAQ, Feedback at /suporte/feedback, and Bug Report at /suporte/relatar-bug).",
       "In-Person Desk: Main Gate and Secretariat / SEPAE / SEBAC — Administrative Block, PR-466 Highway.",
       "Hours: Monday to Friday, 07:30 to 22:30 (school days).",
-      "Phone: (43) 3126-9400 | Email: achados.ivaipora@ifpr.edu.br.",
+      "Phone: (43) 3126-9400 | Email: localizamais0@gmail.com.",
     ],
   },
 ];

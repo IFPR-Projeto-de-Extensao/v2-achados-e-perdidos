@@ -365,7 +365,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
                 {L("Contato por E-mail", "Email Contact")}
               </h4>
               <p className="text-xs text-neutral-500 leading-relaxed font-mono">
-                achados.ivaipora@ifpr.edu.br
+                localizamais0@gmail.com
               </p>
             </div>
           </div>

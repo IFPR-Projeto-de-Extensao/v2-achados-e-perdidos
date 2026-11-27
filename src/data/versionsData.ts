@@ -300,10 +300,24 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "AUTH",
         tag: "Auth Google • Provisionamento & RBAC",
       },
+      {
+        id: "v11013-fix-institutional-email-standardization-localizamais0",
+        title: "Auditoria e Padronização Global do E-mail Institucional para localizamais0@gmail.com",
+        description: "Varredura integral do repositório e eliminação das últimas referências ativas ao endereço antigo localizamais6@gmail.com em Cloud Functions (functions/src/index.ts em triggerEmailService e fallback de onItemReturned, e artefato compilado functions/lib/index.js) com mascaramento de e-mails pessoais nos logs via sanitizeEmailForPrivacy; alinhamento do endereço de contato institucional divergente (achados.ivaipora@ifpr.edu.br) para localizamais0@gmail.com no cartão de suporte (src/components/SupportView.tsx) e no Manual Oficial do Usuário (public/manual-usuario.html e src/lib/userManualPdfGenerator.ts PT-BR/EN-US). Preservados integralmente o registro histórico no changelog, a configuração de remetente transacional RESEND_FROM_EMAIL, e-mails pessoais/Root Admin, fixtures de teste, firestore.rules (SHA-256 inalterado) e dados de produção. Cobertura automatizada de regressão adicionada em src/lib/supportFeedbackDiscordFlow.test.ts.",
+        module: "GERAL",
+        tag: "Auditoria • E-mail Institucional",
+      },
+      {
+        id: "v11013-fix-npm-lockfile-resend-ci-sync",
+        title: "Sincronização do package-lock.json com Dependências do Resend para Correção de EUSAGE no npm ci",
+        description: "Correção da dessincronização entre package.json e package-lock.json que provocava erro EUSAGE na etapa npm ci do pipeline de CI/CD após a inclusão do SDK oficial do Resend: executada atualização limpa do lockfile via npm install --package-lock-only (sem --force, sem --legacy-peer-deps e sem alterar versões de pacotes existentes), registrando exclusivamente as 5 dependências ausentes (resend@6.40.1, postal-mime@2.7.6, standardwebhooks@1.1.1, @stablelib/base64@1.0.1 e fast-sha256@1.3.0). Validado de ponta a ponta com npm ci limpo, tsc --noEmit, npm run build e bateria de testes automatizados incluindo a suíte do Resend (src/lib/resendEmailService.test.ts), mantendo firestore.rules (SHA-256 inalterado), Firebase, autenticação e dados intactos.",
+        module: "VERCEL",
+        tag: "CI/CD • npm ci & Lockfile",
+      },
     ],
     stats: {
       additionsCount: 10,
-      fixesCount: 28,
+      fixesCount: 30,
     },
   },
   {

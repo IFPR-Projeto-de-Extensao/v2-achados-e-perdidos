@@ -276,7 +276,7 @@ export async function sendFeedbackToDiscord(
  * Executes the primary email delivery service logic.
  */
 export async function triggerEmailService(feedback: FeedbackData, protocol: string, timestamp: string) {
-  const destinationEmail = "localizamais6@gmail.com";
+  const destinationEmail = "localizamais0@gmail.com";
   const emailSubject = `[${protocol}] ${String(feedback.subject).trim().substring(0, 150)}`;
 
   const emailRecord = {
@@ -294,7 +294,7 @@ export async function triggerEmailService(feedback: FeedbackData, protocol: stri
   };
 
   logger.info(
-    `[Email Service Dispatched] Protocol: ${protocol} | From: ${emailRecord.senderEmail} | To: ${destinationEmail} | Subject: ${emailSubject}`
+    `[Email Service Dispatched] Protocol: ${protocol} | From: ${sanitizeEmailForPrivacy(emailRecord.senderEmail, true)} | To: ${destinationEmail} | Subject: ${emailSubject}`
   );
 
   try {
@@ -673,7 +673,7 @@ export const onItemReturned = onDocumentUpdated("items/{itemId}", async (event) 
       `[onItemReturned] Item #${itemId} ("${afterData.title}") foi marcado como DEVOLVIDO. Disparando automação de e-mail.`
     );
 
-    const recipientEmail = afterData.registeredByUserEmail || afterData.contactInfo || "localizamais6@gmail.com";
+    const recipientEmail = afterData.registeredByUserEmail || afterData.contactInfo || "localizamais0@gmail.com";
     const recipientName = afterData.registeredByName || "Estudante / Servidor IFPR";
     const itemTitle = afterData.title || "Objeto";
     const returnDate = afterData.resolutionDate || new Date().toISOString();
@@ -725,7 +725,7 @@ export const onItemReturned = onDocumentUpdated("items/{itemId}", async (event) 
         });
       }
 
-      logger.info(`[onItemReturned] E-mail e notificação registrados com sucesso para ${recipientEmail}.`);
+      logger.info(`[onItemReturned] E-mail e notificação registrados com sucesso para ${sanitizeEmailForPrivacy(recipientEmail, true)}.`);
     } catch (err: any) {
       logger.error(`[onItemReturned] Erro ao gravar registro de e-mail no Firestore:`, err);
     }

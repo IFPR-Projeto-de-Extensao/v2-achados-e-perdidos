@@ -226,5 +226,74 @@ describe("Support Feedback & Bug Report Discord Integration Flow", () => {
       expect(html).toContain("IFPR-SUP-FDBK9876");
     });
   });
-});
 
+  describe("Institutional Email Consistency Audit (localizamais0@gmail.com)", () => {
+    it("should have zero occurrences of legacy localizamais6@gmail.com or achados.ivaipora@ifpr.edu.br in active code and manuals", async () => {
+      const fs = await import("fs");
+      const path = await import("path");
+      const root = process.cwd();
+
+      const legacyDeprecatedEmail = ["localizamais6", "gmail.com"].join("@");
+      const legacyPlaceholderEmail = ["achados.ivaipora", "ifpr.edu.br"].join("@");
+
+      const activeFilesToAudit = [
+        "server.ts",
+        "api/support/send-feedback.ts",
+        "api/_lib/emailService.ts",
+        "functions/src/index.ts",
+        "functions/lib/index.js",
+        "src/components/SupportView.tsx",
+        "src/components/ContactSupportModal.tsx",
+        "src/components/AccountStatusBanner.tsx",
+        "src/data/legalDocumentsData.ts",
+        "src/lib/userManualPdfGenerator.ts",
+        "public/manual-usuario.html",
+        "README.md",
+      ];
+
+      for (const relPath of activeFilesToAudit) {
+        const content = fs.readFileSync(path.resolve(root, relPath), "utf8");
+        expect(content, `${relPath} must not contain legacy ${legacyDeprecatedEmail}`).not.toContain(
+          legacyDeprecatedEmail
+        );
+        expect(content, `${relPath} must not contain legacy ${legacyPlaceholderEmail}`).not.toContain(
+          legacyPlaceholderEmail
+        );
+      }
+    });
+
+    it("should align institutional recipient to localizamais0@gmail.com across server.ts, api/, functions/, UI, and manuals while masking PII in Cloud Functions logs", async () => {
+      const fs = await import("fs");
+      const path = await import("path");
+      const root = process.cwd();
+
+      const filesRequiringOfficialEmail = [
+        "server.ts",
+        "api/support/send-feedback.ts",
+        "functions/src/index.ts",
+        "functions/lib/index.js",
+        "src/components/SupportView.tsx",
+        "src/components/ContactSupportModal.tsx",
+        "src/components/AccountStatusBanner.tsx",
+        "src/data/legalDocumentsData.ts",
+        "src/lib/userManualPdfGenerator.ts",
+        "public/manual-usuario.html",
+      ];
+
+      for (const relPath of filesRequiringOfficialEmail) {
+        const content = fs.readFileSync(path.resolve(root, relPath), "utf8");
+        expect(content, `${relPath} must reference official ${OFFICIAL_EMAIL}`).toContain(OFFICIAL_EMAIL);
+      }
+
+      // Ensure Cloud Functions mask sender and recipient emails in info logs
+      const functionsSrc = fs.readFileSync(path.resolve(root, "functions/src/index.ts"), "utf8");
+      expect(functionsSrc).toContain("sanitizeEmailForPrivacy(emailRecord.senderEmail, true)");
+      expect(functionsSrc).toContain("sanitizeEmailForPrivacy(recipientEmail, true)");
+
+      // Ensure RESEND_FROM_EMAIL sender config remains distinct from institutional receiving inbox
+      const envExample = fs.readFileSync(path.resolve(root, ".env.example"), "utf8");
+      expect(envExample).toContain("RESEND_FROM_EMAIL=");
+      expect(envExample).not.toContain(OFFICIAL_EMAIL);
+    });
+  });
+});
