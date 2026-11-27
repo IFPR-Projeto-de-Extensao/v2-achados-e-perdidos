@@ -140,23 +140,33 @@ export const ContactSupportModal: React.FC<ContactSupportModalProps> = ({
         userRole: currentUser?.role,
       });
 
-      if (!result.success) {
+      if (!result.success || result.deliveryOutcome === "FAILED") {
         throw new Error(
           result.error ||
             (language === "en"
-              ? "Failed to process submission on the server."
-              : "Erro ao processar envio no servidor.")
+              ? "Failed to deliver submission via SMTP email and Discord."
+              : "Falha ao enviar a solicitação pelos canais de notificação (SMTP e Discord).")
         );
       }
 
       vibrateSuccess();
       setSubmittedProtocol(result.protocol || `IFPR-SUP-${Date.now().toString(36).toUpperCase()}`);
-      addToast(
-        language === "pt"
-          ? "Mensagem e notificação enviadas com sucesso para a equipe do Campus Ivaiporã!"
-          : "Message and notification sent successfully to Campus Ivaiporã team!",
-        "success"
-      );
+      if (result.deliveryOutcome === "PARTIAL") {
+        addToast(
+          result.message ||
+            (language === "pt"
+              ? "Solicitação enviada parcialmente (um dos canais de notificação estava indisponível)."
+              : "Submission partially delivered (one notification channel was unavailable)."),
+          "warning"
+        );
+      } else {
+        addToast(
+          language === "pt"
+            ? "Mensagem e notificação enviadas com sucesso por e-mail e Discord para a equipe do Campus Ivaiporã!"
+            : "Message and notification sent successfully via email and Discord to Campus Ivaiporã team!",
+          "success"
+        );
+      }
     } catch (err: any) {
       console.error("Erro ao enviar suporte/feedback:", err);
       setErrorMessage(

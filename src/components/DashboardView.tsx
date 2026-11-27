@@ -2614,16 +2614,12 @@ export const DashboardView: React.FC = () => {
                               {firstAccessFeedback.emailSent
                                 ? l(
                                     `Link de primeiro acesso enviado para ${firstAccessFeedback.email} (${
-                                      firstAccessFeedback.deliveryMethod === "RESEND"
-                                        ? "Resend"
-                                        : firstAccessFeedback.deliveryMethod === "SMTP"
+                                      firstAccessFeedback.deliveryMethod === "SMTP"
                                         ? "SMTP Institucional"
                                         : "Firebase Auth"
                                     })`,
                                     `First-access link sent to ${firstAccessFeedback.email} (${
-                                      firstAccessFeedback.deliveryMethod === "RESEND"
-                                        ? "Resend"
-                                        : firstAccessFeedback.deliveryMethod === "SMTP"
+                                      firstAccessFeedback.deliveryMethod === "SMTP"
                                         ? "Institutional SMTP"
                                         : "Firebase Auth"
                                     })`

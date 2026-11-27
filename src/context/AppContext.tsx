@@ -3467,9 +3467,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         emailSent: Boolean(data.emailSent),
         deliveryMethod: data.deliveryMethod || "NONE",
         deliveryStatus: data.deliveryStatus || "PENDING_SMTP_CONFIG",
-        normalizedStatus: data.normalizedStatus,
-        provider: data.provider,
-        messageId: data.messageId,
         deliveryError: data.deliveryError,
         manualSetupLink: data.manualSetupLink,
         continueUriFallbackUsed: data.continueUriFallbackUsed,
@@ -3512,11 +3509,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (finalResult.emailSent) {
         const methodLabel =
-          finalResult.deliveryMethod === "RESEND"
-            ? "via Resend"
-            : finalResult.deliveryMethod === "SMTP"
-            ? "via SMTP"
-            : "via Firebase Auth";
+          finalResult.deliveryMethod === "SMTP" ? "via SMTP" : "via Firebase Auth";
         addToast(
           `Usuário ${newUser.name} criado no Authentication e Firestore! Link de primeiro acesso enviado (${methodLabel}) para ${newUser.email}.`,
           "success"
@@ -3585,9 +3578,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         emailSent: Boolean(data.emailSent),
         deliveryMethod: data.deliveryMethod || "NONE",
         deliveryStatus: data.deliveryStatus || "PENDING_SMTP_CONFIG",
-        normalizedStatus: data.normalizedStatus,
-        provider: data.provider,
-        messageId: data.messageId,
         deliveryError: data.deliveryError,
         manualSetupLink: data.manualSetupLink,
         continueUriFallbackUsed: data.continueUriFallbackUsed,
@@ -3625,11 +3615,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (finalResult.emailSent) {
         const methodLabel =
-          finalResult.deliveryMethod === "RESEND"
-            ? "via Resend"
-            : finalResult.deliveryMethod === "SMTP"
-            ? "via SMTP"
-            : "via Firebase Auth";
+          finalResult.deliveryMethod === "SMTP" ? "via SMTP" : "via Firebase Auth";
         addToast(
           `Link de definição/redefinição de senha enviado (${methodLabel}) para ${finalResult.email}.`,
           "success"

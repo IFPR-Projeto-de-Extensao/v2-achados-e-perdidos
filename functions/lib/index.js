@@ -14,7 +14,8 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.notifyNewLoss = exports.onNewLostItemCreated = exports.onNewFoundItemCreated = exports.onNovaPerdaCreated = exports.onNovoAchadoCreated = exports.onItemCreated = exports.notifyNovaPerda = exports.notifyNovoAchado = exports.notifyNewFound = exports.sendFeedback = exports.CATEGORY_MAP = exports.STATUS_LABELS = exports.STATUS_COLORS = exports.getCategoryMeta = exports.getStatusLabel = exports.getStatusColor = exports.formatItemToDiscordEmbed = void 0;
+exports.sendItemReturnedEmail = exports.onItemReturned = exports.notifyNewLoss = exports.onNewLostItemCreated = exports.onNewFoundItemCreated = exports.onNovaPerdaCreated = exports.onNovoAchadoCreated = exports.onItemCreated = exports.notifyNovaPerda = exports.notifyNovoAchado = exports.notifyNewFound = exports.sendFeedback = exports.CATEGORY_MAP = exports.STATUS_LABELS = exports.STATUS_COLORS = exports.getCategoryMeta = exports.getStatusLabel = exports.getStatusColor = exports.formatItemToDiscordEmbed = exports.NAMED_FIRESTORE_DATABASE_ID = void 0;
+exports.getTargetFirestore = getTargetFirestore;
 exports.sanitizeEmailForPrivacy = sanitizeEmailForPrivacy;
 exports.formatDiscordFeedbackEmbed = formatDiscordFeedbackEmbed;
 exports.getDiscordFeedbackWebhookUrl = getDiscordFeedbackWebhookUrl;
@@ -27,6 +28,7 @@ exports.sendNovoAchadoToDiscord = sendNovoAchadoToDiscord;
 exports.getDiscordNovasPerdasWebhookUrl = getDiscordNovasPerdasWebhookUrl;
 exports.formatNovasPerdasDiscordEmbed = formatNovasPerdasDiscordEmbed;
 exports.sendNovaPerdaToDiscord = sendNovaPerdaToDiscord;
+exports.handleLegacyItemReturnedRecord = handleLegacyItemReturnedRecord;
 const https_1 = require("firebase-functions/v2/https");
 const firestore_1 = require("firebase-functions/v2/firestore");
 const logger = require("firebase-functions/logger");
@@ -41,6 +43,25 @@ if ((0, app_1.getApps)().length === 0) {
     }
     catch (e) {
         logger.warn("[Firebase Cloud Functions] Admin already initialized or init warning:", e);
+    }
+}
+exports.NAMED_FIRESTORE_DATABASE_ID = (process.env.FIRESTORE_DATABASE_ID && process.env.FIRESTORE_DATABASE_ID.trim()) ||
+    "ai-studio-ifprachadosperdi-d3034e26-954c-413d-8c6d-f7e508afe8b1";
+/**
+ * Resolves the named Firestore database used by Localiza+ instead of silently defaulting to (default).
+ * If FIRESTORE_DATABASE_ID is explicitly set to "(default)", uses the default database.
+ */
+function getTargetFirestore() {
+    const configuredDbId = (process.env.FIRESTORE_DATABASE_ID || "").trim();
+    if (configuredDbId === "(default)") {
+        return (0, firestore_2.getFirestore)();
+    }
+    const targetDbId = configuredDbId || exports.NAMED_FIRESTORE_DATABASE_ID;
+    try {
+        return (0, firestore_2.getFirestore)(targetDbId);
+    }
+    catch {
+        return (0, firestore_2.getFirestore)();
     }
 }
 // Re-export all formatting, embed, and sender utilities
@@ -232,9 +253,11 @@ async function sendFeedbackToDiscord(ticket, options) {
     return result.success;
 }
 /**
- * Executes the primary email delivery service logic.
+ * Legacy Cloud Function ticket recorder.
+ * IMPORTANT: Cloud Functions do NOT hold an SMTP transport in this project.
+ * Never record fake status "DISPATCHED" or claim an email was sent when no SMTP dispatch occurred.
  */
-async function triggerEmailService(feedback, protocol, timestamp) {
+async function triggerEmailService(feedback, protocol, timestamp, dbOverride) {
     const destinationEmail = "localizamais0@gmail.com";
     const emailSubject = `[${protocol}] ${String(feedback.subject).trim().substring(0, 150)}`;
     const emailRecord = {
@@ -248,37 +271,48 @@ async function triggerEmailService(feedback, protocol, timestamp) {
         priority: feedback.priority || "NORMAL",
         timestamp,
         clientDiagnostics: feedback.clientDiagnostics,
-        status: "DISPATCHED",
+        status: "NOVO",
+        smtpDispatched: false,
+        emailDeliveryStatus: "PENDING_SMTP_CONFIG",
+        deliveryNote: "Cloud Function legada sem transporte SMTP configurado; ticket registrado sem envio real de e-mail por esta função.",
     };
-    logger.info(`[Email Service Dispatched] Protocol: ${protocol} | From: ${sanitizeEmailForPrivacy(emailRecord.senderEmail, true)} | To: ${destinationEmail} | Subject: ${emailSubject}`);
+    logger.info(`[Legacy Feedback Ticket Recorded - No SMTP] Protocol: ${protocol} | From: ${sanitizeEmailForPrivacy(emailRecord.senderEmail, true)} | To: ${destinationEmail} | Subject: ${emailSubject}`);
+    let ticketPersisted = false;
     try {
-        const db = (0, firestore_2.getFirestore)();
+        const db = dbOverride || getTargetFirestore();
         await db.collection("support_tickets").doc(`ticket_${protocol}`).set({
             ...emailRecord,
             id: `ticket_${protocol}`,
             createdAt: timestamp,
         }, { merge: true });
+        ticketPersisted = true;
     }
     catch (dbErr) {
-        logger.warn("[Email Service Warning] Failed to log ticket to Firestore:", dbErr);
+        logger.warn("[Legacy Email Service Warning] Failed to log ticket to Firestore:", dbErr);
     }
     return {
-        success: true,
+        success: false,
+        emailSent: false,
+        smtpDispatched: false,
+        smtpStatus: "PENDING_SMTP_CONFIG",
+        ticketPersisted,
         protocol,
         destinationEmail,
         emailSubject,
-        message: "Seu relato/feedback foi registrado e encaminhado diretamente para a equipe de suporte do Campus Ivaiporã via e-mail.",
+        message: "Ticket registrado pela Cloud Function legada sem transporte SMTP configurado. Utilize /api/support/send-feedback para despacho via SMTP + Discord.",
     };
 }
 /**
  * Helper function consumed by feedback triggers
  */
-async function notifyFeedback(feedback) {
+async function notifyFeedback(feedback, deps) {
     const protocol = `IFPR-SUP-${Date.now().toString(36).toUpperCase()}`;
     const timestamp = new Date().toISOString();
-    const emailResult = await triggerEmailService(feedback, protocol, timestamp);
+    const emailResult = await triggerEmailService(feedback, protocol, timestamp, deps?.db);
+    let discordDispatched = false;
     try {
-        await sendFeedbackToDiscord({
+        const discordSender = deps?.sendDiscordFn || sendFeedbackToDiscord;
+        discordDispatched = await discordSender({
             protocol,
             name: String(feedback.name || "").trim(),
             email: String(feedback.email || "").trim(),
@@ -291,17 +325,23 @@ async function notifyFeedback(feedback) {
         });
     }
     catch (discordError) {
-        logger.error("[notifyFeedback] Discord dispatch error suppressed:", discordError);
+        logger.error("[notifyFeedback] Discord dispatch error:", discordError);
+        discordDispatched = false;
     }
+    const deliveryOutcome = discordDispatched ? "PARTIAL" : "FAILED";
     return {
-        success: true,
+        success: discordDispatched,
+        deliveryOutcome,
         protocol,
         timestamp,
+        smtpDispatched: false,
+        smtpStatus: "PENDING_SMTP_CONFIG",
+        discordDispatched,
         emailResult,
     };
 }
 /**
- * Firebase Cloud Function: sendFeedback
+ * Firebase Cloud Function: sendFeedback (Legacy HTTP endpoint preserved for compatibility)
  */
 exports.sendFeedback = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
     if (req.method !== "POST") {
@@ -319,13 +359,21 @@ exports.sendFeedback = (0, https_1.onRequest)({ cors: true }, async (req, res) =
             return;
         }
         const result = await notifyFeedback(feedback);
-        res.status(200).json({
-            success: true,
+        const statusCode = result.success ? 200 : 503;
+        res.status(statusCode).json({
+            success: result.success,
+            deliveryOutcome: result.deliveryOutcome,
             protocol: result.protocol,
-            message: result.emailResult.message,
+            message: result.discordDispatched
+                ? "Relato enviado ao Discord, mas esta Cloud Function legada não possui transporte SMTP configurado."
+                : "Não foi possível enviar o relato: Cloud Function legada sem SMTP configurado e falha/ausência do webhook Discord.",
             timestamp: result.timestamp,
             destinationEmail: result.emailResult.destinationEmail,
             emailSubject: result.emailResult.emailSubject,
+            smtpDispatched: false,
+            smtpStatus: result.smtpStatus,
+            discordDispatched: result.discordDispatched,
+            ticketPersisted: Boolean(result.emailResult.ticketPersisted),
         });
     }
     catch (error) {
@@ -537,5 +585,161 @@ exports.notifyNewLoss = (0, firestore_1.onDocumentCreated)("perdas/{lossId}", as
             type: "PERDIDO",
         });
     });
+});
+/**
+ * Core handler for legacy item-returned audit logging without fabricating DELIVERED email status
+ * and preventing duplicate records when backend API (/api/items/register-return or
+ * /api/automation/notify-item-returned) has already handled the return notification.
+ */
+async function handleLegacyItemReturnedRecord(params) {
+    const { itemId, beforeData, afterData } = params;
+    if (!beforeData || !afterData) {
+        return { skipped: true, reason: "EMPTY_SNAPSHOT" };
+    }
+    const prevStatus = String(beforeData.status || "").toUpperCase().trim();
+    const nextStatus = String(afterData.status || "").toUpperCase().trim();
+    if (prevStatus === "DEVOLVIDO" || nextStatus !== "DEVOLVIDO") {
+        return { skipped: true, reason: "NOT_RETURN_TRANSITION" };
+    }
+    // Prevent duplicating notifications already managed by the authoritative Express/Vercel backend
+    if (afterData.returnEmailNotified === true || afterData.devolutionNotified === true) {
+        logger.info(`[onItemReturned] Item #${itemId} já notificado pelo fluxo autoritativo do backend. Registro duplicado evitado.`);
+        return { skipped: true, reason: "ALREADY_HANDLED_BY_BACKEND" };
+    }
+    const db = params.db || getTargetFirestore();
+    try {
+        const authoritativeEmailSnap = await db
+            .collection("email_notifications")
+            .doc(`email_auto_${itemId}_ITEM_RETURNED`)
+            .get();
+        if (authoritativeEmailSnap?.exists) {
+            logger.info(`[onItemReturned] Registro autoritativo email_auto_${itemId}_ITEM_RETURNED já existe. Registro legado duplicado evitado.`);
+            return { skipped: true, reason: "AUTHORITATIVE_NOTIFICATION_EXISTS" };
+        }
+    }
+    catch (checkErr) {
+        logger.warn("[onItemReturned] Aviso ao verificar registro autoritativo existente:", checkErr);
+    }
+    const recipientEmail = afterData.registeredByUserEmail || afterData.contactInfo || "localizamais0@gmail.com";
+    const recipientName = afterData.registeredByName || "Estudante / Servidor IFPR";
+    const itemTitle = afterData.title || "Objeto";
+    const returnDate = afterData.resolutionDate || new Date().toISOString();
+    const qrCode = afterData.qrCodeId || itemId;
+    const emailSubject = `🎉 Seu objeto "${itemTitle}" foi devolvido com sucesso! - IFPR Achados e Perdidos`;
+    const emailBody = `Olá, ${recipientName}!\n\n` +
+        `Temos uma ótima notícia! O item "${itemTitle}" (Código QR: ${qrCode}), cadastrado por você no sistema de Achados e Perdidos do IFPR Campus Ivaiporã, foi oficialmente registrado como DEVOLVIDO.\n\n` +
+        `Detalhes da Tramitação:\n` +
+        `- Item: ${itemTitle}\n` +
+        `- Categoria: ${afterData.category || "Geral"}\n` +
+        `- Local: ${afterData.location || "Campus Ivaiporã"}\n` +
+        `- Data da Devolução: ${new Date(returnDate).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}\n\n` +
+        `Agradecemos sua colaboração e compromisso com a comunidade acadêmica do Instituto Federal do Paraná!\n\n` +
+        `Atenciosamente,\n` +
+        `Equipe de Apoio ao Estudante (SEBAC) & Portaria\n` +
+        `Instituto Federal do Paraná - Campus Ivaiporã`;
+    const timestamp = new Date().toISOString();
+    const notificationDocId = `legacy_fn_return_${itemId}`;
+    // Never mark as DELIVERED because this legacy Cloud Function has no SMTP transport
+    await db.collection("email_notifications").doc(notificationDocId).set({
+        id: notificationDocId,
+        itemId,
+        itemTitle,
+        recipientEmail,
+        recipientName,
+        subject: emailSubject,
+        body: emailBody,
+        type: "ITEM_RETURNED_CONFIRMATION",
+        status: "PENDING_SMTP_CONFIG",
+        emailSent: false,
+        sentAt: null,
+        deliveryNote: "Cloud Function legada onItemReturned sem transporte SMTP; nenhum e-mail foi enviado por este trigger.",
+        createdAt: timestamp,
+    }, { merge: true });
+    logger.info(`[onItemReturned] Registro pendente (PENDING_SMTP_CONFIG, sem envio SMTP) gravado para ${sanitizeEmailForPrivacy(recipientEmail, true)}.`);
+    return {
+        skipped: false,
+        notificationDocId,
+        status: "PENDING_SMTP_CONFIG",
+    };
+}
+/**
+ * Cloud Function Firestore Trigger: onItemReturned (Legacy trigger preserved without fake DELIVERED status)
+ */
+exports.onItemReturned = (0, firestore_1.onDocumentUpdated)("items/{itemId}", async (event) => {
+    const beforeData = event.data?.before?.data();
+    const afterData = event.data?.after?.data();
+    const itemId = event.params.itemId;
+    if (!beforeData || !afterData) {
+        logger.warn(`[onItemReturned] Snapshot vazio para 'items/${itemId}'.`);
+        return;
+    }
+    try {
+        await handleLegacyItemReturnedRecord({
+            itemId,
+            beforeData,
+            afterData,
+        });
+    }
+    catch (err) {
+        logger.error(`[onItemReturned] Erro ao gravar registro no Firestore:`, err);
+    }
+});
+/**
+ * Cloud Function HTTPS endpoint: sendItemReturnedEmail (Legacy endpoint preserved without fake DELIVERED status)
+ */
+exports.sendItemReturnedEmail = (0, https_1.onRequest)({ cors: true }, async (req, res) => {
+    if (req.method !== "POST") {
+        res.status(405).json({ success: false, error: "Method not allowed. Use POST." });
+        return;
+    }
+    try {
+        const { itemId, itemTitle, recipientEmail, recipientName, resolutionNotes } = req.body || {};
+        if (!itemId || !itemTitle || !recipientEmail) {
+            res.status(400).json({
+                success: false,
+                error: "Parâmetros obrigatórios ausentes (itemId, itemTitle, recipientEmail).",
+            });
+            return;
+        }
+        const timestamp = new Date().toISOString();
+        const emailSubject = `🎉 Seu objeto "${itemTitle}" foi devolvido com sucesso! - IFPR Achados e Perdidos`;
+        const emailBody = `Olá, ${recipientName || "Estudante/Servidor"}!\n\n` +
+            `Informamos que o seu pertence "${itemTitle}" (ID: ${itemId}) foi formalmente marcado como devolvido no Sistema de Achados e Perdidos do IFPR Campus Ivaiporã.\n\n` +
+            (resolutionNotes ? `Observações da devolução: ${resolutionNotes}\n\n` : "") +
+            `Agradecemos pela participação em nosso campus!\n\n` +
+            `Atenciosamente,\n` +
+            `SEBAC / Guarita - IFPR Campus Ivaiporã`;
+        const db = getTargetFirestore();
+        const docId = `legacy_manual_return_${itemId}`;
+        await db.collection("email_notifications").doc(docId).set({
+            id: docId,
+            itemId,
+            itemTitle,
+            recipientEmail,
+            recipientName: recipientName || "Usuário",
+            subject: emailSubject,
+            body: emailBody,
+            type: "ITEM_RETURNED_CONFIRMATION",
+            status: "PENDING_SMTP_CONFIG",
+            emailSent: false,
+            sentAt: null,
+            deliveryNote: "Cloud Function legada sendItemReturnedEmail não possui transporte SMTP configurado; utilize /api/automation/notify-item-returned.",
+            createdAt: timestamp,
+        }, { merge: true });
+        res.status(503).json({
+            success: false,
+            emailSent: false,
+            status: "PENDING_SMTP_CONFIG",
+            code: "LEGACY_FUNCTION_NO_SMTP",
+            error: "Esta Cloud Function legada não possui transporte SMTP configurado e não envia e-mails reais. Utilize /api/automation/notify-item-returned.",
+            recipientEmail,
+            subject: emailSubject,
+            timestamp,
+        });
+    }
+    catch (error) {
+        logger.error("[sendItemReturnedEmail Error]:", error);
+        res.status(500).json({ success: false, error: error?.message || "Erro interno ao processar registro." });
+    }
 });
 //# sourceMappingURL=index.js.map

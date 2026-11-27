@@ -1,11 +1,11 @@
-import type { IncomingMessage, ServerResponse } from "http";
+import crypto from "crypto";
+import nodemailer, { type Transporter } from "nodemailer";
 import { applySecurityHeaders } from "../_lib/securityHeaders.js";
 import {
-  sendTransactionalEmail,
-  sanitizeEmailSensitiveText,
-  type EmailProviderName,
-  type StandardizedEmailStatus,
-} from "../_lib/emailService.js";
+  getAdminAuth,
+  getAdminFirestore,
+  getFirebaseAdminCredentialDiagnostics,
+} from "../_lib/firebaseAdmin.js";
 
 const HTML_ESCAPE_MAP: Record<string, string> = {
   "&": "&amp;",
@@ -27,14 +27,46 @@ function stripHeaderControls(value: unknown, maxLen: number = 150): string {
 }
 
 const SIMPLE_EMAIL_REGEX = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+export const OFFICIAL_SUPPORT_EMAIL = "localizamais0@gmail.com";
 
-interface FeedbackRequestBody {
+/**
+ * Coherent timeouts sized to stay comfortably within Vercel's default 10s serverless execution limit
+ * (Hobby plan) while running SMTP and Discord dispatches concurrently.
+ */
+export const FEEDBACK_TIMEOUTS = {
+  smtpConnectionMs: 4_000,
+  smtpGreetingMs: 4_000,
+  smtpSocketMs: 6_000,
+  smtpHardSendMs: 6_500,
+  discordFetchMs: 4_500,
+  firestorePersistMs: 3_000,
+} as const;
+
+export type SupportSmtpStatus =
+  | "SENT"
+  | "PENDING_SMTP_CONFIG"
+  | "TIMEOUT"
+  | "AUTH_FAILED"
+  | "NETWORK_ERROR"
+  | "ERROR";
+
+export type SupportDiscordStatus =
+  | "SENT"
+  | "NOT_CONFIGURED"
+  | "TIMEOUT"
+  | "HTTP_ERROR"
+  | "NETWORK_ERROR";
+
+export type SupportDeliveryOutcome = "COMPLETE" | "PARTIAL" | "FAILED";
+
+export interface FeedbackRequestBody {
   name?: string;
   email?: string;
   category?: string;
   subject?: string;
   message?: string;
   priority?: string;
+  clientRequestId?: string;
   clientDiagnostics?: {
     screen?: string;
     currentPath?: string;
@@ -45,19 +77,150 @@ interface FeedbackRequestBody {
   };
 }
 
-// Centralized email dispatch (Resend priority with temporary SMTP fallback) is provided by ../_lib/emailService.js
+export interface FeedbackExecutionResult {
+  statusCode: number;
+  payload: {
+    success: boolean;
+    deliveryOutcome: SupportDeliveryOutcome;
+    protocol?: string;
+    message?: string;
+    error?: string;
+    code?: string;
+    timestamp?: string;
+    destinationEmail?: string;
+    emailSubject?: string;
+    smtpDispatched: boolean;
+    smtpStatus: SupportSmtpStatus;
+    smtpMessageId: string | null;
+    smtpError?: string | null;
+    discordDispatched: boolean;
+    discordStatus: SupportDiscordStatus;
+    ticketPersisted: boolean;
+    duplicatePrevented?: boolean;
+    authContext?: "AUTHENTICATED" | "VISITOR";
+  };
+}
 
-export function buildSupportEmailHtml(ticket: {
-  protocol: string;
-  name: string;
+export interface ExecuteSupportFeedbackDeps {
+  transporter?: Transporter | null;
+  fetchImpl?: typeof fetch;
+  adminFirestore?: any | null;
+  authenticatedUser?: { uid: string; email?: string | null } | null;
+  smtpHardTimeoutMs?: number;
+  discordTimeoutMs?: number;
+  nowMs?: number;
+}
+
+interface DedupeEntry {
+  expiresAt: number;
+  result: FeedbackExecutionResult;
+}
+
+const FEEDBACK_DEDUPE_CACHE = new Map<string, DedupeEntry>();
+const DEDUPE_EXPLICIT_TTL_MS = 5 * 60 * 1000;
+const DEDUPE_CONTENT_TTL_MS = 60 * 1000;
+const MAX_DEDUPE_CACHE_SIZE = 500;
+
+export function resetFeedbackDedupeCacheForTesting(): void {
+  FEEDBACK_DEDUPE_CACHE.clear();
+}
+
+function pruneDedupeCache(nowMs: number): void {
+  for (const [key, entry] of FEEDBACK_DEDUPE_CACHE.entries()) {
+    if (entry.expiresAt <= nowMs) {
+      FEEDBACK_DEDUPE_CACHE.delete(key);
+    }
+  }
+  while (FEEDBACK_DEDUPE_CACHE.size > MAX_DEDUPE_CACHE_SIZE) {
+    const oldestKey = FEEDBACK_DEDUPE_CACHE.keys().next().value;
+    if (!oldestKey) break;
+    FEEDBACK_DEDUPE_CACHE.delete(oldestKey);
+  }
+}
+
+function sanitizeClientRequestId(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const cleaned = raw.trim().replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64);
+  return cleaned.length >= 6 ? cleaned : null;
+}
+
+function buildContentDedupeKey(input: {
   email: string;
   category: string;
   subject: string;
   message: string;
-  priority?: string;
-  timestamp: string;
-  clientDiagnostics?: any;
-}, destinationEmail: string = "localizamais0@gmail.com"): string {
+}): string {
+  const hash = crypto
+    .createHash("sha256")
+    .update(
+      `${input.email.toLowerCase()}|${input.category.toUpperCase()}|${input.subject.trim()}|${input.message.trim()}`
+    )
+    .digest("hex")
+    .slice(0, 24);
+  return `content:${hash}`;
+}
+
+function buildProtocol(clientRequestId: string | null, nowMs: number): string {
+  if (clientRequestId) {
+    const deterministicSuffix = crypto
+      .createHash("sha256")
+      .update(clientRequestId)
+      .digest("hex")
+      .slice(0, 10)
+      .toUpperCase();
+    return `IFPR-SUP-${deterministicSuffix}`;
+  }
+  return `IFPR-SUP-${nowMs.toString(36).toUpperCase()}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
+}
+
+function sanitizeErrorForLog(raw: unknown): string {
+  return String(raw || "Erro desconhecido")
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]")
+    .replace(/[\r\n]+/g, " ")
+    .trim()
+    .slice(0, 300);
+}
+
+export function createSmtpTransporter(): Transporter | null {
+  const host = (process.env.SMTP_HOST || "").trim();
+  const port = parseInt((process.env.SMTP_PORT || "587").trim(), 10) || 587;
+  const user = (process.env.SMTP_USER || "").trim();
+  const pass = (process.env.SMTP_PASS || "").trim().replace(/\s+/g, "");
+  const secure = process.env.SMTP_SECURE === "true" || port === 465;
+
+  if (!host || !user || !pass) {
+    return null;
+  }
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+    connectionTimeout: FEEDBACK_TIMEOUTS.smtpConnectionMs,
+    greetingTimeout: FEEDBACK_TIMEOUTS.smtpGreetingMs,
+    socketTimeout: FEEDBACK_TIMEOUTS.smtpSocketMs,
+    tls: {
+      rejectUnauthorized: true,
+      minVersion: "TLSv1.2",
+    },
+  });
+}
+
+export function buildSupportEmailHtml(
+  ticket: {
+    protocol: string;
+    name: string;
+    email: string;
+    category: string;
+    subject: string;
+    message: string;
+    priority?: string;
+    timestamp: string;
+    clientDiagnostics?: any;
+  },
+  destinationEmail: string = OFFICIAL_SUPPORT_EMAIL
+): string {
   const categoryMap: Record<string, string> = {
     BUG_REPORT: "Relato de Bug / Erro no Sistema",
     FEEDBACK: "Sugestão ou Melhoria",
@@ -133,25 +296,60 @@ export function buildSupportEmailHtml(ticket: {
 `;
 }
 
-async function sendFeedbackEmail(ticket: {
-  protocol: string;
-  name: string;
-  email: string;
-  category: string;
-  subject: string;
-  message: string;
-  priority?: string;
-  timestamp: string;
-  clientDiagnostics?: any;
-}): Promise<{
+async function sendWithHardTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          const timeoutErr: any = new Error(timeoutMessage);
+          timeoutErr.code = "ETIMEDOUT";
+          reject(timeoutErr);
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export async function sendFeedbackEmail(
+  ticket: {
+    protocol: string;
+    name: string;
+    email: string;
+    category: string;
+    subject: string;
+    message: string;
+    priority?: string;
+    timestamp: string;
+    clientDiagnostics?: any;
+  },
+  options?: {
+    transporter?: Transporter | null;
+    hardTimeoutMs?: number;
+  }
+): Promise<{
   sent: boolean;
   messageId?: string;
-  provider: EmailProviderName;
-  normalizedStatus: StandardizedEmailStatus;
   error?: string;
-  status: "SENT" | "PENDING" | "PENDING_SMTP_CONFIG" | "AUTH_FAILED" | "NETWORK_ERROR" | "ERROR";
+  status: SupportSmtpStatus;
 }> {
-  const destinationEmail = "localizamais0@gmail.com";
+  const destinationEmail = OFFICIAL_SUPPORT_EMAIL;
+  const transporter =
+    options && "transporter" in options
+      ? options.transporter ?? null
+      : createSmtpTransporter();
+
+  if (!transporter) {
+    console.info(`[Support Email Notice] SMTP não configurado no ambiente. Protocolo ${ticket.protocol} registrado.`);
+    return {
+      sent: false,
+      status: "PENDING_SMTP_CONFIG",
+      error: "Variáveis SMTP (SMTP_HOST, SMTP_USER, SMTP_PASS) não configuradas.",
+    };
+  }
 
   const categoryMap: Record<string, string> = {
     BUG_REPORT: "Relato de Bug / Erro no Sistema",
@@ -184,60 +382,66 @@ ${JSON.stringify(ticket.clientDiagnostics || {}, null, 2)}
   const safeReplyName = stripHeaderControls(ticket.name, 100);
   const safeReplyEmail = stripHeaderControls(ticket.email, 120);
   const safeSubject = stripHeaderControls(ticket.subject, 150);
+  const fromAddress =
+    (process.env.SMTP_FROM || "").trim() ||
+    `"Localiza+ Suporte IFPR" <${(process.env.SMTP_USER || OFFICIAL_SUPPORT_EMAIL).trim()}>`;
 
-  const result = await sendTransactionalEmail({
-    to: destinationEmail,
-    fromName: "Localiza+ Suporte IFPR",
-    replyTo: SIMPLE_EMAIL_REGEX.test(safeReplyEmail)
-      ? `${safeReplyName} <${safeReplyEmail}>`
-      : undefined,
-    subject: `[${stripHeaderControls(ticket.protocol, 40)}] ${safeSubject}`,
-    text: textBody,
-    html: htmlBody,
-    category: "SUPPORT_FEEDBACK",
-    dedupeKey: `support:${ticket.protocol}`,
-  });
+  const hardTimeoutMs = options?.hardTimeoutMs ?? FEEDBACK_TIMEOUTS.smtpHardSendMs;
 
-  if (result.sent) {
+  try {
+    const info = await sendWithHardTimeout(
+      transporter.sendMail({
+        from: fromAddress,
+        to: destinationEmail,
+        replyTo: SIMPLE_EMAIL_REGEX.test(safeReplyEmail)
+          ? `${safeReplyName} <${safeReplyEmail}>`
+          : undefined,
+        subject: `[${stripHeaderControls(ticket.protocol, 40)}] ${safeSubject}`,
+        text: textBody,
+        html: htmlBody,
+      }),
+      hardTimeoutMs,
+      `Tempo limite excedido ao enviar e-mail via SMTP (${hardTimeoutMs}ms).`
+    );
+
     console.log(
-      `[Support Email Success] E-mail despachado via ${result.provider}. MessageID: ${result.messageId || "N/A"}`
+      `[Support Email Success] E-mail despachado via SMTP. MessageID: ${info?.messageId || "N/A"}`
     );
     return {
       sent: true,
-      messageId: result.messageId || undefined,
-      provider: result.provider,
-      normalizedStatus: "SENT",
+      messageId: info?.messageId || undefined,
       status: "SENT",
     };
-  }
+  } catch (err: any) {
+    const rawMsg = sanitizeErrorForLog(err?.message || err || "Erro desconhecido no envio SMTP");
+    const lower = rawMsg.toLowerCase();
+    const errCode = String(err?.code || "").toUpperCase();
 
-  const sanitizedError = sanitizeEmailSensitiveText(result.error || "");
-  if (result.status === "PENDING") {
-    console.info(`[Support Email Notice] Nenhum provedor configurado (Resend/SMTP). Protocolo ${ticket.protocol} registrado.`);
+    let smtpStatus: SupportSmtpStatus = "ERROR";
+    if (errCode === "ETIMEDOUT" || lower.includes("timed out") || lower.includes("timeout") || lower.includes("tempo limite")) {
+      smtpStatus = "TIMEOUT";
+    } else if (
+      err?.responseCode === 535 ||
+      lower.includes("invalid login") ||
+      lower.includes("authentication failed") ||
+      lower.includes("badcredentials")
+    ) {
+      smtpStatus = "AUTH_FAILED";
+    } else if (
+      lower.includes("econnrefused") ||
+      lower.includes("enotfound") ||
+      lower.includes("network") ||
+      lower.includes("econnreset")
+    ) {
+      smtpStatus = "NETWORK_ERROR";
+    }
+    console.error(`[Support Email Error: ${smtpStatus}] Falha ao enviar via SMTP:`, rawMsg);
     return {
       sent: false,
-      provider: result.provider,
-      normalizedStatus: "PENDING",
-      status: "PENDING_SMTP_CONFIG",
-      error: sanitizedError,
+      status: smtpStatus,
+      error: rawMsg,
     };
   }
-
-  let legacyStatus: "AUTH_FAILED" | "NETWORK_ERROR" | "ERROR" = "ERROR";
-  if (result.errorCode === "AUTH_ERROR") {
-    legacyStatus = "AUTH_FAILED";
-  } else if (result.errorCode === "SERVICE_UNAVAILABLE" || result.errorCode === "TIMEOUT") {
-    legacyStatus = "NETWORK_ERROR";
-  }
-
-  console.error(`[Support Email Error: ${legacyStatus}] Falha ao enviar via ${result.provider}:`, sanitizedError);
-  return {
-    sent: false,
-    provider: result.provider,
-    normalizedStatus: "ERROR",
-    status: legacyStatus,
-    error: sanitizedError,
-  };
 }
 
 function getDiscordFeedbackWebhookUrl(): string {
@@ -254,17 +458,23 @@ function getDiscordFeedbackWebhookUrl(): string {
   ).trim();
 }
 
-async function sendFeedbackToDiscord(ticket: {
-  protocol: string;
-  name: string;
-  email: string;
-  category: string;
-  subject: string;
-  message: string;
-  priority?: string;
-  timestamp: string;
-  clientDiagnostics?: any;
-}): Promise<boolean> {
+export async function sendFeedbackToDiscord(
+  ticket: {
+    protocol: string;
+    name: string;
+    email: string;
+    category: string;
+    subject: string;
+    message: string;
+    priority?: string;
+    timestamp: string;
+    clientDiagnostics?: any;
+  },
+  options?: {
+    fetchImpl?: typeof fetch;
+    timeoutMs?: number;
+  }
+): Promise<{ sent: boolean; status: SupportDiscordStatus }> {
   const webhookUrl = getDiscordFeedbackWebhookUrl();
   const isConfigured = Boolean(webhookUrl && webhookUrl.length > 10);
   console.log(`[Feedback API Diagnostics] DISCORD_FEEDBACK_WEBHOOK_URL configured: ${isConfigured}`);
@@ -273,8 +483,14 @@ async function sendFeedbackToDiscord(ticket: {
     console.info(
       `[Discord Feedback Notice] DISCORD_FEEDBACK_WEBHOOK_URL não configurada nas variáveis de ambiente. Protocolo ${ticket.protocol} registrado sem envio ao Discord.`
     );
-    return false;
+    return { sent: false, status: "NOT_CONFIGURED" };
   }
+
+  const fetchFn = options?.fetchImpl ?? fetch;
+  const timeoutMs = options?.timeoutMs ?? FEEDBACK_TIMEOUTS.discordFetchMs;
+
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const categoryMap: Record<string, { label: string; color: number; emoji: string }> = {
@@ -356,28 +572,414 @@ async function sendFeedbackToDiscord(ticket: {
     };
 
     console.log(`[Feedback API Diagnostics] Dispatching fetch to Discord for protocol ${ticket.protocol}...`);
-    const response = await fetch(webhookUrl, {
+    const response = await fetchFn(webhookUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify(discordPayload),
+      signal: controller.signal,
     });
 
-    console.log(`[Feedback API Diagnostics] Discord fetch response status: ${response.status} (${response.statusText || 'OK'})`);
+    console.log(
+      `[Feedback API Diagnostics] Discord fetch response status: ${response.status} (${response.statusText || "OK"})`
+    );
 
     if (!response.ok) {
       const errText = await response.text().catch(() => "N/A");
       console.warn(`[Discord Feedback Warning] Resposta HTTP ${response.status} do Webhook:`, errText);
-      return false;
+      return { sent: false, status: "HTTP_ERROR" };
     }
 
     console.log(`[Discord Feedback Success] Webhook despachado com sucesso para o protocolo ${ticket.protocol}.`);
-    return true;
+    return { sent: true, status: "SENT" };
   } catch (webhookErr: any) {
-    console.error("[Discord Feedback Error] Falha de conexão ao enviar para o Discord:", webhookErr?.message || webhookErr);
-    return false;
+    const isAbort = webhookErr?.name === "AbortError" || String(webhookErr?.message || "").toLowerCase().includes("abort");
+    console.error(
+      `[Discord Feedback Error] ${isAbort ? "Timeout" : "Falha de conexão"} ao enviar para o Discord:`,
+      sanitizeErrorForLog(webhookErr?.message || webhookErr)
+    );
+    return { sent: false, status: isAbort ? "TIMEOUT" : "NETWORK_ERROR" };
+  } finally {
+    clearTimeout(timeoutHandle);
   }
+}
+
+function canUseRuntimeAdminFirestore(): boolean {
+  const diag = getFirebaseAdminCredentialDiagnostics();
+  return Boolean(
+    diag.hasExplicitServiceAccount ||
+      process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+      process.env.FIRESTORE_EMULATOR_HOST
+  );
+}
+
+async function resolveOptionalAuthenticatedUser(
+  req: any
+): Promise<{ uid: string; email?: string | null } | null> {
+  const authHeader = req?.headers?.authorization || req?.headers?.Authorization;
+  if (!authHeader || typeof authHeader !== "string" || !authHeader.startsWith("Bearer ")) {
+    return null;
+  }
+  const token = authHeader.split(" ")[1]?.trim();
+  if (!token) return null;
+
+  try {
+    const adminAuth = getAdminAuth();
+    if (!adminAuth) return null;
+    const decoded = await adminAuth.verifyIdToken(token);
+    if (decoded?.uid) {
+      return { uid: decoded.uid, email: decoded.email || null };
+    }
+  } catch {
+    // Visitors or expired tokens fall back to unauthenticated visitor context without blocking feedback
+  }
+  return null;
+}
+
+export async function executeSupportFeedback(
+  body: FeedbackRequestBody,
+  deps: ExecuteSupportFeedbackDeps = {}
+): Promise<FeedbackExecutionResult> {
+  const { name, email, category, subject, message, priority, clientDiagnostics, clientRequestId } = body || {};
+
+  const trimmedName = stripHeaderControls(name, 100);
+  const trimmedEmail = stripHeaderControls(email, 120);
+  const trimmedSubject = stripHeaderControls(subject, 150);
+  const trimmedMessage = String(message || "").trim();
+
+  if (!trimmedName || !trimmedEmail || !trimmedSubject || !trimmedMessage) {
+    return {
+      statusCode: 400,
+      payload: {
+        success: false,
+        deliveryOutcome: "FAILED",
+        error:
+          "Por favor, preencha todos os campos obrigatórios: nome, e-mail, assunto e descrição da mensagem.",
+        code: "MISSING_REQUIRED_FIELDS",
+        smtpDispatched: false,
+        smtpStatus: "PENDING_SMTP_CONFIG",
+        smtpMessageId: null,
+        discordDispatched: false,
+        discordStatus: "NOT_CONFIGURED",
+        ticketPersisted: false,
+      },
+    };
+  }
+
+  if (!SIMPLE_EMAIL_REGEX.test(trimmedEmail)) {
+    return {
+      statusCode: 400,
+      payload: {
+        success: false,
+        deliveryOutcome: "FAILED",
+        error: "Informe um endereço de e-mail válido.",
+        code: "INVALID_EMAIL",
+        smtpDispatched: false,
+        smtpStatus: "PENDING_SMTP_CONFIG",
+        smtpMessageId: null,
+        discordDispatched: false,
+        discordStatus: "NOT_CONFIGURED",
+        ticketPersisted: false,
+      },
+    };
+  }
+
+  const nowMs = deps.nowMs ?? Date.now();
+  pruneDedupeCache(nowMs);
+
+  const safeClientRequestId = sanitizeClientRequestId(clientRequestId);
+  const explicitDedupeKey = safeClientRequestId ? `req:${safeClientRequestId}` : null;
+  const contentDedupeKey = buildContentDedupeKey({
+    email: trimmedEmail,
+    category: String(category || "FEEDBACK"),
+    subject: trimmedSubject,
+    message: trimmedMessage,
+  });
+
+  // In-memory duplicate check (explicit clientRequestId or short-window identical payload)
+  const cachedEntry =
+    (explicitDedupeKey && FEEDBACK_DEDUPE_CACHE.get(explicitDedupeKey)) ||
+    FEEDBACK_DEDUPE_CACHE.get(contentDedupeKey);
+  if (cachedEntry && cachedEntry.expiresAt > nowMs) {
+    return {
+      statusCode: cachedEntry.result.statusCode,
+      payload: {
+        ...cachedEntry.result.payload,
+        duplicatePrevented: true,
+      },
+    };
+  }
+
+  const ticketProtocol = buildProtocol(safeClientRequestId, nowMs);
+  const timestamp = new Date(nowMs).toISOString();
+  const destinationEmail = OFFICIAL_SUPPORT_EMAIL;
+  const authContext: "AUTHENTICATED" | "VISITOR" = deps.authenticatedUser?.uid ? "AUTHENTICATED" : "VISITOR";
+
+  const adminDb =
+    "adminFirestore" in deps
+      ? deps.adminFirestore ?? null
+      : canUseRuntimeAdminFirestore()
+      ? getAdminFirestore()
+      : null;
+
+  // Cross-instance idempotency check in Firestore when clientRequestId is provided
+  if (adminDb && safeClientRequestId) {
+    try {
+      const existingSnap = await sendWithHardTimeout<any>(
+        adminDb.collection("support_tickets").doc(`ticket_${ticketProtocol}`).get(),
+        FEEDBACK_TIMEOUTS.firestorePersistMs,
+        "Timeout ao verificar duplicidade do ticket no Firestore."
+      );
+      if (existingSnap && existingSnap.exists) {
+        const existingData = existingSnap.data() || {};
+        const prevSmtpSent = Boolean(existingData.smtpDispatched);
+        const prevDiscordSent = Boolean(existingData.discordDispatched);
+        const prevOutcome: SupportDeliveryOutcome =
+          prevSmtpSent && prevDiscordSent
+            ? "COMPLETE"
+            : prevSmtpSent || prevDiscordSent
+            ? "PARTIAL"
+            : "FAILED";
+        const dedupedResult: FeedbackExecutionResult = {
+          statusCode: prevOutcome === "FAILED" ? 503 : 200,
+          payload: {
+            success: prevOutcome !== "FAILED",
+            deliveryOutcome: prevOutcome,
+            protocol: ticketProtocol,
+            message:
+              prevOutcome !== "FAILED"
+                ? "Solicitação já registrada anteriormente com este identificador (envio duplicado evitado)."
+                : undefined,
+            error:
+              prevOutcome === "FAILED"
+                ? "Solicitação já registrada anteriormente, mas nenhum canal de notificação (SMTP/Discord) concluiu a entrega."
+                : undefined,
+            timestamp: existingData.createdAt || timestamp,
+            destinationEmail,
+            emailSubject: `[${ticketProtocol}] ${trimmedSubject}`,
+            smtpDispatched: prevSmtpSent,
+            smtpStatus: (existingData.smtpStatus as SupportSmtpStatus) || "PENDING_SMTP_CONFIG",
+            smtpMessageId: existingData.smtpMessageId || null,
+            discordDispatched: prevDiscordSent,
+            discordStatus: (existingData.discordStatus as SupportDiscordStatus) || "NOT_CONFIGURED",
+            ticketPersisted: true,
+            duplicatePrevented: true,
+            authContext,
+          },
+        };
+        return dedupedResult;
+      }
+    } catch (lookupErr: any) {
+      console.warn(
+        "[Support Ticket Dedupe Warning] Não foi possível consultar duplicidade prévia no Firestore:",
+        sanitizeErrorForLog(lookupErr?.message || lookupErr)
+      );
+    }
+  }
+
+  console.log(
+    `[Feedback API Diagnostics] Request received - Protocol: ${ticketProtocol}, Category: ${category || "FEEDBACK"}, Context: ${authContext}`
+  );
+
+  const ticketPayload = {
+    protocol: ticketProtocol,
+    name: trimmedName.substring(0, 100),
+    email: trimmedEmail.substring(0, 120),
+    category: String(category || "FEEDBACK"),
+    subject: trimmedSubject.substring(0, 150),
+    message: trimmedMessage.substring(0, 4000),
+    priority: String(priority || "MEDIA"),
+    timestamp,
+    clientDiagnostics,
+  };
+
+  // Run SMTP and Discord IN PARALLEL so slow/hung SMTP never blocks Discord
+  const [emailResult, discordResult] = await Promise.all([
+    sendFeedbackEmail(ticketPayload, {
+      ...("transporter" in deps ? { transporter: deps.transporter } : {}),
+      hardTimeoutMs: deps.smtpHardTimeoutMs ?? FEEDBACK_TIMEOUTS.smtpHardSendMs,
+    }),
+    sendFeedbackToDiscord(ticketPayload, {
+      fetchImpl: deps.fetchImpl,
+      timeoutMs: deps.discordTimeoutMs ?? FEEDBACK_TIMEOUTS.discordFetchMs,
+    }),
+  ]);
+
+  const smtpDispatched = Boolean(emailResult.sent);
+  const discordDispatched = Boolean(discordResult.sent);
+  const deliveryOutcome: SupportDeliveryOutcome =
+    smtpDispatched && discordDispatched
+      ? "COMPLETE"
+      : smtpDispatched || discordDispatched
+      ? "PARTIAL"
+      : "FAILED";
+
+  // Persist support_tickets and email_notifications consistently via Admin SDK (for both authenticated users & visitors)
+  let ticketPersisted = false;
+  if (adminDb) {
+    try {
+      const ticketDocId = `ticket_${ticketProtocol}`;
+      const ticketRecord: Record<string, any> = {
+        id: ticketDocId,
+        protocol: ticketProtocol,
+        name: ticketPayload.name,
+        email: ticketPayload.email,
+        category: ticketPayload.category,
+        subject: ticketPayload.subject,
+        message: ticketPayload.message,
+        priority: ticketPayload.priority,
+        status: "NOVO",
+        authContext,
+        createdAt: timestamp,
+        smtpDispatched,
+        smtpStatus: emailResult.status,
+        smtpMessageId: emailResult.messageId || null,
+        discordDispatched,
+        discordStatus: discordResult.status,
+        deliveryOutcome,
+        ...(safeClientRequestId ? { clientRequestId: safeClientRequestId } : {}),
+        ...(ticketPayload.clientDiagnostics ? { clientDiagnostics: ticketPayload.clientDiagnostics } : {}),
+      };
+
+      if (deps.authenticatedUser?.uid) {
+        ticketRecord.userId = deps.authenticatedUser.uid;
+      }
+
+      const notifDocId = `email_ticket_${ticketProtocol}`;
+      await sendWithHardTimeout(
+        Promise.all([
+          adminDb.collection("support_tickets").doc(ticketDocId).set(ticketRecord, { merge: false }),
+          adminDb
+            .collection("email_notifications")
+            .doc(notifDocId)
+            .set(
+              {
+                id: notifDocId,
+                ticketProtocol,
+                recipientEmail: destinationEmail,
+                senderName: ticketPayload.name,
+                senderEmail: ticketPayload.email,
+                subject: `[${ticketProtocol}] ${ticketPayload.subject}`,
+                category: ticketPayload.category,
+                type: "SUPPORT_FEEDBACK",
+                status: emailResult.status,
+                messageId: emailResult.messageId || null,
+                error: emailResult.error || null,
+                discordDispatched,
+                discordStatus: discordResult.status,
+                deliveryOutcome,
+                timestamp,
+                createdAt: timestamp,
+              },
+              { merge: false }
+            ),
+        ]),
+        FEEDBACK_TIMEOUTS.firestorePersistMs,
+        "Tempo limite ao persistir ticket no Firestore."
+      );
+      ticketPersisted = true;
+    } catch (dbErr: any) {
+      console.warn(
+        "[Support Ticket Firestore Warning] Falha ao persistir ticket no Firestore:",
+        sanitizeErrorForLog(dbErr?.message || dbErr)
+      );
+      ticketPersisted = false;
+    }
+  }
+
+  let result: FeedbackExecutionResult;
+
+  if (deliveryOutcome === "COMPLETE") {
+    result = {
+      statusCode: 200,
+      payload: {
+        success: true,
+        deliveryOutcome: "COMPLETE",
+        protocol: ticketProtocol,
+        message:
+          "Seu relato/feedback foi enviado com sucesso por e-mail institucional e notificado no Discord da equipe do Campus Ivaiporã.",
+        timestamp,
+        destinationEmail,
+        emailSubject: `[${ticketProtocol}] ${ticketPayload.subject}`,
+        smtpDispatched: true,
+        smtpStatus: emailResult.status,
+        smtpMessageId: emailResult.messageId || null,
+        discordDispatched: true,
+        discordStatus: discordResult.status,
+        ticketPersisted,
+        authContext,
+      },
+    };
+  } else if (deliveryOutcome === "PARTIAL") {
+    const partialMsg = smtpDispatched
+      ? "Seu relato/feedback foi enviado por e-mail institucional, mas a notificação no Discord não pôde ser concluída no momento."
+      : "Seu relato/feedback foi entregue no Discord da equipe, mas o envio por e-mail SMTP não pôde ser concluído no momento.";
+    result = {
+      statusCode: 200,
+      payload: {
+        success: true,
+        deliveryOutcome: "PARTIAL",
+        protocol: ticketProtocol,
+        message: partialMsg,
+        timestamp,
+        destinationEmail,
+        emailSubject: `[${ticketProtocol}] ${ticketPayload.subject}`,
+        smtpDispatched,
+        smtpStatus: emailResult.status,
+        smtpMessageId: emailResult.messageId || null,
+        smtpError: emailResult.error || null,
+        discordDispatched,
+        discordStatus: discordResult.status,
+        ticketPersisted,
+        authContext,
+      },
+    };
+  } else {
+    const bothUnconfigured =
+      emailResult.status === "PENDING_SMTP_CONFIG" && discordResult.status === "NOT_CONFIGURED";
+    const failError = ticketPersisted
+      ? "Não foi possível entregar a notificação por e-mail SMTP nem pelo Discord no momento. Seu protocolo foi salvo internamente, mas recomendamos enviar uma cópia para localizamais0@gmail.com."
+      : "Falha ao enviar sua solicitação: os canais de notificação (e-mail SMTP e Discord) estão indisponíveis no momento. Tente novamente ou envie diretamente para localizamais0@gmail.com.";
+
+    result = {
+      statusCode: bothUnconfigured ? 503 : 502,
+      payload: {
+        success: false,
+        deliveryOutcome: "FAILED",
+        code: bothUnconfigured ? "NOTIFICATION_CHANNELS_NOT_CONFIGURED" : "ALL_NOTIFICATION_CHANNELS_FAILED",
+        protocol: ticketProtocol,
+        error: failError,
+        timestamp,
+        destinationEmail,
+        emailSubject: `[${ticketProtocol}] ${ticketPayload.subject}`,
+        smtpDispatched: false,
+        smtpStatus: emailResult.status,
+        smtpMessageId: null,
+        smtpError: emailResult.error || null,
+        discordDispatched: false,
+        discordStatus: discordResult.status,
+        ticketPersisted,
+        authContext,
+      },
+    };
+  }
+
+  // Only cache completed or persisted attempts so a failed/unpersisted attempt can be retried
+  if (deliveryOutcome !== "FAILED" || ticketPersisted) {
+    if (explicitDedupeKey) {
+      FEEDBACK_DEDUPE_CACHE.set(explicitDedupeKey, {
+        expiresAt: nowMs + DEDUPE_EXPLICIT_TTL_MS,
+        result,
+      });
+    }
+    FEEDBACK_DEDUPE_CACHE.set(contentDedupeKey, {
+      expiresAt: nowMs + DEDUPE_CONTENT_TTL_MS,
+      result,
+    });
+  }
+
+  return result;
 }
 
 async function parseBody(req: any): Promise<FeedbackRequestBody> {
@@ -425,78 +1027,36 @@ export default async function handler(req: any, res: any) {
   if (req.method !== "POST") {
     return res.status(405).json({
       success: false,
+      deliveryOutcome: "FAILED",
       error: "Método não permitido. Utilize POST para envio de feedback.",
+      smtpDispatched: false,
+      smtpStatus: "PENDING_SMTP_CONFIG",
+      smtpMessageId: null,
+      discordDispatched: false,
+      discordStatus: "NOT_CONFIGURED",
+      ticketPersisted: false,
     });
   }
 
   try {
     const body = await parseBody(req);
-    const { name, email, category, subject, message, priority, clientDiagnostics } = body;
-
-    const trimmedName = stripHeaderControls(name, 100);
-    const trimmedEmail = stripHeaderControls(email, 120);
-    const trimmedSubject = stripHeaderControls(subject, 150);
-    const trimmedMessage = String(message || "").trim();
-
-    if (!trimmedName || !trimmedEmail || !trimmedSubject || !trimmedMessage) {
-      return res.status(400).json({
-        success: false,
-        error: "Por favor, preencha todos os campos obrigatórios: nome, e-mail, assunto e descrição da mensagem.",
-      });
-    }
-
-    if (!SIMPLE_EMAIL_REGEX.test(trimmedEmail)) {
-      return res.status(400).json({
-        success: false,
-        error: "Informe um endereço de e-mail válido.",
-      });
-    }
-
-    const ticketProtocol = `IFPR-SUP-${Date.now().toString(36).toUpperCase()}`;
-    const timestamp = new Date().toISOString();
-    const destinationEmail = "localizamais0@gmail.com";
-
-    console.log(`[Feedback API Diagnostics] Request received (${req.method}) - Protocol: ${ticketProtocol}, Category: ${category || 'FEEDBACK'}, Subject: ${trimmedSubject.substring(0, 40)}...`);
-
-    const ticketPayload = {
-      protocol: ticketProtocol,
-      name: trimmedName.substring(0, 100),
-      email: trimmedEmail.substring(0, 120),
-      category: String(category || "FEEDBACK"),
-      subject: trimmedSubject.substring(0, 150),
-      message: trimmedMessage.substring(0, 4000),
-      priority: String(priority || "MEDIA"),
-      timestamp,
-      clientDiagnostics,
-    };
-
-    // 1. Dispatch real email via centralized email service (Resend priority, SMTP fallback)
-    const emailResult = await sendFeedbackEmail(ticketPayload);
-
-    // 2. Dispatch to Discord Webhook with error resilience
-    const discordSent = await sendFeedbackToDiscord(ticketPayload);
-
-    return res.status(200).json({
-      success: true,
-      protocol: ticketProtocol,
-      message: "Seu relato/feedback foi registrado e encaminhado diretamente para a equipe de suporte do Campus Ivaiporã.",
-      timestamp,
-      destinationEmail,
-      emailSubject: `[${ticketProtocol}] ${trimmedSubject}`,
-      emailDispatched: emailResult.sent,
-      emailProvider: emailResult.provider,
-      emailStatus: emailResult.normalizedStatus,
-      messageId: emailResult.messageId || null,
-      smtpDispatched: emailResult.sent,
-      smtpStatus: emailResult.status,
-      smtpMessageId: emailResult.messageId || null,
-      discordDispatched: discordSent,
+    const authenticatedUser = await resolveOptionalAuthenticatedUser(req);
+    const result = await executeSupportFeedback(body, {
+      authenticatedUser,
     });
+    return res.status(result.statusCode).json(result.payload);
   } catch (error: any) {
-    console.error("[send-feedback API Error]:", error?.message || error);
+    console.error("[send-feedback API Error]:", sanitizeErrorForLog(error?.message || error));
     return res.status(500).json({
       success: false,
+      deliveryOutcome: "FAILED",
       error: "Erro interno no servidor ao processar envio do formulário de contato.",
+      smtpDispatched: false,
+      smtpStatus: "ERROR",
+      smtpMessageId: null,
+      discordDispatched: false,
+      discordStatus: "NETWORK_ERROR",
+      ticketPersisted: false,
     });
   }
 }

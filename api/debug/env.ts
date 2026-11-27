@@ -1,5 +1,63 @@
-import { getAdminAuth, getAdminFirestore, verifyServerlessCallerAccess } from "../_lib/firebaseAdmin.js";
-import { getEmailProviderConfig } from "../_lib/emailService.js";
+import {
+  FIRESTORE_DATABASE_ID,
+  getAdminAuth,
+  getAdminFirestore,
+  getFirebaseAdminCredentialDiagnostics,
+  resolveFirebaseServiceAccountFromEnv,
+  verifyServerlessCallerAccess,
+} from "../_lib/firebaseAdmin.js";
+
+function maskEmail(email: string | undefined): string | null {
+  const clean = (email || "").trim();
+  if (!clean || !clean.includes("@")) return null;
+  const [name, domain] = clean.split("@");
+  return `${name.substring(0, 3)}***@${domain}`;
+}
+
+export function buildFirebaseAdminEnvDiagnostic(): {
+  configured: boolean;
+  credentialSource: "CLIENT_EMAIL_AND_PRIVATE_KEY" | "SERVICE_ACCOUNT_JSON" | "DEFAULT_OR_MISSING";
+  hasClientEmailAndPrivateKey: boolean;
+  hasServiceAccountJson: boolean;
+  hasCredentialError: boolean;
+  isVercelWithoutCreds: boolean;
+  projectIdPresent: boolean;
+  databaseIdConfigured: boolean;
+} {
+  const adminCredDiag = getFirebaseAdminCredentialDiagnostics();
+  const resolvedSa = resolveFirebaseServiceAccountFromEnv();
+  const hasClientEmailAndPrivateKey = Boolean(
+    process.env.FIREBASE_CLIENT_EMAIL?.trim() && process.env.FIREBASE_PRIVATE_KEY?.trim()
+  );
+  const hasServiceAccountJson = Boolean(
+    (process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "").trim()
+  );
+
+  const credentialSource: "CLIENT_EMAIL_AND_PRIVATE_KEY" | "SERVICE_ACCOUNT_JSON" | "DEFAULT_OR_MISSING" =
+    hasClientEmailAndPrivateKey && adminCredDiag.hasExplicitServiceAccount
+      ? "CLIENT_EMAIL_AND_PRIVATE_KEY"
+      : hasServiceAccountJson && adminCredDiag.hasExplicitServiceAccount
+      ? "SERVICE_ACCOUNT_JSON"
+      : "DEFAULT_OR_MISSING";
+
+  return {
+    configured: adminCredDiag.hasExplicitServiceAccount,
+    credentialSource,
+    hasClientEmailAndPrivateKey,
+    hasServiceAccountJson,
+    hasCredentialError: Boolean(adminCredDiag.certInitError),
+    isVercelWithoutCreds: adminCredDiag.isVercelWithoutCreds,
+    projectIdPresent: Boolean(
+      process.env.FIREBASE_PROJECT_ID ||
+        process.env.VITE_FIREBASE_PROJECT_ID ||
+        resolvedSa.projectId
+    ),
+    databaseIdConfigured: Boolean(
+      (process.env.FIRESTORE_DATABASE_ID && process.env.FIRESTORE_DATABASE_ID.trim()) ||
+        FIRESTORE_DATABASE_ID
+    ),
+  };
+}
 
 export default async function handler(req: any, res: any) {
   // CORS Headers
@@ -69,9 +127,13 @@ export default async function handler(req: any, res: any) {
     process.env.DISCORD_FEEDBACK
   );
 
-  const emailConfig = getEmailProviderConfig();
-  const isSmtpConfigured = emailConfig.smtp.configured;
-  const isResendConfigured = emailConfig.resend.configured;
+  const smtpHost = (process.env.SMTP_HOST || "").trim();
+  const smtpPortNum = parseInt((process.env.SMTP_PORT || "587").trim(), 10) || 587;
+  const smtpUser = (process.env.SMTP_USER || "").trim();
+  const smtpPass = (process.env.SMTP_PASS || "").trim().replace(/\s+/g, "");
+  const smtpFrom = (process.env.SMTP_FROM || "").trim();
+  const smtpSecure = process.env.SMTP_SECURE === "true" || smtpPortNum === 465;
+  const isSmtpConfigured = Boolean(smtpHost && smtpUser && smtpPass);
 
   const isGeminiConfigured = Boolean(
     process.env.GEMINI_API_KEY ||
@@ -80,47 +142,28 @@ export default async function handler(req: any, res: any) {
     process.env.API_KEY
   );
 
-  const isFirebaseAdminConfigured = Boolean(
-    process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY
-  );
+  const firebaseAdminDiagnostic = buildFirebaseAdminEnvDiagnostic();
 
   // Safe boolean flags & non-sensitive parameters only - NEVER expose secrets or URLs
   return res.status(200).json({
-    status: isDiscordConfigured || emailConfig.emailConfigured || isGeminiConfigured,
+    status: isDiscordConfigured || isSmtpConfigured || isGeminiConfigured,
     DISCORD_FEEDBACK_WEBHOOK_URL: isDiscordConfigured,
     DISCORD_WEBHOOK_READY: isDiscordConfigured,
-    EMAIL: {
-      activeProvider: emailConfig.activeProvider,
-      configurationState: emailConfig.configurationState,
-      configured: emailConfig.emailConfigured,
-      fallbackAvailable: emailConfig.fallbackAvailable,
-    },
-    RESEND: {
-      configured: isResendConfigured,
-      apiKeyPresent: emailConfig.resend.apiKeyPresent,
-      fromPresent: emailConfig.resend.fromPresent,
-      fromValid: emailConfig.resend.fromValid,
-      fromMasked: emailConfig.resend.fromMasked,
-      error: emailConfig.resend.error,
-    },
     SMTP: {
       configured: isSmtpConfigured,
-      hostPresent: emailConfig.smtp.hostPresent,
-      portPresent: emailConfig.smtp.portPresent,
-      userPresent: emailConfig.smtp.userPresent,
-      passPresent: emailConfig.smtp.passPresent,
-      fromPresent: emailConfig.smtp.fromPresent,
-      port: parseInt(emailConfig.smtp.port, 10) || 587,
-      secure: emailConfig.smtp.secure,
-      userMasked: emailConfig.smtp.userMasked,
+      hostPresent: Boolean(smtpHost),
+      portPresent: Boolean(process.env.SMTP_PORT),
+      userPresent: Boolean(smtpUser),
+      passPresent: Boolean(smtpPass),
+      fromPresent: Boolean(smtpFrom),
+      port: smtpPortNum,
+      secure: smtpSecure,
+      userMasked: maskEmail(smtpUser),
     },
     GEMINI_AI: {
       configured: isGeminiConfigured,
     },
-    FIREBASE_ADMIN: {
-      configured: isFirebaseAdminConfigured,
-      projectIdPresent: Boolean(process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID),
-    },
+    FIREBASE_ADMIN: firebaseAdminDiagnostic,
     runtime: typeof process !== "undefined" && process.release ? "node" : "serverless",
     timestamp: new Date().toISOString(),
   });

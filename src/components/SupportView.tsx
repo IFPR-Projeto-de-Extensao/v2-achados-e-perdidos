@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { useApp } from "../context/AppContext";
 import { useRouter } from "../context/RouterContext";
-import { submitSupportFeedback } from "../lib/supportFeedbackService";
+import {
+  submitSupportFeedback,
+  type SupportFeedbackResponse,
+} from "../lib/supportFeedbackService";
 import { localize } from "../lib/i18n";
 import {
   LifeBuoy,
@@ -65,6 +68,8 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
   const [feedbackSenderEmail, setFeedbackSenderEmail] = useState(currentUser.email || "");
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+  const [feedbackResult, setFeedbackResult] = useState<SupportFeedbackResponse | null>(null);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
 
   // Bug form state
   const [bugTitle, setBugTitle] = useState("");
@@ -75,6 +80,8 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
   const [bugImageUrl, setBugImageUrl] = useState("");
   const [isSubmittingBug, setIsSubmittingBug] = useState(false);
   const [bugSubmitted, setBugSubmitted] = useState(false);
+  const [bugResult, setBugResult] = useState<SupportFeedbackResponse | null>(null);
+  const [bugError, setBugError] = useState<string | null>(null);
 
   // FAQ Accordion
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
@@ -140,6 +147,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
 
   const handleSubmitFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFeedbackError(null);
     if (!feedbackMessage.trim()) {
       addToast(L("Por favor, digite sua mensagem ou sugestão.", "Please enter your message or suggestion."), "error");
       return;
@@ -159,23 +167,56 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
         userRole: currentUser?.role,
       });
 
-      if (!result.success) {
-        throw new Error(result.error || L("Erro ao processar sugestão no servidor.", "Error processing feedback on server."));
+      setFeedbackResult(result);
+
+      if (!result.success || result.deliveryOutcome === "FAILED") {
+        vibrateWarning();
+        const errMessage =
+          result.error ||
+          L(
+            "Não foi possível enviar sua sugestão pelos canais de notificação (e-mail SMTP e Discord). Tente novamente ou escreva para localizamais0@gmail.com.",
+            "Could not deliver your feedback through notification channels (SMTP email and Discord). Please retry or email localizamais0@gmail.com."
+          );
+        setFeedbackError(errMessage);
+        setFeedbackSubmitted(false);
+        addToast(errMessage, "error");
+        return;
       }
 
       vibrateSuccess();
       setFeedbackSubmitted(true);
-      addToast(
-        L(
-          "Sugestão e notificação enviadas à equipe do Campus Ivaiporã!",
-          "Feedback and notification sent to the Ivaiporã Campus team!"
-        ),
-        "success"
-      );
+      if (result.deliveryOutcome === "PARTIAL") {
+        const partialMsg = result.smtpDispatched
+          ? L(
+              "Sugestão enviada por e-mail institucional, mas a notificação no Discord falhou.",
+              "Feedback sent via institutional email, but Discord notification failed."
+            )
+          : L(
+              "Sugestão enviada ao Discord da equipe, mas o envio por e-mail SMTP não pôde ser concluído.",
+              "Feedback delivered to team Discord, but SMTP email delivery could not be completed."
+            );
+        addToast(partialMsg, "warning");
+      } else {
+        addToast(
+          L(
+            "Sugestão enviada com sucesso por e-mail institucional e Discord à equipe do Campus Ivaiporã!",
+            "Feedback sent successfully via institutional email and Discord to the Ivaiporã Campus team!"
+          ),
+          "success"
+        );
+      }
     } catch (err: any) {
-      console.warn("Feedback notice:", err);
-      addToast(err?.message || L("Obrigado pela sua sugestão!", "Thank you for your feedback!"), "info");
-      setFeedbackSubmitted(true);
+      console.error("[SupportView Feedback Error]:", err);
+      vibrateWarning();
+      const errMessage =
+        err?.message ||
+        L(
+          "Erro inesperado ao enviar sua sugestão. Tente novamente ou escreva para localizamais0@gmail.com.",
+          "Unexpected error submitting your feedback. Please try again or email localizamais0@gmail.com."
+        );
+      setFeedbackError(errMessage);
+      setFeedbackSubmitted(false);
+      addToast(errMessage, "error");
     } finally {
       setIsSubmittingFeedback(false);
     }
@@ -183,6 +224,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
 
   const handleSubmitBug = async (e: React.FormEvent) => {
     e.preventDefault();
+    setBugError(null);
     if (!bugTitle.trim() || !bugSteps.trim()) {
       addToast(
         L(
@@ -214,8 +256,8 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
         .join("\n\n");
 
       const result = await submitSupportFeedback({
-        name: (currentUser.name || L("Membro da Comunidade", "Community Member")).trim(),
-        email: (currentUser.email || "localizamais0@gmail.com").trim(),
+        name: (feedbackSenderName || currentUser.name || L("Membro da Comunidade", "Community Member")).trim(),
+        email: (feedbackSenderEmail || currentUser.email || "localizamais0@gmail.com").trim(),
         category: "BUG_REPORT",
         subject: `[Bug Report] ${bugTitle.trim()}`,
         message: detailedReport,
@@ -225,23 +267,56 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
         userRole: currentUser?.role,
       });
 
-      if (!result.success) {
-        throw new Error(result.error || L("Erro ao processar relato no servidor.", "Error processing report on server."));
+      setBugResult(result);
+
+      if (!result.success || result.deliveryOutcome === "FAILED") {
+        vibrateWarning();
+        const errMessage =
+          result.error ||
+          L(
+            "Não foi possível entregar o relato de erro por e-mail SMTP nem pelo Discord. Tente novamente ou envie para localizamais0@gmail.com.",
+            "Could not deliver the bug report via SMTP email or Discord. Please retry or email localizamais0@gmail.com."
+          );
+        setBugError(errMessage);
+        setBugSubmitted(false);
+        addToast(errMessage, "error");
+        return;
       }
 
       vibrateSuccess();
       setBugSubmitted(true);
-      addToast(
-        L(
-          "Relato de erro enviado diretamente ao Discord e à equipe de TI!",
-          "Bug report sent directly to Discord and the IT team!"
-        ),
-        "success"
-      );
+      if (result.deliveryOutcome === "PARTIAL") {
+        const partialMsg = result.smtpDispatched
+          ? L(
+              "Relato enviado por e-mail institucional, mas a notificação no Discord falhou.",
+              "Report sent via institutional email, but Discord notification failed."
+            )
+          : L(
+              "Relato enviado ao Discord da equipe, mas o envio por e-mail SMTP não pôde ser concluído.",
+              "Report delivered to team Discord, but SMTP email delivery could not be completed."
+            );
+        addToast(partialMsg, "warning");
+      } else {
+        addToast(
+          L(
+            "Relato de erro enviado com sucesso por e-mail institucional e Discord à equipe de TI!",
+            "Bug report sent successfully via institutional email and Discord to the IT team!"
+          ),
+          "success"
+        );
+      }
     } catch (err: any) {
-      console.warn("Bug report notice:", err);
-      addToast(err?.message || L("Relato registrado com sucesso!", "Report recorded successfully!"), "info");
-      setBugSubmitted(true);
+      console.error("[SupportView Bug Report Error]:", err);
+      vibrateWarning();
+      const errMessage =
+        err?.message ||
+        L(
+          "Erro inesperado ao enviar o relato de erro. Tente novamente ou escreva para localizamais0@gmail.com.",
+          "Unexpected error submitting your bug report. Please try again or email localizamais0@gmail.com."
+        );
+      setBugError(errMessage);
+      setBugSubmitted(false);
+      addToast(errMessage, "error");
     } finally {
       setIsSubmittingBug(false);
     }
@@ -451,21 +526,51 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
             </p>
           </div>
 
-          {feedbackSubmitted ? (
-            <div className="p-8 rounded-2xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 text-center space-y-3">
-              <CheckCircle2 className="w-12 h-12 text-purple-600 mx-auto" />
+          {feedbackSubmitted && feedbackResult ? (
+            <div
+              className={`p-8 rounded-2xl border text-center space-y-3 ${
+                feedbackResult.deliveryOutcome === "PARTIAL"
+                  ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800"
+                  : "bg-purple-50 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800"
+              }`}
+            >
+              {feedbackResult.deliveryOutcome === "PARTIAL" ? (
+                <AlertTriangle className="w-12 h-12 text-amber-600 mx-auto" />
+              ) : (
+                <CheckCircle2 className="w-12 h-12 text-purple-600 mx-auto" />
+              )}
               <h4 className="text-base font-bold text-neutral-900 dark:text-white">
-                {L("Sugestão Recebida com Sucesso!", "Feedback Received Successfully!")}
+                {feedbackResult.deliveryOutcome === "PARTIAL"
+                  ? L("Sugestão Enviada Parcialmente", "Feedback Partially Delivered")
+                  : L("Sugestão Recebida com Sucesso!", "Feedback Received Successfully!")}
               </h4>
+              {feedbackResult.protocol && (
+                <p className="text-xs font-mono font-bold text-neutral-700 dark:text-neutral-200">
+                  {L("Protocolo", "Protocol")}: {feedbackResult.protocol}
+                </p>
+              )}
               <p className="text-xs text-neutral-600 dark:text-neutral-300 max-w-md mx-auto">
-                {L(
-                  "Muito obrigado por contribuir com a evolução contínua do Localiza+ no Campus Ivaiporã.",
-                  "Thank you for helping us continuously improve Localiza+ at Ivaiporã Campus."
-                )}
+                {feedbackResult.message ||
+                  L(
+                    "Muito obrigado por contribuir com a evolução contínua do Localiza+ no Campus Ivaiporã.",
+                    "Thank you for helping us continuously improve Localiza+ at Ivaiporã Campus."
+                  )}
               </p>
+              <div className="flex flex-wrap justify-center gap-2 text-[11px] font-semibold">
+                <span className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-700">
+                  {L("E-mail SMTP", "SMTP Email")}:{" "}
+                  {feedbackResult.smtpDispatched ? L("Enviado", "Sent") : L("Indisponível", "Unavailable")}
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-700">
+                  Discord:{" "}
+                  {feedbackResult.discordDispatched ? L("Enviado", "Sent") : L("Indisponível", "Unavailable")}
+                </span>
+              </div>
               <button
                 onClick={() => {
                   setFeedbackSubmitted(false);
+                  setFeedbackResult(null);
+                  setFeedbackError(null);
                   setFeedbackMessage("");
                 }}
                 className="mt-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs"
@@ -475,6 +580,21 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
             </div>
           ) : (
             <form onSubmit={handleSubmitFeedback} className="space-y-4">
+              {feedbackError && (
+                <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 space-y-1.5">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{L("Falha ao enviar sugestão", "Failed to send feedback")}</span>
+                  </div>
+                  <p>{feedbackError}</p>
+                  <p className="text-[11px]">
+                    {L("Canal alternativo:", "Alternative channel:")}{" "}
+                    <a href="mailto:localizamais0@gmail.com" className="underline font-semibold">
+                      localizamais0@gmail.com
+                    </a>
+                  </p>
+                </div>
+              )}
               {/* Rating 1-5 Stars */}
               <div>
                 <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-2">
@@ -598,21 +718,51 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
             </p>
           </div>
 
-          {bugSubmitted ? (
-            <div className="p-8 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-center space-y-3">
-              <CheckCircle2 className="w-12 h-12 text-red-600 mx-auto" />
+          {bugSubmitted && bugResult ? (
+            <div
+              className={`p-8 rounded-2xl border text-center space-y-3 ${
+                bugResult.deliveryOutcome === "PARTIAL"
+                  ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800"
+                  : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
+              }`}
+            >
+              {bugResult.deliveryOutcome === "PARTIAL" ? (
+                <AlertTriangle className="w-12 h-12 text-amber-600 mx-auto" />
+              ) : (
+                <CheckCircle2 className="w-12 h-12 text-red-600 mx-auto" />
+              )}
               <h4 className="text-base font-bold text-neutral-900 dark:text-white">
-                {L("Relato de Erro Registrado!", "Issue Report Submitted!")}
+                {bugResult.deliveryOutcome === "PARTIAL"
+                  ? L("Relato de Erro Enviado Parcialmente", "Issue Report Partially Delivered")
+                  : L("Relato de Erro Registrado!", "Issue Report Submitted!")}
               </h4>
+              {bugResult.protocol && (
+                <p className="text-xs font-mono font-bold text-neutral-700 dark:text-neutral-200">
+                  {L("Protocolo", "Protocol")}: {bugResult.protocol}
+                </p>
+              )}
               <p className="text-xs text-neutral-600 dark:text-neutral-300 max-w-md mx-auto">
-                {L(
-                  "Nossa equipe de tecnologia foi notificada e analisará os registros para a correção do problema.",
-                  "Our technology team has been notified and will review the logs to fix the issue."
-                )}
+                {bugResult.message ||
+                  L(
+                    "Nossa equipe de tecnologia foi notificada e analisará os registros para a correção do problema.",
+                    "Our technology team has been notified and will review the logs to fix the issue."
+                  )}
               </p>
+              <div className="flex flex-wrap justify-center gap-2 text-[11px] font-semibold">
+                <span className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-700">
+                  {L("E-mail SMTP", "SMTP Email")}:{" "}
+                  {bugResult.smtpDispatched ? L("Enviado", "Sent") : L("Indisponível", "Unavailable")}
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-700">
+                  Discord:{" "}
+                  {bugResult.discordDispatched ? L("Enviado", "Sent") : L("Indisponível", "Unavailable")}
+                </span>
+              </div>
               <button
                 onClick={() => {
                   setBugSubmitted(false);
+                  setBugResult(null);
+                  setBugError(null);
                   setBugTitle("");
                   setBugSteps("");
                   setBugExpected("");
@@ -626,6 +776,21 @@ export const SupportView: React.FC<SupportViewProps> = ({ initialTab = "faq" }) 
             </div>
           ) : (
             <form onSubmit={handleSubmitBug} className="space-y-4">
+              {bugError && (
+                <div className="p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300 space-y-1.5">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{L("Falha ao enviar relato de erro", "Failed to submit issue report")}</span>
+                  </div>
+                  <p>{bugError}</p>
+                  <p className="text-[11px]">
+                    {L("Canal alternativo:", "Alternative channel:")}{" "}
+                    <a href="mailto:localizamais0@gmail.com" className="underline font-semibold">
+                      localizamais0@gmail.com
+                    </a>
+                  </p>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">

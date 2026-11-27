@@ -3,7 +3,7 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
-import { type Transporter } from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
 import { GoogleGenAI, Type } from "@google/genai";
 import { getApps, initializeApp, cert, type App } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
@@ -15,17 +15,10 @@ import {
   resolveFirebaseServiceAccountFromEnv,
 } from "./api/_lib/firebaseAdmin.js";
 import {
-  createSmtpTransporter,
-  getEmailProviderConfig,
-  getEmailServiceDiagnostics,
-  maskEmailAddress,
-  sanitizeEmailSensitiveText,
-  sendTransactionalEmail,
-  type EmailProviderName,
-  type EmailServiceDeps,
-  type ResendClientLike,
-  type StandardizedEmailStatus,
-} from "./api/_lib/emailService.js";
+  executeSupportFeedback,
+  FEEDBACK_TIMEOUTS,
+} from "./api/support/send-feedback.js";
+import { buildFirebaseAdminEnvDiagnostic } from "./api/debug/env.js";
 import {
   buildPasswordResetActionCodeSettings,
   isContinueUriUnauthorizedError,
@@ -785,6 +778,57 @@ function extractTrustedHostname(rawEntry: string): string | null {
 
 export const CANONICAL_APP_ORIGIN = "https://localizamais.pclp.com.br";
 export const INSTITUTIONAL_REPLY_TO_EMAIL = "localizamais0@gmail.com";
+
+function maskEmailAddress(email: string | undefined | null): string | null {
+  const clean = String(email || "").trim();
+  if (!clean || !clean.includes("@")) return null;
+  const [local, domain] = clean.split("@");
+  return `${local.substring(0, 3)}***@${domain}`;
+}
+
+function sanitizeEmailError(raw: unknown): string {
+  const text = typeof raw === "string" ? raw : String((raw as any)?.message || raw || "");
+  return text
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [REDACTED]")
+    .replace(/([?&](?:oobCode|token|apiKey|key)=)[^&\s"'<>]+/gi, "$1[REDACTED]")
+    .replace(/[\r\n]+/g, " ")
+    .trim()
+    .slice(0, 400);
+}
+
+export function createEmailTransporter(): Transporter | null {
+  const host = (process.env.SMTP_HOST || "").trim();
+  const port = parseInt((process.env.SMTP_PORT || "587").trim(), 10) || 587;
+  const user = (process.env.SMTP_USER || "").trim();
+  const pass = (process.env.SMTP_PASS || "").trim().replace(/\s+/g, "");
+  const secure = process.env.SMTP_SECURE === "true" || port === 465;
+
+  if (!host || !user || !pass) {
+    return null;
+  }
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure,
+    auth: { user, pass },
+    connectionTimeout: FEEDBACK_TIMEOUTS.smtpConnectionMs,
+    greetingTimeout: FEEDBACK_TIMEOUTS.smtpGreetingMs,
+    socketTimeout: FEEDBACK_TIMEOUTS.smtpSocketMs,
+    tls: {
+      rejectUnauthorized: true,
+      minVersion: "TLSv1.2",
+    },
+  });
+}
+
+export function getSmtpFromAddress(fromName: string = "IFPR Achados & Perdidos"): string {
+  const configuredFrom = (process.env.SMTP_FROM || "").trim();
+  if (configuredFrom) return configuredFrom;
+  const cleanName = fromName.replace(/[\r\n"<>]+/g, "").trim() || "IFPR Achados & Perdidos";
+  const smtpUser = (process.env.SMTP_USER || "localizamais0@gmail.com").trim();
+  return `"${cleanName}" <${smtpUser}>`;
+}
 
 export function sanitizeTrustedOriginUrl(rawOrigin: unknown): string {
   const fallbackCanonicalOrigin = CANONICAL_APP_ORIGIN;
@@ -3253,26 +3297,7 @@ export interface AdminUserProvisioningDeps {
   adminAuth?: Auth | null;
   adminFirestore?: Firestore | null;
   transporter?: Transporter | null;
-  resendClient?: ResendClientLike | null;
-  emailDeps?: EmailServiceDeps;
   skipCredentialDiagnostics?: boolean;
-}
-
-function buildProvisioningEmailDeps(deps?: AdminUserProvisioningDeps): EmailServiceDeps | undefined {
-  if (!deps) return undefined;
-  if (deps.emailDeps) return deps.emailDeps;
-  const hasInjectedTransporter = "transporter" in deps;
-  const hasInjectedResend = "resendClient" in deps;
-  if (!hasInjectedTransporter && !hasInjectedResend) {
-    return undefined;
-  }
-  return {
-    resendClient: hasInjectedResend ? deps.resendClient ?? null : undefined,
-    smtpTransporter: hasInjectedTransporter ? deps.transporter ?? null : undefined,
-    // Preserve backward compatibility with unit tests that inject `{ transporter: null | mock }`
-    // without configuring RESEND_API_KEY
-    skipResend: hasInjectedTransporter && !hasInjectedResend && !(process.env.RESEND_API_KEY || "").trim(),
-  };
 }
 
 async function generateResilientPasswordResetLink(
@@ -3298,7 +3323,7 @@ async function generateResilientPasswordResetLink(
 }
 
 async function dispatchFirstAccessEmail(params: {
-  emailDeps?: EmailServiceDeps;
+  transporter?: Transporter | null;
   adminFirestore?: Firestore | null;
   recipientEmail: string;
   recipientName: string;
@@ -3307,21 +3332,15 @@ async function dispatchFirstAccessEmail(params: {
   actorUid: string;
   eventType:
     | "FIRST_ACCESS_PASSWORD_SETUP"
-    | "ADMIN_PASSWORD_RESET_RESEND"
-    | "PASSWORD_RESET_REQUEST";
-  dedupeKey?: string;
+    | "ADMIN_PASSWORD_RESET_RESEND";
 }): Promise<{
   emailSent: boolean;
-  deliveryMethod: EmailProviderName;
+  deliveryMethod: "SMTP" | "NONE";
   deliveryStatus: "SENT" | "PENDING_SMTP_CONFIG" | "ERROR";
-  normalizedStatus: StandardizedEmailStatus;
-  provider: EmailProviderName;
   messageId: string | null;
-  fallbackUsed: boolean;
   deliveryError?: string;
 }> {
   const {
-    emailDeps,
     adminFirestore,
     recipientEmail,
     recipientName,
@@ -3329,20 +3348,17 @@ async function dispatchFirstAccessEmail(params: {
     setupLink,
     actorUid,
     eventType,
-    dedupeKey,
   } = params;
+
+  const transporter =
+    "transporter" in params ? params.transporter ?? null : createEmailTransporter();
 
   const subject =
     eventType === "FIRST_ACCESS_PASSWORD_SETUP"
       ? "Localiza+ IFPR — Defina sua senha de primeiro acesso"
-      : eventType === "PASSWORD_RESET_REQUEST"
-      ? "Localiza+ IFPR — Redefinição de senha da sua conta"
       : "Localiza+ IFPR — Link para definição/redefinição de senha";
 
-  const introText =
-    eventType === "PASSWORD_RESET_REQUEST"
-      ? `Recebemos uma solicitação para redefinir a senha da sua conta no sistema Localiza+ (Achados & Perdidos do IFPR Campus Ivaiporã).`
-      : `Sua conta no sistema Localiza+ (Achados & Perdidos do IFPR Campus Ivaiporã) está vinculada ao perfil ${roleLabel}.`;
+  const introText = `Sua conta no sistema Localiza+ (Achados & Perdidos do IFPR Campus Ivaiporã) está vinculada ao perfil ${roleLabel}.`;
 
   const textBody =
     `Olá, ${recipientName}!\n\n` +
@@ -3352,11 +3368,6 @@ async function dispatchFirstAccessEmail(params: {
     `Por segurança, este link é pessoal, temporário e de uso único. Caso não tenha solicitado ou reconheça este cadastro, desconsidere esta mensagem.\n\n` +
     `Atenciosamente,\nEquipe de TI & SEBAC • IFPR Campus Ivaiporã`;
 
-  const htmlIntro =
-    eventType === "PASSWORD_RESET_REQUEST"
-      ? `<p>Recebemos uma solicitação para redefinir a senha da sua conta no sistema <strong>Localiza+</strong>.</p>`
-      : `<p>Sua conta no sistema <strong>Localiza+</strong> foi provisionada pela administração com o perfil <strong>${escapeHtmlBasic(roleLabel)}</strong>.</p>`;
-
   const htmlBody = `
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -3365,15 +3376,11 @@ async function dispatchFirstAccessEmail(params: {
   <div style="max-width:560px; margin:0 auto; background:#ffffff; border-radius:16px; border:1px solid #e2e8f0; overflow:hidden;">
     <div style="background:linear-gradient(135deg,#16845B 0%,#064E3B 100%); padding:24px; color:#ffffff;">
       <h1 style="margin:0; font-size:20px; font-weight:800;">Localiza+ • IFPR Campus Ivaiporã</h1>
-      <p style="margin:6px 0 0 0; font-size:13px; opacity:0.92;">${
-        eventType === "PASSWORD_RESET_REQUEST"
-          ? "Recuperação e redefinição segura de senha"
-          : "Definição de senha e primeiro acesso"
-      }</p>
+      <p style="margin:6px 0 0 0; font-size:13px; opacity:0.92;">Definição de senha e primeiro acesso</p>
     </div>
     <div style="padding:24px; font-size:14px; line-height:1.6;">
       <p style="margin-top:0;">Olá, <strong>${escapeHtmlBasic(recipientName)}</strong>!</p>
-      ${htmlIntro}
+      <p>Sua conta no sistema <strong>Localiza+</strong> foi provisionada pela administração com o perfil <strong>${escapeHtmlBasic(roleLabel)}</strong>.</p>
       <p>Para definir sua senha pessoal e liberar seu acesso, clique no botão abaixo:</p>
       <p style="text-align:center; margin:24px 0;">
         <a href="${escapeHtmlBasic(setupLink)}" style="display:inline-block; background:#16845B; color:#ffffff; text-decoration:none; font-weight:700; padding:12px 24px; border-radius:10px;">
@@ -3390,33 +3397,36 @@ async function dispatchFirstAccessEmail(params: {
 </body>
 </html>`.trim();
 
-  const dispatchResult = await sendTransactionalEmail(
-    {
-      to: recipientEmail,
-      fromName: "IFPR Achados & Perdidos",
-      replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
-      subject,
-      text: textBody,
-      html: htmlBody,
-      category: eventType,
-      dedupeKey,
-    },
-    emailDeps
-  );
+  let emailSent = false;
+  let deliveryMethod: "SMTP" | "NONE" = "NONE";
+  let deliveryStatus: "SENT" | "PENDING_SMTP_CONFIG" | "ERROR" = "PENDING_SMTP_CONFIG";
+  let deliveryError: string | undefined;
+  let messageId: string | null = null;
 
-  const emailSent = dispatchResult.sent;
-  const deliveryMethod: EmailProviderName = dispatchResult.provider;
-  const normalizedStatus: StandardizedEmailStatus = dispatchResult.status;
-  const deliveryStatus: "SENT" | "PENDING_SMTP_CONFIG" | "ERROR" =
-    normalizedStatus === "SENT"
-      ? "SENT"
-      : normalizedStatus === "PENDING"
-      ? "PENDING_SMTP_CONFIG"
-      : "ERROR";
-  const deliveryError = dispatchResult.error
-    ? sanitizeEmailSensitiveText(dispatchResult.error)
-    : undefined;
-  const messageId = dispatchResult.messageId;
+  if (!transporter) {
+    deliveryStatus = "PENDING_SMTP_CONFIG";
+    deliveryError = "SMTP não configurado no servidor (SMTP_HOST/SMTP_USER/SMTP_PASS).";
+  } else {
+    try {
+      const info = await transporter.sendMail({
+        from: getSmtpFromAddress("IFPR Achados & Perdidos"),
+        to: recipientEmail,
+        replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
+        subject,
+        text: textBody,
+        html: htmlBody,
+      });
+      emailSent = true;
+      deliveryMethod = "SMTP";
+      deliveryStatus = "SENT";
+      messageId = info?.messageId || null;
+    } catch (smtpErr: any) {
+      emailSent = false;
+      deliveryMethod = "NONE";
+      deliveryStatus = "ERROR";
+      deliveryError = sanitizeEmailError(smtpErr?.message || smtpErr || "Falha no envio SMTP.");
+    }
+  }
 
   if (adminFirestore) {
     try {
@@ -3430,12 +3440,8 @@ async function dispatchFirstAccessEmail(params: {
         setupLinkRedacted: sanitizeEmailNotificationUrl(setupLink),
         type: eventType,
         status: deliveryStatus,
-        normalizedStatus,
-        provider: deliveryMethod,
         deliveryMethod,
-        fallbackUsed: dispatchResult.fallbackUsed,
         messageId,
-        errorCode: dispatchResult.errorCode || null,
         error: deliveryError || null,
         sentAt: nowIso,
         createdAt: nowIso,
@@ -3448,10 +3454,7 @@ async function dispatchFirstAccessEmail(params: {
     emailSent,
     deliveryMethod,
     deliveryStatus,
-    normalizedStatus,
-    provider: deliveryMethod,
     messageId,
-    fallbackUsed: dispatchResult.fallbackUsed,
     deliveryError,
   };
 }
@@ -3809,7 +3812,7 @@ export async function executeAdminCreateUser(
   }
 
   const dispatch = await dispatchFirstAccessEmail({
-    emailDeps: buildProvisioningEmailDeps(deps),
+    ...(deps && "transporter" in deps ? { transporter: deps.transporter } : {}),
     adminFirestore,
     recipientEmail: data.email,
     recipientName: data.name,
@@ -3828,11 +3831,8 @@ export async function executeAdminCreateUser(
       emailSent: dispatch.emailSent,
       deliveryMethod: dispatch.deliveryMethod,
       deliveryStatus: dispatch.deliveryStatus,
-      normalizedStatus: dispatch.normalizedStatus,
-      provider: dispatch.provider,
-      messageId: dispatch.messageId,
       deliveryError: dispatch.deliveryError,
-      // Only expose the one-time setup link back to the authenticated Admin when server email did not send it
+      // Only expose the one-time setup link back to the authenticated Admin when SMTP did not send it
       manualSetupLink: dispatch.emailSent ? undefined : setupLink,
       continueUriFallbackUsed,
     },
@@ -4226,7 +4226,7 @@ export async function executeAdminSendFirstAccessLink(
   }
 
   const dispatch = await dispatchFirstAccessEmail({
-    emailDeps: buildProvisioningEmailDeps(deps),
+    ...(deps && "transporter" in deps ? { transporter: deps.transporter } : {}),
     adminFirestore,
     recipientEmail: authUser.email || targetEmail,
     recipientName: targetName,
@@ -4246,179 +4246,12 @@ export async function executeAdminSendFirstAccessLink(
       emailSent: dispatch.emailSent,
       deliveryMethod: dispatch.deliveryMethod,
       deliveryStatus: dispatch.deliveryStatus,
-      normalizedStatus: dispatch.normalizedStatus,
-      provider: dispatch.provider,
-      messageId: dispatch.messageId,
       deliveryError: dispatch.deliveryError,
       manualSetupLink: dispatch.emailSent ? undefined : setupLink,
       continueUriFallbackUsed,
     },
   };
 }
-
-const GENERIC_PASSWORD_RESET_MESSAGE =
-  "Se o endereço informado possuir uma conta ativa no Localiza+, enviaremos em instantes as instruções para definir ou redefinir sua senha.";
-
-/**
- * Public password recovery handler using Firebase Admin action link generation + Resend (SMTP fallback).
- * Strictly anti-enumeration: NEVER reveals whether an email address is registered or not,
- * and NEVER returns reset links or oobCodes in the HTTP response.
- */
-export async function executePublicPasswordResetRequest(
-  body: any,
-  originUrl?: string,
-  deps?: AdminUserProvisioningDeps
-): Promise<{ statusCode: number; payload: any }> {
-  const cleanEmail = normalizeAuthEmail(body?.email);
-  if (!isValidAuthEmail(cleanEmail)) {
-    return {
-      statusCode: 400,
-      payload: {
-        success: false,
-        error: "Informe um endereço de e-mail válido.",
-        code: "INVALID_EMAIL",
-      },
-    };
-  }
-
-  const adminAuth = deps && "adminAuth" in deps ? deps.adminAuth : getAdminAuth();
-  const adminFirestore =
-    deps && "adminFirestore" in deps ? deps.adminFirestore : getAdminFirestore();
-
-  const emailDeps = buildProvisioningEmailDeps(deps);
-  const envConfig = getEmailProviderConfig(emailDeps?.env || process.env);
-  const hasInjectedProvider = Boolean(emailDeps?.resendClient || emailDeps?.smtpTransporter);
-
-  // If Admin SDK or server-side email providers are unavailable, instruct client cleanly to use Firebase Auth fallback
-  // without leaking whether the email exists.
-  if (!adminAuth || (!envConfig.emailConfigured && !hasInjectedProvider)) {
-    return {
-      statusCode: 200,
-      payload: {
-        success: true,
-        message: GENERIC_PASSWORD_RESET_MESSAGE,
-        fallbackToFirebaseClient: true,
-      },
-    };
-  }
-
-  let authUser: any = null;
-  try {
-    authUser = await adminAuth.getUserByEmail(cleanEmail);
-  } catch (lookupErr: any) {
-    const code = String(lookupErr?.code || "");
-    if (code.includes("user-not-found")) {
-      // Anti-enumeration: identical 200 response for non-existent accounts
-      return {
-        statusCode: 200,
-        payload: {
-          success: true,
-          message: GENERIC_PASSWORD_RESET_MESSAGE,
-          fallbackToFirebaseClient: false,
-        },
-      };
-    }
-    console.warn(
-      "[Password Reset Lookup Warning]:",
-      sanitizeEmailSensitiveText(lookupErr?.message || lookupErr)
-    );
-    return {
-      statusCode: 200,
-      payload: {
-        success: true,
-        message: GENERIC_PASSWORD_RESET_MESSAGE,
-        fallbackToFirebaseClient: true,
-      },
-    };
-  }
-
-  if (!authUser || authUser.disabled) {
-    return {
-      statusCode: 200,
-      payload: {
-        success: true,
-        message: GENERIC_PASSWORD_RESET_MESSAGE,
-        fallbackToFirebaseClient: false,
-      },
-    };
-  }
-
-  const trustedOrigin = sanitizeTrustedOriginUrl(originUrl);
-  let setupLink = "";
-  try {
-    const linkResult = await generateResilientPasswordResetLink(
-      adminAuth,
-      authUser.email || cleanEmail,
-      trustedOrigin
-    );
-    setupLink = linkResult.link;
-  } catch (linkErr: any) {
-    console.warn(
-      "[Password Reset Link Gen Warning]:",
-      sanitizeEmailSensitiveText(linkErr?.message || linkErr)
-    );
-    return {
-      statusCode: 200,
-      payload: {
-        success: true,
-        message: GENERIC_PASSWORD_RESET_MESSAGE,
-        fallbackToFirebaseClient: true,
-      },
-    };
-  }
-
-  const timeBucket = Math.floor(Date.now() / 30_000);
-  const dispatch = await dispatchFirstAccessEmail({
-    emailDeps,
-    adminFirestore,
-    recipientEmail: authUser.email || cleanEmail,
-    recipientName: authUser.displayName || cleanEmail.split("@")[0] || "Usuário IFPR",
-    roleLabel: "Usuário",
-    setupLink,
-    actorUid: "self-service-password-reset",
-    eventType: "PASSWORD_RESET_REQUEST",
-    dedupeKey: `pwd-reset:${authUser.uid || cleanEmail}:${timeBucket}`,
-  });
-
-  return {
-    statusCode: 200,
-    payload: {
-      success: true,
-      message: GENERIC_PASSWORD_RESET_MESSAGE,
-      fallbackToFirebaseClient: !dispatch.emailSent && dispatch.normalizedStatus === "PENDING",
-    },
-  };
-}
-
-/**
- * POST /api/auth/request-password-reset
- * Public anti-enumeration password recovery endpoint backed by Firebase Admin action links + Resend.
- */
-app.post(
-  ["/api/auth/request-password-reset", "/auth/request-password-reset"],
-  generalRateLimiter,
-  async (req: Request, res: Response) => {
-    const originUrl =
-      req.body?.originUrl ||
-      (typeof req.headers?.origin === "string" ? req.headers.origin : undefined) ||
-      (typeof req.headers?.referer === "string" ? req.headers.referer : undefined);
-
-    try {
-      const result = await executePublicPasswordResetRequest(req.body, originUrl);
-      return res.status(result.statusCode).json(result.payload);
-    } catch (err: any) {
-      console.error(
-        "[Public Password Reset Error]:",
-        sanitizeEmailSensitiveText(err?.message || err)
-      );
-      return res.status(200).json({
-        success: true,
-        message: GENERIC_PASSWORD_RESET_MESSAGE,
-        fallbackToFirebaseClient: true,
-      });
-    }
-  }
-);
 
 /**
  * POST /api/admin/create-user
@@ -5524,14 +5357,11 @@ interface MatchEmailPayload {
 
 export async function sendMatchNotificationEmail(
   payload: MatchEmailPayload,
-  deps?: { adminDb?: Firestore | null; emailDeps?: EmailServiceDeps }
+  deps?: { adminDb?: Firestore | null; transporter?: Transporter | null }
 ): Promise<{
   success: boolean;
   status: "SENT" | "PENDING_SMTP_CONFIG" | "ERROR";
-  normalizedStatus: StandardizedEmailStatus;
-  provider: EmailProviderName;
   messageId?: string;
-  deduplicated?: boolean;
   details?: string;
 }> {
   const { recipientEmail, recipientName, matchScore, newRegisteredItem, counterpartItem, matchedFeatures, reason } = payload;
@@ -5683,46 +5513,47 @@ export async function sendMatchNotificationEmail(
 </html>
   `;
 
-  const matchDedupeKey = `match:${newRegisteredItem.id}:${counterpartItem.id}:${recipientEmail.trim().toLowerCase()}`;
-  const dispatchResult = await sendTransactionalEmail(
-    {
-      to: recipientEmail,
-      fromName: "IFPR Achados & Perdidos",
-      replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
-      subject,
-      text: textContent,
-      html: htmlContent,
-      category: "MATCH_NOTIFICATION",
-      dedupeKey: matchDedupeKey,
-    },
-    deps?.emailDeps
-  );
+  const transporter =
+    deps && "transporter" in deps ? deps.transporter ?? null : createEmailTransporter();
 
-  const normalizedStatus = dispatchResult.status;
-  const legacyStatus: "SENT" | "PENDING_SMTP_CONFIG" | "ERROR" =
-    normalizedStatus === "SENT"
-      ? "SENT"
-      : normalizedStatus === "PENDING"
-      ? "PENDING_SMTP_CONFIG"
-      : "ERROR";
-  const sanitizedErr = dispatchResult.error ? sanitizeEmailSensitiveText(dispatchResult.error) : null;
+  let sent = false;
+  let legacyStatus: "SENT" | "PENDING_SMTP_CONFIG" | "ERROR" = "PENDING_SMTP_CONFIG";
+  let messageId: string | undefined;
+  let sanitizedErr: string | null = null;
 
-  if (dispatchResult.sent) {
+  if (!transporter) {
+    legacyStatus = "PENDING_SMTP_CONFIG";
     console.log(
-      `[Email Service Success] E-mail de correspondência enviado via ${dispatchResult.provider} para ${recipientEmail}. MessageId: ${dispatchResult.messageId || "N/A"}`
-    );
-  } else if (normalizedStatus === "PENDING") {
-    console.log(
-      `[Email Service Notice] Nenhum provedor configurado (Resend/SMTP). Registrando despacho no Firestore para ${recipientEmail}.`
+      `[Email Service Notice] SMTP não configurado no servidor. Registrando despacho no Firestore para ${recipientEmail}.`
     );
   } else {
-    console.error(
-      `[Email Service Error] Falha ao enviar e-mail via ${dispatchResult.provider} para ${recipientEmail}:`,
-      sanitizedErr
-    );
+    try {
+      const info = await transporter.sendMail({
+        from: getSmtpFromAddress("IFPR Achados & Perdidos"),
+        to: recipientEmail,
+        replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
+        subject,
+        text: textContent,
+        html: htmlContent,
+      });
+      sent = true;
+      legacyStatus = "SENT";
+      messageId = info?.messageId || undefined;
+      console.log(
+        `[Email Service Success] E-mail de correspondência enviado via SMTP para ${recipientEmail}. MessageId: ${messageId || "N/A"}`
+      );
+    } catch (smtpErr: any) {
+      sent = false;
+      legacyStatus = "ERROR";
+      sanitizedErr = sanitizeEmailError(smtpErr?.message || smtpErr || "Falha ao enviar e-mail via SMTP.");
+      console.error(
+        `[Email Service Error] Falha ao enviar e-mail via SMTP para ${recipientEmail}:`,
+        sanitizedErr
+      );
+    }
   }
 
-  if (adminDb && !dispatchResult.deduplicated) {
+  if (adminDb) {
     try {
       await adminDb.collection("email_notifications").doc(logId).set({
         id: logId,
@@ -5734,11 +5565,7 @@ export async function sendMatchNotificationEmail(
         counterpartItemId: counterpartItem.id,
         type: "MATCH_NOTIFICATION",
         status: legacyStatus,
-        normalizedStatus,
-        provider: dispatchResult.provider,
-        fallbackUsed: dispatchResult.fallbackUsed,
-        messageId: dispatchResult.messageId || null,
-        errorCode: dispatchResult.errorCode || null,
+        messageId: messageId || null,
         error: sanitizedErr,
         timestamp,
         createdAt: timestamp,
@@ -5751,17 +5578,13 @@ export async function sendMatchNotificationEmail(
   }
 
   return {
-    success: dispatchResult.sent,
+    success: sent,
     status: legacyStatus,
-    normalizedStatus,
-    provider: dispatchResult.provider,
-    messageId: dispatchResult.messageId || undefined,
-    deduplicated: dispatchResult.deduplicated,
-    details:
-      dispatchResult.sent
-        ? undefined
-        : sanitizedErr ||
-          "Notificação registrada no log do Firestore. Configure RESEND_API_KEY/RESEND_FROM_EMAIL (ou SMTP_* como fallback).",
+    messageId,
+    details: sent
+      ? undefined
+      : sanitizedErr ||
+        "Notificação registrada no log do Firestore. Configure SMTP_HOST, SMTP_USER e SMTP_PASS para disparo automático.",
   };
 }
 
@@ -5848,31 +5671,25 @@ app.post(["/api/notifications/send-match-email", "/notifications/send-match-emai
   }
 });
 
-// Endpoint to check email service status (Restricted to Administrators — supports Resend & SMTP)
-app.get(["/api/notifications/email-status", "/notifications/email-status"], requireAuth, requireAdmin, async (_req, res) => {
-  const { config, lastDispatch } = await getEmailServiceDiagnostics(getAdminFirestore());
-  const legacyProviderLabel =
-    config.activeProvider === "RESEND"
-      ? "Resend"
-      : config.activeProvider === "SMTP"
-      ? (config.smtp.host ? config.smtp.host.split(".")[1] || "Custom SMTP" : "SMTP")
-      : "Não configurado";
+// Endpoint to check SMTP email service status (Restricted to Administrators)
+app.get(["/api/notifications/email-status", "/notifications/email-status"], requireAuth, requireAdmin, (_req, res) => {
+  const smtpHost = (process.env.SMTP_HOST || "").trim();
+  const smtpPort = String(parseInt((process.env.SMTP_PORT || "587").trim(), 10) || 587);
+  const smtpUser = (process.env.SMTP_USER || "").trim();
+  const smtpPass = (process.env.SMTP_PASS || "").trim().replace(/\s+/g, "");
+  const smtpFrom = (process.env.SMTP_FROM || "").trim();
+  const smtpConfigured = Boolean(smtpHost && smtpUser && smtpPass);
+  const providerLabel = smtpConfigured
+    ? smtpHost.split(".")[1] || "Custom SMTP"
+    : "Não configurado";
 
   return res.json({
     success: true,
-    activeProvider: config.activeProvider,
-    configurationState: config.configurationState,
-    emailConfigured: config.emailConfigured,
-    fallbackAvailable: config.fallbackAvailable,
-    resend: config.resend,
-    smtp: config.smtp,
-    lastDispatch,
-    // Backward-compatible summary fields (never expose secrets or API keys)
-    smtpConfigured: config.smtp.configured,
-    provider: legacyProviderLabel,
-    host: config.smtp.host,
-    port: config.smtp.port,
-    from: config.activeProvider === "RESEND" ? config.resend.fromMasked : config.smtp.fromMasked,
+    smtpConfigured,
+    provider: providerLabel,
+    host: smtpHost || null,
+    port: smtpPort,
+    from: maskEmailAddress(smtpFrom || smtpUser),
   });
 });
 
@@ -6017,150 +5834,66 @@ app.post(
   ["/api/support/send-feedback", "/support/send-feedback", "/api/support/feedback", "/api/support/bug-report"],
   generalRateLimiter,
   async (req, res) => {
-  try {
-    const { name, email, category, subject, message, priority, clientDiagnostics } = req.body;
-
-    const cleanHeaderText = (v: unknown, maxLen: number) =>
-      String(v || "").replace(/[\r\n\0]+/g, " ").replace(/["<>]/g, "").trim().substring(0, maxLen);
-
-    const safeSenderName = cleanHeaderText(name, 100);
-    const safeSenderEmail = cleanHeaderText(email, 120);
-    const safeSubjectText = cleanHeaderText(subject, 150);
-
-    if (!safeSenderName || !safeSenderEmail || !safeSubjectText || !String(message || "").trim()) {
-      return res.status(400).json({
-        success: false,
-        error: "Por favor, preencha todos os campos obrigatórios: nome, e-mail, assunto e descrição da mensagem.",
-      });
-    }
-
-    if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(safeSenderEmail)) {
-      return res.status(400).json({
-        success: false,
-        error: "Informe um endereço de e-mail válido.",
-      });
-    }
-
-    const ticketProtocol = `IFPR-SUP-${Date.now().toString(36).toUpperCase()}`;
-    const timestamp = new Date().toISOString();
-    const destinationEmail = "localizamais0@gmail.com";
-    const adminNotificationEmail = getRootAdminEmail() || destinationEmail;
-
-    const emailPayload = {
-      protocol: ticketProtocol,
-      recipient: destinationEmail,
-      adminRecipient: adminNotificationEmail,
-      senderName: safeSenderName,
-      senderEmail: safeSenderEmail,
-      category: String(category || "FEEDBACK"),
-      subject: `[${ticketProtocol}] ${safeSubjectText}`,
-      body: String(message).trim().substring(0, 4000),
-      priority: priority || "NORMAL",
-      timestamp,
-      clientDiagnostics: clientDiagnostics || {
-        userAgent: req.headers["user-agent"] || "unknown",
-        ip: getClientIp(req),
-      },
-    };
-
-    console.log(`[Support Ticket Dispatched] Protocol: ${ticketProtocol} | From: ${emailPayload.senderEmail} | Category: ${emailPayload.category} | To: ${destinationEmail}`);
-
-    // Dispatch email via centralized email service (Resend priority, SMTP fallback)
-    const emailDispatch = await sendTransactionalEmail({
-      to: destinationEmail,
-      fromName: "Localiza+ Suporte IFPR",
-      replyTo: `${emailPayload.senderName} <${emailPayload.senderEmail}>`,
-      subject: emailPayload.subject,
-      text: `Protocolo: ${ticketProtocol}\nDe: ${emailPayload.senderName} (${emailPayload.senderEmail})\nCategoria: ${emailPayload.category}\nPrioridade: ${emailPayload.priority}\nData: ${timestamp}\n\nMensagem:\n${emailPayload.body}\n\nDiagnóstico: ${JSON.stringify(emailPayload.clientDiagnostics)}`,
-      category: "SUPPORT_FEEDBACK",
-      dedupeKey: `support:${ticketProtocol}`,
-    });
-
-    if (!emailDispatch.sent && emailDispatch.status === "ERROR") {
-      console.warn(
-        `[Support Ticket Mail Warning] Erro ao despachar via ${emailDispatch.provider}:`,
-        sanitizeEmailSensitiveText(emailDispatch.error || "")
-      );
-    }
-
-    // Persist ticket and email audit log to Firestore via Admin SDK
-    const adminDb = getAdminFirestore();
-    if (adminDb) {
-      try {
-        const ticketDocId = `ticket_${ticketProtocol}`;
-        await adminDb.collection("support_tickets").doc(ticketDocId).set({
-          id: ticketDocId,
-          name: emailPayload.senderName,
-          email: emailPayload.senderEmail,
-          category: emailPayload.category,
-          subject: String(subject).trim(),
-          message: emailPayload.body,
-          priority: String(priority || "MEDIA"),
-          createdAt: timestamp,
-          status: "NOVO",
-          protocol: ticketProtocol,
-          clientDiagnostics: emailPayload.clientDiagnostics,
-        });
-
-        const notifDocId = `email_ticket_${ticketProtocol}_${Date.now()}`;
-        await adminDb.collection("email_notifications").doc(notifDocId).set({
-          id: notifDocId,
-          ticketProtocol,
-          recipientEmail: destinationEmail,
-          senderName: emailPayload.senderName,
-          senderEmail: emailPayload.senderEmail,
-          subject: emailPayload.subject,
-          category: emailPayload.category,
-          type: "SUPPORT_FEEDBACK",
-          status: emailDispatch.status,
-          normalizedStatus: emailDispatch.status,
-          provider: emailDispatch.provider,
-          fallbackUsed: emailDispatch.fallbackUsed,
-          messageId: emailDispatch.messageId,
-          errorCode: emailDispatch.errorCode || null,
-          error: emailDispatch.error ? sanitizeEmailSensitiveText(emailDispatch.error) : null,
-          timestamp,
-          createdAt: timestamp,
-        });
-      } catch (dbErr) {
-        console.warn("[Support Ticket Firestore Warning] Erro ao persistir ticket no Firestore:", dbErr);
+    try {
+      let authenticatedUser: { uid: string; email?: string | null } | null = null;
+      const authHeader = req.headers?.authorization;
+      if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
+        const token = authHeader.slice(7).trim();
+        if (token) {
+          try {
+            const adminAuth = getAdminAuth();
+            if (adminAuth) {
+              const decoded = await adminAuth.verifyIdToken(token);
+              if (decoded?.uid) {
+                authenticatedUser = { uid: decoded.uid, email: decoded.email || null };
+              }
+            }
+          } catch {
+            // Optional auth context: expired/invalid token still falls back safely to visitor context
+          }
+        }
       }
+
+      const bodyWithFallbackDiagnostics = {
+        ...(req.body || {}),
+        clientDiagnostics: req.body?.clientDiagnostics || {
+          userAgent: req.headers["user-agent"] || "unknown",
+          ip: getClientIp(req),
+        },
+      };
+
+      const adminCredDiag = getFirebaseAdminCredentialDiagnostics();
+      const canUseAdminDb = Boolean(
+        adminCredDiag.hasExplicitServiceAccount ||
+          process.env.GOOGLE_APPLICATION_CREDENTIALS ||
+          process.env.FIRESTORE_EMULATOR_HOST
+      );
+
+      const result = await executeSupportFeedback(bodyWithFallbackDiagnostics, {
+        authenticatedUser,
+        adminFirestore: canUseAdminDb ? getAdminFirestore() : null,
+      });
+
+      return res.status(result.statusCode).json(result.payload);
+    } catch (error: any) {
+      console.error("Erro no envio do feedback de suporte:", error);
+      return res.status(500).json({
+        success: false,
+        deliveryOutcome: "FAILED",
+        error:
+          process.env.NODE_ENV !== "production"
+            ? error.message || "Erro ao processar envio do formulário de contato."
+            : "Erro ao processar envio do formulário de contato.",
+        smtpDispatched: false,
+        smtpStatus: "ERROR",
+        smtpMessageId: null,
+        discordDispatched: false,
+        discordStatus: "NETWORK_ERROR",
+        ticketPersisted: false,
+      });
     }
-
-    // Envio para o Discord Webhook (com isolamento de falhas)
-    const discordSent = await sendFeedbackToDiscord({
-      protocol: ticketProtocol,
-      name: emailPayload.senderName,
-      email: emailPayload.senderEmail,
-      category: emailPayload.category,
-      subject: String(subject).trim(),
-      message: emailPayload.body,
-      priority: String(priority || "MEDIA"),
-      timestamp,
-      clientDiagnostics,
-    });
-
-    return res.json({
-      success: true,
-      protocol: ticketProtocol,
-      message: "Seu relato/feedback foi registrado e encaminhado diretamente para a equipe de suporte do Campus Ivaiporã.",
-      timestamp,
-      destinationEmail,
-      emailSubject: emailPayload.subject,
-      discordDispatched: discordSent,
-      emailDispatched: emailDispatch.sent,
-      emailProvider: emailDispatch.provider,
-      emailStatus: emailDispatch.status,
-      messageId: emailDispatch.messageId,
-    });
-  } catch (error: any) {
-    console.error("Erro no envio do feedback de suporte:", error);
-    return res.status(500).json({
-      success: false,
-      error: process.env.NODE_ENV !== "production" ? (error.message || "Erro ao processar envio do formulário de contato.") : "Erro ao processar envio do formulário de contato.",
-    });
   }
-});
+);
 
 // Diagnostic Environment Endpoint (Restricted strictly to authorized Administrators)
 app.get(["/api/debug/env", "/debug/env"], requireAuth, requireAdmin, (_req, res) => {
@@ -6175,7 +5908,13 @@ app.get(["/api/debug/env", "/debug/env"], requireAuth, requireAdmin, (_req, res)
     process.env.DISCORD_FEEDBACK
   );
 
-  const emailConfig = getEmailProviderConfig();
+  const smtpHost = (process.env.SMTP_HOST || "").trim();
+  const smtpPortNum = parseInt((process.env.SMTP_PORT || "587").trim(), 10) || 587;
+  const smtpUser = (process.env.SMTP_USER || "").trim();
+  const smtpPass = (process.env.SMTP_PASS || "").trim().replace(/\s+/g, "");
+  const smtpFrom = (process.env.SMTP_FROM || "").trim();
+  const smtpSecure = process.env.SMTP_SECURE === "true" || smtpPortNum === 465;
+  const isSmtpConfigured = Boolean(smtpHost && smtpUser && smtpPass);
 
   const isGeminiConfigured = Boolean(
     process.env.GEMINI_API_KEY ||
@@ -6184,45 +5923,27 @@ app.get(["/api/debug/env", "/debug/env"], requireAuth, requireAdmin, (_req, res)
     process.env.API_KEY
   );
 
-  const adminCredDiag = getFirebaseAdminCredentialDiagnostics();
-  const isFirebaseAdminConfigured = adminCredDiag.hasExplicitServiceAccount;
+  const firebaseAdminDiagnostic = buildFirebaseAdminEnvDiagnostic();
 
   res.json({
-    status: isDiscordConfigured || emailConfig.emailConfigured || isGeminiConfigured,
+    status: isDiscordConfigured || isSmtpConfigured || isGeminiConfigured,
     DISCORD_FEEDBACK_WEBHOOK_URL: isDiscordConfigured,
     DISCORD_WEBHOOK_READY: isDiscordConfigured,
-    EMAIL: {
-      activeProvider: emailConfig.activeProvider,
-      configurationState: emailConfig.configurationState,
-      configured: emailConfig.emailConfigured,
-      fallbackAvailable: emailConfig.fallbackAvailable,
-    },
-    RESEND: {
-      configured: emailConfig.resend.configured,
-      apiKeyPresent: emailConfig.resend.apiKeyPresent,
-      fromPresent: emailConfig.resend.fromPresent,
-      fromValid: emailConfig.resend.fromValid,
-      fromMasked: emailConfig.resend.fromMasked,
-      error: emailConfig.resend.error,
-    },
     SMTP: {
-      configured: emailConfig.smtp.configured,
-      hostPresent: emailConfig.smtp.hostPresent,
-      portPresent: emailConfig.smtp.portPresent,
-      userPresent: emailConfig.smtp.userPresent,
-      passPresent: emailConfig.smtp.passPresent,
-      fromPresent: emailConfig.smtp.fromPresent,
-      port: parseInt(emailConfig.smtp.port, 10) || 587,
-      secure: emailConfig.smtp.secure,
-      userMasked: emailConfig.smtp.userMasked,
+      configured: isSmtpConfigured,
+      hostPresent: Boolean(smtpHost),
+      portPresent: Boolean(process.env.SMTP_PORT),
+      userPresent: Boolean(smtpUser),
+      passPresent: Boolean(smtpPass),
+      fromPresent: Boolean(smtpFrom),
+      port: smtpPortNum,
+      secure: smtpSecure,
+      userMasked: maskEmailAddress(smtpUser),
     },
     GEMINI_AI: {
       configured: isGeminiConfigured,
     },
-    FIREBASE_ADMIN: {
-      configured: isFirebaseAdminConfigured,
-      projectIdPresent: Boolean(process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID),
-    },
+    FIREBASE_ADMIN: firebaseAdminDiagnostic,
     runtime: "express",
     timestamp: new Date().toISOString(),
   });
@@ -7178,19 +6899,11 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
       `[Automation Email] Iniciando envio de notificação de devolução para ${maskEmailAddress(targetEmail)} referente ao item #${itemId} por usuário ${req.authUser?.uid}.`
     );
 
-    const dispatchResult = await sendTransactionalEmail({
-      to: targetEmail,
-      replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
-      subject: emailSubject,
-      text: emailBody,
-      category: "ITEM_RETURNED_AUTOMATION",
-      dedupeKey: `devolution:${itemId}:c${currentCycle}:${targetEmail.toLowerCase()}`,
-      tags: [{ name: "flow", value: "devolution_automation" }],
-    });
+    const transporter = createEmailTransporter();
 
-    if (dispatchResult.status === "PENDING") {
+    if (!transporter) {
       console.warn(
-        `[Automation Devolution] Nenhum provedor de e-mail (Resend ou SMTP) configurado no servidor. Envio para o item #${itemId} cancelado.`
+        `[Automation Devolution] SMTP não configurado no servidor. Envio para o item #${itemId} cancelado.`
       );
       if (adminDb) {
         try {
@@ -7202,8 +6915,7 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
               if (fresh.devolutionNotificationClaimId === claimId) {
                 transaction.set(privRef, {
                   devolutionNotificationStatus: "FAILED",
-                  devolutionNotificationLastError:
-                    dispatchResult.error || "Nenhum provedor de e-mail (Resend ou SMTP) configurado no ambiente do servidor.",
+                  devolutionNotificationLastError: "SMTP não configurado no ambiente do servidor.",
                   devolutionNotificationFailedAt: new Date().toISOString(),
                 }, { merge: true });
               }
@@ -7215,19 +6927,27 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
       return res.status(503).json({
         success: false,
         error:
-          "O serviço de envio de e-mail (Resend / SMTP) não está configurado no servidor. A notificação de devolução não pôde ser despachada, mas o registro foi mantido em estado recuperável.",
+          "O serviço de envio de e-mail SMTP não está configurado no servidor. A notificação de devolução não pôde ser despachada, mas o registro foi mantido em estado recuperável.",
         code: "SMTP_NOT_CONFIGURED",
-        normalizedStatus: dispatchResult.status,
-        provider: dispatchResult.provider,
       });
     }
 
-    if (!dispatchResult.sent) {
-      const sanitizedErr = sanitizeEmailSensitiveText(
-        dispatchResult.error || "Falha ao enviar e-mail de devolução pelo provedor configurado."
+    let sentMessageId: string | null = null;
+    try {
+      const info = await transporter.sendMail({
+        from: getSmtpFromAddress("IFPR Achados & Perdidos"),
+        to: targetEmail,
+        replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
+        subject: emailSubject,
+        text: emailBody,
+      });
+      sentMessageId = info?.messageId || null;
+    } catch (smtpErr: any) {
+      const sanitizedErr = sanitizeEmailError(
+        smtpErr?.message || smtpErr || "Falha ao enviar e-mail de devolução via SMTP."
       );
       console.error(
-        `[Automation Email Error] Falha no envio (${dispatchResult.provider}) para ${maskEmailAddress(targetEmail)}: ${sanitizedErr}`
+        `[Automation Email Error] Falha no envio SMTP para ${maskEmailAddress(targetEmail)}: ${sanitizedErr}`
       );
       if (adminDb) {
         try {
@@ -7250,17 +6970,14 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
 
       return res.status(502).json({
         success: false,
-        error: "Falha ao enviar e-mail transacional. O provedor rejeitou ou não pôde entregar a mensagem.",
+        error: "Falha ao enviar e-mail via SMTP. O servidor de e-mail rejeitou ou não pôde entregar a mensagem.",
         code: "SMTP_TRANSPORT_ERROR",
-        errorCode: dispatchResult.errorCode,
-        normalizedStatus: dispatchResult.status,
-        provider: dispatchResult.provider,
         details: process.env.NODE_ENV !== "production" ? sanitizedErr : undefined,
       });
     }
 
     console.info(
-      `[Automation Email Success] E-mail real de devolução aceito via ${dispatchResult.provider} para ${maskEmailAddress(targetEmail)}. MessageId: ${dispatchResult.messageId || "N/A"}`
+      `[Automation Email Success] E-mail real de devolução aceito via SMTP para ${maskEmailAddress(targetEmail)}. MessageId: ${sentMessageId || "N/A"}`
     );
 
     if (adminDb) {
@@ -7278,13 +6995,9 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
           body: emailBody,
           type: "ITEM_RETURNED_AUTOMATION",
           status: "SENT",
-          normalizedStatus: dispatchResult.status,
-          provider: dispatchResult.provider,
-          fallbackUsed: Boolean(dispatchResult.fallbackUsed),
-          deduplicated: Boolean(dispatchResult.deduplicated),
           returnCycle: currentCycle,
           returnCycleId: currentCycleId,
-          messageId: dispatchResult.messageId || null,
+          messageId: sentMessageId,
           sentAt: timestamp,
           createdAt: timestamp,
           triggeredByUserId: req.authUser!.uid,
@@ -7347,17 +7060,12 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
       }
     }
 
-    const providerDisplay = dispatchResult.provider === "RESEND" ? "Resend" : "SMTP";
     return res.json({
       success: true,
-      message: `E-mail de confirmação de devolução enviado via ${providerDisplay} para ${targetEmail}.`,
+      message: `E-mail de confirmação de devolução enviado via SMTP para ${targetEmail}.`,
       subject: emailSubject,
       recipientEmail: targetEmail,
-      provider: dispatchResult.provider,
-      normalizedStatus: dispatchResult.status,
-      fallbackUsed: Boolean(dispatchResult.fallbackUsed),
-      deduplicated: Boolean(dispatchResult.deduplicated),
-      messageId: dispatchResult.messageId || null,
+      messageId: sentMessageId,
       timestamp,
     });
   } catch (error: any) {
@@ -7962,25 +7670,37 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
           validationCode: finalValidationCode,
         });
 
-        const staffDispatch = await sendTransactionalEmail({
-          to: staffTargetEmail,
-          replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
-          subject: staffSubject,
-          text: staffBody,
-          html: staffHtml,
-          category: "STAFF_SIGNATURE_PENDING_NOTIFICATION",
-          dedupeKey: `staff-sig:${itemId}:${finalValidationCode}:${staffTargetEmail.toLowerCase()}`,
-          tags: [{ name: "flow", value: "signature_staff_alert" }],
-        });
+        const staffTransporter = createEmailTransporter();
+        let staffStatus: "SENT" | "PENDING_SMTP_CONFIG" | "ERROR" = "PENDING_SMTP_CONFIG";
+        let staffMessageId: string | null = null;
+        let staffError: string | null = null;
 
-        if (staffDispatch.sent) {
-          console.info(
-            `[Staff Notification Success] Notificação enviada via ${staffDispatch.provider} para ${maskEmailAddress(staffTargetEmail)}. MessageId: ${staffDispatch.messageId || "N/A"}`
+        if (!staffTransporter) {
+          console.warn(
+            `[Staff Notification Status] SMTP não configurado para envio a ${maskEmailAddress(staffTargetEmail)}.`
           );
         } else {
-          console.warn(
-            `[Staff Notification Status] status=${staffDispatch.status} provider=${staffDispatch.provider} dest=${maskEmailAddress(staffTargetEmail)} err=${sanitizeEmailSensitiveText(staffDispatch.error || "")}`
-          );
+          try {
+            const info = await staffTransporter.sendMail({
+              from: getSmtpFromAddress("IFPR Achados & Perdidos"),
+              to: staffTargetEmail,
+              replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
+              subject: staffSubject,
+              text: staffBody,
+              html: staffHtml,
+            });
+            staffStatus = "SENT";
+            staffMessageId = info?.messageId || null;
+            console.info(
+              `[Staff Notification Success] Notificação enviada via SMTP para ${maskEmailAddress(staffTargetEmail)}. MessageId: ${staffMessageId || "N/A"}`
+            );
+          } catch (mailErr: any) {
+            staffStatus = "ERROR";
+            staffError = sanitizeEmailError(mailErr?.message || mailErr || "Erro SMTP.");
+            console.warn(
+              `[Staff Notification Status] status=ERROR dest=${maskEmailAddress(staffTargetEmail)} err=${staffError}`
+            );
+          }
         }
 
         const notifDocId = `staff_notif_${itemId}_${Date.now()}`;
@@ -7992,17 +7712,9 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
           recipientName: issuerName,
           subject: staffSubject,
           type: "STAFF_SIGNATURE_PENDING_NOTIFICATION",
-          status: staffDispatch.sent
-            ? "SENT"
-            : staffDispatch.status === "PENDING"
-            ? "PENDING_SMTP_CONFIG"
-            : "ERROR",
-          normalizedStatus: staffDispatch.status,
-          provider: staffDispatch.provider,
-          fallbackUsed: Boolean(staffDispatch.fallbackUsed),
-          deduplicated: Boolean(staffDispatch.deduplicated),
-          messageId: staffDispatch.messageId || null,
-          error: staffDispatch.error ? sanitizeEmailSensitiveText(staffDispatch.error) : null,
+          status: staffStatus,
+          messageId: staffMessageId,
+          error: staffError,
           sentAt: nowIso,
           createdAt: nowIso,
         });
@@ -8589,42 +8301,41 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
       expiresAt: resolvedExpiresAt,
     });
 
-    // Attempt real email dispatch via centralized emailService (Resend priority, SMTP fallback)
-    const dispatchResult = await sendTransactionalEmail({
-      to: persistedRecipientEmail,
-      replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
-      subject: emailSubject,
-      text: emailBody,
-      html: emailHtml,
-      category: "REMOTE_SIGNATURE_REQUEST",
-      dedupeKey: `sig-req:${cleanItemId}:${persistedRecipientEmail.toLowerCase()}`,
-      dedupeTtlMs: 5_000,
-      tags: [{ name: "flow", value: "remote_signature_request" }],
-    });
+    // Attempt real email dispatch via Nodemailer SMTP
+    const transporter = createEmailTransporter();
+    let emailDispatched = false;
+    let emailStatus: "SENT" | "PENDING_SMTP_CONFIG" | "ERROR" = "PENDING_SMTP_CONFIG";
+    let emailError: string | null = null;
+    let messageId: string | null = null;
 
-    const emailDispatched = dispatchResult.sent;
-    const emailStatus: "SENT" | "PENDING_SMTP_CONFIG" | "ERROR" = dispatchResult.sent
-      ? "SENT"
-      : dispatchResult.status === "PENDING"
-      ? "PENDING_SMTP_CONFIG"
-      : "ERROR";
-    const emailError: string | null = dispatchResult.error
-      ? sanitizeEmailSensitiveText(dispatchResult.error)
-      : null;
-    const messageId: string | null = dispatchResult.messageId || null;
-
-    if (dispatchResult.sent) {
+    if (!transporter) {
       console.info(
-        `[Signature Email Success] Link de assinatura despachado via ${dispatchResult.provider} para ${maskEmailAddress(persistedRecipientEmail)}. MessageId: ${messageId || "N/A"}`
-      );
-    } else if (dispatchResult.status === "PENDING") {
-      console.info(
-        `[Signature Email Notice] Nenhum provedor de e-mail (Resend ou SMTP) configurado no ambiente. Registro efetuado no Firestore.`
+        `[Signature Email Notice] SMTP não configurado no ambiente. Registro efetuado no Firestore.`
       );
     } else {
-      console.error(
-        `[Signature Email Error] Falha ao despachar e-mail via ${dispatchResult.provider} para ${maskEmailAddress(persistedRecipientEmail)}: ${emailError}`
-      );
+      try {
+        const info = await transporter.sendMail({
+          from: getSmtpFromAddress("IFPR Achados & Perdidos"),
+          to: persistedRecipientEmail,
+          replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
+          subject: emailSubject,
+          text: emailBody,
+          html: emailHtml,
+        });
+        emailDispatched = true;
+        emailStatus = "SENT";
+        messageId = info?.messageId || null;
+        console.info(
+          `[Signature Email Success] Link de assinatura despachado via SMTP para ${maskEmailAddress(persistedRecipientEmail)}. MessageId: ${messageId || "N/A"}`
+        );
+      } catch (mailErr: any) {
+        emailDispatched = false;
+        emailStatus = "ERROR";
+        emailError = sanitizeEmailError(mailErr?.message || mailErr || "Erro no transporte SMTP.");
+        console.error(
+          `[Signature Email Error] Falha ao despachar e-mail via SMTP para ${maskEmailAddress(persistedRecipientEmail)}: ${emailError}`
+        );
+      }
     }
 
     try {
@@ -8642,12 +8353,8 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
         bodyPreview: `Solicitação de assinatura digital para ${persistedRecipientName} (link seguro protegido enviado ao destinatário).`,
         type: "REMOTE_SIGNATURE_REQUEST",
         status: emailStatus,
-        normalizedStatus: dispatchResult.status,
-        provider: dispatchResult.provider,
-        fallbackUsed: Boolean(dispatchResult.fallbackUsed),
-        deduplicated: Boolean(dispatchResult.deduplicated),
-        messageId: messageId || null,
-        error: emailError || null,
+        messageId,
+        error: emailError,
         sentAt: timestamp,
         createdAt: timestamp,
         dispatchedByUserId: persistedIssuerUid,
@@ -8657,23 +8364,19 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
       console.warn("[Signature Warning] Falha ao persistir log no Firestore:", dbErr);
     }
 
-    const providerDisplay = dispatchResult.provider === "RESEND" ? "Resend" : "SMTP";
     return res.json({
       success: true,
       mode: "EMAIL",
       reissued: reissuedExpiredToken,
       emailDispatched,
       emailStatus,
-      normalizedStatus: dispatchResult.status,
-      emailProvider: dispatchResult.provider,
-      fallbackUsed: Boolean(dispatchResult.fallbackUsed),
       messageId,
       emailError,
       message: emailDispatched
-        ? `Link de assinatura digital reenviado com sucesso via ${providerDisplay} para ${persistedRecipientEmail}.`
-        : dispatchResult.status === "PENDING"
-        ? `Solicitação de assinatura confirmada (nenhum provedor de e-mail configurado no ambiente). Utilize 'Copiar Link' para compartilhar o link seguro com ${persistedRecipientEmail}.`
-        : `Solicitação de assinatura confirmada, porém o envio de e-mail falhou (${emailError || "erro no provedor"}). Utilize 'Copiar Link' para compartilhar o link seguro com ${persistedRecipientEmail}.`,
+        ? `Link de assinatura digital reenviado com sucesso via SMTP para ${persistedRecipientEmail}.`
+        : emailStatus === "PENDING_SMTP_CONFIG"
+        ? `Solicitação de assinatura confirmada (SMTP não configurado no ambiente). Utilize 'Copiar Link' para compartilhar o link seguro com ${persistedRecipientEmail}.`
+        : `Solicitação de assinatura confirmada, porém o envio de e-mail falhou (${emailError || "erro SMTP"}). Utilize 'Copiar Link' para compartilhar o link seguro com ${persistedRecipientEmail}.`,
       signatureLink,
       token: resolvedRawToken,
       expiresAt: resolvedExpiresAt,
@@ -8974,26 +8677,26 @@ app.post(["/api/signature/notify-signed", "/signature/notify-signed"], generalRa
 
     console.info(`[Signature Completed] Item #${cleanItemId} assinado digitalmente por ${effectiveSigner} (ciclo ${activeCycle}).`);
 
-    // Post-transaction non-blocking confirmation receipt email (never fails or rolls back committed signature record)
+    // Post-transaction non-blocking confirmation receipt email via SMTP (never fails or rolls back committed signature record)
     let emailDispatched = false;
-    let emailProvider: EmailProviderName = "NONE";
-    let normalizedEmailStatus: StandardizedEmailStatus = "PENDING";
     let emailMessageId: string | null = null;
     if (effectiveEmail && isValidAuthEmail(effectiveEmail)) {
-      try {
-        const safeReceiptTitle = escapeHtmlBasic(effectiveTitle);
-        const safeReceiptSigner = escapeHtmlBasic(effectiveSigner || "Receptor IFPR");
-        const safeValidationCode = escapeHtmlBasic(effectiveValidationCode);
-        const receiptSubject = `✅ Recibo de Assinatura Digital Confirmada: "${effectiveTitle}" (#${cleanItemId}) - Localiza+ IFPR`;
-        const receiptText =
-          `Olá, ${effectiveSigner || "Receptor IFPR"}!\n\n` +
-          `Confirmamos que sua assinatura digital de recebimento do objeto "${effectiveTitle}" (#${cleanItemId}) foi registrada com sucesso no sistema Localiza+ (IFPR Campus Ivaiporã).\n\n` +
-          `Código de Validação do Recibo: ${effectiveValidationCode}\n` +
-          `Data/Hora da Assinatura: ${effectiveSignedAt || nowIso}\n` +
-          `Ciclo de Devolução: #${activeCycle}\n\n` +
-          `Guarde este código para conferência futura.\n\n` +
-          `Atenciosamente,\nSEBAC & Portaria • IFPR Campus Ivaiporã`;
-        const receiptHtml = `
+      const receiptTransporter = createEmailTransporter();
+      if (receiptTransporter) {
+        try {
+          const safeReceiptTitle = escapeHtmlBasic(effectiveTitle);
+          const safeReceiptSigner = escapeHtmlBasic(effectiveSigner || "Receptor IFPR");
+          const safeValidationCode = escapeHtmlBasic(effectiveValidationCode);
+          const receiptSubject = `✅ Recibo de Assinatura Digital Confirmada: "${effectiveTitle}" (#${cleanItemId}) - Localiza+ IFPR`;
+          const receiptText =
+            `Olá, ${effectiveSigner || "Receptor IFPR"}!\n\n` +
+            `Confirmamos que sua assinatura digital de recebimento do objeto "${effectiveTitle}" (#${cleanItemId}) foi registrada com sucesso no sistema Localiza+ (IFPR Campus Ivaiporã).\n\n` +
+            `Código de Validação do Recibo: ${effectiveValidationCode}\n` +
+            `Data/Hora da Assinatura: ${effectiveSignedAt || nowIso}\n` +
+            `Ciclo de Devolução: #${activeCycle}\n\n` +
+            `Guarde este código para conferência futura.\n\n` +
+            `Atenciosamente,\nSEBAC & Portaria • IFPR Campus Ivaiporã`;
+          const receiptHtml = `
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="UTF-8" /></head>
@@ -9017,38 +8720,31 @@ app.post(["/api/signature/notify-signed", "/signature/notify-signed"], generalRa
 </body>
 </html>`;
 
-        const receiptDispatch = await sendTransactionalEmail({
-          to: effectiveEmail,
-          replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
-          subject: receiptSubject,
-          text: receiptText,
-          html: receiptHtml,
-          category: "SIGNATURE_COMPLETED",
-          dedupeKey: `sig-done:${cleanItemId}:c${activeCycle}:${effectiveEmail.toLowerCase()}`,
-          tags: [{ name: "flow", value: "signature_completed_receipt" }],
-        });
+          const info = await receiptTransporter.sendMail({
+            from: getSmtpFromAddress("IFPR Achados & Perdidos"),
+            to: effectiveEmail,
+            replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
+            subject: receiptSubject,
+            text: receiptText,
+            html: receiptHtml,
+          });
 
-        emailDispatched = receiptDispatch.sent;
-        emailProvider = receiptDispatch.provider;
-        normalizedEmailStatus = receiptDispatch.status;
-        emailMessageId = receiptDispatch.messageId || null;
+          emailDispatched = true;
+          emailMessageId = info?.messageId || null;
 
-        await adminDb.collection("email_notifications").doc(notifDocId).set(
-          {
-            emailDispatched,
-            provider: emailProvider,
-            normalizedStatus: normalizedEmailStatus,
-            fallbackUsed: Boolean(receiptDispatch.fallbackUsed),
-            messageId: emailMessageId,
-            error: receiptDispatch.error ? sanitizeEmailSensitiveText(receiptDispatch.error) : null,
-          },
-          { merge: true }
-        );
-      } catch (receiptMailErr: any) {
-        console.warn(
-          "[Signature Completed Email Warning]",
-          sanitizeEmailSensitiveText(receiptMailErr?.message || String(receiptMailErr))
-        );
+          await adminDb.collection("email_notifications").doc(notifDocId).set(
+            {
+              emailDispatched: true,
+              messageId: emailMessageId,
+            },
+            { merge: true }
+          );
+        } catch (receiptMailErr: any) {
+          console.warn(
+            "[Signature Completed Email Warning]",
+            sanitizeEmailError(receiptMailErr?.message || String(receiptMailErr))
+          );
+        }
       }
     }
 
@@ -9060,8 +8756,6 @@ app.post(["/api/signature/notify-signed", "/signature/notify-signed"], generalRa
       returnCycleId: activeCycleId,
       signedAt: effectiveSignedAt,
       emailDispatched,
-      emailProvider,
-      normalizedStatus: normalizedEmailStatus,
       messageId: emailMessageId,
       message: "Assinatura registrada no backend com sucesso.",
     });
@@ -9132,7 +8826,7 @@ export async function executeFormalItemReturn(
   adminDb: any,
   authUser: { uid: string; email?: string; email_verified?: boolean; isAdmin?: boolean },
   body: FormalReturnInput,
-  deps?: { emailDeps?: EmailServiceDeps }
+  deps?: { transporter?: Transporter | null }
 ): Promise<{
   success: boolean;
   statusCode: number;
@@ -9145,8 +8839,6 @@ export async function executeFormalItemReturn(
   signatureLink?: string;
   emailDispatched?: boolean;
   emailStatus?: string;
-  normalizedEmailStatus?: StandardizedEmailStatus;
-  emailProvider?: EmailProviderName;
   messageId?: string | null;
   notificationWarning?: string;
   returnCycle?: number;
@@ -9563,10 +9255,11 @@ export async function executeFormalItemReturn(
 
   let emailDispatched = false;
   let emailStatus = "SKIPPED";
-  let normalizedEmailStatus: StandardizedEmailStatus = "PENDING";
-  let emailProvider: EmailProviderName = "NONE";
   let dispatchedMessageId: string | null = null;
   let notificationWarning: string | undefined;
+
+  const transporter =
+    deps && "transporter" in deps ? deps.transporter ?? null : createEmailTransporter();
 
   try {
     if (isRemote && signatureLink) {
@@ -9579,35 +9272,30 @@ export async function executeFormalItemReturn(
         expiresAt,
       });
 
-      const dispatchResult = await sendTransactionalEmail(
-        {
-          to: recipientEmail,
-          replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
-          subject: emailSubject,
-          text: emailBody,
-          html: emailHtml,
-          category: "REMOTE_SIGNATURE_REQUEST",
-          dedupeKey: `formal-return-remote:${rawItemId}:c${nextCycle}:${recipientEmail.toLowerCase()}`,
-          tags: [{ name: "flow", value: "formal_return_remote_signature" }],
-        },
-        deps?.emailDeps
-      );
-
-      emailDispatched = dispatchResult.sent;
-      normalizedEmailStatus = dispatchResult.status;
-      emailProvider = dispatchResult.provider;
-      dispatchedMessageId = dispatchResult.messageId || null;
-      const emailError = dispatchResult.error ? sanitizeEmailSensitiveText(dispatchResult.error) : null;
-
-      if (dispatchResult.sent) {
-        emailStatus = "SENT";
-      } else if (dispatchResult.status === "PENDING") {
+      let emailError: string | null = null;
+      if (!transporter) {
         emailStatus = "PENDING_SMTP_CONFIG";
         notificationWarning =
-          "Devolução registrada, mas nenhum provedor de e-mail (Resend ou SMTP) está configurado no servidor. Utilize 'Copiar Link' nos detalhes do objeto para enviar ao receptor.";
+          "Devolução registrada, mas o servidor SMTP não está configurado. Utilize 'Copiar Link' nos detalhes do objeto para enviar ao receptor.";
       } else {
-        emailStatus = "ERROR";
-        notificationWarning = `Devolução registrada, mas houve falha ao enviar o e-mail do termo remoto (${emailError || "erro no provedor"}). Utilize 'Reenviar E-mail' nos detalhes do objeto.`;
+        try {
+          const info = await transporter.sendMail({
+            from: getSmtpFromAddress("IFPR Achados & Perdidos"),
+            to: recipientEmail,
+            replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
+            subject: emailSubject,
+            text: emailBody,
+            html: emailHtml,
+          });
+          emailDispatched = true;
+          emailStatus = "SENT";
+          dispatchedMessageId = info?.messageId || null;
+        } catch (mailErr: any) {
+          emailDispatched = false;
+          emailStatus = "ERROR";
+          emailError = sanitizeEmailError(mailErr?.message || mailErr || "Erro no transporte SMTP.");
+          notificationWarning = `Devolução registrada, mas houve falha ao enviar o e-mail do termo remoto (${emailError}). Utilize 'Reenviar E-mail' nos detalhes do objeto.`;
+        }
       }
 
       try {
@@ -9625,10 +9313,6 @@ export async function executeFormalItemReturn(
           bodyPreview: `Solicitação de assinatura digital enviada para ${recipientName} (link seguro protegido enviado por e-mail).`,
           type: "REMOTE_SIGNATURE_REQUEST",
           status: emailStatus,
-          normalizedStatus: dispatchResult.status,
-          provider: dispatchResult.provider,
-          fallbackUsed: Boolean(dispatchResult.fallbackUsed),
-          deduplicated: Boolean(dispatchResult.deduplicated),
           returnCycle: nextCycle,
           returnCycleId,
           messageId: dispatchedMessageId,
@@ -9652,46 +9336,41 @@ export async function executeFormalItemReturn(
         (observations ? `Observações: ${observations}\n\n` : "") +
         `Atenciosamente,\nEquipe de Apoio ao Estudante (SEBAC) & Portaria\nInstituto Federal do Paraná - Campus Ivaiporã`;
 
-      const dispatchResult = await sendTransactionalEmail(
-        {
-          to: recipientEmail,
-          replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
-          subject: emailSubject,
-          text: emailBody,
-          category: "ITEM_RETURNED_AUTOMATION",
-          dedupeKey: `formal-return-inperson:${rawItemId}:c${nextCycle}:${recipientEmail.toLowerCase()}`,
-          tags: [{ name: "flow", value: "formal_return_in_person" }],
-        },
-        deps?.emailDeps
-      );
-
-      emailDispatched = dispatchResult.sent;
-      normalizedEmailStatus = dispatchResult.status;
-      emailProvider = dispatchResult.provider;
-      dispatchedMessageId = dispatchResult.messageId || null;
-      const emailError = dispatchResult.error ? sanitizeEmailSensitiveText(dispatchResult.error) : null;
-
-      if (dispatchResult.sent) {
-        emailStatus = "SENT";
-        await adminDb.collection("item_return_records").doc(rawItemId).set({
-          devolutionNotified: true,
-          returnEmailNotified: true,
-          devolutionNotificationStatus: "COMPLETED",
-          devolutionNotifiedAt: nowIso,
-          devolutionNotifiedBy: authUser.uid,
-        }, { merge: true });
-      } else if (dispatchResult.status === "PENDING") {
+      let emailError: string | null = null;
+      if (!transporter) {
         emailStatus = "SMTP_NOT_CONFIGURED";
         notificationWarning =
-          "Devolução oficial concluída, mas nenhum provedor de e-mail (Resend ou SMTP) está configurado neste ambiente.";
+          "Devolução oficial concluída, mas o servidor SMTP não está configurado neste ambiente.";
       } else {
-        emailStatus = "FAILED";
-        notificationWarning = `Devolução oficial concluída, mas o e-mail de confirmação não pôde ser enviado (${emailError || "erro no provedor"}).`;
-        await adminDb.collection("item_return_records").doc(rawItemId).set({
-          devolutionNotificationStatus: "FAILED",
-          devolutionNotificationLastError: emailError || "Falha ao enviar e-mail de confirmação.",
-          devolutionNotificationFailedAt: nowIso,
-        }, { merge: true }).catch(() => {});
+        try {
+          const info = await transporter.sendMail({
+            from: getSmtpFromAddress("IFPR Achados & Perdidos"),
+            to: recipientEmail,
+            replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
+            subject: emailSubject,
+            text: emailBody,
+          });
+          emailDispatched = true;
+          emailStatus = "SENT";
+          dispatchedMessageId = info?.messageId || null;
+          await adminDb.collection("item_return_records").doc(rawItemId).set({
+            devolutionNotified: true,
+            returnEmailNotified: true,
+            devolutionNotificationStatus: "COMPLETED",
+            devolutionNotifiedAt: nowIso,
+            devolutionNotifiedBy: authUser.uid,
+          }, { merge: true });
+        } catch (mailErr: any) {
+          emailDispatched = false;
+          emailStatus = "FAILED";
+          emailError = sanitizeEmailError(mailErr?.message || mailErr || "Erro no transporte SMTP.");
+          notificationWarning = `Devolução oficial concluída, mas o e-mail de confirmação não pôde ser enviado (${emailError}).`;
+          await adminDb.collection("item_return_records").doc(rawItemId).set({
+            devolutionNotificationStatus: "FAILED",
+            devolutionNotificationLastError: emailError,
+            devolutionNotificationFailedAt: nowIso,
+          }, { merge: true }).catch(() => {});
+        }
       }
 
       try {
@@ -9708,10 +9387,6 @@ export async function executeFormalItemReturn(
           body: emailBody,
           type: "ITEM_RETURNED_AUTOMATION",
           status: emailDispatched ? "SENT" : emailStatus,
-          normalizedStatus: dispatchResult.status,
-          provider: dispatchResult.provider,
-          fallbackUsed: Boolean(dispatchResult.fallbackUsed),
-          deduplicated: Boolean(dispatchResult.deduplicated),
           returnCycle: nextCycle,
           returnCycleId,
           messageId: dispatchedMessageId,
@@ -9723,7 +9398,7 @@ export async function executeFormalItemReturn(
       } catch (_) {}
     }
   } catch (postErr: any) {
-    console.warn("[Formal Return Post-Hook Warning]", sanitizeEmailSensitiveText(postErr?.message || String(postErr)));
+    console.warn("[Formal Return Post-Hook Warning]", sanitizeEmailError(postErr?.message || String(postErr)));
     notificationWarning = notificationWarning || "Devolução gravada, porém a notificação por e-mail não pôde ser concluída.";
   }
 
@@ -9737,8 +9412,6 @@ export async function executeFormalItemReturn(
     signatureLink,
     emailDispatched,
     emailStatus,
-    normalizedEmailStatus,
-    emailProvider,
     messageId: dispatchedMessageId,
     notificationWarning,
     returnCycle: nextCycle,
