@@ -783,8 +783,11 @@ function extractTrustedHostname(rawEntry: string): string | null {
   }
 }
 
+export const CANONICAL_APP_ORIGIN = "https://localizamais.pclp.com.br";
+export const INSTITUTIONAL_REPLY_TO_EMAIL = "localizamais0@gmail.com";
+
 export function sanitizeTrustedOriginUrl(rawOrigin: unknown): string {
-  const fallbackCanonicalOrigin = "https://localiza-plus-ifpr.vercel.app";
+  const fallbackCanonicalOrigin = CANONICAL_APP_ORIGIN;
   let defaultOrigin = fallbackCanonicalOrigin;
   const rawAppUrl = typeof process.env.APP_URL === "string" ? process.env.APP_URL.trim() : "";
   if (rawAppUrl) {
@@ -813,6 +816,7 @@ export function sanitizeTrustedOriginUrl(rawOrigin: unknown): string {
     const allowedExactHosts = new Set<string>([
       "localhost",
       "127.0.0.1",
+      "localizamais.pclp.com.br",
       "localiza-plus-ifpr.vercel.app",
       "localizamais.vercel.app",
       "localiza-ifpr.vercel.app",
@@ -3084,6 +3088,167 @@ function escapeHtmlBasic(str: string): string {
     .replace(/'/g, "&#39;");
 }
 
+export function buildStaffPendingSignatureEmailContent(params: {
+  issuerName: string;
+  signerName: string;
+  signerBond: string;
+  itemId: string;
+  itemTitle: string;
+  validationCode: string;
+}): { subject: string; text: string; html: string } {
+  const issuerName = String(params.issuerName || "Servidor IFPR");
+  const signerName = String(params.signerName || "Receptor IFPR");
+  const signerBond = String(params.signerBond || "Comunidade IFPR");
+  const itemId = String(params.itemId || "");
+  const itemTitle = String(params.itemTitle || itemId || "Objeto");
+  const validationCode = String(params.validationCode || "");
+
+  const subject = `📌 Assinatura Institucional Pendente: Devolução de "${itemTitle}" (#${itemId}) - IFPR`;
+  const text =
+    `Atenção ${issuerName}:\n\n` +
+    `O receptor ${signerName} (${signerBond}) assinou digitalmente a devolução do pertence "${itemTitle}" (#${itemId}).\n\n` +
+    `O item encontra-se aguardando sua atestação e assinatura institucional no painel do Localiza+ (Aba: Assinaturas Pendentes).\n\n` +
+    `Código de Validação do Recibo: ${validationCode}\n\n` +
+    `Acesse o sistema Localiza+ para atestar e assinar o recibo de devolução.`;
+
+  const safeIssuerName = escapeHtmlBasic(issuerName);
+  const safeSignerName = escapeHtmlBasic(signerName);
+  const safeSignerBond = escapeHtmlBasic(signerBond);
+  const safeItemId = escapeHtmlBasic(itemId);
+  const safeItemTitle = escapeHtmlBasic(itemTitle);
+  const safeValidationCode = escapeHtmlBasic(validationCode);
+
+  const html = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #0f172a; margin: 0; padding: 20px; }
+    .box { max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    .header { background: #00843D; color: #ffffff; padding: 20px; text-align: center; }
+    .header h2 { margin: 0; font-size: 18px; font-weight: 800; }
+    .header p { margin: 4px 0 0 0; font-size: 12px; opacity: 0.9; }
+    .content { padding: 24px; font-size: 13px; line-height: 1.6; color: #334155; }
+    .info-card { background: #f1f5f9; border-radius: 12px; padding: 14px; margin: 16px 0; font-size: 12px; border-left: 4px solid #00843D; }
+    .footer { padding: 16px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="header">
+      <h2>Instituto Federal do Paraná • Campus Ivaiporã</h2>
+      <p>Sistema Localiza+ • Notificação de Devolução Assinada pelo Receptor</p>
+    </div>
+    <div class="content">
+      <p>Prezado(a) <strong>${safeIssuerName}</strong>,</p>
+      <p>O receptor <strong>${safeSignerName}</strong> (${safeSignerBond}) concluiu a assinatura digital de recebimento do objeto <strong>"${safeItemTitle}"</strong> (#${safeItemId}).</p>
+      <div class="info-card">
+        <strong>Item:</strong> #${safeItemId} - ${safeItemTitle}<br/>
+        <strong>Receptor:</strong> ${safeSignerName} (${safeSignerBond})<br/>
+        <strong>Código de Validação:</strong> ${safeValidationCode}<br/>
+        <strong>Status:</strong> AGUARDANDO SUA ASSINATURA INSTITUCIONAL COMO EMISSOR
+      </div>
+      <p>Por favor, acesse o painel administrativo do <strong>Localiza+</strong> na aba <strong>Assinaturas Pendentes</strong> para conferir e registrar sua atestação de devolução.</p>
+    </div>
+    <div class="footer">
+      Seção de Apoio ao Estudante (SEBAC) & Portaria • IFPR Campus Ivaiporã
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  return { subject, text, html };
+}
+
+export function buildRemoteSignatureRequestEmailContent(params: {
+  recipientName: string;
+  itemTitle: string;
+  issuerName: string;
+  itemId: string;
+  signatureLink: string;
+  expiresAt: string;
+}): { subject: string; text: string; html: string } {
+  const recipientName = String(params.recipientName || "Comunidade IFPR");
+  const itemTitle = String(params.itemTitle || "Objeto");
+  const issuerName = String(params.issuerName || "SEBAC / Portaria");
+  const itemId = String(params.itemId || "");
+  const signatureLink = String(params.signatureLink || CANONICAL_APP_ORIGIN);
+  const formattedSentDate = new Date().toLocaleDateString("pt-BR");
+  const parsedExpiry = new Date(params.expiresAt);
+  const formattedExpiryDate = Number.isNaN(parsedExpiry.getTime())
+    ? String(params.expiresAt || "")
+    : parsedExpiry.toLocaleDateString("pt-BR");
+
+  const subject = `📝 Assinatura Digital Necessária: Recebimento do Objeto "${itemTitle}" - IFPR Campus Ivaiporã`;
+  const text =
+    `Olá, ${recipientName}!\n\n` +
+    `O seu pertence "${itemTitle}" foi entregue pela equipe de atendimento do IFPR Campus Ivaiporã (${issuerName}).\n\n` +
+    `Para concluir a devolução em conformidade com as normas institucionais, por favor confirme o recebimento e realize sua Assinatura Digital através do link seguro abaixo:\n\n` +
+    `🔗 Link para Assinar o Termo de Recebimento:\n` +
+    `${signatureLink}\n\n` +
+    `Código do Termo: ${itemId}\n` +
+    `Validade até: ${formattedExpiryDate}\n\n` +
+    `Caso já tenha assinado presencialmente, desconsidere esta mensagem.\n\n` +
+    `Atenciosamente,\n` +
+    `Seção de Apoio ao Estudante (SEBAC) & Portaria\n` +
+    `Instituto Federal do Paraná - Campus Ivaiporã`;
+
+  const safeRecipientName = escapeHtmlBasic(recipientName);
+  const safeItemTitle = escapeHtmlBasic(itemTitle);
+  const safeIssuerName = escapeHtmlBasic(issuerName);
+  const safeItemId = escapeHtmlBasic(itemId);
+  const safeSentDate = escapeHtmlBasic(formattedSentDate);
+  const safeExpiryDate = escapeHtmlBasic(formattedExpiryDate);
+  const safeSignatureLink = escapeHtmlBasic(signatureLink);
+
+  const html = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #0f172a; margin: 0; padding: 20px; }
+    .box { max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    .header { background: #00843D; color: #ffffff; padding: 24px; text-align: center; }
+    .header h2 { margin: 0; font-size: 20px; font-weight: 800; }
+    .header p { margin: 4px 0 0 0; font-size: 12px; opacity: 0.9; }
+    .content { padding: 24px; font-size: 13px; line-height: 1.6; color: #334155; }
+    .cta-btn { display: block; width: fit-content; margin: 24px auto; background: #00843D; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 12px; font-weight: bold; font-size: 14px; text-align: center; }
+    .info-card { background: #f1f5f9; border-radius: 12px; padding: 14px; margin: 16px 0; font-size: 12px; }
+    .footer { padding: 16px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="header">
+      <h2>Instituto Federal do Paraná • Campus Ivaiporã</h2>
+      <p>Sistema Localiza+ • Termo Oficial de Devolução de Pertence</p>
+    </div>
+    <div class="content">
+      <p>Olá, <strong>${safeRecipientName}</strong>!</p>
+      <p>Seu pertence <strong>"${safeItemTitle}"</strong> foi entregue pela equipe de atendimento do IFPR Campus Ivaiporã (atendente: ${safeIssuerName}).</p>
+      <div class="info-card">
+        <strong>Identificador da Ocorrência:</strong> #${safeItemId}<br/>
+        <strong>Data de Envio:</strong> ${safeSentDate}<br/>
+        <strong>Validade até:</strong> ${safeExpiryDate}
+      </div>
+      <p>Para concluir a baixa oficial no acervo institucional, realize sua assinatura digital através do botão seguro abaixo:</p>
+      <a href="${safeSignatureLink}" class="cta-btn">✍️ Assinar Termo de Recebimento</a>
+      <p style="font-size: 11px; color: #64748b; word-break: break-all;">Ou copie e cole no seu navegador:<br/>${safeSignatureLink}</p>
+    </div>
+    <div class="footer">
+      Seção de Apoio ao Estudante (SEBAC) & Portaria • IFPR Campus Ivaiporã
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  return { subject, text, html };
+}
+
 export interface AdminUserProvisioningDeps {
   adminAuth?: Auth | null;
   adminFirestore?: Firestore | null;
@@ -3229,6 +3394,7 @@ async function dispatchFirstAccessEmail(params: {
     {
       to: recipientEmail,
       fromName: "IFPR Achados & Perdidos",
+      replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
       subject,
       text: textBody,
       html: htmlBody,
@@ -5374,7 +5540,56 @@ export async function sendMatchNotificationEmail(
   const timestamp = new Date().toISOString();
   const appBaseUrl = sanitizeTrustedOriginUrl(process.env.APP_URL);
 
+  const safeMatchScore = escapeHtmlBasic(String(matchScore));
+  const displayRecipientName = String(recipientName || recipientEmail || "Comunidade IFPR");
+  const safeRecipientName = escapeHtmlBasic(displayRecipientName);
+  const newItemColor = newRegisteredItem.color || "Não informada";
+  const newItemBrand = newRegisteredItem.brand || "Desconhecida";
+  const effectiveReason =
+    reason || "Características coincidentes de categoria, modelo, cor e local detectadas pela IA.";
+  const normalizedMatchedFeatures = Array.isArray(matchedFeatures)
+    ? matchedFeatures.map((f: string) => String(f || "").trim()).filter(Boolean)
+    : [];
+
   const subject = `[IFPR Achados & Perdidos] Encontramos objetos semelhantes! (${matchScore}% de compatibilidade)`;
+
+  const textContent = [
+    `IFPR Campus Ivaiporã • Achados & Perdidos — Sistema Localiza+`,
+    `Encontramos objetos semelhantes! (${matchScore}% de compatibilidade)`,
+    ``,
+    `Olá ${displayRecipientName},`,
+    ``,
+    `O motor de Inteligência Artificial do Localiza+ / IFPR Achados & Perdidos identificou uma potencial correspondência de alta relevância (${matchScore}%) com um pertence registrado no campus.`,
+    ``,
+    `Objeto Cadastrado Recentemente:`,
+    `- Título: ${newRegisteredItem.title}`,
+    `- Tipo: ${newRegisteredItem.type}`,
+    `- Categoria: ${newRegisteredItem.category}`,
+    `- Cor: ${newItemColor}`,
+    `- Marca: ${newItemBrand}`,
+    `- Local no Campus: ${newRegisteredItem.location}`,
+    ``,
+    `Objeto Relacionado no Sistema:`,
+    `- Título: ${counterpartItem.title}`,
+    `- Tipo: ${counterpartItem.type}`,
+    `- Categoria: ${counterpartItem.category}`,
+    `- Local no Campus: ${counterpartItem.location}`,
+    ``,
+    `Análise de Similaridade Textual (IA Gemini):`,
+    effectiveReason,
+    ...(normalizedMatchedFeatures.length > 0
+      ? [`Características coincidentes: ${normalizedMatchedFeatures.join(", ")}`]
+      : []),
+    ``,
+    `Acesse o Localiza+ para verificar o pertence:`,
+    appBaseUrl,
+    ``,
+    `Caso este pertence seja o seu, dirija-se ao setor responsável do campus com um documento oficial ou entre em contato pelo sistema para efetuar a retirada segura.`,
+    ``,
+    `Instituto Federal do Paraná • Campus Ivaiporã`,
+    `Rodovia PR-466 - Ivaiporã/PR • Contato: ${INSTITUTIONAL_REPLY_TO_EMAIL}`,
+    `Mensagem enviada automaticamente pelo sistema Localiza+.`,
+  ].join("\n");
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -5408,44 +5623,44 @@ export async function sendMatchNotificationEmail(
     <div class="header">
       <h1>IFPR Campus Ivaiporã • Achados & Perdidos</h1>
       <p>Sistema Oficial de Gestão e Localização de Pertences</p>
-      <div class="badge">Encontramos objetos semelhantes! (${matchScore}% de compatibilidade)</div>
+      <div class="badge">Encontramos objetos semelhantes! (${safeMatchScore}% de compatibilidade)</div>
     </div>
     <div class="content">
       <p style="font-size: 14px; line-height: 1.6; margin-top: 0;">
-        Olá <strong>${recipientName || recipientEmail}</strong>,
+        Olá <strong>${safeRecipientName}</strong>,
       </p>
       <p style="font-size: 13px; line-height: 1.6; color: #475569;">
-        O motor de Inteligência Artificial do <strong>Localiza+ / IFPR Achados & Perdidos</strong> identificou uma potencial correspondência de alta relevância (<strong>${matchScore}%</strong>) com um pertence registrado no campus.
+        O motor de Inteligência Artificial do <strong>Localiza+ / IFPR Achados & Perdidos</strong> identificou uma potencial correspondência de alta relevância (<strong>${safeMatchScore}%</strong>) com um pertence registrado no campus.
       </p>
 
       <div class="card">
         <h3>🔍 Objeto Cadastrado Recentemente</h3>
         <div class="item-grid">
-          <div class="item-prop"><span>Título:</span><span>${newRegisteredItem.title}</span></div>
-          <div class="item-prop"><span>Tipo:</span><span>${newRegisteredItem.type}</span></div>
-          <div class="item-prop"><span>Categoria:</span><span>${newRegisteredItem.category}</span></div>
-          <div class="item-prop"><span>Cor:</span><span>${newRegisteredItem.color || "Não informada"}</span></div>
-          <div class="item-prop"><span>Marca:</span><span>${newRegisteredItem.brand || "Desconhecida"}</span></div>
-          <div class="item-prop"><span>Local no Campus:</span><span>${newRegisteredItem.location}</span></div>
+          <div class="item-prop"><span>Título:</span><span>${escapeHtmlBasic(newRegisteredItem.title)}</span></div>
+          <div class="item-prop"><span>Tipo:</span><span>${escapeHtmlBasic(newRegisteredItem.type)}</span></div>
+          <div class="item-prop"><span>Categoria:</span><span>${escapeHtmlBasic(newRegisteredItem.category)}</span></div>
+          <div class="item-prop"><span>Cor:</span><span>${escapeHtmlBasic(newItemColor)}</span></div>
+          <div class="item-prop"><span>Marca:</span><span>${escapeHtmlBasic(newItemBrand)}</span></div>
+          <div class="item-prop"><span>Local no Campus:</span><span>${escapeHtmlBasic(newRegisteredItem.location)}</span></div>
         </div>
       </div>
 
       <div class="card">
         <h3>📦 Objeto Relacionado no Sistema</h3>
         <div class="item-grid">
-          <div class="item-prop"><span>Título:</span><span>${counterpartItem.title}</span></div>
-          <div class="item-prop"><span>Tipo:</span><span>${counterpartItem.type}</span></div>
-          <div class="item-prop"><span>Categoria:</span><span>${counterpartItem.category}</span></div>
-          <div class="item-prop"><span>Local no Campus:</span><span>${counterpartItem.location}</span></div>
+          <div class="item-prop"><span>Título:</span><span>${escapeHtmlBasic(counterpartItem.title)}</span></div>
+          <div class="item-prop"><span>Tipo:</span><span>${escapeHtmlBasic(counterpartItem.type)}</span></div>
+          <div class="item-prop"><span>Categoria:</span><span>${escapeHtmlBasic(counterpartItem.category)}</span></div>
+          <div class="item-prop"><span>Local no Campus:</span><span>${escapeHtmlBasic(counterpartItem.location)}</span></div>
         </div>
       </div>
 
       <div class="ai-box">
         <h4>🤖 Análise de Similaridade Textual (IA Gemini)</h4>
-        <p>${reason || "Características coincidentes de categoria, modelo, cor e local detectadas pela IA."}</p>
-        ${matchedFeatures && matchedFeatures.length > 0 ? `
+        <p>${escapeHtmlBasic(effectiveReason)}</p>
+        ${normalizedMatchedFeatures.length > 0 ? `
           <div style="margin-top: 8px;">
-            ${matchedFeatures.map((f: string) => `<span class="features-pill">${f}</span>`).join(" ")}
+            ${normalizedMatchedFeatures.map((f: string) => `<span class="features-pill">${escapeHtmlBasic(f)}</span>`).join(" ")}
           </div>
         ` : ""}
       </div>
@@ -5473,7 +5688,9 @@ export async function sendMatchNotificationEmail(
     {
       to: recipientEmail,
       fromName: "IFPR Achados & Perdidos",
+      replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
       subject,
+      text: textContent,
       html: htmlContent,
       category: "MATCH_NOTIFICATION",
       dedupeKey: matchDedupeKey,
@@ -6963,6 +7180,7 @@ app.post(["/api/automation/notify-item-returned", "/automation/notify-item-retur
 
     const dispatchResult = await sendTransactionalEmail({
       to: targetEmail,
+      replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
       subject: emailSubject,
       text: emailBody,
       category: "ITEM_RETURNED_AUTOMATION",
@@ -7735,56 +7953,18 @@ app.post(["/api/signature/confirm-signature", "/signature/confirm-signature"], g
           createdAt: nowIso,
         });
       } else {
-        const staffSubject = `📌 Assinatura Institucional Pendente: Devolução de "${itemTitle || itemId}" (#${itemId}) - IFPR`;
-        const staffBody = `Atenção ${issuerName}:\n\n` +
-          `O receptor ${effectiveSignerName} (${effectiveSignerBond}) assinou digitalmente a devolução do pertence "${itemTitle}" (#${itemId}).\n\n` +
-          `O item encontra-se aguardando sua atestação e assinatura institucional no painel do Localiza+ (Aba: Assinaturas Pendentes).\n\n` +
-          `Código de Validação do Recibo: ${finalValidationCode}\n\n` +
-          `Acesse o sistema Localiza+ para atestar e assinar o recibo de devolução.`;
-
-        const staffHtml = `
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #0f172a; margin: 0; padding: 20px; }
-    .box { max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-    .header { background: #00843D; color: #ffffff; padding: 20px; text-align: center; }
-    .header h2 { margin: 0; font-size: 18px; font-weight: 800; }
-    .header p { margin: 4px 0 0 0; font-size: 12px; opacity: 0.9; }
-    .content { padding: 24px; font-size: 13px; line-height: 1.6; color: #334155; }
-    .info-card { background: #f1f5f9; border-radius: 12px; padding: 14px; margin: 16px 0; font-size: 12px; border-left: 4px solid #00843D; }
-    .footer { padding: 16px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; }
-  </style>
-</head>
-<body>
-  <div class="box">
-    <div class="header">
-      <h2>Instituto Federal do Paraná • Campus Ivaiporã</h2>
-      <p>Sistema Localiza+ • Notificação de Devolução Assinada pelo Receptor</p>
-    </div>
-    <div class="content">
-      <p>Prezado(a) <strong>${issuerName}</strong>,</p>
-      <p>O receptor <strong>${effectiveSignerName}</strong> (${effectiveSignerBond}) concluiu a assinatura digital de recebimento do objeto <strong>"${itemTitle || itemId}"</strong> (#${itemId}).</p>
-      <div class="info-card">
-        <strong>Item:</strong> #${itemId} - ${itemTitle}<br/>
-        <strong>Receptor:</strong> ${effectiveSignerName} (${effectiveSignerBond})<br/>
-        <strong>Código de Validação:</strong> ${finalValidationCode}<br/>
-        <strong>Status:</strong> AGUARDANDO SUA ASSINATURA INSTITUCIONAL COMO EMISSOR
-      </div>
-      <p>Por favor, acesse o painel administrativo do <strong>Localiza+</strong> na aba <strong>Assinaturas Pendentes</strong> para conferir e registrar sua atestação de devolução.</p>
-    </div>
-    <div class="footer">
-      Seção de Apoio ao Estudante (SEBAC) & Portaria • IFPR Campus Ivaiporã
-    </div>
-  </div>
-</body>
-</html>
-        `;
+        const { subject: staffSubject, text: staffBody, html: staffHtml } = buildStaffPendingSignatureEmailContent({
+          issuerName,
+          signerName: effectiveSignerName,
+          signerBond: effectiveSignerBond,
+          itemId,
+          itemTitle: itemTitle || itemId,
+          validationCode: finalValidationCode,
+        });
 
         const staffDispatch = await sendTransactionalEmail({
           to: staffTargetEmail,
+          replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
           subject: staffSubject,
           text: staffBody,
           html: staffHtml,
@@ -8400,64 +8580,19 @@ app.post(["/api/signature/send-request", "/signature/send-request"], requireAuth
       });
     }
 
-    const emailSubject = `📝 Assinatura Digital Necessária: Recebimento do Objeto "${itemTitle}" - IFPR Campus Ivaiporã`;
-    const emailBody = `Olá, ${persistedRecipientName}!\n\n` +
-      `O seu pertence "${itemTitle}" foi entregue pela equipe de atendimento do IFPR Campus Ivaiporã (${persistedIssuerName}).\n\n` +
-      `Para concluir a devolução em conformidade com as normas institucionais, por favor confirme o recebimento e realize sua Assinatura Digital através do link seguro abaixo:\n\n` +
-      `🔗 Link para Assinar o Termo de Recebimento:\n` +
-      `${signatureLink}\n\n` +
-      `Código do Termo: ${cleanItemId}\n\n` +
-      `Caso já tenha assinado presencialmente, desconsidere esta mensagem.\n\n` +
-      `Atenciosamente,\n` +
-      `Seção de Apoio ao Estudante (SEBAC) & Portaria\n` +
-      `Instituto Federal do Paraná - Campus Ivaiporã`;
-
-    const emailHtml = `
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #0f172a; margin: 0; padding: 20px; }
-    .box { max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-    .header { background: #00843D; color: #ffffff; padding: 24px; text-align: center; }
-    .header h2 { margin: 0; font-size: 20px; font-weight: 800; }
-    .header p { margin: 4px 0 0 0; font-size: 12px; opacity: 0.9; }
-    .content { padding: 24px; font-size: 13px; line-height: 1.6; color: #334155; }
-    .cta-btn { display: block; width: fit-content; margin: 24px auto; background: #00843D; color: #ffffff !important; text-decoration: none; padding: 14px 28px; border-radius: 12px; font-weight: bold; font-size: 14px; text-align: center; }
-    .info-card { background: #f1f5f9; border-radius: 12px; padding: 14px; margin: 16px 0; font-size: 12px; }
-    .footer { padding: 16px 24px; background: #f8fafc; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; }
-  </style>
-</head>
-<body>
-  <div class="box">
-    <div class="header">
-      <h2>Instituto Federal do Paraná • Campus Ivaiporã</h2>
-      <p>Sistema Localiza+ • Termo Oficial de Devolução de Pertence</p>
-    </div>
-    <div class="content">
-      <p>Olá, <strong>${persistedRecipientName}</strong>!</p>
-      <p>Seu pertence <strong>"${itemTitle}"</strong> foi entregue pela equipe de atendimento do IFPR Campus Ivaiporã (atendente: ${persistedIssuerName}).</p>
-      <div class="info-card">
-        <strong>Identificador da Ocorrência:</strong> #${cleanItemId}<br/>
-        <strong>Data de Reenvio:</strong> ${new Date().toLocaleDateString("pt-BR")}<br/>
-        <strong>Validade até:</strong> ${new Date(resolvedExpiresAt).toLocaleDateString("pt-BR")}
-      </div>
-      <p>Para concluir a baixa oficial no acervo institucional, realize sua assinatura digital através do botão seguro abaixo:</p>
-      <a href="${signatureLink}" class="cta-btn">✍️ Assinar Termo de Recebimento</a>
-      <p style="font-size: 11px; color: #64748b; word-break: break-all;">Ou copie e cole no seu navegador:<br/>${signatureLink}</p>
-    </div>
-    <div class="footer">
-      Seção de Apoio ao Estudante (SEBAC) & Portaria • IFPR Campus Ivaiporã
-    </div>
-  </div>
-</body>
-</html>
-    `;
+    const { subject: emailSubject, text: emailBody, html: emailHtml } = buildRemoteSignatureRequestEmailContent({
+      recipientName: persistedRecipientName,
+      itemTitle,
+      issuerName: persistedIssuerName,
+      itemId: cleanItemId,
+      signatureLink,
+      expiresAt: resolvedExpiresAt,
+    });
 
     // Attempt real email dispatch via centralized emailService (Resend priority, SMTP fallback)
     const dispatchResult = await sendTransactionalEmail({
       to: persistedRecipientEmail,
+      replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
       subject: emailSubject,
       text: emailBody,
       html: emailHtml,
@@ -8884,6 +9019,7 @@ app.post(["/api/signature/notify-signed", "/signature/notify-signed"], generalRa
 
         const receiptDispatch = await sendTransactionalEmail({
           to: effectiveEmail,
+          replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
           subject: receiptSubject,
           text: receiptText,
           html: receiptHtml,
@@ -9434,19 +9570,22 @@ export async function executeFormalItemReturn(
 
   try {
     if (isRemote && signatureLink) {
-      const emailSubject = `📝 Assinatura Digital Necessária: Recebimento do Objeto "${itemTitle}" - IFPR Campus Ivaiporã`;
-      const emailBody = `Olá, ${recipientName}!\n\n` +
-        `O seu pertence "${itemTitle}" foi entregue pela equipe de atendimento do IFPR Campus Ivaiporã (${effectiveName}).\n\n` +
-        `Para concluir o termo oficial de devolução, realize sua Assinatura Digital através do link seguro abaixo:\n\n` +
-        `${signatureLink}\n\n` +
-        `Código do Termo: ${rawItemId}\nValidade do link: 7 dias.\n\n` +
-        `Atenciosamente,\nSEBAC & Portaria • IFPR Campus Ivaiporã`;
+      const { subject: emailSubject, text: emailBody, html: emailHtml } = buildRemoteSignatureRequestEmailContent({
+        recipientName,
+        itemTitle,
+        issuerName: effectiveName,
+        itemId: rawItemId,
+        signatureLink,
+        expiresAt,
+      });
 
       const dispatchResult = await sendTransactionalEmail(
         {
           to: recipientEmail,
+          replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
           subject: emailSubject,
           text: emailBody,
+          html: emailHtml,
           category: "REMOTE_SIGNATURE_REQUEST",
           dedupeKey: `formal-return-remote:${rawItemId}:c${nextCycle}:${recipientEmail.toLowerCase()}`,
           tags: [{ name: "flow", value: "formal_return_remote_signature" }],
@@ -9516,6 +9655,7 @@ export async function executeFormalItemReturn(
       const dispatchResult = await sendTransactionalEmail(
         {
           to: recipientEmail,
+          replyTo: INSTITUTIONAL_REPLY_TO_EMAIL,
           subject: emailSubject,
           text: emailBody,
           category: "ITEM_RETURNED_AUTOMATION",

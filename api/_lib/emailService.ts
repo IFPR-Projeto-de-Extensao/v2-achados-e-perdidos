@@ -142,6 +142,37 @@ export function sanitizeHeaderLine(value: unknown, maxLen = 200): string {
 }
 
 /**
+ * Derives a readable text/plain fallback from HTML content when a caller supplies
+ * only HTML, preserving links and accented UTF-8 characters without altering explicit text bodies.
+ */
+export function derivePlainTextFromHtml(html: string): string {
+  if (typeof html !== "string" || !html.trim()) return "";
+  return html
+    .replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_m, href, label) => {
+      const cleanLabel = String(label || "").replace(/<[^>]+>/g, "").trim();
+      const cleanHref = String(href || "").trim();
+      if (!cleanHref) return cleanLabel;
+      if (!cleanLabel || cleanLabel === cleanHref) return cleanHref;
+      return `${cleanLabel} (${cleanHref})`;
+    })
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|h[1-6]|li|tr|section|header|footer)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
  * Redacts API keys, tokens, reset oobCodes, signature tokens, passwords,
  * and control characters before writing to logs, Firestore, or API responses.
  */
@@ -568,11 +599,13 @@ export async function sendTransactionalEmail(
             subject: cleanSubject,
           };
 
-          if (request.html) resendPayload.html = request.html;
-          if (request.text) resendPayload.text = request.text;
-          if (!resendPayload.html && !resendPayload.text) {
-            resendPayload.text = cleanSubject;
-          }
+          const explicitText = typeof request.text === "string" && request.text.trim() ? request.text : undefined;
+          const resolvedHtml = typeof request.html === "string" && request.html.trim() ? request.html : undefined;
+          const resolvedText =
+            explicitText || (resolvedHtml ? derivePlainTextFromHtml(resolvedHtml) : "") || cleanSubject;
+
+          if (resolvedHtml) resendPayload.html = resolvedHtml;
+          if (resolvedText) resendPayload.text = resolvedText;
           if (cleanReplyTo) resendPayload.replyTo = cleanReplyTo;
           if (request.tags && request.tags.length > 0) resendPayload.tags = request.tags;
 
@@ -655,14 +688,21 @@ export async function sendTransactionalEmail(
       }
 
       try {
+        const smtpExplicitText =
+          typeof request.text === "string" && request.text.trim() ? request.text : undefined;
+        const smtpResolvedHtml =
+          typeof request.html === "string" && request.html.trim() ? request.html : undefined;
+        const smtpResolvedText =
+          smtpExplicitText || (smtpResolvedHtml ? derivePlainTextFromHtml(smtpResolvedHtml) : "") || cleanSubject;
+
         const info = await withTimeout(
           smtpTransporter.sendMail({
             from: smtpSenderCheck.normalized,
             to: recipientCheck.recipients.join(", "),
             replyTo: cleanReplyTo,
             subject: cleanSubject,
-            text: request.text,
-            html: request.html,
+            text: smtpResolvedText,
+            html: smtpResolvedHtml,
           }),
           timeoutMs,
           "SMTP Transport"

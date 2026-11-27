@@ -883,6 +883,12 @@ describe("Etapa 6 — Autenticação, Criação Administrativa e Primeiro Acesso
       process.env.ALLOWED_ORIGINS = "https://homologacao-localiza.custom.edu.br";
 
       // Allowed production/institutional/dev/env hosts
+      expect(sanitizeTrustedOriginUrl("https://localizamais.pclp.com.br")).toBe(
+        "https://localizamais.pclp.com.br"
+      );
+      expect(sanitizeTrustedOriginUrl("https://localizamais.pclp.com.br/redefinir-senha")).toBe(
+        "https://localizamais.pclp.com.br"
+      );
       expect(sanitizeTrustedOriginUrl("https://localiza-plus-ifpr.vercel.app/login")).toBe(
         "https://localiza-plus-ifpr.vercel.app"
       );
@@ -909,8 +915,11 @@ describe("Etapa 6 — Autenticação, Criação Administrativa e Primeiro Acesso
       );
       expect(sanitizeTrustedOriginUrl("http://localhost:3000/admin")).toBe("http://localhost:3000");
 
-      // Untrusted wildcard/external/non-HTTPS origins must fall back to defaultOrigin
-      const expectedFallback = "https://localiza-plus-ifpr.vercel.app";
+      // Untrusted wildcard/external/non-HTTPS origins must fall back to canonical institutional defaultOrigin
+      const expectedFallback = "https://localizamais.pclp.com.br";
+      expect(sanitizeTrustedOriginUrl(undefined)).toBe(expectedFallback);
+      expect(sanitizeTrustedOriginUrl("https://evil.pclp.com.br")).toBe(expectedFallback);
+      expect(sanitizeTrustedOriginUrl("http://localizamais.pclp.com.br")).toBe(expectedFallback);
       expect(sanitizeTrustedOriginUrl("https://evil-attacker.vercel.app")).toBe(expectedFallback);
       expect(sanitizeTrustedOriginUrl("https://phishing-app.run.app")).toBe(expectedFallback);
       expect(sanitizeTrustedOriginUrl("https://evil.web.app")).toBe(expectedFallback);

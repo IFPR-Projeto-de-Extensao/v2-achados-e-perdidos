@@ -314,10 +314,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "VERCEL",
         tag: "CI/CD • npm ci & Lockfile",
       },
+      {
+        id: "v11013-fix-resend-deliverability-canonical-origin-multipart-escaping",
+        title: "Endurecimento de Entregabilidade e Segurança dos Templates de E-mail (Domínio Canônico, Multipart HTML+Texto, Reply-To e Escaping HTML)",
+        description: "Correção seletiva no código-fonte dos achados da auditoria de entregabilidade do Resend (sem alterações em DNS, SPF/DKIM/DMARC, secrets de produção, firestore.rules ou fluxos de autenticação): (1) adição de https://localizamais.pclp.com.br à allowlist e definição como fallback canônico de sanitizeTrustedOriginUrl() em server.ts (substituindo o fallback legado localiza-plus-ifpr.vercel.app), mantendo rejeição estrita de domínios externos não autorizados e preservando o fluxo padrão do Firebase Auth; (2) inclusão de versão text/plain equivalente completa em sendMatchNotificationEmail() e proteção multipart automática (derivePlainTextFromHtml) em api/_lib/emailService.ts preservando HTML e texto explícitos; (3) atualização de .env.example para recomendar remetente institucional sem noreply (contato@localizamais.pclp.com.br, sem substituir segredos de produção) e definição de replyTo institucional (localizamais0@gmail.com) nas notificações transacionais ao usuário; (4) auditoria e aplicação consistente de escapeHtmlBasic() em todos os campos dinâmicos dos templates HTML de correspondência IA e assinatura (buildRemoteSignatureRequestEmailContent e buildStaffPendingSignatureEmailContent), preservando URLs válidas e acentuação UTF-8. Validado pela nova suíte src/lib/emailDeliverabilityHardening.test.ts e suítes correlatas.",
+        module: "ADMIN",
+        tag: "Resend • Entregabilidade & Segurança",
+      },
     ],
     stats: {
       additionsCount: 10,
-      fixesCount: 30,
+      fixesCount: 31,
     },
   },
   {
