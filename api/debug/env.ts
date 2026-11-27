@@ -1,4 +1,5 @@
 import { getAdminAuth, getAdminFirestore, verifyServerlessCallerAccess } from "../_lib/firebaseAdmin.js";
+import { getEmailProviderConfig } from "../_lib/emailService.js";
 
 export default async function handler(req: any, res: any) {
   // CORS Headers
@@ -68,17 +69,9 @@ export default async function handler(req: any, res: any) {
     process.env.DISCORD_FEEDBACK
   );
 
-  const smtpHost = (process.env.SMTP_HOST || "").trim();
-  const smtpPort = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
-  const smtpUser = (process.env.SMTP_USER || "").trim();
-  const smtpPass = (process.env.SMTP_PASS || "").trim();
-  const isSmtpConfigured = Boolean(smtpHost && smtpUser && smtpPass);
-
-  const maskEmail = (email: string) => {
-    if (!email || !email.includes("@")) return null;
-    const [name, domain] = email.split("@");
-    return `${name.substring(0, 3)}***@${domain}`;
-  };
+  const emailConfig = getEmailProviderConfig();
+  const isSmtpConfigured = emailConfig.smtp.configured;
+  const isResendConfigured = emailConfig.resend.configured;
 
   const isGeminiConfigured = Boolean(
     process.env.GEMINI_API_KEY ||
@@ -93,19 +86,33 @@ export default async function handler(req: any, res: any) {
 
   // Safe boolean flags & non-sensitive parameters only - NEVER expose secrets or URLs
   return res.status(200).json({
-    status: isDiscordConfigured || isSmtpConfigured || isGeminiConfigured,
+    status: isDiscordConfigured || emailConfig.emailConfigured || isGeminiConfigured,
     DISCORD_FEEDBACK_WEBHOOK_URL: isDiscordConfigured,
     DISCORD_WEBHOOK_READY: isDiscordConfigured,
+    EMAIL: {
+      activeProvider: emailConfig.activeProvider,
+      configurationState: emailConfig.configurationState,
+      configured: emailConfig.emailConfigured,
+      fallbackAvailable: emailConfig.fallbackAvailable,
+    },
+    RESEND: {
+      configured: isResendConfigured,
+      apiKeyPresent: emailConfig.resend.apiKeyPresent,
+      fromPresent: emailConfig.resend.fromPresent,
+      fromValid: emailConfig.resend.fromValid,
+      fromMasked: emailConfig.resend.fromMasked,
+      error: emailConfig.resend.error,
+    },
     SMTP: {
       configured: isSmtpConfigured,
-      hostPresent: Boolean(smtpHost),
-      portPresent: Boolean(process.env.SMTP_PORT),
-      userPresent: Boolean(smtpUser),
-      passPresent: Boolean(smtpPass),
-      fromPresent: Boolean(process.env.SMTP_FROM),
-      port: smtpPort,
-      secure: process.env.SMTP_SECURE === "true" || smtpPort === 465,
-      userMasked: maskEmail(smtpUser),
+      hostPresent: emailConfig.smtp.hostPresent,
+      portPresent: emailConfig.smtp.portPresent,
+      userPresent: emailConfig.smtp.userPresent,
+      passPresent: emailConfig.smtp.passPresent,
+      fromPresent: emailConfig.smtp.fromPresent,
+      port: parseInt(emailConfig.smtp.port, 10) || 587,
+      secure: emailConfig.smtp.secure,
+      userMasked: emailConfig.smtp.userMasked,
     },
     GEMINI_AI: {
       configured: isGeminiConfigured,

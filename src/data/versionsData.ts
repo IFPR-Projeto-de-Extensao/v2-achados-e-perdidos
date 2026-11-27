@@ -95,6 +95,13 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "AUTH",
         tag: "Etapa 6 • Primeiro Acesso & Senha",
       },
+      {
+        id: "v11013-add-resend-transactional-email-service",
+        title: "Integração Oficial do Resend para E-mails Transacionais com Fallback Temporário SMTP e Diagnóstico Administrativo",
+        description: "Implementação da camada centralizada api/_lib/emailService.ts utilizando o SDK oficial do Resend (RESEND_API_KEY e RESEND_FROM_EMAIL documentados em .env.example) como provedor prioritário e compatibilidade temporária com SMTP (nodemailer) como fallback quando configurado, sem simulação de envio bem-sucedido, com estados padronizados (SENT, PENDING, ERROR), registro de messageId, proteção contra duplicidades (dedupeKey e idempotencyKey), timeout, tratamento classificado de falhas e sanitização estrita de logs/respostas (redação de chaves API, tokens de assinatura e oobCode). Migração integral dos 7 fluxos transacionais em server.ts e api/support/send-feedback.ts: primeiro acesso administrativo (/api/admin/create-user), reenvio de primeiro acesso (/api/admin/send-first-access-link), recuperação de senha anti-enumeração (/api/auth/request-password-reset integrado ao AuthModal.tsx e ResetPasswordView.tsx com fallback Firebase Auth), correspondências IA (/api/notifications/send-match-email), devoluções (/api/automation/notify-item-returned e /api/items/register-return), assinaturas digitais (/api/signature/send-request, confirm-signature e notify-signed) e suporte (/api/support/send-feedback), além de atualização do diagnóstico em /api/notifications/email-status e /api/debug/env. Validado pela nova suíte automatizada src/lib/resendEmailService.test.ts preservando firestore.rules (SHA-256 inalterado), RBAC e dados de produção.",
+        module: "ADMIN",
+        tag: "Resend • E-mail Transacional",
+      },
     ],
     bugFixes: [
       {
@@ -286,10 +293,17 @@ export const APP_VERSIONS_DATA: AppVersion[] = [
         module: "GERAL",
         tag: "Telemetria Opt-In • Zero GTM",
       },
+      {
+        id: "v11013-fix-google-auth-provisioning-uid-pinning-and-claims-guard",
+        title: "Correção do Provisionamento no Login Google, Pinagem de UID do Root Admin, Trava de Listeners de Claims e Reconciliação Server-Side de ALUNO",
+        description: "Resolução das falhas de autenticação Google, consulta por e-mail único, gravação inicial de perfil e leitura de /claims sem alterar nem relaxar firestore.rules (SHA-256 preservado: 7fa455e632a9d1831517fe7269e52d922b8614f903f0a28f025f6418812d95a5): (1) adição de trava in-flight por UID (runWithUidProvisioningLock) em verifyUserInFirestore() (AppContext.tsx) com liberação garantida em finally (sucesso ou falha), eliminando a condição de corrida entre onAuthStateChanged e loginWithGoogle() que convertia o segundo setDoc em update negado; (2) remoção da consulta cliente where('email','==',...) e de deleteDoc cross-UID na Etapa 2 de verifyUserInFirestore(), eliminando falhas determinísticas de permissão antes da criação do perfil; (3) pinagem estrita de Root Admin por UID oficial + e-mail verificado (isVerifiedRootAdminAuthUser) em resolveEffectiveUserIdentity, verifyUserInFirestore, updateEffectiveUserState, reconcileOwnProfileWithServer e registerWithEmailPassword, impedindo que UIDs divergentes com o mesmo e-mail recebam privilégio ADMIN ou disparem listener global em /claims; (4) guarda explícita hasPersistedUserDoc em evaluateListenerSession() (src/lib/listenerGuards.ts) bloqueando listeners de /claims e /notifications até a confirmação da persistência de /users/{uid}, além de roteamento direto para reconciliação server-side em contas designadas via /role_assignments/{uid} e ajuste de OperationType.LIST no diagnóstico de listeners; (5) extensão segura de reconcileSingleUserProfile() (api/_lib/firebaseAdmin.ts) para suportar assignedRole === 'ALUNO' com admin: false obrigatório, bloqueio fail-closed para e-mail não verificado e contas suspensas/banidas/inativas. Validado pela nova suíte src/lib/googleAuthProvisioningRecovery.test.ts e bateria completa de regressão de segurança.",
+        module: "AUTH",
+        tag: "Auth Google • Provisionamento & RBAC",
+      },
     ],
     stats: {
-      additionsCount: 9,
-      fixesCount: 27,
+      additionsCount: 10,
+      fixesCount: 28,
     },
   },
   {

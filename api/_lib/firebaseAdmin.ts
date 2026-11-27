@@ -426,6 +426,10 @@ export async function reconcileSingleUserProfile(options: {
     return { uid: cleanUid, reconciled: false, reason: "ROOT_ADMIN_SKIPPED" };
   }
 
+  if (emailVerified === false) {
+    return { uid: cleanUid, reconciled: false, reason: "EMAIL_NOT_VERIFIED" };
+  }
+
   const assignRef = adminFirestore.collection("role_assignments").doc(cleanUid);
   const userRef = adminFirestore.collection("users").doc(cleanUid);
 
@@ -449,7 +453,7 @@ export async function reconcileSingleUserProfile(options: {
       aData.active !== true ||
       aData.approvalStatus !== "APROVADO" ||
       aData.targetUserId !== cleanUid ||
-      (assignedRole !== "ADMIN" && assignedRole !== "SERVIDOR")
+      (assignedRole !== "ADMIN" && assignedRole !== "SERVIDOR" && assignedRole !== "ALUNO")
     ) {
       return {
         reconciled: false,
@@ -468,13 +472,18 @@ export async function reconcileSingleUserProfile(options: {
       } as ReconcileUserProfileResult;
     }
 
+    const expectedAdminFlag = assignedRole === "ADMIN";
+    const hasAdminFlagMismatch =
+      expectedAdminFlag ? uData?.admin === false : uData?.admin === true;
+
     const isAlreadyConsistent = Boolean(
       userDoc.exists &&
       uData?.role === assignedRole &&
       uData?.approvalStatus === "APROVADO" &&
       uData?.status === "active" &&
       uData?.active === true &&
-      uData?.roleAssignmentActive === true
+      uData?.roleAssignmentActive === true &&
+      !hasAdminFlagMismatch
     );
 
     if (isAlreadyConsistent) {
@@ -503,6 +512,7 @@ export async function reconcileSingleUserProfile(options: {
       approvalStatus: "APROVADO",
       status: "active",
       active: true,
+      admin: expectedAdminFlag,
       roleAssignedBy: aData.assignedByEmail || aData.assignedByUid || uData?.roleAssignedBy || "system-reconcile",
       roleAssignedAt: aData.assignedAt || uData?.roleAssignedAt || nowIso,
       roleAssignmentActive: true,

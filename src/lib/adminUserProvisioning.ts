@@ -6,11 +6,12 @@ export const VALID_APPROVAL_STATUSES = ["APROVADO", "PENDENTE"] as const;
 
 export type EmailDeliveryStatus =
   | "SENT"
+  | "PENDING"
   | "FIREBASE_AUTH_SENT"
   | "PENDING_SMTP_CONFIG"
   | "ERROR";
 
-export type EmailDeliveryMethod = "SMTP" | "FIREBASE_AUTH" | "NONE";
+export type EmailDeliveryMethod = "RESEND" | "SMTP" | "FIREBASE_AUTH" | "NONE";
 
 export interface AdminCreateUserResult {
   success: boolean;
@@ -19,6 +20,9 @@ export interface AdminCreateUserResult {
   emailSent: boolean;
   deliveryMethod: EmailDeliveryMethod;
   deliveryStatus: EmailDeliveryStatus;
+  normalizedStatus?: "SENT" | "PENDING" | "ERROR";
+  provider?: "RESEND" | "SMTP" | "NONE";
+  messageId?: string | null;
   deliveryError?: string;
   manualSetupLink?: string;
   continueUriFallbackUsed?: boolean;
@@ -32,6 +36,9 @@ export interface AdminSendFirstAccessResult {
   emailSent: boolean;
   deliveryMethod: EmailDeliveryMethod;
   deliveryStatus: EmailDeliveryStatus;
+  normalizedStatus?: "SENT" | "PENDING" | "ERROR";
+  provider?: "RESEND" | "SMTP" | "NONE";
+  messageId?: string | null;
   deliveryError?: string;
   manualSetupLink?: string;
   continueUriFallbackUsed?: boolean;
@@ -106,7 +113,11 @@ export function buildPasswordResetActionCodeSettings(
 export function shouldTriggerClientFirebaseResetFallback(
   deliveryStatus?: string | null
 ): boolean {
-  return deliveryStatus === "PENDING_SMTP_CONFIG" || deliveryStatus === "ERROR";
+  return (
+    deliveryStatus === "PENDING" ||
+    deliveryStatus === "PENDING_SMTP_CONFIG" ||
+    deliveryStatus === "ERROR"
+  );
 }
 
 export function validateNewPasswordInput(

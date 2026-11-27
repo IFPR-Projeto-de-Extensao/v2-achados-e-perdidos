@@ -10,6 +10,7 @@ export interface ListenerSessionInput {
   authLoading: boolean;
   firebaseUser: AuthContextIdentity | null | undefined;
   currentUser: Partial<User> | null | undefined;
+  hasPersistedUserDoc?: boolean;
 }
 
 export type ItemHistorySubscriptionMode = "WAIT" | "FIRESTORE_STAFF" | "PUBLIC_API";
@@ -30,6 +31,7 @@ export interface EvaluatedListenerSession {
 /**
  * Avalia de forma centralizada e pura se a sessão de autenticação estabilizou
  * (`authLoading === false`), se o UID autenticado coincide com `currentUser.id`,
+ * se a persistência de `/users/{uid}` foi confirmada (quando informada),
  * se a conta está ativa/não bloqueada e quais privilégios reais possui no Firestore Rules.
  */
 export function evaluateListenerSession(
@@ -63,6 +65,21 @@ export function evaluateListenerSession(
 
   const isEmailVerified = input.firebaseUser?.emailVerified === true;
   const isRootAdmin = isVerifiedRootAdminIdentity(user, input.firebaseUser);
+
+  // Fail-closed: exceto Root Admin pinado e verificado, nenhuma assinatura privada
+  // (/claims, /notifications, /users, logs) pode abrir antes da confirmação de /users/{uid}.
+  if (input.hasPersistedUserDoc === false && !isRootAdmin) {
+    return {
+      isSessionReady: false,
+      uid: null,
+      isEmailVerified: false,
+      isRootAdmin: false,
+      isAccountActive: false,
+      isVerifiedActiveExternalUser: false,
+      isApprovedAdmin: false,
+      isApprovedStaffOrAdmin: false,
+    };
+  }
 
   const isBlockedOrInactive =
     !isUserAccountActive(user) ||

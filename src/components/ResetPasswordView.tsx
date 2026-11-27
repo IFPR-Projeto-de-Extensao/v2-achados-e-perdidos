@@ -206,15 +206,32 @@ export const ResetPasswordView: React.FC = () => {
     setSubmitting(true);
     try {
       const origin = typeof window !== "undefined" ? window.location.origin : undefined;
-      await dispatchPasswordResetWithFallback({
-        auth,
-        email: cleanEmail,
-        originUrl: origin,
-        sendFn: (authInstance, email, actionSettings) =>
-          actionSettings
-            ? sendPasswordResetEmail(authInstance, email, actionSettings)
-            : sendPasswordResetEmail(authInstance, email),
-      });
+      let handledByServer = false;
+      try {
+        const serverRes = await fetch("/api/auth/request-password-reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: cleanEmail, originUrl: origin }),
+        });
+        const serverData = await serverRes.json().catch(() => null);
+        if (serverRes.ok && serverData?.success && serverData?.fallbackToFirebaseClient !== true) {
+          handledByServer = true;
+        }
+      } catch {
+        // Fallback silencioso para Firebase Auth client quando a rota /api não estiver alcançável
+      }
+
+      if (!handledByServer) {
+        await dispatchPasswordResetWithFallback({
+          auth,
+          email: cleanEmail,
+          originUrl: origin,
+          sendFn: (authInstance, email, actionSettings) =>
+            actionSettings
+              ? sendPasswordResetEmail(authInstance, email, actionSettings)
+              : sendPasswordResetEmail(authInstance, email),
+        });
+      }
       vibrateSuccess();
       setInfoMsg(
         language === "en"

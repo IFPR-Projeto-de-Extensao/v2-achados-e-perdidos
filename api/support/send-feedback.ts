@@ -1,6 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import nodemailer, { type Transporter } from "nodemailer";
 import { applySecurityHeaders } from "../_lib/securityHeaders.js";
+import {
+  sendTransactionalEmail,
+  sanitizeEmailSensitiveText,
+  type EmailProviderName,
+  type StandardizedEmailStatus,
+} from "../_lib/emailService.js";
 
 const HTML_ESCAPE_MAP: Record<string, string> = {
   "&": "&amp;",
@@ -40,40 +45,7 @@ interface FeedbackRequestBody {
   };
 }
 
-function getEmailTransporter(): { transporter: Transporter | null; diagnostics: { configured: boolean; reason?: string } } {
-  const host = (process.env.SMTP_HOST || "").trim();
-  const port = parseInt(process.env.SMTP_PORT || "587", 10);
-  const user = (process.env.SMTP_USER || "").trim();
-  const pass = (process.env.SMTP_PASS || "").trim().replace(/\s+/g, "");
-  const secure = process.env.SMTP_SECURE === "true" || port === 465;
-
-  if (!host || !user || !pass) {
-    const missing: string[] = [];
-    if (!host) missing.push("SMTP_HOST");
-    if (!user) missing.push("SMTP_USER");
-    if (!pass) missing.push("SMTP_PASS");
-    return {
-      transporter: null,
-      diagnostics: { configured: false, reason: `Variáveis SMTP ausentes: ${missing.join(", ")}` },
-    };
-  }
-
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-    tls: {
-      rejectUnauthorized: true,
-      minVersion: "TLSv1.2",
-    },
-  });
-
-  return { transporter, diagnostics: { configured: true } };
-}
+// Centralized email dispatch (Resend priority with temporary SMTP fallback) is provided by ../_lib/emailService.js
 
 export function buildSupportEmailHtml(ticket: {
   protocol: string;
@@ -161,7 +133,7 @@ export function buildSupportEmailHtml(ticket: {
 `;
 }
 
-async function sendFeedbackViaSmtp(ticket: {
+async function sendFeedbackEmail(ticket: {
   protocol: string;
   name: string;
   email: string;
@@ -171,30 +143,28 @@ async function sendFeedbackViaSmtp(ticket: {
   priority?: string;
   timestamp: string;
   clientDiagnostics?: any;
-}): Promise<{ sent: boolean; messageId?: string; error?: string; status: "SENT" | "PENDING_SMTP_CONFIG" | "AUTH_FAILED" | "NETWORK_ERROR" | "ERROR" }> {
-  const { transporter, diagnostics } = getEmailTransporter();
+}): Promise<{
+  sent: boolean;
+  messageId?: string;
+  provider: EmailProviderName;
+  normalizedStatus: StandardizedEmailStatus;
+  error?: string;
+  status: "SENT" | "PENDING" | "PENDING_SMTP_CONFIG" | "AUTH_FAILED" | "NETWORK_ERROR" | "ERROR";
+}> {
   const destinationEmail = "localizamais0@gmail.com";
 
-  if (!transporter) {
-    console.info(`[SMTP Feedback Notice] ${diagnostics.reason}. Mensagem registrada sem despacho SMTP.`);
-    return { sent: false, status: "PENDING_SMTP_CONFIG", error: diagnostics.reason };
-  }
+  const categoryMap: Record<string, string> = {
+    BUG_REPORT: "Relato de Bug / Erro no Sistema",
+    FEEDBACK: "Sugestão ou Melhoria",
+    SUPPORT: "Suporte Técnico & Atendimento",
+    BELONGING_QUERY: "Dúvida sobre Pertence / Retirada",
+    OTHER: "Elogio ou Outro Assunto",
+  };
 
-  try {
-    const fromAddress = process.env.SMTP_FROM || `"Localiza+ Suporte IFPR" <${process.env.SMTP_USER || destinationEmail}>`;
-    
-    const categoryMap: Record<string, string> = {
-      BUG_REPORT: "Relato de Bug / Erro no Sistema",
-      FEEDBACK: "Sugestão ou Melhoria",
-      SUPPORT: "Suporte Técnico & Atendimento",
-      BELONGING_QUERY: "Dúvida sobre Pertence / Retirada",
-      OTHER: "Elogio ou Outro Assunto",
-    };
+  const categoryLabel = categoryMap[ticket.category] || ticket.category;
+  const priorityLabel = ticket.priority === "ALTA" ? "Alta" : ticket.priority === "BAIXA" ? "Baixa" : "Média";
 
-    const categoryLabel = categoryMap[ticket.category] || ticket.category;
-    const priorityLabel = ticket.priority === "ALTA" ? "Alta" : ticket.priority === "BAIXA" ? "Baixa" : "Média";
-
-    const textBody = `[LOCALIZA+ • SUPORTE & FEEDBACK IFPR]
+  const textBody = `[LOCALIZA+ • SUPORTE & FEEDBACK IFPR]
 Protocolo: ${ticket.protocol}
 Data/Hora: ${ticket.timestamp}
 
@@ -210,42 +180,64 @@ Diagnósticos do Cliente:
 ${JSON.stringify(ticket.clientDiagnostics || {}, null, 2)}
 `;
 
-    const htmlBody = buildSupportEmailHtml(ticket, destinationEmail);
+  const htmlBody = buildSupportEmailHtml(ticket, destinationEmail);
+  const safeReplyName = stripHeaderControls(ticket.name, 100);
+  const safeReplyEmail = stripHeaderControls(ticket.email, 120);
+  const safeSubject = stripHeaderControls(ticket.subject, 150);
 
-    const safeReplyName = stripHeaderControls(ticket.name, 100);
-    const safeReplyEmail = stripHeaderControls(ticket.email, 120);
-    const safeSubject = stripHeaderControls(ticket.subject, 150);
+  const result = await sendTransactionalEmail({
+    to: destinationEmail,
+    fromName: "Localiza+ Suporte IFPR",
+    replyTo: SIMPLE_EMAIL_REGEX.test(safeReplyEmail)
+      ? `${safeReplyName} <${safeReplyEmail}>`
+      : undefined,
+    subject: `[${stripHeaderControls(ticket.protocol, 40)}] ${safeSubject}`,
+    text: textBody,
+    html: htmlBody,
+    category: "SUPPORT_FEEDBACK",
+    dedupeKey: `support:${ticket.protocol}`,
+  });
 
-    console.log(`[SMTP Feedback Diagnostics] Enviando mensagem via SMTP para ${destinationEmail} (Protocolo: ${ticket.protocol})...`);
-    const info = await transporter.sendMail({
-      from: fromAddress,
-      to: destinationEmail,
-      replyTo: SIMPLE_EMAIL_REGEX.test(safeReplyEmail)
-        ? `"${safeReplyName}" <${safeReplyEmail}>`
-        : undefined,
-      subject: `[${stripHeaderControls(ticket.protocol, 40)}] ${safeSubject}`,
-      text: textBody,
-      html: htmlBody,
-    });
-
-    console.log(`[SMTP Feedback Success] E-mail despachado com sucesso. MessageID: ${info.messageId}, Resposta: ${info.response}`);
-    return { sent: true, messageId: info.messageId, status: "SENT" };
-  } catch (err: any) {
-    const errMsg = err?.message || String(err);
-    let status: "AUTH_FAILED" | "NETWORK_ERROR" | "ERROR" = "ERROR";
-
-    if (errMsg.includes("535") || errMsg.toLowerCase().includes("badcredentials") || errMsg.toLowerCase().includes("invalid login")) {
-      status = "AUTH_FAILED";
-      console.error("[SMTP Error: AUTH_FAILED] Credenciais SMTP recusadas pelo servidor (Verifique se é uma Senha de Aplicativo de 16 dígitos válida do Google):", errMsg);
-    } else if (errMsg.includes("ETIMEDOUT") || errMsg.includes("ECONNREFUSED") || errMsg.includes("ENOTFOUND")) {
-      status = "NETWORK_ERROR";
-      console.error("[SMTP Error: NETWORK_CONNECTION] Falha de rede/DNS na conexão SMTP:", errMsg);
-    } else {
-      console.error("[SMTP Error: GENERAL] Falha ao enviar e-mail via SMTP:", errMsg);
-    }
-
-    return { sent: false, status, error: errMsg };
+  if (result.sent) {
+    console.log(
+      `[Support Email Success] E-mail despachado via ${result.provider}. MessageID: ${result.messageId || "N/A"}`
+    );
+    return {
+      sent: true,
+      messageId: result.messageId || undefined,
+      provider: result.provider,
+      normalizedStatus: "SENT",
+      status: "SENT",
+    };
   }
+
+  const sanitizedError = sanitizeEmailSensitiveText(result.error || "");
+  if (result.status === "PENDING") {
+    console.info(`[Support Email Notice] Nenhum provedor configurado (Resend/SMTP). Protocolo ${ticket.protocol} registrado.`);
+    return {
+      sent: false,
+      provider: result.provider,
+      normalizedStatus: "PENDING",
+      status: "PENDING_SMTP_CONFIG",
+      error: sanitizedError,
+    };
+  }
+
+  let legacyStatus: "AUTH_FAILED" | "NETWORK_ERROR" | "ERROR" = "ERROR";
+  if (result.errorCode === "AUTH_ERROR") {
+    legacyStatus = "AUTH_FAILED";
+  } else if (result.errorCode === "SERVICE_UNAVAILABLE" || result.errorCode === "TIMEOUT") {
+    legacyStatus = "NETWORK_ERROR";
+  }
+
+  console.error(`[Support Email Error: ${legacyStatus}] Falha ao enviar via ${result.provider}:`, sanitizedError);
+  return {
+    sent: false,
+    provider: result.provider,
+    normalizedStatus: "ERROR",
+    status: legacyStatus,
+    error: sanitizedError,
+  };
 }
 
 function getDiscordFeedbackWebhookUrl(): string {
@@ -478,8 +470,8 @@ export default async function handler(req: any, res: any) {
       clientDiagnostics,
     };
 
-    // 1. Dispatch real email via SMTP Transporter if configured
-    const smtpResult = await sendFeedbackViaSmtp(ticketPayload);
+    // 1. Dispatch real email via centralized email service (Resend priority, SMTP fallback)
+    const emailResult = await sendFeedbackEmail(ticketPayload);
 
     // 2. Dispatch to Discord Webhook with error resilience
     const discordSent = await sendFeedbackToDiscord(ticketPayload);
@@ -491,9 +483,13 @@ export default async function handler(req: any, res: any) {
       timestamp,
       destinationEmail,
       emailSubject: `[${ticketProtocol}] ${trimmedSubject}`,
-      smtpDispatched: smtpResult.sent,
-      smtpStatus: smtpResult.status,
-      smtpMessageId: smtpResult.messageId || null,
+      emailDispatched: emailResult.sent,
+      emailProvider: emailResult.provider,
+      emailStatus: emailResult.normalizedStatus,
+      messageId: emailResult.messageId || null,
+      smtpDispatched: emailResult.sent,
+      smtpStatus: emailResult.status,
+      smtpMessageId: emailResult.messageId || null,
       discordDispatched: discordSent,
     });
   } catch (error: any) {

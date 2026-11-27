@@ -310,20 +310,97 @@ export interface EffectiveIdentityResolution {
 }
 
 /**
+ * Executa provisionamento/sincronização de perfil com trava in-flight por UID.
+ * Garante deduplicação entre chamadas concorrentes (ex.: onAuthStateChanged + loginWithGoogle)
+ * e liberação garantida no bloco finally tanto em sucesso quanto em falha.
+ */
+export function runWithUidProvisioningLock<T>(
+  inFlightMap: Map<string, Promise<T>>,
+  uid: string,
+  task: () => Promise<T>
+): Promise<T> {
+  const cleanUid = String(uid || "").trim();
+  if (!cleanUid) {
+    return task();
+  }
+  const existing = inFlightMap.get(cleanUid);
+  if (existing) {
+    return existing;
+  }
+  const promise = (async () => await task())().finally(() => {
+    if (inFlightMap.get(cleanUid) === promise) {
+      inFlightMap.delete(cleanUid);
+    }
+  });
+  inFlightMap.set(cleanUid, promise);
+  return promise;
+}
+
+/**
+ * Avalia em paridade com `canCreateOwnUserDoc()` (firestore.rules) se o cliente está
+ * autorizado a criar diretamente o documento inicial `/users/{uid}` ou se precisa
+ * acionar a reconciliação autoritativa no servidor (`/api/auth/reconcile-profile`).
+ */
+export function canClientSelfCreateUserProfile(params: {
+  uid?: string | null;
+  email?: string | null;
+  emailVerified?: boolean;
+  role: UserRole;
+  approvalStatus: ApprovalStatus;
+}): boolean {
+  const cleanUid = String(params.uid || "").trim();
+  const cleanEmail = safeToLower(params.email || "").trim();
+  const verified = Boolean(params.emailVerified);
+
+  if (
+    verified &&
+    cleanUid === ROOT_ADMIN_UID &&
+    cleanEmail === ROOT_ADMIN_EMAIL.toLowerCase()
+  ) {
+    return true;
+  }
+
+  if (params.role === "INTRUSO") {
+    return params.approvalStatus === "PENDENTE" || params.approvalStatus === "APROVADO";
+  }
+
+  if (!verified || !cleanEmail) {
+    return false;
+  }
+
+  const domainRole = previewInstitutionalRole(cleanEmail).role;
+  if (params.role === "ALUNO") {
+    return (
+      domainRole === "ALUNO" &&
+      (params.approvalStatus === "PENDENTE" || params.approvalStatus === "APROVADO")
+    );
+  }
+
+  if (params.role === "SERVIDOR") {
+    return domainRole === "SERVIDOR" && params.approvalStatus === "PENDENTE";
+  }
+
+  return false;
+}
+
+/**
  * Resolver central e único de identidade do Localiza+.
  * Determina o cargo e status de aprovação efetivos respeitando a ordem estrita de precedência:
- * 1. Root Admin Whitelist (paulocauan39@gmail.com).
+ * 1. Root Admin Pinado (UID oficial + e-mail verificado).
  * 2. E-mail verificado (zero-trust: contas não verificadas são sempre INTRUSO).
- * 3. Atribuição administrativa válida e ativa (roleAssignedBy presente e não vazio).
- * 4. Classificação institucional automática por domínio (@estudantes.ifpr.edu.br / @ifpr.edu.br).
- * 5. Documentos legados sem comprovação administrativa para e-mails externos são classificados como INTRUSO.
+ * 3. Atribuição administrativa válida e ativa (/role_assignments).
+ * 4. Atribuição administrativa confiável no perfil (/users/{uid}).
+ * 5. Classificação institucional automática por domínio (@estudantes.ifpr.edu.br / @ifpr.edu.br).
+ * 6. Documentos legados sem comprovação administrativa para e-mails externos são classificados como INTRUSO.
  */
 export function resolveEffectiveUserIdentity({
+  uid,
   email,
   emailVerified,
   userDocData,
   roleAssignment,
 }: {
+  uid?: string | null;
   email?: string | null;
   emailVerified?: boolean;
   userDocData?: Partial<User> | null;
@@ -331,15 +408,34 @@ export function resolveEffectiveUserIdentity({
 }): EffectiveIdentityResolution {
   const cleanEmail = safeToLower(email || "").trim();
   const isVerified = Boolean(emailVerified);
+  const hasExplicitUid = uid !== undefined || userDocData?.id !== undefined;
+  const effectiveUid = String(uid ?? userDocData?.id ?? "").trim();
 
-  // 1. Superadmin Whitelist (paulocauan39@gmail.com)
-  if (cleanEmail === "paulocauan39@gmail.com") {
+  // 1. Root Admin estritamente pinado por UID oficial + e-mail + emailVerified === true
+  // Em todas as chamadas de runtime, `uid` é passado explicitamente (`fbUser.uid ?? null`),
+  // garantindo pinagem estrita por UID (inclusive rejeitando uid vazio/null ou divergente).
+  if (
+    isVerified &&
+    cleanEmail === ROOT_ADMIN_EMAIL.toLowerCase() &&
+    (effectiveUid === ROOT_ADMIN_UID || !hasExplicitUid)
+  ) {
     return {
       role: "ADMIN",
       approvalStatus: "APROVADO",
       isInstitutional: true,
       isDesignated: false,
       label: "Administrador Geral (Root)",
+    };
+  }
+
+  // 1b. Bloqueio estrito para qualquer UID explícito divergente (ou vazio/null) usando o e-mail do Root Admin
+  if (cleanEmail === ROOT_ADMIN_EMAIL.toLowerCase() && hasExplicitUid && effectiveUid !== ROOT_ADMIN_UID) {
+    return {
+      role: "INTRUSO",
+      approvalStatus: "APROVADO",
+      isInstitutional: false,
+      isDesignated: false,
+      label: "Usuário externo (UID divergente do Root Admin)",
     };
   }
 
@@ -929,6 +1025,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const isSyncingRef = useRef<boolean>(false);
   const authProfileResolvedRef = useRef<boolean>(false);
+  const [persistedUserDocUid, setPersistedUserDocUid] = useState<string | null>(null);
+  const verifyUserInFlightRef = useRef<Map<string, Promise<User>>>(new Map());
   const reconcileAttemptKeysRef = useRef<Set<string>>(new Set());
   const reconcileInFlightRef = useRef<Map<string, Promise<ReconcileProfileClientResult>>>(new Map());
   const lastReconcileToastKeyRef = useRef<Set<string>>(new Set());
@@ -1016,8 +1114,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { ok: false, reconciled: false };
     }
     const uid = fbUser.uid;
-    const userEmail = safeToLower(fbUser.email);
-    if (userEmail === "paulocauan39@gmail.com") {
+    if (isVerifiedRootAdminAuthUser(fbUser)) {
       return { ok: false, reconciled: false, reason: "ROOT_ADMIN_SKIPPED" };
     }
 
@@ -3370,6 +3467,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         emailSent: Boolean(data.emailSent),
         deliveryMethod: data.deliveryMethod || "NONE",
         deliveryStatus: data.deliveryStatus || "PENDING_SMTP_CONFIG",
+        normalizedStatus: data.normalizedStatus,
+        provider: data.provider,
+        messageId: data.messageId,
         deliveryError: data.deliveryError,
         manualSetupLink: data.manualSetupLink,
         continueUriFallbackUsed: data.continueUriFallbackUsed,
@@ -3411,7 +3511,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAllUsers((prev) => [...prev, newUser]);
 
       if (finalResult.emailSent) {
-        const methodLabel = finalResult.deliveryMethod === "SMTP" ? "via SMTP" : "via Firebase Auth";
+        const methodLabel =
+          finalResult.deliveryMethod === "RESEND"
+            ? "via Resend"
+            : finalResult.deliveryMethod === "SMTP"
+            ? "via SMTP"
+            : "via Firebase Auth";
         addToast(
           `Usuário ${newUser.name} criado no Authentication e Firestore! Link de primeiro acesso enviado (${methodLabel}) para ${newUser.email}.`,
           "success"
@@ -3480,6 +3585,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         emailSent: Boolean(data.emailSent),
         deliveryMethod: data.deliveryMethod || "NONE",
         deliveryStatus: data.deliveryStatus || "PENDING_SMTP_CONFIG",
+        normalizedStatus: data.normalizedStatus,
+        provider: data.provider,
+        messageId: data.messageId,
         deliveryError: data.deliveryError,
         manualSetupLink: data.manualSetupLink,
         continueUriFallbackUsed: data.continueUriFallbackUsed,
@@ -3516,7 +3624,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       if (finalResult.emailSent) {
-        const methodLabel = finalResult.deliveryMethod === "SMTP" ? "via SMTP" : "via Firebase Auth";
+        const methodLabel =
+          finalResult.deliveryMethod === "RESEND"
+            ? "via Resend"
+            : finalResult.deliveryMethod === "SMTP"
+            ? "via SMTP"
+            : "via Firebase Auth";
         addToast(
           `Link de definição/redefinição de senha enviado (${methodLabel}) para ${finalResult.email}.`,
           "success"
@@ -4000,12 +4113,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Helper to verify and sync user document in Firestore using uid as primary document key
-  const verifyUserInFirestore = async (
+  const verifyUserInFirestore = (
     fbUser: FirebaseUser,
     extraData?: { name?: string; role?: UserRole; avatarUrl?: string; phone?: string; courseOrDept?: string; registrationNumber?: string }
-  ): Promise<User> => {
+  ): Promise<User> =>
+    runWithUidProvisioningLock(verifyUserInFlightRef.current, fbUser.uid, async () => {
     const userEmail = safeToLower(fbUser.email);
-    const isRoot = userEmail === "paulocauan39@gmail.com";
+    const isRoot = isVerifiedRootAdminAuthUser(fbUser);
     const uidRef = doc(db, "users", fbUser.uid);
 
     // Check if there is pending registration data for this user to guarantee consistent profile creation
@@ -4014,7 +4128,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       pendingRegistrationDataRef.current.delete(userEmail);
     }
 
-    const verifiedRoleDetermination = determineInstitutionalRole(userEmail, Boolean(fbUser.emailVerified));
     const previewDetermination = previewInstitutionalRole(userEmail);
 
     // Query /role_assignments/{fbUser.uid} for verified administrative assignment
@@ -4030,8 +4143,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const userSnap = await getDoc(uidRef);
       if (userSnap.exists()) {
+        setPersistedUserDocUid(fbUser.uid);
         const existingData = userSnap.data() as User;
         const identity = resolveEffectiveUserIdentity({
+          uid: fbUser.uid ?? null,
           email: userEmail,
           emailVerified: fbUser.emailVerified,
           userDocData: existingData,
@@ -4194,133 +4309,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // 2. Query 'users' collection using email to migrate legacy documents if any
-    if (userEmail) {
-      try {
-        const q = query(collection(db, "users"), where("email", "==", userEmail));
-        const querySnap = await getDocs(q);
-        if (!querySnap.empty) {
-          const legacyDoc = querySnap.docs[0];
-          const legacyData = legacyDoc.data() as User;
-          const identity = resolveEffectiveUserIdentity({
-            email: userEmail,
-            emailVerified: fbUser.emailVerified,
-            userDocData: legacyData,
-            roleAssignment: roleAssignmentDoc,
-          });
-          const targetRole: UserRole = identity.role;
-          const resolvedApprovalStatus: ApprovalStatus = identity.approvalStatus;
-
-          const resolvedName = pendingData?.name || legacyData.name || fbUser.displayName || extraData?.name || (userEmail ? userEmail.split("@")[0] : "Usuário IFPR");
-
-          const googlePhoto = getGoogleProviderPhoto(fbUser);
-          const hasCustomStoredAvatar = Boolean(legacyData.avatarUrl && isCustomUploadedAvatar(legacyData.avatarUrl));
-          const hasPendingAvatar = Boolean(pendingData?.avatarUrl && !isGenericAvatar(pendingData.avatarUrl));
-          const hasExtraAvatar = Boolean(extraData?.avatarUrl && !isGenericAvatar(extraData.avatarUrl));
-          const hasProviderPhoto = Boolean(googlePhoto);
-
-          const resolvedAvatar = hasPendingAvatar
-            ? pendingData!.avatarUrl!.trim()
-            : hasCustomStoredAvatar
-            ? legacyData.avatarUrl.trim()
-            : hasProviderPhoto
-            ? googlePhoto!
-            : hasExtraAvatar
-            ? extraData!.avatarUrl!.trim()
-            : (legacyData.avatarUrl && !isGenericAvatar(legacyData.avatarUrl))
-            ? legacyData.avatarUrl.trim()
-            : getSafeAvatarUrl(undefined, resolvedName);
-
-          const resolvedPhone = pendingData?.phone ?? legacyData.phone ?? extraData?.phone ?? "";
-          const resolvedCourse = pendingData?.courseOrDept || legacyData.courseOrDept || extraData?.courseOrDept || (previewDetermination.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" : "Estudante IFPR Campus Ivaiporã");
-          const resolvedRegistration = pendingData?.registrationNumber || legacyData.registrationNumber || extraData?.registrationNumber || `2026${fbUser.uid.substring(0, 6)}`;
-          const isVerified = Boolean(fbUser.emailVerified);
-
-          const hasLegacyStatusKey =
-            Object.prototype.hasOwnProperty.call(legacyData, "status") &&
-            legacyData.status !== undefined;
-          const shouldInitLegacyStatus =
-            !hasLegacyStatusKey && !isAccountBlocked(legacyData);
-
-          const migratedUser: User = sanitizeFirestoreData({
-            ...legacyData,
-            id: fbUser.uid,
-            email: userEmail,
-            name: resolvedName,
-            role: targetRole,
-            ...(hasLegacyStatusKey
-              ? { status: legacyData.status }
-              : shouldInitLegacyStatus
-              ? { status: "active" }
-              : {}),
-            avatarUrl: resolvedAvatar,
-            courseOrDept: resolvedCourse,
-            registrationNumber: resolvedRegistration,
-            phone: resolvedPhone,
-            approvalStatus: resolvedApprovalStatus,
-            createdAt: legacyData.createdAt || (fbUser.metadata?.creationTime ? new Date(fbUser.metadata.creationTime).toISOString() : new Date().toISOString()),
-            emailVerified: isVerified,
-            roleAssignedBy: legacyData.roleAssignedBy,
-            roleAssignedByName: legacyData.roleAssignedByName,
-            roleAssignedAt: legacyData.roleAssignedAt,
-          }) as User;
-          try {
-            await setDoc(uidRef, migratedUser, { merge: true });
-            if (legacyDoc.id !== fbUser.uid) {
-              await deleteDoc(doc(db, "users", legacyDoc.id));
-            }
-          } catch (migWriteErr: any) {
-            console.error("[MIGRATE_PROFILE_ERROR] Falha na migração do perfil por e-mail:", {
-              email: userEmail,
-              attemptedRole: targetRole,
-              error: migWriteErr?.message || migWriteErr,
-            });
-            if (!isRoot && fbUser.emailVerified) {
-              const reconcileRes = await reconcileOwnProfileWithServer(fbUser, {
-                attemptKey: `verify-legacy:${fbUser.uid}:${targetRole}:${resolvedApprovalStatus}`,
-                notifyOnError: true,
-              });
-              if (reconcileRes.ok) {
-                const refreshedSnap = await getDoc(uidRef).catch(() => null);
-                if (refreshedSnap && refreshedSnap.exists()) {
-                  return sanitizeFirestoreData({
-                    ...migratedUser,
-                    ...(refreshedSnap.data() as User),
-                    id: fbUser.uid,
-                  }) as User;
-                }
-              }
-            }
-            const persistedRole: UserRole =
-              targetRole === "INTRUSO" ? "INTRUSO" : legacyData.role || "INTRUSO";
-            const persistedApproval: ApprovalStatus =
-              targetRole === "INTRUSO" ? "APROVADO" : legacyData.approvalStatus || "PENDENTE";
-            return sanitizeFirestoreData({
-              ...legacyData,
-              id: fbUser.uid,
-              email: userEmail,
-              name: resolvedName,
-              role: persistedRole,
-              approvalStatus: persistedApproval,
-              avatarUrl: resolvedAvatar,
-            }) as User;
-          }
-          return migratedUser;
-        }
-      } catch (e: any) {
-        if (e?.code === "auth/unauthorized-domain") {
-          const hostname = typeof window !== "undefined" ? window.location.hostname : "seu domínio";
-          addToast(`Domínio '${hostname}' não está autorizado no Firebase Authentication.`, "error");
-        } else {
-          console.warn("Aviso ao verificar e-mail único no Firestore:", e);
-        }
-      }
-    }
-
+    // 2. Provisionamento estritamente vinculado ao próprio UID autenticado (sem listar /users por e-mail nem deletar documentos cross-UID)
     // 3. Create new user document in Firestore if no previous profile exists
     // External users (@gmail.com, etc.) are allowed, classified as INTRUSO with active status and restricted permissions
     const isVerified = Boolean(fbUser.emailVerified);
     const identity = resolveEffectiveUserIdentity({
+      uid: fbUser.uid ?? null,
       email: userEmail,
       emailVerified: isVerified,
       userDocData: null,
@@ -4365,8 +4359,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       emailVerified: isVerified,
     }) as User;
 
+    const canSelfCreate = canClientSelfCreateUserProfile({
+      uid: fbUser.uid,
+      email: userEmail,
+      emailVerified: isVerified,
+      role: resolvedRole,
+      approvalStatus: defaultApprovalStatus,
+    });
+
+    // Quando o perfil inicial possui atribuição administrativa ativa em /role_assignments/{uid}
+    // que não pode ser autocriada via Client SDK (ex.: conta externa designada SERVIDOR/ADMIN/ALUNO),
+    // reconcilia diretamente no servidor antes de tentar setDoc cliente.
+    if (
+      !canSelfCreate &&
+      !isRoot &&
+      fbUser.emailVerified &&
+      roleAssignmentDoc?.active === true &&
+      roleAssignmentDoc?.approvalStatus === "APROVADO"
+    ) {
+      const reconcileRes = await reconcileOwnProfileWithServer(fbUser, {
+        attemptKey: `verify-create-assigned:${fbUser.uid}:${resolvedRole}:${defaultApprovalStatus}`,
+        notifyOnError: true,
+      });
+      if (reconcileRes.ok) {
+        const refreshedSnap = await getDoc(uidRef).catch(() => null);
+        if (refreshedSnap && refreshedSnap.exists()) {
+          setPersistedUserDocUid(fbUser.uid);
+          return sanitizeFirestoreData({
+            ...newUser,
+            ...(refreshedSnap.data() as User),
+            id: fbUser.uid,
+          }) as User;
+        }
+      }
+      throw new Error(
+        reconcileRes.errorMessage ||
+          "Não foi possível confirmar a criação do perfil atribuído no servidor."
+      );
+    }
+
     try {
       await setDoc(uidRef, newUser, { merge: true });
+      setPersistedUserDocUid(fbUser.uid);
     } catch (err: any) {
       const isPermissionDenied =
         err?.code === "permission-denied" ||
@@ -4385,6 +4419,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (reconcileRes.ok) {
           const refreshedSnap = await getDoc(uidRef).catch(() => null);
           if (refreshedSnap && refreshedSnap.exists()) {
+            setPersistedUserDocUid(fbUser.uid);
             return sanitizeFirestoreData({
               ...newUser,
               ...(refreshedSnap.data() as User),
@@ -4399,7 +4434,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw err;
     }
     return newUser;
-  };
+  });
 
   const verifyAndSyncUserDoc = verifyUserInFirestore;
 
@@ -4460,6 +4495,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const previousUid = previousAuthUidRef.current;
       if (previousUid && previousUid !== nextUid) {
         clearAdminAndPrivateSessionState();
+        setPersistedUserDocUid(null);
       }
       previousAuthUidRef.current = nextUid;
       setFirebaseUser(fbUser);
@@ -4472,11 +4508,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (!fbUser) {
         clearAdminAndPrivateSessionState();
+        setPersistedUserDocUid(null);
         setCurrentUser(DEFAULT_GUEST_USER);
         setAuthLoading(false);
         return;
       }
 
+      setPersistedUserDocUid((prev) => (prev === fbUser.uid ? prev : null));
       setAuthLoading(true);
 
       // Asynchronously fetch/sync full Firestore user profile before finishing auth loading
@@ -4497,13 +4535,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const updateEffectiveUserState = () => {
           if (!latestRawUser) return;
           const identity = resolveEffectiveUserIdentity({
+            uid: fbUser.uid ?? null,
             email: fbUser.email,
             emailVerified: fbUser.emailVerified,
             userDocData: latestRawUser,
             roleAssignment: latestRoleAssignment,
           });
-          const userEmail = safeToLower(fbUser.email);
-          const isRoot = userEmail === "paulocauan39@gmail.com";
+          const isRoot = isVerifiedRootAdminAuthUser(fbUser);
           let effectiveRole: UserRole = identity.role;
           let effectiveApprovalStatus: ApprovalStatus = identity.approvalStatus;
 
@@ -4582,8 +4620,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           userRef,
           (userSnap) => {
             if (userSnap.exists()) {
+              setPersistedUserDocUid(fbUser.uid);
               latestRawUser = userSnap.data() as User;
               updateEffectiveUserState();
+            } else {
+              setPersistedUserDocUid((prev) => (prev === fbUser.uid ? null : prev));
             }
           },
           (e) => {
@@ -4612,6 +4653,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } catch (profileErr) {
         console.warn("Aviso ao sincronizar perfil do Firestore:", profileErr);
         // Reset to guest user to prevent unauthenticated/rejected access
+        setPersistedUserDocUid(null);
         setCurrentUser(DEFAULT_GUEST_USER);
       } finally {
         setAuthLoading(false);
@@ -5193,8 +5235,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ]);
 
   // Sync Claims from Firestore (Strict Least Privilege & RBAC Compliance)
+  const hasPersistedUserDoc = Boolean(
+    firebaseUser?.uid && persistedUserDocUid === firebaseUser.uid
+  );
+
   useEffect(() => {
-    const scope = getClaimsListenerScope({ authLoading, firebaseUser, currentUser });
+    const baseScope = getClaimsListenerScope({ authLoading, firebaseUser, currentUser });
+    const scope = hasPersistedUserDoc
+      ? baseScope
+      : getClaimsListenerScope({
+          authLoading,
+          firebaseUser,
+          currentUser,
+          hasPersistedUserDoc,
+        });
     if (scope === "NONE" || !firebaseUser?.uid) {
       setClaims([]);
       return;
@@ -5216,12 +5270,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       },
       (error) => {
-        handleFirestoreError(error, OperationType.GET, "claims");
+        handleFirestoreError(error, OperationType.LIST, "claims");
       }
     );
     return () => unsubscribe();
   }, [
     authLoading,
+    hasPersistedUserDoc,
     firebaseUser?.uid,
     firebaseUser?.email,
     firebaseUser?.emailVerified,
@@ -5240,8 +5295,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Sync Notifications from Firestore (Least Privilege matching firestore.rules)
   useEffect(() => {
-    const notifSession = evaluateListenerSession({ authLoading, firebaseUser, currentUser });
-    const scope = getNotificationsListenerScope({ authLoading, firebaseUser, currentUser });
+    const notifSession = evaluateListenerSession({
+      authLoading,
+      firebaseUser,
+      currentUser,
+      hasPersistedUserDoc,
+    });
+    const baseScope = getNotificationsListenerScope({ authLoading, firebaseUser, currentUser });
+    const scope = hasPersistedUserDoc
+      ? baseScope
+      : getNotificationsListenerScope({
+          authLoading,
+          firebaseUser,
+          currentUser,
+          hasPersistedUserDoc,
+        });
     if (scope === "NONE" || !firebaseUser?.uid) {
       setNotifications([]);
       return;
@@ -5300,12 +5368,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       },
       (error) => {
-        handleFirestoreError(error, OperationType.GET, "notifications");
+        handleFirestoreError(error, OperationType.LIST, "notifications");
       }
     );
     return () => unsubscribe();
   }, [
     authLoading,
+    hasPersistedUserDoc,
     firebaseUser?.uid,
     firebaseUser?.email,
     firebaseUser?.emailVerified,
@@ -6015,13 +6084,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     const institutionalPreview = previewInstitutionalRole(cleanEmail);
-    const isRoot = cleanEmail === "paulocauan39@gmail.com";
 
-    // Zero-Trust: Initial role is INTRUSO until email is verified (unless root admin)
-    // Contas @ifpr.edu.br já iniciam com approvalStatus PENDENTE para respeitar Branch 1 na promoção pós-verificação
-    const resolvedRole: UserRole = isRoot ? "ADMIN" : "INTRUSO";
-    const statusVal: ApprovalStatus =
-      !isRoot && institutionalPreview.role === "SERVIDOR" ? "PENDENTE" : "APROVADO";
+    // Zero-Trust: contas recém-criadas por e-mail/senha jamais recebem privilégio ADMIN por e-mail
+    // (o Root Admin é pinado estritamente por UID oficial + e-mail verificado).
+    // Contas @ifpr.edu.br já iniciam com approvalStatus PENDENTE para respeitar Branch 1 na promoção pós-verificação.
+    const isRoot = false;
+    const resolvedRole: UserRole = "INTRUSO";
+    const statusVal: ApprovalStatus = !isRoot && institutionalPreview.role === "SERVIDOR" ? "PENDENTE" : "APROVADO";
     const resolvedCourse = userData.courseOrDept?.trim() || (
       institutionalPreview.role === "SERVIDOR" ? "Servidor IFPR Campus Ivaiporã" :
       institutionalPreview.role === "ALUNO" ? "Estudante IFPR Campus Ivaiporã" :
@@ -6076,6 +6145,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
 
       await setDoc(doc(db, "users", newUserObj.id), newUserObj, { merge: true });
+      setPersistedUserDocUid(newUserObj.id);
       setCurrentUser(newUserObj);
       setAllUsers((prev) =>
         sortUsersByCreationDesc([
